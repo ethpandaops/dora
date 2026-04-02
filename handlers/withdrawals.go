@@ -11,6 +11,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -39,7 +40,7 @@ func Withdrawals(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get tab view from URL
-	tabView := "recent"
+	tabView := "beaconwithdrawals"
 	if urlArgs.Has("v") {
 		tabView = urlArgs.Get("v")
 	}
@@ -89,23 +90,20 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 		TabView: tabView,
 	}
 
-	// Get withdrawal queue data for stats
-	queueFilter := &services.WithdrawalQueueFilter{}
-	queuedWithdrawals, queuedWithdrawalCount, queuedAmount := services.GlobalBeaconService.GetWithdrawalQueueByFilter(ctx, queueFilter, 0, 1)
-	pageData.QueuedWithdrawalCount = queuedWithdrawalCount
-	pageData.WithdrawingValidatorCount = queuedWithdrawalCount
-	pageData.WithdrawingAmount = uint64(queuedAmount)
-
-	// Calculate queue duration estimation based on the last queued withdrawal
-	if len(queuedWithdrawals) > 0 {
-		lastQueueEntry := queuedWithdrawals[len(queuedWithdrawals)-1]
-		pageData.QueueDurationEstimate = chainState.SlotToTime(lastQueueEntry.EstimatedWithdrawalTime)
-		pageData.HasQueueDuration = true
+	// Compute total amount withdrawn in last 24h
+	currentSlot := chainState.CurrentSlot()
+	slotsPerDay := uint64(86400000 / chainState.GetSpecs().SlotDurationMs)
+	minSlot24h := uint64(0)
+	if uint64(currentSlot) > slotsPerDay {
+		minSlot24h = uint64(currentSlot) - slotsPerDay
 	}
+	minBlockUid24h := minSlot24h << 16
+	maxBlockUid24h := (uint64(currentSlot) + 1) << 16
+	withdrawnAmount24h, _ := db.GetWithdrawalAmountSum(ctx, minBlockUid24h, maxBlockUid24h)
+	pageData.WithdrawnAmount24h = withdrawnAmount24h
 
-	zeroAmount := uint64(0)
+	// Get withdrawal request count (excluding exits) and queue stats
 	oneAmount := uint64(1)
-
 	_, _, totalWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, &services.CombinedWithdrawalRequestFilter{
 		Filter: &dbtypes.WithdrawalRequestFilter{
 			WithOrphaned: 1,
@@ -114,14 +112,18 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 	}, 0, 1)
 	pageData.TotalWithdrawalCount = totalWithdrawals
 
-	_, _, totalExits := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, &services.CombinedWithdrawalRequestFilter{
-		Filter: &dbtypes.WithdrawalRequestFilter{
-			WithOrphaned: 1,
+	// Get withdrawal queue data
+	queueFilter := &services.WithdrawalQueueFilter{}
+	queuedWithdrawals, queuedWithdrawalCount, queuedAmount := services.GlobalBeaconService.GetWithdrawalQueueByFilter(ctx, queueFilter, 0, 1)
+	pageData.QueuedWithdrawalCount = queuedWithdrawalCount
+	pageData.WithdrawingAmount = uint64(queuedAmount)
 
-			MaxAmount: &zeroAmount,
-		},
-	}, 0, 1)
-	pageData.TotalExitCount = totalExits
+	// Calculate queue duration estimation based on the last queued withdrawal
+	if len(queuedWithdrawals) > 0 {
+		lastQueueEntry := queuedWithdrawals[len(queuedWithdrawals)-1]
+		pageData.QueueDurationEstimate = chainState.SlotToTime(lastQueueEntry.EstimatedWithdrawalTime)
+		pageData.HasQueueDuration = true
+	}
 
 	// Only load data for the selected tab
 	switch tabView {
@@ -168,6 +170,117 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 			pageData.RecentWithdrawals = append(pageData.RecentWithdrawals, withdrawalData)
 		}
 		pageData.RecentWithdrawalCount = uint64(len(pageData.RecentWithdrawals))
+
+	case "beaconwithdrawals":
+		// Load recent beacon chain withdrawals
+		withdrawalFilter := &dbtypes.WithdrawalFilter{
+			WithOrphaned: 1,
+		}
+		dbWithdrawals, _ := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, 0, 20)
+
+		// Batch resolve account IDs to addresses
+		accountIDs := make([]uint64, 0, len(dbWithdrawals))
+		validatorIDs := make([]phase0.ValidatorIndex, 0, len(dbWithdrawals))
+		accountIDSet := make(map[uint64]bool, len(dbWithdrawals))
+		validatorIDSet := make(map[uint64]bool, len(dbWithdrawals))
+		for _, w := range dbWithdrawals {
+			if w.AccountID != nil && *w.AccountID > 0 && !accountIDSet[*w.AccountID] {
+				accountIDSet[*w.AccountID] = true
+				accountIDs = append(accountIDs, *w.AccountID)
+			} else if w.Address == nil && w.Validator != nil && !validatorIDSet[*w.Validator] {
+				validatorIDSet[*w.Validator] = true
+				validatorIDs = append(validatorIDs, phase0.ValidatorIndex(*w.Validator))
+			}
+		}
+		accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDs))
+		if len(accountIDs) > 0 {
+			accounts, err := db.GetElAccountsByIDs(ctx, accountIDs)
+			if err == nil {
+				for _, acct := range accounts {
+					accountMap[acct.ID] = acct
+				}
+			}
+		}
+
+		validatorMap := make(map[uint64]v1.Validator, len(validatorIDs))
+		if len(validatorIDs) > 0 {
+			validatorSetRsp, _ := services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &dbtypes.ValidatorFilter{
+				Indices: validatorIDs,
+			}, false)
+
+			for _, validator := range validatorSetRsp {
+				validatorMap[uint64(validator.Index)] = validator
+			}
+		}
+
+		// Batch resolve blocks
+		blockUids := make([]uint64, 0, len(dbWithdrawals))
+		blockUidSet := make(map[uint64]bool, len(dbWithdrawals))
+		for _, w := range dbWithdrawals {
+			if !blockUidSet[w.BlockUid] {
+				blockUidSet[w.BlockUid] = true
+				blockUids = append(blockUids, w.BlockUid)
+			}
+		}
+		blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+		if len(blockUids) > 0 {
+			blockFilter := &dbtypes.BlockFilter{
+				BlockUids:    blockUids,
+				WithOrphaned: 1,
+			}
+			blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, uint32(len(blockUids)), 0)
+			for _, b := range blocks {
+				if b.Block != nil {
+					blockMap[b.Block.BlockUid] = b
+				}
+			}
+		}
+
+		for _, withdrawal := range dbWithdrawals {
+			slot := withdrawal.BlockUid >> 16
+			withdrawalData := &models.WithdrawalsPageDataBeaconWithdrawal{
+				SlotNumber: slot,
+				Time:       chainState.SlotToTime(phase0.Slot(slot)),
+				Orphaned:   withdrawal.Orphaned,
+				Type:       withdrawal.Type,
+				Amount:     withdrawal.Amount,
+				AmountRaw:  withdrawal.AmountRaw,
+			}
+
+			if withdrawal.Validator != nil {
+				withdrawalData.HasValidator = true
+				withdrawalData.ValidatorIndex = *withdrawal.Validator
+				withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*withdrawal.Validator)
+			}
+
+			hasAddress := false
+			if withdrawal.AccountID != nil {
+				if acct, ok := accountMap[*withdrawal.AccountID]; ok {
+					withdrawalData.Address = acct.Address
+					hasAddress = true
+				}
+			}
+			if !hasAddress && withdrawal.Address != nil {
+				withdrawalData.Address = withdrawal.Address
+				hasAddress = true
+			}
+			if !hasAddress && withdrawal.Validator != nil {
+				if validator, ok := validatorMap[*withdrawal.Validator]; ok && (validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02) {
+					withdrawalData.Address = validator.Validator.WithdrawalCredentials[12:]
+					hasAddress = true
+				}
+			}
+
+			if blockInfo, ok := blockMap[withdrawal.BlockUid]; ok && blockInfo.Block != nil {
+				withdrawalData.BlockRoot = blockInfo.Block.Root
+				if blockInfo.Block.EthBlockNumber != nil {
+					withdrawalData.BlockNumber = *blockInfo.Block.EthBlockNumber
+				}
+			}
+
+			pageData.BeaconWithdrawals = append(pageData.BeaconWithdrawals, withdrawalData)
+		}
+		pageData.BeaconWithdrawalCount = uint64(len(pageData.BeaconWithdrawals))
 
 	case "queue":
 		// Load withdrawal queue

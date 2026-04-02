@@ -6,13 +6,12 @@ import (
 
 // WithdrawalsPageData is a struct to hold info for the withdrawals overview page
 type WithdrawalsPageData struct {
-	TotalWithdrawalCount      uint64    `json:"total_withdrawal_count"`
-	TotalExitCount            uint64    `json:"total_exit_count"`
-	WithdrawingValidatorCount uint64    `json:"withdrawing_validator_count"`
-	WithdrawingAmount         uint64    `json:"withdrawing_amount"`
-	QueuedWithdrawalCount     uint64    `json:"queued_withdrawal_count"`
-	QueueDurationEstimate     time.Time `json:"queue_duration_estimate"`
-	HasQueueDuration          bool      `json:"has_queue_duration"`
+	WithdrawnAmount24h    float64   `json:"withdrawn_amount_24h"`
+	TotalWithdrawalCount  uint64    `json:"total_withdrawal_count"`
+	QueuedWithdrawalCount uint64    `json:"queued_withdrawal_count"`
+	WithdrawingAmount     uint64    `json:"withdrawing_amount"`
+	QueueDurationEstimate time.Time `json:"queue_duration_estimate"`
+	HasQueueDuration      bool      `json:"has_queue_duration"`
 
 	TabView string `json:"tab_view"`
 
@@ -21,6 +20,9 @@ type WithdrawalsPageData struct {
 
 	QueuedWithdrawals []*WithdrawalsPageDataQueuedWithdrawal `json:"queued_withdrawals"`
 	QueuedTabCount    uint64                                 `json:"queued_tab_count"`
+
+	BeaconWithdrawals     []*WithdrawalsPageDataBeaconWithdrawal `json:"beacon_withdrawals"`
+	BeaconWithdrawalCount uint64                                 `json:"beacon_withdrawal_count"`
 }
 
 type WithdrawalsPageDataRecentWithdrawal struct {
@@ -53,4 +55,20 @@ type WithdrawalsPageDataQueuedWithdrawal struct {
 	ShowUpcheck       bool      `json:"show_upcheck"`
 	UpcheckActivity   uint8     `json:"upcheck_act"`
 	UpcheckMaximum    uint8     `json:"upcheck_max"`
+}
+
+// WithdrawalsPageDataBeaconWithdrawal represents a beacon chain withdrawal on the overview page.
+type WithdrawalsPageDataBeaconWithdrawal struct {
+	SlotNumber     uint64    `json:"slot"`
+	BlockRoot      []byte    `json:"block_root" ssz-size:"32"`
+	BlockNumber    uint64    `json:"block_number"`
+	Time           time.Time `json:"time"`
+	Orphaned       bool      `json:"orphaned"`
+	Type           uint8     `json:"type"`
+	HasValidator   bool      `json:"has_validator"`
+	ValidatorIndex uint64    `json:"vindex"`
+	ValidatorName  string    `json:"vname"`
+	Address        []byte    `json:"address" ssz-size:"20"`
+	Amount         float64   `json:"amount"`
+	AmountRaw      []byte    `json:"amount_raw" ssz-size:"32"`
 }

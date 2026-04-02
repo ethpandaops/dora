@@ -1,0 +1,89 @@
+{{ define "withdrawals" }}
+<div class="table-responsive px-0 py-1 pt-2">
+  <table class="table table-nobr mb-0">
+    <thead>
+      <tr>
+        <th>Slot</th>
+        <th>Block</th>
+        <th>Time</th>
+        <th>Type</th>
+        <th>Address</th>
+        <th>Amount</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    {{ if gt .WithdrawalCount 0 }}
+      <tbody>
+        {{ range $i, $withdrawal := .Withdrawals }}
+          <tr>
+            <td>
+              {{ if $withdrawal.Orphaned }}
+                {{ if $withdrawal.BlockRoot }}
+                  <a href="/slot/0x{{ printf "%x" $withdrawal.BlockRoot }}">{{ formatAddCommas $withdrawal.SlotNumber }}</a>
+                {{ else }}
+                  {{ formatAddCommas $withdrawal.SlotNumber }}
+                {{ end }}
+              {{ else }}
+                <a href="/slot/{{ $withdrawal.SlotNumber }}">{{ formatAddCommas $withdrawal.SlotNumber }}</a>
+              {{ end }}
+            </td>
+            <td>
+              {{ if gt $withdrawal.BlockNumber 0 }}
+                {{ ethBlockLink $withdrawal.BlockNumber }}
+              {{ else }}
+                -
+              {{ end }}
+            </td>
+            <td data-timer="{{ $withdrawal.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.Time }}">{{ formatRecentTimeShort $withdrawal.Time }}</span></td>
+            <td>
+              {{ if eq $withdrawal.Type 0 }}
+                <span class="badge text-bg-success">
+                  <i class="fas fa-arrow-down me-1"></i>Withdrawal
+                </span>
+              {{ else if eq $withdrawal.Type 1 }}
+                <span class="badge text-bg-info">
+                  <i class="fas fa-coins me-1"></i>Fee Reward
+                </span>
+              {{ else }}
+                <span class="badge text-bg-secondary">Unknown</span>
+              {{ end }}
+            </td>
+            <td>
+              {{ if $withdrawal.Address }}
+                <span class="text-truncate" style="max-width: 200px; display: inline-block;">
+                  {{ ethAddressLink $withdrawal.Address }}
+                </span>
+              {{ else }}
+                -
+              {{ end }}
+            </td>
+            <td class="text-monospace">
+              {{ formatBytesAmount $withdrawal.AmountRaw "ETH" 18 }}
+            </td>
+            <td>
+              {{ if $withdrawal.Orphaned }}
+                <span class="badge rounded-pill text-bg-warning">Orphaned</span>
+              {{ else }}
+                <span class="badge rounded-pill text-bg-success">Canonical</span>
+              {{ end }}
+            </td>
+          </tr>
+        {{ end }}
+      </tbody>
+    {{ else }}
+      <tbody>
+        <tr>
+          <td colspan="7" class="text-center py-4 text-muted">
+            {{ template "timeline_svg" }}
+          </td>
+        </tr>
+      </tbody>
+    {{ end }}
+  </table>
+</div>
+{{ if gt .AdditionalWithdrawalCount 0 }}
+<div class="text-center py-2">
+  <a href="/validators/withdrawals/filtered?f&f.validator={{ .Index }}">View all {{ formatAddCommas .AdditionalWithdrawalCount }} additional withdrawals</a>
+</div>
+{{ end }}
+{{ end }}

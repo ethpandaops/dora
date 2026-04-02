@@ -254,7 +254,7 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		case "internaltxs":
 			loadInternalTxsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		case "system":
-			loadSystemDepositsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadSystemDepositsTab(ctx, pageData, account, chainState, uint32(pageSize), pageIdx)
 		default:
 			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		}
@@ -826,9 +826,13 @@ func calculateInternalTxHashRowspans(txs []*models.AddressPageDataInternalTransa
 	}
 }
 
-func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	// Get system deposits (withdrawals and fee recipient rewards)
-	dbDeposits, totalCount, _ := db.GetWithdrawalsByAccountID(ctx, account.ID, offset, limit)
+func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, limit uint32, pageIdx uint64) {
+	// Use the combined chain service accessor for withdrawals (cache + DB)
+	withdrawalFilter := &dbtypes.WithdrawalFilter{
+		AccountID:    &account.ID,
+		WithOrphaned: 1,
+	}
+	dbDeposits, totalCount := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, pageIdx-1, limit)
 
 	pageData.SystemDepositCount = totalCount
 	pageData.SystemPageIndex = pageIdx
@@ -852,7 +856,7 @@ func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData
 	if len(blockUids) > 0 {
 		filter := &dbtypes.BlockFilter{
 			BlockUids:    blockUids,
-			WithOrphaned: 1, // Include both canonical and orphaned
+			WithOrphaned: 1,
 		}
 		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
 		for _, b := range blocks {

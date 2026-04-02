@@ -535,7 +535,7 @@ func (block *Block) GetDbWithdrawals(indexer *Indexer, isCanonical bool) []*dbty
 		return nil
 	}
 
-	return indexer.dbWriter.buildDbWithdrawals(block, !isCanonical, nil, utils.Config.ExecutionIndexer.Enabled)
+	return indexer.dbWriter.buildDbWithdrawals(block, !isCanonical, nil, nil)
 }
 
 // GetDbSlashings returns the database representation of the slashings in this block.

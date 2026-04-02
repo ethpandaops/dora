@@ -203,7 +203,8 @@ func createMenuItems(active string) []types.MainMenuItem {
 	validatorMenu = append(validatorMenu, types.NavigationGroup{
 		Links: validatorMenuLinks,
 	})
-	validatorMenu = append(validatorMenu, types.NavigationGroup{
+
+	validatorActionsGroup := types.NavigationGroup{
 		Links: []types.NavigationLink{
 			{
 				Label: "Deposits",
@@ -211,36 +212,41 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Icon:  "fa-file-signature",
 			},
 			{
-				Label: "Exits",
-				Path:  "/validators/exits",
-				Icon:  "fa-door-open",
-			},
-			{
-				Label: "Slashings",
-				Path:  "/validators/slashings",
-				Icon:  "fa-user-slash",
+				Label: "Withdrawals",
+				Path:  "/validators/withdrawals",
+				Icon:  "fa-money-bill-transfer",
 			},
 		},
-	})
+	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	if specs != nil && specs.ElectraForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.ElectraForkEpoch {
-		validatorMenu = append(validatorMenu, types.NavigationGroup{
-			Links: []types.NavigationLink{
-				{
-					Label: "Withdrawal Requests",
-					Path:  "/validators/withdrawals",
-					Icon:  "fa-money-bill-transfer",
-				},
-				{
-					Label: "Consolidation Requests",
-					Path:  "/validators/consolidations",
-					Icon:  "fa-square-plus",
-				},
+		validatorActionsGroup.Links = append(
+			validatorActionsGroup.Links,
+			types.NavigationLink{
+				Label: "Consolidations",
+				Path:  "/validators/consolidations",
+				Icon:  "fa-square-plus",
 			},
-		})
+		)
 	}
+
+	validatorActionsGroup.Links = append(
+		validatorActionsGroup.Links,
+		types.NavigationLink{
+			Label: "Exits",
+			Path:  "/validators/exits",
+			Icon:  "fa-door-open",
+		},
+		types.NavigationLink{
+			Label: "Slashings",
+			Path:  "/validators/slashings",
+			Icon:  "fa-user-slash",
+		},
+	)
+
+	validatorMenu = append(validatorMenu, validatorActionsGroup)
 
 	submitLinks := []types.NavigationLink{}
 	if utils.Config.Frontend.ShowSubmitDeposit {

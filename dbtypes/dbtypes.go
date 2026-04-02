@@ -567,6 +567,7 @@ type Withdrawal struct {
 	ForkId    uint64  `db:"fork_id"`
 	Validator *uint64 `db:"validator"`
 	AccountID *uint64 `db:"account_id"`
+	Address   []byte
 	Amount    float64 `db:"amount"`
 	AmountRaw []byte  `db:"amount_raw"`
 }

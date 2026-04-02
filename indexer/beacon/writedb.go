@@ -739,7 +739,7 @@ func (dbw *dbWriter) buildDbVoluntaryExits(block *Block, orphaned bool, override
 }
 
 func (dbw *dbWriter) persistBlockWithdrawals(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
-	dbWithdrawals := dbw.buildDbWithdrawals(block, orphaned, overrideForkId, utils.Config.ExecutionIndexer.Enabled)
+	dbWithdrawals := dbw.buildDbWithdrawals(block, orphaned, overrideForkId, tx)
 	if len(dbWithdrawals) > 0 {
 		err := db.InsertWithdrawals(dbw.indexer.ctx, tx, dbWithdrawals)
 		if err != nil {
@@ -761,7 +761,10 @@ func (dbw *dbWriter) persistBlockWithdrawals(tx *sqlx.Tx, block *Block, orphaned
 	return nil
 }
 
-func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideForkId *ForkKey, lookupAccounts bool) []*dbtypes.Withdrawal {
+// buildDbWithdrawals extracts CL withdrawals from the block.
+// If tx is non-nil (persist path), missing accounts are created using that transaction.
+// If tx is nil (read path), only existing accounts are looked up.
+func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideForkId *ForkKey, tx *sqlx.Tx) []*dbtypes.Withdrawal {
 	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		return nil
@@ -802,22 +805,26 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 			Orphaned:  orphaned,
 			ForkId:    forkId,
 			Validator: &validatorIndex,
+			Address:   withdrawal.Address[:],
 			Amount:    amountFloat,
 			AmountRaw: amountWei.Bytes(),
 		}
 	}
 
 	// Resolve account IDs if EL indexer is enabled
-	if lookupAccounts {
-		dbw.resolveWithdrawalAccounts(block, withdrawals, dbWithdrawals)
+	if utils.Config.ExecutionIndexer.Enabled && tx != nil {
+		dbw.resolveWithdrawalAccounts(withdrawals, dbWithdrawals, tx)
 	}
 
 	return dbWithdrawals
 }
 
-func (dbw *dbWriter) resolveWithdrawalAccounts(block *Block, withdrawals []*capella.Withdrawal, dbWithdrawals []*dbtypes.Withdrawal) {
+// resolveWithdrawalAccounts looks up account IDs for withdrawal addresses.
+// If tx is non-nil, missing accounts are created using that transaction.
+// If tx is nil, only existing accounts are resolved.
+func (dbw *dbWriter) resolveWithdrawalAccounts(withdrawals []*capella.Withdrawal, dbWithdrawals []*dbtypes.Withdrawal, tx *sqlx.Tx) {
 	// Collect unique withdrawal addresses
-	addrSet := make(map[[20]byte]bool, len(withdrawals))
+	addrSet := make(map[bellatrix.ExecutionAddress]bool, len(withdrawals))
 	addrList := make([][]byte, 0, len(withdrawals))
 	for _, w := range withdrawals {
 		if !addrSet[w.Address] {
@@ -833,28 +840,23 @@ func (dbw *dbWriter) resolveWithdrawalAccounts(block *Block, withdrawals []*cape
 		return
 	}
 
-	// Create missing accounts
-	for _, w := range withdrawals {
-		addrHex := fmt.Sprintf("0x%x", w.Address[:])
-		if _, ok := accountMap[addrHex]; !ok {
-			newAccount := &dbtypes.ElAccount{
-				Address: w.Address[:],
-			}
+	// Create missing accounts only when we have a transaction (persist path)
+	if tx != nil {
+		for _, w := range withdrawals {
+			addrHex := fmt.Sprintf("0x%x", w.Address[:])
+			if _, ok := accountMap[addrHex]; !ok {
+				newAccount := &dbtypes.ElAccount{
+					Address: w.Address[:],
+				}
 
-			err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 				id, insertErr := db.InsertElAccount(dbw.indexer.ctx, tx, newAccount)
 				if insertErr != nil {
-					return insertErr
+					dbw.indexer.logger.Warnf("error inserting withdrawal account: %v", insertErr)
+					continue
 				}
 				newAccount.ID = id
-				return nil
-			})
-			if err != nil {
-				dbw.indexer.logger.Warnf("error inserting withdrawal account: %v", err)
-				continue
+				accountMap[addrHex] = newAccount
 			}
-
-			accountMap[addrHex] = newAccount
 		}
 	}
 
