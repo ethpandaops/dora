@@ -92,9 +92,9 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 		}
 
 		blockResult := &dbtypes.SearchBlockResult{}
-		err = db.ReaderDb.Get(blockResult, `
-			SELECT slot, root, status 
-			FROM slots 
+		err = db.ReaderDb.GetContext(ctx, blockResult, `
+			SELECT slot, root, status
+			FROM slots
 			WHERE slot = $1 AND status != 0
 			LIMIT 1`, searchQuery)
 		if err == nil {
@@ -128,9 +128,9 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 		blockHash, err := hex.DecodeString(hashQuery)
 		if err == nil {
 			blockResult := &dbtypes.SearchBlockResult{}
-			err = db.ReaderDb.Get(blockResult, `
-			SELECT slot, root, orphaned 
-			FROM slots 
+			err = db.ReaderDb.GetContext(ctx, blockResult, `
+			SELECT slot, root, orphaned
+			FROM slots
 			WHERE root = $1 OR
 				state_root = $1
 			LIMIT 1`, blockHash)
@@ -149,7 +149,7 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 	}
 
 	names := &dbtypes.SearchNameResult{}
-	err = db.ReaderDb.Get(names, db.EngineQuery(map[dbtypes.DBEngineType]string{
+	err = db.ReaderDb.GetContext(ctx, names, db.EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			SELECT name
 			FROM validator_names
@@ -166,7 +166,7 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 	}
 
 	graffiti := &dbtypes.SearchGraffitiResult{}
-	err = db.ReaderDb.Get(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
+	err = db.ReaderDb.GetContext(ctx, graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			SELECT graffiti
 			FROM slots
@@ -261,7 +261,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 	switch searchType {
 	case "epochs":
 		dbres := &dbtypes.SearchAheadEpochsResult{}
-		err = db.ReaderDb.Select(dbres, "SELECT epoch FROM epochs WHERE CAST(epoch AS text) LIKE $1 ORDER BY epoch LIMIT 10", search+"%")
+		err = db.ReaderDb.SelectContext(ctx, dbres, "SELECT epoch FROM epochs WHERE CAST(epoch AS text) LIKE $1 ORDER BY epoch LIMIT 10", search+"%")
 		if err == nil {
 			model := make([]models.SearchAheadEpochsResult, len(*dbres))
 			for idx, entry := range *dbres {
@@ -299,9 +299,9 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				}
 			} else {
 				dbres := &dbtypes.SearchAheadSlotsResult{}
-				err = db.ReaderDb.Select(dbres, `
-				SELECT slot, root, status 
-				FROM slots 
+				err = db.ReaderDb.SelectContext(ctx, dbres, `
+				SELECT slot, root, status
+				FROM slots
 				WHERE slot < $1 AND (root = $2 OR state_root = $2)
 				ORDER BY slot LIMIT 1`, minSlotIdx, blockHash)
 				if err != nil {
@@ -335,9 +335,9 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				result = res
 			} else {
 				dbres := &dbtypes.SearchAheadSlotsResult{}
-				err = db.ReaderDb.Select(dbres, `
-				SELECT slot, root, status 
-				FROM slots 
+				err = db.ReaderDb.SelectContext(ctx, dbres, `
+				SELECT slot, root, status
+				FROM slots
 				WHERE slot = $1 AND status != 0
 				ORDER BY slot LIMIT 10`, blockNumber)
 				if err == nil {
@@ -383,9 +383,9 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				result = res
 			} else {
 				dbres := &dbtypes.SearchAheadExecBlocksResult{}
-				err = db.ReaderDb.Select(dbres, `
-				SELECT slot, root, eth_block_hash, eth_block_number, status 
-				FROM slots 
+				err = db.ReaderDb.SelectContext(ctx, dbres, `
+				SELECT slot, root, eth_block_hash, eth_block_number, status
+				FROM slots
 				WHERE slot < $1 AND eth_block_hash = $2
 				ORDER BY slot LIMIT 10`, minSlotIdx, blockHash)
 				if err != nil {
@@ -422,9 +422,9 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				result = res
 			} else {
 				dbres := &dbtypes.SearchAheadExecBlocksResult{}
-				err = db.ReaderDb.Select(dbres, `
-				SELECT slot, root, eth_block_hash, eth_block_number, status 
-				FROM slots 
+				err = db.ReaderDb.SelectContext(ctx, dbres, `
+				SELECT slot, root, eth_block_hash, eth_block_number, status
+				FROM slots
 				WHERE slot < $1 AND eth_block_number = $2
 				ORDER BY slot LIMIT 10`, minSlotIdx, blockNumber)
 				if err == nil {
@@ -444,7 +444,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 		}
 	case "graffiti":
 		graffiti := &dbtypes.SearchAheadGraffitiResult{}
-		err = db.ReaderDb.Select(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
+		err = db.ReaderDb.SelectContext(ctx, graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
 			dbtypes.DBEnginePgsql: `
 				SELECT graffiti, count(*) as count
 				FROM slots
@@ -472,7 +472,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 		}
 	case "valname":
 		names := &dbtypes.SearchAheadValidatorNameResult{}
-		err = db.ReaderDb.Select(names, db.EngineQuery(map[dbtypes.DBEngineType]string{
+		err = db.ReaderDb.SelectContext(ctx, names, db.EngineQuery(map[dbtypes.DBEngineType]string{
 			dbtypes.DBEnginePgsql: `
 				SELECT name, count(*) as count
 				FROM validator_names
@@ -523,7 +523,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 		} else if len(search) >= 2 && len(search) <= 96 {
 			// Search by pubkey prefix
 			validators := &dbtypes.SearchAheadValidatorResult{}
-			err = db.ReaderDb.Select(validators, db.EngineQuery(map[dbtypes.DBEngineType]string{
+			err = db.ReaderDb.SelectContext(ctx, validators, db.EngineQuery(map[dbtypes.DBEngineType]string{
 				dbtypes.DBEnginePgsql: `
 					SELECT v.validator_index, v.pubkey
 					FROM validators v
@@ -573,7 +573,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 		} else if len(search) >= 2 && len(search) < 40 {
 			// Search by address prefix in DB
 			addresses := &dbtypes.SearchAheadAddressResult{}
-			err = db.ReaderDb.Select(addresses, db.EngineQuery(map[dbtypes.DBEngineType]string{
+			err = db.ReaderDb.SelectContext(ctx, addresses, db.EngineQuery(map[dbtypes.DBEngineType]string{
 				dbtypes.DBEnginePgsql: `
 					SELECT address, is_contract
 					FROM el_accounts
@@ -626,7 +626,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 		} else if len(search) >= 2 && len(search) < 64 {
 			// Search by transaction hash prefix in DB
 			transactions := &dbtypes.SearchAheadTransactionResult{}
-			err = db.ReaderDb.Select(transactions, db.EngineQuery(map[dbtypes.DBEngineType]string{
+			err = db.ReaderDb.SelectContext(ctx, transactions, db.EngineQuery(map[dbtypes.DBEngineType]string{
 				dbtypes.DBEnginePgsql: `
 					SELECT DISTINCT ON (tx_hash) tx_hash, block_number, reverted
 					FROM el_transactions

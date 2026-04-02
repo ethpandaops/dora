@@ -139,7 +139,13 @@
                     <td><a href="/slot/{{ $voluntaryExit.SlotNumber }}">{{ formatAddCommas $voluntaryExit.SlotNumber }}</a></td>
                     {{ end }}
                     <td data-timer="{{ $voluntaryExit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $voluntaryExit.Time }}">{{ formatRecentTimeShort $voluntaryExit.Time }}</span></td>
-                    <td>{{ formatValidatorWithIndex $voluntaryExit.ValidatorIndex $voluntaryExit.ValidatorName }}</td>
+                    <td>
+                      {{ if $voluntaryExit.IsBuilder }}
+                        {{ formatBuilderWithIndex $voluntaryExit.ValidatorIndex $voluntaryExit.ValidatorName }}
+                      {{ else }}
+                        {{ formatValidatorWithIndex $voluntaryExit.ValidatorIndex $voluntaryExit.ValidatorName }}
+                      {{ end }}
+                    </td>
                     <td>
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">

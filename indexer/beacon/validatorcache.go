@@ -345,8 +345,9 @@ func (cache *validatorCache) getValidatorFlags(validatorIndex phase0.ValidatorIn
 	return cache.valsetCache[validatorIndex].statusFlags
 }
 
-// setFinalizedEpoch sets the last finalized epoch and updates the validator set
-func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDependentRoot phase0.Root) {
+// setFinalizedEpoch sets the last finalized epoch and updates the validator set.
+// dependentRoot is the dependent root of the finalized epoch (last block of the parent epoch).
+func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, dependentRoot phase0.Root) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
@@ -361,7 +362,7 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 
 		// Find the finalized validator state
 		for _, diff := range cachedValidator.validatorDiffs {
-			if diff.dependentRoot == nextEpochDependentRoot {
+			if diff.dependentRoot == dependentRoot {
 				cachedValidator.finalValidator = diff.validator
 				cachedValidator.finalChecksum = calculateValidatorChecksum(diff.validator)
 				cachedValidator.statusFlags = GetValidatorStatusFlags(diff.validator)
@@ -397,6 +398,9 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 	}
 
 	cache.lastFinalizedActiveCount = activeCount
+
+	cache.indexer.logger.Infof("finalized validator set for epoch %v (dependent root: %v, updated: %v, total: %v)",
+		epoch, dependentRoot.String(), updatedCount, len(cache.valsetCache))
 
 	if updatedCount > 0 {
 		select {

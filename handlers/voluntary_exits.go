@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -164,40 +165,67 @@ func buildFilteredVoluntaryExitsPageData(ctx context.Context, pageIdx uint64, pa
 			SlotRoot:        voluntaryExit.SlotRoot,
 			Time:            chainState.SlotToTime(phase0.Slot(voluntaryExit.SlotNumber)),
 			Orphaned:        voluntaryExit.Orphaned,
-			ValidatorIndex:  voluntaryExit.ValidatorIndex,
-			ValidatorName:   services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex),
 			ValidatorStatus: "",
 		}
 
-		validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(voluntaryExit.ValidatorIndex), false)
-		if validator == nil {
-			voluntaryExitData.ValidatorStatus = "Unknown"
-		} else {
-			voluntaryExitData.PublicKey = validator.Validator.PublicKey[:]
-			voluntaryExitData.WithdrawalCreds = validator.Validator.WithdrawalCredentials
+		// Check if this is a builder exit (validator index has BuilderIndexFlag set)
+		if voluntaryExit.ValidatorIndex&services.BuilderIndexFlag != 0 {
+			builderIndex := voluntaryExit.ValidatorIndex &^ services.BuilderIndexFlag
+			voluntaryExitData.IsBuilder = true
+			voluntaryExitData.ValidatorIndex = builderIndex
 
-			if strings.HasPrefix(validator.Status.String(), "pending") {
-				voluntaryExitData.ValidatorStatus = "Pending"
-			} else if validator.Status == v1.ValidatorStateActiveOngoing {
-				voluntaryExitData.ValidatorStatus = "Active"
-				voluntaryExitData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateActiveExiting {
-				voluntaryExitData.ValidatorStatus = "Exiting"
-				voluntaryExitData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateActiveSlashed {
-				voluntaryExitData.ValidatorStatus = "Slashed"
-				voluntaryExitData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-				voluntaryExitData.ValidatorStatus = "Exited"
-			} else if validator.Status == v1.ValidatorStateExitedSlashed {
-				voluntaryExitData.ValidatorStatus = "Slashed"
+			// Resolve builder name via validatornames service (with BuilderIndexFlag)
+			voluntaryExitData.ValidatorName = services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex)
+
+			builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
+			if builder == nil {
+				voluntaryExitData.ValidatorStatus = "Unknown"
 			} else {
-				voluntaryExitData.ValidatorStatus = validator.Status.String()
-			}
+				voluntaryExitData.PublicKey = builder.PublicKey[:]
 
-			if voluntaryExitData.ShowUpcheck {
-				voluntaryExitData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
-				voluntaryExitData.UpcheckMaximum = uint8(3)
+				// Determine builder status
+				currentEpoch := chainState.CurrentEpoch()
+				if builder.WithdrawableEpoch <= currentEpoch {
+					voluntaryExitData.ValidatorStatus = "Exited"
+				} else {
+					voluntaryExitData.ValidatorStatus = "Exiting"
+				}
+			}
+		} else {
+			// Regular validator exit
+			voluntaryExitData.ValidatorIndex = voluntaryExit.ValidatorIndex
+			voluntaryExitData.ValidatorName = services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex)
+
+			validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(voluntaryExit.ValidatorIndex), false)
+			if validator == nil {
+				voluntaryExitData.ValidatorStatus = "Unknown"
+			} else {
+				voluntaryExitData.PublicKey = validator.Validator.PublicKey[:]
+				voluntaryExitData.WithdrawalCreds = validator.Validator.WithdrawalCredentials
+
+				if strings.HasPrefix(validator.Status.String(), "pending") {
+					voluntaryExitData.ValidatorStatus = "Pending"
+				} else if validator.Status == v1.ValidatorStateActiveOngoing {
+					voluntaryExitData.ValidatorStatus = "Active"
+					voluntaryExitData.ShowUpcheck = true
+				} else if validator.Status == v1.ValidatorStateActiveExiting {
+					voluntaryExitData.ValidatorStatus = "Exiting"
+					voluntaryExitData.ShowUpcheck = true
+				} else if validator.Status == v1.ValidatorStateActiveSlashed {
+					voluntaryExitData.ValidatorStatus = "Slashed"
+					voluntaryExitData.ShowUpcheck = true
+				} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+					voluntaryExitData.ValidatorStatus = "Exited"
+				} else if validator.Status == v1.ValidatorStateExitedSlashed {
+					voluntaryExitData.ValidatorStatus = "Slashed"
+				} else {
+					voluntaryExitData.ValidatorStatus = validator.Status.String()
+				}
+
+				if voluntaryExitData.ShowUpcheck {
+					voluntaryExitData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+					voluntaryExitData.UpcheckMaximum = uint8(3)
+				}
 			}
 		}
 

@@ -53,6 +53,8 @@ type ChainSpecConfig struct {
 	ElectraForkEpoch     *uint64        `yaml:"ELECTRA_FORK_EPOCH"     check-if-fork:"ElectraForkEpoch"`
 	FuluForkVersion      phase0.Version `yaml:"FULU_FORK_VERSION"      check-if-fork:"FuluForkEpoch"`
 	FuluForkEpoch        *uint64        `yaml:"FULU_FORK_EPOCH"        check-if-fork:"FuluForkEpoch"`
+	GloasForkVersion     phase0.Version `yaml:"GLOAS_FORK_VERSION"   check-if-fork:"GloasForkEpoch"`
+	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"     check-if-fork:"GloasForkEpoch"`
 
 	// Time parameters
 	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`
@@ -84,7 +86,6 @@ type ChainSpecConfig struct {
 	MaxPayloadSize                   uint64            `yaml:"MAX_PAYLOAD_SIZE"`
 	MaxRequestBlocks                 uint64            `yaml:"MAX_REQUEST_BLOCKS"`
 	EpochsPerSubnetSubscription      uint64            `yaml:"EPOCHS_PER_SUBNET_SUBSCRIPTION"`
-	MinEpochsForBlockRequests        uint64            `yaml:"MIN_EPOCHS_FOR_BLOCK_REQUESTS"`
 	AttestationPropoagationSlotRange uint64            `yaml:"ATTESTATION_PROPAGATION_SLOT_RANGE"`
 	MaximumGossipClockDisparity      uint64            `yaml:"MAXIMUM_GOSSIP_CLOCK_DISPARITY"`
 	MessageDomainInvalidSnappy       phase0.DomainType `yaml:"MESSAGE_DOMAIN_INVALID_SNAPPY"`
@@ -92,32 +93,31 @@ type ChainSpecConfig struct {
 	SubnetsPerNode                   uint64            `yaml:"SUBNETS_PER_NODE"`
 	AttestationSubnetCount           uint64            `yaml:"ATTESTATION_SUBNET_COUNT"`
 	AttestationSubnetExtraBits       uint64            `yaml:"ATTESTATION_SUBNET_EXTRA_BITS"`
-	AttestationSubnetPrefixBits      uint64            `yaml:"ATTESTATION_SUBNET_PREFIX_BITS"`
 
 	// Deneb
 	MaxRequestBlocksDeneb            uint64 `yaml:"MAX_REQUEST_BLOCKS_DENEB"              check-if-fork:"DenebForkEpoch"`
 	MinEpochsForBlobSidecarsRequests uint64 `yaml:"MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS" check-if-fork:"DenebForkEpoch"`
 	BlobSidecarSubnetCount           uint64 `yaml:"BLOB_SIDECAR_SUBNET_COUNT"             check-if-fork:"DenebForkEpoch"`
 	MaxBlobsPerBlock                 uint64 `yaml:"MAX_BLOBS_PER_BLOCK"                   check-if-fork:"DenebForkEpoch"`
-	MaxRequestBlobSidecars           uint64 `yaml:"MAX_REQUEST_BLOB_SIDECARS"             check-if-fork:"DenebForkEpoch"`
 
 	// Electra
 	MinPerEpochChurnLimitElectra        uint64 `yaml:"MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"         check-if-fork:"ElectraForkEpoch"`
 	MaxPerEpochActivationExitChurnLimit uint64 `yaml:"MAX_PER_EPOCH_ACTIVATION_EXIT_CHURN_LIMIT" check-if-fork:"ElectraForkEpoch"`
 	BlobSidecarSubnetCountElectra       uint64 `yaml:"BLOB_SIDECAR_SUBNET_COUNT_ELECTRA"         check-if-fork:"ElectraForkEpoch"`
 	MaxBlobsPerBlockElectra             uint64 `yaml:"MAX_BLOBS_PER_BLOCK_ELECTRA"               check-if-fork:"ElectraForkEpoch"`
-	MaxRequestBlobSidecarsElectra       uint64 `yaml:"MAX_REQUEST_BLOB_SIDECARS_ELECTRA"         check-if-fork:"ElectraForkEpoch"`
 
 	// Fulu
 	MinEpochsForDataColumnSidecars   uint64              `yaml:"MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS"  check-if-fork:"FuluForkEpoch"`
 	NumberOfCustodyGroups            *uint64             `yaml:"NUMBER_OF_CUSTODY_GROUPS"                      check-if-fork:"FuluForkEpoch"`
 	DataColumnSidecarSubnetCount     *uint64             `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT"              check-if-fork:"FuluForkEpoch"`
-	MaxRequestDataColumnSidecars     uint64              `yaml:"MAX_REQUEST_DATA_COLUMN_SIDECARS"              check-if-fork:"FuluForkEpoch"`
 	SamplesPerSlot                   uint64              `yaml:"SAMPLES_PER_SLOT"                              check-if-fork:"FuluForkEpoch"`
 	CustodyRequirement               *uint64             `yaml:"CUSTODY_REQUIREMENT"                           check-if-fork:"FuluForkEpoch"`
 	ValidatorCustodyRequirement      *uint64             `yaml:"VALIDATOR_CUSTODY_REQUIREMENT"                 check-if-fork:"FuluForkEpoch"`
 	BalancePerAdditionalCustodyGroup *uint64             `yaml:"BALANCE_PER_ADDITIONAL_CUSTODY_GROUP"          check-if-fork:"FuluForkEpoch"`
 	BlobSchedule                     []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                                 check-if-fork:"FuluForkEpoch"`
+
+	// Gloas
+	MinBuilderWithdrawabilityDelay uint64 `yaml:"MIN_BUILDER_WITHDRAWABILITY_DELAY" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpecPreset struct {
@@ -205,6 +205,13 @@ type ChainSpecPreset struct {
 	FieldElementsPerExtBlob           uint64  `yaml:"FIELD_ELEMENTS_PER_EXT_BLOB" check-if-fork:"FuluForkEpoch"`
 	CellsPerExtBlob                   uint64  `yaml:"CELLS_PER_EXT_BLOB" check-if-fork:"FuluForkEpoch"`
 	NumberOfColumns                   *uint64 `yaml:"NUMBER_OF_COLUMNS" check-if-fork:"FuluForkEpoch"`
+
+	// Gloas
+	PtcSize                        uint64 `yaml:"PTC_SIZE" check-if-fork:"GloasForkEpoch"`
+	MaxPayloadAttestations         uint64 `yaml:"MAX_PAYLOAD_ATTESTATIONS" check-if-fork:"GloasForkEpoch"`
+	BuilderRegistryLimit           uint64 `yaml:"BUILDER_REGISTRY_LIMIT" check-if-fork:"GloasForkEpoch"`
+	BuilderPendingWithdrawalsLimit uint64 `yaml:"BUILDER_PENDING_WITHDRAWALS_LIMIT" check-if-fork:"GloasForkEpoch"`
+	MaxBuildersPerWithdrawalsSweep uint64 `yaml:"MAX_BUILDERS_PER_WITHDRAWALS_SWEEP" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpecDomainTypes struct {
@@ -219,6 +226,9 @@ type ChainSpecDomainTypes struct {
 	DomainSyncCommitteeSelectionProof phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE_SELECTION_PROOF"`
 	DomainContributionAndProof        phase0.DomainType `yaml:"DOMAIN_CONTRIBUTION_AND_PROOF"`
 	DomainBlsToExecutionChange        phase0.DomainType `yaml:"DOMAIN_BLS_TO_EXECUTION_CHANGE"`
+	DomainBeaconBuilder               phase0.DomainType `yaml:"DOMAIN_BEACON_BUILDER" check-if-fork:"GloasForkEpoch"`
+	DomainPtcAttester                 phase0.DomainType `yaml:"DOMAIN_PTC_ATTESTER" check-if-fork:"GloasForkEpoch"`
+	DomainProposerPreferences         phase0.DomainType `yaml:"DOMAIN_PROPOSER_PREFERENCES" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpec struct {
