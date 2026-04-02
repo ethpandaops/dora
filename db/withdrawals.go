@@ -108,9 +108,16 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 		fmt.Fprintf(&sql, " %v account_id = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
-	if filter.Type != nil {
-		args = append(args, *filter.Type)
-		fmt.Fprintf(&sql, " %v type = $%v", filterOp, len(args))
+	if len(filter.Types) > 0 {
+		fmt.Fprintf(&sql, " %v type IN (", filterOp)
+		for i, t := range filter.Types {
+			if i > 0 {
+				fmt.Fprint(&sql, ", ")
+			}
+			args = append(args, t)
+			fmt.Fprintf(&sql, "$%v", len(args))
+		}
+		fmt.Fprint(&sql, ")")
 		filterOp = "AND"
 	}
 	if filter.MinAmount != nil {

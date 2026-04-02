@@ -273,7 +273,7 @@ type WithdrawalFilter struct {
 	Validator     *uint64
 	ValidatorName string
 	AccountID     *uint64
-	Type          *uint8
+	Types         []uint8
 	MinAmount     *uint64
 	MaxAmount     *uint64
 	WithOrphaned  uint8 // 0=canonical only, 1=all, 2=orphaned only

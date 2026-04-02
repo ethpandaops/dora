@@ -802,7 +802,7 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 	dbWithdrawals := make([]*dbtypes.Withdrawal, len(withdrawals))
 	for idx, withdrawal := range withdrawals {
 		// Classify withdrawal type
-		withdrawalType := dbw.classifyWithdrawalType(idx, pendingPartialCount, withdrawal.ValidatorIndex, blockEpoch)
+		withdrawalType := dbw.classifyWithdrawalType(idx, pendingPartialCount, withdrawal.ValidatorIndex, phase0.Gwei(withdrawal.Amount), blockEpoch)
 
 		dbWithdrawals[idx] = &dbtypes.Withdrawal{
 			BlockUid:  block.BlockUID,
@@ -873,20 +873,29 @@ func (dbw *dbWriter) countPendingPartialWithdrawals(block *Block, sim *stateSimu
 	return processed
 }
 
-// classifyWithdrawalType determines the withdrawal type based on position and validator state.
-func (dbw *dbWriter) classifyWithdrawalType(idx int, pendingPartialCount int, validatorIndex phase0.ValidatorIndex, blockEpoch phase0.Epoch) uint8 {
+// classifyWithdrawalType determines the withdrawal type based on position, validator state, and amount.
+func (dbw *dbWriter) classifyWithdrawalType(idx int, pendingPartialCount int, validatorIndex phase0.ValidatorIndex, amount phase0.Gwei, blockEpoch phase0.Epoch) uint8 {
 	// First N withdrawals are from pending partial withdrawals (EIP-7002 requested)
 	if idx < pendingPartialCount {
 		return dbtypes.WithdrawalTypeRequestedWithdrawal
 	}
 
-	// Check if this is a full withdrawal (validator exited and withdrawable)
+	// Check if this is a full withdrawal (validator exited and withdrawable, with significant amount)
+	// Only flag as full withdrawal when amount >= EJECTION_BALANCE - 0.5 ETH to avoid
+	// flagging small dust sweeps that happen after exit/consolidation.
 	validator := dbw.indexer.GetValidatorByIndex(validatorIndex, nil)
 	if validator != nil && validator.ExitEpoch != FarFutureEpoch && validator.WithdrawableEpoch <= blockEpoch {
-		return dbtypes.WithdrawalTypeFullWithdrawal
+		chainSpec := dbw.indexer.consensusPool.GetChainState().GetSpecs()
+		fullWithdrawalThreshold := phase0.Gwei(0)
+		if chainSpec.EjectionBalance > 500000000 { // 0.5 ETH in Gwei
+			fullWithdrawalThreshold = phase0.Gwei(chainSpec.EjectionBalance - 500000000)
+		}
+		if amount >= fullWithdrawalThreshold {
+			return dbtypes.WithdrawalTypeFullWithdrawal
+		}
 	}
 
-	// Default: sweep withdrawal (excess balance above max effective balance)
+	// Default: sweep withdrawal (excess balance or small dust after exit)
 	return dbtypes.WithdrawalTypeSweepWithdrawal
 }
 

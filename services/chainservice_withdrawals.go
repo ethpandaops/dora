@@ -490,7 +490,7 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 							}
 						}
 					}
-					if filter.Type != nil && withdrawal.Type != *filter.Type {
+					if len(filter.Types) > 0 && !slices.Contains(filter.Types, withdrawal.Type) {
 						continue
 					}
 					if filter.MinAmount != nil && withdrawal.Amount < *filter.MinAmount {

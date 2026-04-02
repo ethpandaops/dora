@@ -65,12 +65,12 @@
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <nobr>Withdrawal Type</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.type" aria-controls="type" class="form-control">
-                      <option value="0" {{ if eq .FilterWithType 0 }}selected{{ end }}>All Types</option>
-                      <option value="1" {{ if eq .FilterWithType 1 }}selected{{ end }}>Full Withdrawals</option>
-                      <option value="2" {{ if eq .FilterWithType 2 }}selected{{ end }}>Sweep Withdrawals</option>
-                      <option value="3" {{ if eq .FilterWithType 3 }}selected{{ end }}>Requested Withdrawals</option>
+                  <div class="col-sm-12 col-md-6 col-lg-6">
+                    <select name="f.type" multiple="multiple" class="filter-multiselect">
+                      {{ $filterTypeList := .FilterWithType }}
+                      <option value="1" {{ if inlist "1" $filterTypeList }}selected{{ end }}>Full Withdrawal</option>
+                      <option value="2" {{ if inlist "2" $filterTypeList }}selected{{ end }}>Sweep Withdrawal</option>
+                      <option value="3" {{ if inlist "3" $filterTypeList }}selected{{ end }}>Requested Withdrawal</option>
                     </select>
                   </div>
                 </div>
@@ -278,6 +278,7 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script src="/js/bootstrap-multiselect.js"></script>
 <script>
   $(document).ready(function() {
     $('#pageJumpForm').on('submit', function(e) {
@@ -300,16 +301,44 @@
         $('#pageJumpForm').submit();
       }
     });
+
+    $('#withdrawalsFilterForm .filter-multiselect').each(function() {
+      $(this).multiselect({
+        onInitialized: function() {
+          this.$button.attr("data-bs-toggle", "dropdown");
+          this.$container.addClass("filter-multiselect-container");
+        }
+      });
+    });
   });
 </script>
 {{ end }}
 {{ define "css" }}
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
 <style>
 
 .filter-amount-separator {
   padding-top: 6px;
   padding-left: 10px;
   padding-right: 10px;
+}
+
+.filter-multiselect-container {
+  width: 100%;
+}
+.filter-multiselect-container.btn-group>.btn {
+  text-align: left;
+}
+.filter-multiselect-container .multiselect-container {
+  width: 100%;
+}
+.filter-multiselect-container .multiselect-container>li>a>label {
+  padding: 4px 8px;
+  width: 100%;
+  white-space: nowrap;
+}
+.filter-multiselect-container .multiselect-container>li>a>label>input {
+  margin: 0 4px;
 }
 
 </style>

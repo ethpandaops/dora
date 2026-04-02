@@ -8,7 +8,7 @@ import (
 type WithdrawalsListPageData struct {
 	FilterValidator    string `json:"filter_validator"`
 	FilterAddress      string `json:"filter_address"`
-	FilterWithType     uint8  `json:"filter_type"`
+	FilterWithType     string `json:"filter_type"`
 	FilterMinAmount    string `json:"filter_min_amount"`
 	FilterMaxAmount    string `json:"filter_max_amount"`
 	FilterWithOrphaned uint8  `json:"filter_orphaned"`

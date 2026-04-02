@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -48,7 +49,7 @@ func WithdrawalsList(w http.ResponseWriter, r *http.Request) {
 	var address string
 	var minAmount string
 	var maxAmount string
-	var withType uint64
+	var withType string
 	var withOrphaned uint64
 
 	if urlArgs.Has("f") {
@@ -59,7 +60,7 @@ func WithdrawalsList(w http.ResponseWriter, r *http.Request) {
 			address = urlArgs.Get("f.address")
 		}
 		if urlArgs.Has("f.type") {
-			withType, _ = strconv.ParseUint(urlArgs.Get("f.type"), 10, 64)
+			withType = strings.Join(urlArgs["f.type"], ",")
 		}
 		if urlArgs.Has("f.mina") {
 			minAmount = urlArgs.Get("f.mina")
@@ -77,7 +78,7 @@ func WithdrawalsList(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredWithdrawalsListPageData(pageIdx, pageSize, validator, address, uint8(withType), minAmount, maxAmount, uint8(withOrphaned))
+		data.Data, pageError = getFilteredWithdrawalsListPageData(pageIdx, pageSize, validator, address, withType, minAmount, maxAmount, uint8(withOrphaned))
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -89,7 +90,7 @@ func WithdrawalsList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredWithdrawalsListPageData(pageIdx uint64, pageSize uint64, validator string, address string, withType uint8, minAmount string, maxAmount string, withOrphaned uint8) (*models.WithdrawalsListPageData, error) {
+func getFilteredWithdrawalsListPageData(pageIdx uint64, pageSize uint64, validator string, address string, withType string, minAmount string, maxAmount string, withOrphaned uint8) (*models.WithdrawalsListPageData, error) {
 	pageData := &models.WithdrawalsListPageData{}
 	pageCacheKey := fmt.Sprintf("withdrawals_list:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, validator, address, withType, minAmount, maxAmount, withOrphaned)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
@@ -107,7 +108,7 @@ func getFilteredWithdrawalsListPageData(pageIdx uint64, pageSize uint64, validat
 	return pageData, pageErr
 }
 
-func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, pageSize uint64, validator string, address string, withType uint8, minAmount string, maxAmount string, withOrphaned uint8) (*models.WithdrawalsListPageData, time.Duration) {
+func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, pageSize uint64, validator string, address string, withType string, minAmount string, maxAmount string, withOrphaned uint8) (*models.WithdrawalsListPageData, time.Duration) {
 	filterArgs := url.Values{}
 	if validator != "" {
 		filterArgs.Add("f.validator", validator)
@@ -115,8 +116,8 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 	if address != "" {
 		filterArgs.Add("f.address", address)
 	}
-	if withType != 0 {
-		filterArgs.Add("f.type", fmt.Sprintf("%v", withType))
+	if withType != "" {
+		filterArgs.Add("f.type", withType)
 	}
 	if minAmount != "" {
 		filterArgs.Add("f.mina", minAmount)
@@ -180,9 +181,13 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 		}
 	}
 
-	// Parse type filter (URL values 1-3 map directly to DB types 1-3)
-	if withType >= 1 && withType <= 3 {
-		withdrawalFilter.Type = &withType
+	// Parse type filter (comma-separated list of type values 1-3)
+	if withType != "" {
+		for _, t := range strings.Split(withType, ",") {
+			if v, err := strconv.ParseUint(strings.TrimSpace(t), 10, 8); err == nil && v >= 1 && v <= 3 {
+				withdrawalFilter.Types = append(withdrawalFilter.Types, uint8(v))
+			}
+		}
 	}
 
 	// Parse amount filters (input is in ETH, convert to Gwei)
