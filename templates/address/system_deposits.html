@@ -47,6 +47,10 @@
                   <span class="badge text-bg-primary">
                     <i class="fas fa-building me-1"></i>Builder Withdrawal
                   </span>
+                {{ else if eq .Type 6 }}
+                  <span class="badge text-bg-secondary">
+                    <i class="fas fa-building me-1"></i>Builder Delayed
+                  </span>
                 {{ else }}
                   <span class="badge text-bg-secondary">Unknown</span>
                 {{ end }}

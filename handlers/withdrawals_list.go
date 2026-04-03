@@ -184,7 +184,7 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 	// Parse type filter (comma-separated list of type values 1-3)
 	if withType != "" {
 		for _, t := range strings.Split(withType, ",") {
-			if v, err := strconv.ParseUint(strings.TrimSpace(t), 10, 8); err == nil && v >= 1 && v <= 5 {
+			if v, err := strconv.ParseUint(strings.TrimSpace(t), 10, 8); err == nil && v >= 1 && v <= 6 {
 				withdrawalFilter.Types = append(withdrawalFilter.Types, uint8(v))
 			}
 		}

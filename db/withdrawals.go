@@ -20,11 +20,11 @@ func InsertWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtype
 			dbtypes.DBEnginePgsql:  "INSERT INTO withdrawals ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO withdrawals ",
 		}),
-		"(block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount)",
+		"(block_uid, block_idx, type, orphaned, fork_id, validator, account_id, ref_slot, amount)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 8
+	fieldCount := 9
 
 	args := make([]any, len(withdrawals)*fieldCount)
 	for i, w := range withdrawals {
@@ -47,7 +47,8 @@ func InsertWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtype
 		args[argIdx+4] = w.ForkId
 		args[argIdx+5] = w.Validator
 		args[argIdx+6] = w.AccountID
-		args[argIdx+7] = w.Amount
+		args[argIdx+7] = w.RefSlot
+		args[argIdx+8] = w.Amount
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -57,6 +58,7 @@ func InsertWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtype
 			" fork_id = excluded.fork_id," +
 			" validator = excluded.validator," +
 			" account_id = excluded.account_id," +
+			" ref_slot = excluded.ref_slot," +
 			" amount = excluded.amount",
 		dbtypes.DBEngineSqlite: "",
 	}))
@@ -71,7 +73,7 @@ func InsertWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtype
 func GetWithdrawalsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtypes.Withdrawal, error) {
 	withdrawals := []*dbtypes.Withdrawal{}
 	err := ReaderDb.SelectContext(ctx, &withdrawals,
-		"SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount"+
+		"SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, ref_slot, amount"+
 			" FROM withdrawals WHERE block_uid = $1 ORDER BY block_idx ASC",
 		blockUid)
 	if err != nil {
@@ -87,7 +89,7 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount
+			block_uid, block_idx, type, orphaned, fork_id, validator, account_id, ref_slot, amount
 		FROM withdrawals
 	`)
 
@@ -161,6 +163,7 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 		0 AS fork_id,
 		0 AS validator,
 		null AS account_id,
+		null AS ref_slot,
 		0 AS amount
 	FROM cte
 	UNION ALL SELECT * FROM (
@@ -197,7 +200,7 @@ func GetWithdrawalsByAccountID(ctx context.Context, accountID uint64, offset uin
 	args := []any{accountID}
 
 	fmt.Fprint(&sql, `
-		SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount
+		SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, ref_slot, amount
 		FROM withdrawals
 		WHERE account_id = $1
 		ORDER BY block_uid DESC NULLS LAST, block_idx ASC
@@ -252,7 +255,7 @@ func GetWithdrawalsByBlockUidRange(ctx context.Context, minBlockUid uint64, maxB
 	args := []any{minBlockUid, maxBlockUid}
 
 	fmt.Fprint(&sql,
-		"SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount"+
+		"SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, ref_slot, amount"+
 			" FROM withdrawals WHERE block_uid >= $1 AND block_uid < $2")
 
 	if typeFilter != nil {

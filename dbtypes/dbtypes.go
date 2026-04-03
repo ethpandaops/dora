@@ -597,18 +597,20 @@ const (
 	WithdrawalTypeFullWithdrawal        = 1 // Full withdrawal after validator exit
 	WithdrawalTypeSweepWithdrawal       = 2 // Regular scheduled sweep (excess balance)
 	WithdrawalTypeRequestedWithdrawal   = 3 // EIP-7002 requested partial withdrawal
-	WithdrawalTypeBuilderPayment        = 4 // Builder pending withdrawal (fee payment)
+	WithdrawalTypeBuilderPayment        = 4 // Builder direct payment (payload delivered)
 	WithdrawalTypeBuilderFullWithdrawal = 5 // Builder sweep (full balance withdrawal)
+	WithdrawalTypeBuilderDelayedPayment = 6 // Builder delayed/quorum payment (missed payload)
 )
 
 type Withdrawal struct {
 	BlockUid  uint64  `db:"block_uid"`
 	BlockIdx  int16   `db:"block_idx"`
-	Type      uint8   `db:"type"` // 1=full, 2=sweep, 3=requested
+	Type      uint8   `db:"type"` // 1=full, 2=sweep, 3=requested, 4=builder_payment, 5=builder_full, 6=builder_delayed
 	Orphaned  bool    `db:"orphaned"`
 	ForkId    uint64  `db:"fork_id"`
 	Validator uint64  `db:"validator"`
 	AccountID *uint64 `db:"account_id"`
 	Address   []byte
-	Amount    uint64 `db:"amount"` // Gwei
+	RefSlot   *uint64 `db:"ref_slot"` // Reference slot (for builder payments: the slot the payment is for)
+	Amount    uint64  `db:"amount"`   // Gwei
 }
