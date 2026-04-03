@@ -100,9 +100,14 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 	}
 
 	filterOp := "WHERE"
-	if filter.Validator != nil {
-		args = append(args, *filter.Validator)
-		fmt.Fprintf(&sql, " %v validator = $%v", filterOp, len(args))
+	if filter.MinIndex > 0 {
+		args = append(args, filter.MinIndex)
+		fmt.Fprintf(&sql, " %v validator >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxIndex > 0 {
+		args = append(args, filter.MaxIndex)
+		fmt.Fprintf(&sql, " %v validator <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.AccountID != nil {

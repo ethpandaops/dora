@@ -476,7 +476,10 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 				withdrawals := block.GetDbWithdrawals(bs.beaconIndexer, isCanonical)
 
 				for idx, withdrawal := range withdrawals {
-					if filter.Validator != nil && withdrawal.Validator != *filter.Validator {
+					if filter.MinIndex > 0 && withdrawal.Validator < filter.MinIndex {
+						continue
+					}
+					if filter.MaxIndex > 0 && withdrawal.Validator > filter.MaxIndex {
 						continue
 					}
 					if filter.AccountID != nil {

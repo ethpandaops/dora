@@ -597,7 +597,8 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 	// load recent withdrawals (beacon chain withdrawals)
 	if pageData.TabView == "withdrawals" {
 		withdrawalFilter := &dbtypes.WithdrawalFilter{
-			Validator:    &validatorIndex,
+			MinIndex:     validatorIndex,
+			MaxIndex:     validatorIndex,
 			WithOrphaned: 1,
 		}
 		dbWithdrawals, totalRows := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, 0, 10)

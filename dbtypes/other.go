@@ -320,7 +320,8 @@ type ElTokenTransferFilter struct {
 }
 
 type WithdrawalFilter struct {
-	Validator     *uint64
+	MinIndex      uint64
+	MaxIndex      uint64
 	ValidatorName string
 	AccountID     *uint64
 	Types         []uint8

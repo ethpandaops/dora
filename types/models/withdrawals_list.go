@@ -6,12 +6,15 @@ import (
 
 // WithdrawalsListPageData is a struct to hold info for the withdrawals list page.
 type WithdrawalsListPageData struct {
-	FilterValidator    string `json:"filter_validator"`
-	FilterAddress      string `json:"filter_address"`
-	FilterWithType     string `json:"filter_type"`
-	FilterMinAmount    string `json:"filter_min_amount"`
-	FilterMaxAmount    string `json:"filter_max_amount"`
-	FilterWithOrphaned uint8  `json:"filter_orphaned"`
+	FilterEntity        string `json:"filter_entity"` // "all", "validator", or "builder"
+	FilterMinIndex      uint64 `json:"filter_mini"`
+	FilterMaxIndex      uint64 `json:"filter_maxi"`
+	FilterValidatorName string `json:"filter_vname"`
+	FilterAddress       string `json:"filter_address"`
+	FilterWithType      string `json:"filter_type"`
+	FilterMinAmount     string `json:"filter_min_amount"`
+	FilterMaxAmount     string `json:"filter_max_amount"`
+	FilterWithOrphaned  uint8  `json:"filter_orphaned"`
 
 	Withdrawals     []*WithdrawalsListPageDataWithdrawal `json:"withdrawals"`
 	WithdrawalCount uint64                               `json:"withdrawal_count"`
