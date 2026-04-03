@@ -248,9 +248,14 @@ func buildExitsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64,
 			}
 
 			if validatorIndex := exitReq.ValidatorIndex(); validatorIndex != nil {
-				exitReqData.ValidatorIndex = *validatorIndex
-				exitReqData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
 				exitReqData.ValidatorValid = true
+				exitReqData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
+				if *validatorIndex&services.BuilderIndexFlag != 0 {
+					exitReqData.IsBuilder = true
+					exitReqData.ValidatorIndex = *validatorIndex &^ services.BuilderIndexFlag
+				} else {
+					exitReqData.ValidatorIndex = *validatorIndex
+				}
 			}
 
 			if request := exitReq.Request; request != nil {
