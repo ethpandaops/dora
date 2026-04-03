@@ -254,3 +254,8 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.46.1 // indirect
 )
+
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20260107112128-b97b7522025a
+
+//replace github.com/ethereum/go-ethereum => github.com/ethereum/go-ethereum v0.0.0-20251217020005-abaef48d549a
+//replace github.com/ethereum/go-ethereum => github.com/ethereum/go-ethereum v0.0.0-20260302233108-b9b434779702
