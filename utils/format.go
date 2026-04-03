@@ -33,6 +33,11 @@ func FormatETHFromGweiShort(gwei uint64) string {
 	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9))
 }
 
+func FormatETHFromGweiP(gwei uint64, precision int) string {
+	f := fmt.Sprintf("%%.%df ETH", precision)
+	return fmt.Sprintf(f, float64(gwei)/math.Pow10(9))
+}
+
 func FormatFullEthFromGwei(gwei uint64) string {
 	return fmt.Sprintf("%v ETH", uint64(float64(gwei)/math.Pow10(9)))
 }

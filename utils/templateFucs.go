@@ -123,6 +123,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatBitvectorValidators":    formatBitvectorValidators,
 		"formatParticipation":          FormatParticipation,
 		"formatEthFromGwei":            FormatETHFromGwei,
+		"formatEthFromGweiP":           FormatETHFromGweiP,
 		"formatEthFromGweiShort":       FormatETHFromGweiShort,
 		"formatFullEthFromGwei":        FormatFullEthFromGwei,
 		"formatEthAddCommasFromGwei":   FormatETHAddCommasFromGwei,

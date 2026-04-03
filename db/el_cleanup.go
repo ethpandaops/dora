@@ -15,7 +15,6 @@ type CleanupStats struct {
 	InternalTxsDeleted    int64
 	EventIndicesDeleted   int64
 	TokenTransfersDeleted int64
-	WithdrawalsDeleted    int64
 	BlocksDeleted         int64
 }
 
@@ -56,13 +55,6 @@ func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _
 		return stats, err
 	}
 	stats.TokenTransfersDeleted = deleted
-
-	// Delete withdrawals in batches
-	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_withdrawals", blockUidThreshold, batchSize)
-	if err != nil {
-		return stats, err
-	}
-	stats.WithdrawalsDeleted = deleted
 
 	// Delete blocks in batches
 	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_blocks", blockUidThreshold, batchSize)

@@ -26,8 +26,9 @@ type AddressPageData struct {
 	// Tab view
 	TabView string `json:"tab_view"`
 
-	// System deposits availability
-	HasSystemDeposits bool `json:"has_system_deposits"`
+	// Tab visibility
+	HasWithdrawals bool `json:"has_withdrawals"`
+	HasBlockFees   bool `json:"has_block_fees"`
 
 	// Transactions tab
 	Transactions     []*AddressPageDataTransaction `json:"transactions"`
@@ -69,14 +70,23 @@ type AddressPageData struct {
 	InternalTxFirstItem  uint64                                `json:"internal_tx_first_item"`
 	InternalTxLastItem   uint64                                `json:"internal_tx_last_item"`
 
-	// System Deposits tab (withdrawals and fee recipient rewards)
-	SystemDeposits     []*AddressPageDataSystemDeposit `json:"system_deposits"`
-	SystemDepositCount uint64                          `json:"system_deposit_count"`
-	SystemPageIndex    uint64                          `json:"system_page_index"`
-	SystemPageSize     uint64                          `json:"system_page_size"`
-	SystemTotalPages   uint64                          `json:"system_total_pages"`
-	SystemFirstItem    uint64                          `json:"system_first_item"`
-	SystemLastItem     uint64                          `json:"system_last_item"`
+	// Beacon Withdrawals tab
+	Withdrawals     []*AddressPageDataWithdrawal `json:"withdrawals"`
+	WithdrawalCount uint64                       `json:"withdrawal_count"`
+	WdPageIndex     uint64                       `json:"wd_page_index"`
+	WdPageSize      uint64                       `json:"wd_page_size"`
+	WdTotalPages    uint64                       `json:"wd_total_pages"`
+	WdFirstItem     uint64                       `json:"wd_first_item"`
+	WdLastItem      uint64                       `json:"wd_last_item"`
+
+	// Block Fees tab
+	BlockFees     []*AddressPageDataBlockFee `json:"block_fees"`
+	BlockFeeCount uint64                     `json:"block_fee_count"`
+	BfPageIndex   uint64                     `json:"bf_page_index"`
+	BfPageSize    uint64                     `json:"bf_page_size"`
+	BfTotalPages  uint64                     `json:"bf_total_pages"`
+	BfFirstItem   uint64                     `json:"bf_first_item"`
+	BfLastItem    uint64                     `json:"bf_last_item"`
 }
 
 // AddressPageDataTokenBalance represents a token balance in the sidebar
@@ -166,15 +176,26 @@ type AddressPageDataInternalTransaction struct {
 	AmountRaw      []byte    `json:"amount_raw" ssz-size:"32"`
 }
 
-// AddressPageDataSystemDeposit represents a system deposit (withdrawal or fee recipient reward)
-type AddressPageDataSystemDeposit struct {
+// AddressPageDataWithdrawal represents a beacon withdrawal on the address page.
+type AddressPageDataWithdrawal struct {
+	BlockUid       uint64    `json:"block_uid"`
+	BlockNumber    uint64    `json:"block_number"`
+	BlockRoot      []byte    `json:"block_root" ssz-size:"32"`
+	BlockOrphaned  bool      `json:"block_orphaned"`
+	BlockTime      time.Time `json:"block_time"`
+	Type           uint8     `json:"type"`   // 1=full, 2=sweep, 3=requested
+	Amount         uint64    `json:"amount"` // Gwei
+	ValidatorIndex uint64    `json:"validator_index"`
+	ValidatorName  string    `json:"validator_name"`
+}
+
+// AddressPageDataBlockFee represents a block fee reward on the address page.
+type AddressPageDataBlockFee struct {
 	BlockUid      uint64    `json:"block_uid"`
 	BlockNumber   uint64    `json:"block_number"`
-	BlockRoot     []byte    `json:"block_root" ssz-size:"32"` // For linking to /slot/{root}
-	BlockOrphaned bool      `json:"block_orphaned"`           // True if block is orphaned
+	BlockRoot     []byte    `json:"block_root" ssz-size:"32"`
+	BlockOrphaned bool      `json:"block_orphaned"`
 	BlockTime     time.Time `json:"block_time"`
-	Type          uint8     `json:"type"`   // 0=withdrawal, 1=fee_recipient
-	Amount        float64   `json:"amount"` // Amount in ETH
+	Amount        float64   `json:"amount"`
 	AmountRaw     []byte    `json:"amount_raw" ssz-size:"32"`
-	Validator     *uint64   `json:"validator" ssz-type:"optional"` // validator index for withdrawals, null for fee recipient
 }
