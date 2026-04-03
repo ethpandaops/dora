@@ -8,6 +8,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 )
@@ -795,7 +796,10 @@ func (sim *stateSimulator) classifyBuilderPayments(block *Block, builderCount in
 }
 
 // resolveDelayedPaymentRefSlot finds the slot a delayed builder payment is for
-// by matching the builder index against blocks with missed payloads from the previous epoch.
+// by matching the builder index against blocks with missed payloads.
+// Due to double-buffering in builder_pending_payments, delayed payments from epoch K
+// are evaluated at epoch K+2 boundary. So we look TWO epochs back from the block's epoch.
+// If the target epoch is already pruned from cache, falls back to DB query.
 func (sim *stateSimulator) resolveDelayedPaymentRefSlot(delayedIdx int, block *Block) *uint64 {
 	if delayedIdx < 0 || delayedIdx >= len(sim.prevState.builderPendingWithdrawals) {
 		return nil
@@ -804,23 +808,46 @@ func (sim *stateSimulator) resolveDelayedPaymentRefSlot(delayedIdx int, block *B
 	builderIndex := sim.prevState.builderPendingWithdrawals[delayedIdx].BuilderIndex
 	chainState := sim.indexer.consensusPool.GetChainState()
 	blockEpoch := chainState.EpochOfSlot(block.Slot)
-	if blockEpoch == 0 {
+	if blockEpoch < 2 {
 		return nil
 	}
 
-	prevEpoch := blockEpoch - 1
-	prevEpochFirstSlot := chainState.EpochToSlot(prevEpoch)
-	currentEpochFirstSlot := chainState.EpochToSlot(blockEpoch)
+	// Delayed payments from epoch K-2 are evaluated at epoch K boundary
+	sourceEpoch := blockEpoch - 2
+	sourceEpochFirstSlot := chainState.EpochToSlot(sourceEpoch)
+	sourceEpochEndSlot := chainState.EpochToSlot(sourceEpoch + 1)
 
-	for slot := prevEpochFirstSlot; slot < currentEpochFirstSlot; slot++ {
-		blocks := sim.indexer.GetBlocksBySlot(slot)
-		for _, b := range blocks {
-			blockIndex := b.GetBlockIndex(sim.indexer.ctx)
-			if blockIndex == nil {
+	// Check if the source epoch is still in the block cache
+	_, prunedEpoch := sim.indexer.GetBlockCacheState()
+	if sourceEpoch >= prunedEpoch {
+		// Source epoch is in cache — search cached blocks
+		for slot := sourceEpochFirstSlot; slot < sourceEpochEndSlot; slot++ {
+			blocks := sim.indexer.GetBlocksBySlot(slot)
+			for _, b := range blocks {
+				blockIndex := b.GetBlockIndex(sim.indexer.ctx)
+				if blockIndex == nil {
+					continue
+				}
+				if blockIndex.BuilderIndex == uint64(builderIndex) && (!b.HasExecutionPayload() || b.isPayloadOrphaned) {
+					s := uint64(slot)
+					return &s
+				}
+			}
+		}
+	} else {
+		// Source epoch is finalized/pruned — query DB for blocks with missed payloads
+		dbSlots := db.GetSlotsRange(sim.indexer.ctx, uint64(sourceEpochEndSlot-1), uint64(sourceEpochFirstSlot), false, false)
+		for _, assignedSlot := range dbSlots {
+			if assignedSlot.Block == nil {
 				continue
 			}
-			if blockIndex.BuilderIndex == uint64(builderIndex) && (!b.HasExecutionPayload() || b.isPayloadOrphaned) {
-				s := uint64(slot)
+			dbBuilderIndex := assignedSlot.Block.BuilderIndex
+			if dbBuilderIndex < 0 {
+				continue // self-built (MaxUint64 stored as -1 in int64)
+			}
+			if uint64(dbBuilderIndex) == uint64(builderIndex) &&
+				(assignedSlot.Block.PayloadStatus == dbtypes.PayloadStatusMissing || assignedSlot.Block.PayloadStatus == dbtypes.PayloadStatusOrphaned) {
+				s := assignedSlot.Block.Slot
 				return &s
 			}
 		}

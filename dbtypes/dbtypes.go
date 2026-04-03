@@ -597,8 +597,8 @@ const (
 	WithdrawalTypeFullWithdrawal        = 1 // Full withdrawal after validator exit
 	WithdrawalTypeSweepWithdrawal       = 2 // Regular scheduled sweep (excess balance)
 	WithdrawalTypeRequestedWithdrawal   = 3 // EIP-7002 requested partial withdrawal
-	WithdrawalTypeBuilderPayment        = 4 // Builder direct payment (payload delivered)
-	WithdrawalTypeBuilderFullWithdrawal = 5 // Builder sweep (full balance withdrawal)
+	WithdrawalTypeBuilderFullWithdrawal = 4 // Builder sweep (full balance withdrawal)
+	WithdrawalTypeBuilderPayment        = 5 // Builder direct payment (payload delivered)
 	WithdrawalTypeBuilderDelayedPayment = 6 // Builder delayed/quorum payment (missed payload)
 )
 
