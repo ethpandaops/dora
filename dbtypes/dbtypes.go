@@ -603,13 +603,13 @@ const (
 )
 
 type Withdrawal struct {
-	BlockUid  uint64  `db:"block_uid"`
-	BlockIdx  int16   `db:"block_idx"`
-	Type      uint8   `db:"type"` // 1=full, 2=sweep, 3=requested, 4=builder_payment, 5=builder_full, 6=builder_delayed
-	Orphaned  bool    `db:"orphaned"`
-	ForkId    uint64  `db:"fork_id"`
-	Validator uint64  `db:"validator"`
-	AccountID *uint64 `db:"account_id"`
+	BlockUid  uint64 `db:"block_uid"`
+	BlockIdx  int16  `db:"block_idx"`
+	Type      uint8  `db:"type"` // 1=full, 2=sweep, 3=requested, 4=builder_payment, 5=builder_full, 6=builder_delayed
+	Orphaned  bool   `db:"orphaned"`
+	ForkId    uint64 `db:"fork_id"`
+	Validator uint64 `db:"validator"`
+	AccountID uint64 `db:"account_id"`
 	Address   []byte
 	RefSlot   *uint64 `db:"ref_slot"` // Reference slot (for builder payments: the slot the payment is for)
 	Amount    uint64  `db:"amount"`   // Gwei

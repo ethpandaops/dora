@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public."withdrawals" (
     orphaned bool NOT NULL DEFAULT FALSE,
     fork_id BIGINT NOT NULL DEFAULT 0,
     validator BIGINT NOT NULL DEFAULT 0,
-    account_id BIGINT NULL,
+    account_id BIGINT NOT NULL DEFAULT 0,
     amount BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT withdrawals_pkey PRIMARY KEY (block_uid, block_idx)
 );
@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS "withdrawals_orphaned_idx" ON public."withdrawals" ("
 -- Seed CL withdrawals from old table (type=0 -> sweep=2), skip fee recipients (type=1)
 -- Convert amount from float ETH to Gwei
 INSERT INTO withdrawals (block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount)
-    SELECT block_uid, block_index, 2, FALSE, 0, COALESCE(validator, 0), account_id,
+    SELECT block_uid, block_index, 2, FALSE, 0, COALESCE(validator, 0), COALESCE(account_id, 0),
            CAST(amount * 1000000000 AS BIGINT)
     FROM el_withdrawals
     WHERE type = 0;
