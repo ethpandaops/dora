@@ -160,7 +160,7 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 		false AS orphaned,
 		0 AS fork_id,
 		0 AS validator,
-		null AS account_id,
+		0 AS account_id,
 		0 AS amount
 	FROM cte
 	UNION ALL SELECT * FROM (

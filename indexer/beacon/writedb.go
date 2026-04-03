@@ -816,10 +816,8 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 		}
 	}
 
-	// Resolve account IDs if EL indexer is enabled
-	if utils.Config.ExecutionIndexer.Enabled && tx != nil {
-		dbw.resolveWithdrawalAccounts(withdrawals, dbWithdrawals, tx)
-	}
+	// Resolve account IDs for withdrawal addresses
+	dbw.resolveWithdrawalAccounts(withdrawals, dbWithdrawals, tx)
 
 	return dbWithdrawals
 }
@@ -944,8 +942,7 @@ func (dbw *dbWriter) resolveWithdrawalAccounts(withdrawals []*capella.Withdrawal
 	for idx, w := range withdrawals {
 		addrHex := fmt.Sprintf("0x%x", w.Address[:])
 		if acct, ok := accountMap[addrHex]; ok && acct.ID > 0 {
-			accountID := acct.ID
-			dbWithdrawals[idx].AccountID = &accountID
+			dbWithdrawals[idx].AccountID = acct.ID
 		}
 	}
 }

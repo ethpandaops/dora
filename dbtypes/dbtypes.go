@@ -559,13 +559,13 @@ const (
 )
 
 type Withdrawal struct {
-	BlockUid  uint64  `db:"block_uid"`
-	BlockIdx  int16   `db:"block_idx"`
-	Type      uint8   `db:"type"` // 1=full, 2=sweep, 3=requested
-	Orphaned  bool    `db:"orphaned"`
-	ForkId    uint64  `db:"fork_id"`
-	Validator uint64  `db:"validator"`
-	AccountID *uint64 `db:"account_id"`
+	BlockUid  uint64 `db:"block_uid"`
+	BlockIdx  int16  `db:"block_idx"`
+	Type      uint8  `db:"type"` // 1=full, 2=sweep, 3=requested
+	Orphaned  bool   `db:"orphaned"`
+	ForkId    uint64 `db:"fork_id"`
+	Validator uint64 `db:"validator"`
+	AccountID uint64 `db:"account_id"`
 	Address   []byte
 	Amount    uint64 `db:"amount"` // Gwei
 }

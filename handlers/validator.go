@@ -609,9 +609,9 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 		accountIDs := make([]uint64, 0, len(dbWithdrawals))
 		accountIDSet := make(map[uint64]bool, len(dbWithdrawals))
 		for _, w := range dbWithdrawals {
-			if w.AccountID != nil && *w.AccountID > 0 && !accountIDSet[*w.AccountID] {
-				accountIDSet[*w.AccountID] = true
-				accountIDs = append(accountIDs, *w.AccountID)
+			if w.AccountID > 0 && !accountIDSet[w.AccountID] {
+				accountIDSet[w.AccountID] = true
+				accountIDs = append(accountIDs, w.AccountID)
 			}
 		}
 		accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDs))
@@ -658,8 +658,8 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 			}
 
 			hasAddress := false
-			if withdrawal.AccountID != nil {
-				if acct, ok := accountMap[*withdrawal.AccountID]; ok {
+			if withdrawal.AccountID > 0 {
+				if acct, ok := accountMap[withdrawal.AccountID]; ok {
 					withdrawalData.Address = acct.Address
 					hasAddress = true
 				}

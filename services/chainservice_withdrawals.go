@@ -480,8 +480,8 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 						continue
 					}
 					if filter.AccountID != nil {
-						if withdrawal.AccountID != nil {
-							if *withdrawal.AccountID != *filter.AccountID {
+						if withdrawal.AccountID > 0 {
+							if withdrawal.AccountID != *filter.AccountID {
 								continue
 							}
 						} else {
