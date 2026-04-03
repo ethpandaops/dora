@@ -32,6 +32,7 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 		"builder/recentBlocks.html",
 		"builder/recentBids.html",
 		"builder/recentDeposits.html",
+		"builder/withdrawals.html",
 		"_svg/timeline.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
@@ -253,6 +254,41 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 		pageData.RecentBids = buildBuilderRecentBids(ctx, builderIndex, chainState)
 	case "deposits":
 		pageData.RecentDeposits = buildBuilderRecentDeposits(ctx, builder.PublicKey[:], chainState)
+	case "withdrawals":
+		builderValidatorIndex := builderIndex | services.BuilderIndexFlag
+		withdrawalFilter := &dbtypes.WithdrawalFilter{
+			MinIndex:     builderValidatorIndex,
+			MaxIndex:     builderValidatorIndex,
+			WithOrphaned: 1,
+		}
+		dbWithdrawals, totalRows := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, 0, 10)
+		if totalRows > 10 {
+			pageData.AdditionalWithdrawalCount = totalRows - 10
+		}
+
+		for _, w := range dbWithdrawals {
+			slot := w.BlockUid >> 16
+			wd := &models.BuilderPageDataWithdrawal{
+				SlotNumber: slot,
+				Time:       chainState.SlotToTime(phase0.Slot(slot)),
+				Orphaned:   w.Orphaned,
+				Type:       w.Type,
+				Amount:     w.Amount,
+			}
+
+			// Resolve block root
+			blockFilter := &dbtypes.BlockFilter{
+				BlockUids:    []uint64{w.BlockUid},
+				WithOrphaned: 1,
+			}
+			blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, 1, 0)
+			if len(blocks) > 0 && blocks[0].Block != nil {
+				wd.BlockRoot = blocks[0].Block.Root
+			}
+
+			pageData.Withdrawals = append(pageData.Withdrawals, wd)
+		}
+		pageData.WithdrawalCount = uint64(len(pageData.Withdrawals))
 	}
 
 	return pageData, 10 * time.Minute

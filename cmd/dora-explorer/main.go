@@ -225,6 +225,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validators/slashings", handlers.Slashings).Methods("GET")
 	router.HandleFunc("/validators/el_withdrawals", handlers.ElWithdrawals).Methods("GET")
 	router.HandleFunc("/validators/withdrawals", handlers.Withdrawals).Methods("GET")
+	router.HandleFunc("/validators/withdrawals/filtered", handlers.WithdrawalsList).Methods("GET")
 	router.HandleFunc("/validators/queued_withdrawals", handlers.QueuedWithdrawals).Methods("GET")
 	router.HandleFunc("/validators/consolidations", handlers.Consolidations).Methods("GET")
 	router.HandleFunc("/validators/queued_consolidations", handlers.QueuedConsolidations).Methods("GET")

@@ -672,6 +672,15 @@ func (block *Block) GetDbVoluntaryExits(indexer *Indexer, isCanonical bool) []*d
 	return indexer.dbWriter.buildDbVoluntaryExits(block, !isCanonical, nil)
 }
 
+// GetDbWithdrawals returns the database representation of the withdrawals in this block.
+func (block *Block) GetDbWithdrawals(indexer *Indexer, isCanonical bool) []*dbtypes.Withdrawal {
+	if block.isDisposed {
+		return nil
+	}
+
+	return indexer.dbWriter.buildDbWithdrawals(block, !isCanonical, nil, nil, nil)
+}
+
 // GetDbSlashings returns the database representation of the slashings in this block.
 func (block *Block) GetDbSlashings(indexer *Indexer, isCanonical bool) []*dbtypes.Slashing {
 	if block.isDisposed {

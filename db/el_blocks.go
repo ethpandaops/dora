@@ -9,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-const elBlockColumns = "block_uid, status, events, transactions, transfers, data_status, data_size"
+const elBlockColumns = "block_uid, status, events, transactions, transfers, data_status, data_size, fee_amount, fee_amount_raw, fee_account_id"
 
 func InsertElBlock(ctx context.Context, dbTx *sqlx.Tx, block *dbtypes.ElBlock) error {
 	var sql strings.Builder
@@ -19,7 +19,7 @@ func InsertElBlock(ctx context.Context, dbTx *sqlx.Tx, block *dbtypes.ElBlock) e
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_blocks ",
 		}),
 		"(", elBlockColumns, ")",
-		" VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
 	)
 
 	args := []any{
@@ -30,6 +30,9 @@ func InsertElBlock(ctx context.Context, dbTx *sqlx.Tx, block *dbtypes.ElBlock) e
 		block.Transfers,
 		block.DataStatus,
 		block.DataSize,
+		block.FeeAmount,
+		block.FeeAmountRaw,
+		block.FeeAccountID,
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: " ON CONFLICT (block_uid) DO UPDATE SET" +
@@ -38,7 +41,10 @@ func InsertElBlock(ctx context.Context, dbTx *sqlx.Tx, block *dbtypes.ElBlock) e
 			" transactions = excluded.transactions," +
 			" transfers = excluded.transfers," +
 			" data_status = excluded.data_status," +
-			" data_size = excluded.data_size",
+			" data_size = excluded.data_size," +
+			" fee_amount = excluded.fee_amount," +
+			" fee_amount_raw = excluded.fee_amount_raw," +
+			" fee_account_id = excluded.fee_account_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -144,6 +150,57 @@ func GetOldestElBlocksWithData(ctx context.Context, limit uint32) ([]*dbtypes.El
 		return nil, err
 	}
 	return blocks, nil
+}
+
+// HasBlockFeesByAccountID returns true if the given account has any block fee rewards.
+func HasBlockFeesByAccountID(ctx context.Context, accountID uint64) (bool, error) {
+	var exists bool
+	err := ReaderDb.GetContext(ctx, &exists,
+		"SELECT EXISTS(SELECT 1 FROM el_blocks WHERE fee_account_id = $1 AND fee_amount > 0 LIMIT 1)",
+		accountID,
+	)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// GetBlockFeesByAccountID returns block fee entries for a given account.
+func GetBlockFeesByAccountID(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElBlock, uint64, error) {
+	var sql strings.Builder
+	args := []any{accountID}
+
+	fmt.Fprint(&sql, `
+		SELECT `+elBlockColumns+`
+		FROM el_blocks
+		WHERE fee_account_id = $1 AND fee_amount > 0
+		ORDER BY block_uid DESC
+		LIMIT $2`)
+	args = append(args, limit)
+
+	if offset > 0 {
+		args = append(args, offset)
+		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
+	}
+
+	blocks := []*dbtypes.ElBlock{}
+	err := ReaderDb.SelectContext(ctx, &blocks, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching block fees by account id: %v", err)
+		return nil, 0, err
+	}
+
+	var totalCount uint64
+	err = ReaderDb.GetContext(ctx, &totalCount,
+		"SELECT COUNT(*) FROM (SELECT 1 FROM el_blocks WHERE fee_account_id = $1 AND fee_amount > 0 LIMIT $2) AS a",
+		accountID, 100000,
+	)
+	if err != nil {
+		logger.Errorf("Error while counting block fees by account id: %v", err)
+		return nil, 0, err
+	}
+
+	return blocks, totalCount, nil
 }
 
 // UpdateElBlockDataStatus updates the data_status and data_size for a block

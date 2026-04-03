@@ -2,10 +2,13 @@ package beacon
 
 import (
 	"bytes"
+	"math"
 	"slices"
 
 	"github.com/attestantio/go-eth2-client/spec/electra"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 )
@@ -22,6 +25,8 @@ type stateSimulatorState struct {
 	epochRoot                 phase0.Root
 	block                     *Block
 	pendingWithdrawals        []electra.PendingPartialWithdrawal
+	builderPendingWithdrawals []gloas.BuilderPendingWithdrawal
+	builderDelayedCount       int // how many entries in builderPendingWithdrawals are delayed/quorum payments
 	additionalWithdrawals     []phase0.ValidatorIndex
 	pendingConsolidationCount uint64
 	validatorMap              map[phase0.ValidatorIndex]*phase0.Validator
@@ -43,9 +48,25 @@ func newStateSimulator(indexer *Indexer, epochStats *EpochStats) *stateSimulator
 	return sim
 }
 
+// getParentBlocks returns blocks that need to be replayed before the target block.
+// Uses the sim's epoch as the boundary.
+//
+// In Fulu+, the epoch state is the post-state of the first block of the epoch,
+// so the first block must be excluded (its effects are already in the state).
+// The boundary is set to firstSlot+1 to exclude it.
+//
+// In pre-Fulu, the epoch state is from the last block of the previous epoch,
+// so all blocks in the current epoch need to be replayed (boundary = firstSlot).
 func (sim *stateSimulator) getParentBlocks(block *Block) []*Block {
 	chainState := sim.indexer.consensusPool.GetChainState()
-	minSlot := chainState.EpochToSlot(chainState.EpochOfSlot(block.Slot))
+	simEpoch := sim.epochStats.epoch
+	minSlot := chainState.EpochToSlot(simEpoch)
+
+	// In Fulu+, skip the first block of the sim's epoch (state is its post-state)
+	if chainState.IsFuluEnabled(simEpoch) {
+		minSlot++
+	}
+
 	parentBlocks := []*Block{}
 
 	for {
@@ -72,6 +93,41 @@ func (sim *stateSimulator) getParentBlocks(block *Block) []*Block {
 	return parentBlocks
 }
 
+// getSimForBlock returns the correct stateSimulator for a given block.
+// In Fulu+, the first block of an epoch needs the previous epoch's sim,
+// since the current epoch state is the post-state of that first block.
+// For all other blocks, the current sim is returned unchanged.
+func (sim *stateSimulator) getSimForBlock(block *Block) *stateSimulator {
+	chainState := sim.indexer.consensusPool.GetChainState()
+	blockEpoch := chainState.EpochOfSlot(block.Slot)
+
+	if !chainState.IsFuluEnabled(blockEpoch) || blockEpoch == 0 {
+		return sim
+	}
+
+	epochFirstSlot := chainState.EpochToSlot(blockEpoch)
+	if block.Slot != epochFirstSlot {
+		return sim
+	}
+
+	// First block of a Fulu+ epoch: need previous epoch's sim
+	prevEpoch := blockEpoch - 1
+	prevEpochStats := sim.indexer.epochCache.getEpochStatsByEpochAndRoot(prevEpoch, block.Root)
+	if prevEpochStats == nil {
+		if parentRoot := block.GetParentRoot(); parentRoot != nil {
+			prevEpochStats = sim.indexer.epochCache.getEpochStatsByEpochAndRoot(prevEpoch, *parentRoot)
+		}
+	}
+	if prevEpochStats != nil {
+		prevSim := newStateSimulator(sim.indexer, prevEpochStats)
+		if prevSim != nil {
+			return prevSim
+		}
+	}
+
+	return sim // fallback: can't get prev epoch, use current (may be imprecise)
+}
+
 func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 	pendingWithdrawals := sim.epochStatsValues.PendingWithdrawals
 	if pendingWithdrawals == nil {
@@ -88,10 +144,17 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 		}
 	}
 
+	builderPendingWithdrawals := sim.epochStatsValues.BuilderPendingWithdrawals
+	if builderPendingWithdrawals == nil {
+		builderPendingWithdrawals = []gloas.BuilderPendingWithdrawal{}
+	}
+
 	state := &stateSimulatorState{
 		block:                     nil,
 		epochRoot:                 epochRoot,
 		pendingWithdrawals:        pendingWithdrawals,
+		builderPendingWithdrawals: builderPendingWithdrawals,
+		builderDelayedCount:       len(builderPendingWithdrawals), // all entries from epoch state are delayed/quorum payments
 		pendingConsolidationCount: 0,
 		additionalWithdrawals:     []phase0.ValidatorIndex{},
 		validatorMap:              map[phase0.ValidatorIndex]*phase0.Validator{},
@@ -337,9 +400,35 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 		return nil
 	}
 
-	// process pending withdrawals
+	// process builder pending withdrawals (come first in the spec)
 	chainState := sim.indexer.consensusPool.GetChainState()
 	chainSpec := chainState.GetSpecs()
+	processedBuilderWithdrawals := len(sim.prevState.builderPendingWithdrawals)
+	if processedBuilderWithdrawals > 0 {
+		// Track how many delayed entries were consumed
+		delayedConsumed := processedBuilderWithdrawals
+		if delayedConsumed > sim.prevState.builderDelayedCount {
+			delayedConsumed = sim.prevState.builderDelayedCount
+		}
+		sim.prevState.builderDelayedCount -= delayedConsumed
+		sim.prevState.builderPendingWithdrawals = sim.prevState.builderPendingWithdrawals[processedBuilderWithdrawals:]
+	}
+
+	// After processing withdrawals, check if this block has a full payload (direct payment added to queue)
+	if block.HasExecutionPayload() && !block.isPayloadOrphaned {
+		blockIndex := block.GetBlockIndex(sim.indexer.ctx)
+		if blockIndex != nil && blockIndex.BuilderIndex != math.MaxUint64 {
+			// Block has a delivered payload from a builder — direct payment will be appended
+			// We don't know the exact BuilderPendingWithdrawal details here, but we track
+			// that a non-delayed entry was added to the queue
+			sim.prevState.builderPendingWithdrawals = append(sim.prevState.builderPendingWithdrawals, gloas.BuilderPendingWithdrawal{
+				BuilderIndex: gloas.BuilderIndex(blockIndex.BuilderIndex),
+			})
+			// builderDelayedCount stays the same — the new entry is direct, not delayed
+		}
+	}
+
+	// process pending partial withdrawals
 	processedWithdrawals := uint64(0)
 	skippedWithdrawals := uint64(0)
 	for _, pendingWithdrawal := range sim.prevState.pendingWithdrawals {
@@ -467,6 +556,9 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 }
 
 func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {
+	// Use the correct sim for this block (handles Fulu first-block-of-epoch case)
+	sim = sim.getSimForBlock(block)
+
 	chainState := sim.indexer.consensusPool.GetChainState()
 	chainSpec := chainState.GetSpecs()
 	if chainSpec.ElectraForkEpoch == nil || sim.epochStats.epoch < phase0.Epoch(*chainSpec.ElectraForkEpoch) {
@@ -518,4 +610,248 @@ func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {
 	block.blockResults = results
 
 	return results
+}
+
+// builderPaymentClassification holds the type and reference slot for a single builder payment withdrawal.
+type builderPaymentClassification struct {
+	Type    uint8
+	RefSlot *uint64
+}
+
+// withdrawalSimResult holds the result of simulating pending withdrawals for a block.
+type withdrawalSimResult struct {
+	BuilderPaymentCount int
+	BuilderPayments     []builderPaymentClassification // one per builder payment (first BuilderPaymentCount entries)
+	PartialCount        int
+}
+
+// replayWithdrawalState simulates the pending withdrawal queue for the given block
+// and returns classification info for builder payments and counts of each category.
+// This handles the Fulu epoch state nuances:
+//   - The Fulu state (post-block-1) has only remaining delayed entries (no direct from block 1)
+//   - process_execution_payload adds direct entries to the BACK (not in state_root)
+//   - For block 1: queue = [carry_over_direct?, delayed_0, ..., delayed_D]
+//   - For block 2+: queue = [remaining_delayed..., direct_from_prev_block?]
+func (sim *stateSimulator) replayWithdrawalState(block *Block) *withdrawalSimResult {
+	result := &withdrawalSimResult{}
+
+	chainState := sim.indexer.consensusPool.GetChainState()
+	chainSpec := chainState.GetSpecs()
+	if chainSpec.MaxPendingPartialsPerWithdrawalsSweep == 0 {
+		return result
+	}
+
+	// Use the correct sim for this block (handles Fulu first-block-of-epoch case)
+	sim = sim.getSimForBlock(block)
+
+	// Replay state up to (but not including) target block
+	parentBlocks := sim.getParentBlocks(block)
+	state := sim.resetState(block)
+	if state == nil {
+		return result
+	}
+	for _, parentBlock := range parentBlocks {
+		sim.applyBlock(parentBlock)
+	}
+
+	// Builder payment classification
+	builderCount := len(sim.prevState.builderPendingWithdrawals)
+	result.BuilderPaymentCount = builderCount
+
+	if builderCount > 0 {
+		result.BuilderPayments = sim.classifyBuilderPayments(block, builderCount)
+	}
+
+	// Count pending partial withdrawals
+	for _, pw := range sim.prevState.pendingWithdrawals {
+		if pw.WithdrawableEpoch > sim.epochStats.epoch {
+			break
+		}
+		validator := sim.getValidator(pw.ValidatorIndex)
+		if validator == nil {
+			break
+		}
+		if validator.ExitEpoch != FarFutureEpoch || validator.EffectiveBalance < phase0.Gwei(chainSpec.MinActivationBalance) {
+			continue
+		}
+		result.PartialCount++
+		if uint64(result.PartialCount) >= chainSpec.MaxPendingPartialsPerWithdrawalsSweep {
+			break
+		}
+	}
+
+	return result
+}
+
+// classifyBuilderPayments determines the type and reference slot for each builder payment
+// in the pending queue. Handles carry-over detection, delayed vs direct classification,
+// and the fallback guard for unreliable detection.
+func (sim *stateSimulator) classifyBuilderPayments(block *Block, builderCount int) []builderPaymentClassification {
+	chainState := sim.indexer.consensusPool.GetChainState()
+	chainSpec := chainState.GetSpecs()
+	blockEpoch := chainState.EpochOfSlot(block.Slot)
+	epochFirstSlot := chainState.EpochToSlot(blockEpoch)
+	isFirstBlock := block.Slot == epochFirstSlot
+
+	delayedCount := sim.prevState.builderDelayedCount
+
+	// Validate detection reliability for Fulu
+	hasCarryOver := false
+	fallback := false
+	var lastPrevEpochPayloadSlot phase0.Slot
+
+	if chainState.IsFuluEnabled(blockEpoch) && blockEpoch > 0 {
+		prevEpoch := blockEpoch - 1
+		prevEpochFirstSlot := chainState.EpochToSlot(prevEpoch)
+		currentEpochFirstSlot := chainState.EpochToSlot(blockEpoch)
+
+		// Count payloads in previous epoch and find the last one
+		payloadCount := 0
+		for slot := prevEpochFirstSlot; slot < currentEpochFirstSlot; slot++ {
+			blocks := sim.indexer.GetBlocksBySlot(slot)
+			for _, b := range blocks {
+				if b.HasExecutionPayload() && !b.isPayloadOrphaned {
+					payloadCount++
+					lastPrevEpochPayloadSlot = slot
+				}
+			}
+		}
+
+		// Guard: if delayed count exceeds prev epoch drain capacity, detection is unreliable.
+		// Each block can process up to MAX_WITHDRAWALS_PER_PAYLOAD - 1 builder withdrawals,
+		// but a delivered payload adds 1 direct payment back. Net drain = (max - 1) - 1 per payload.
+		netDrainPerPayload := int(chainSpec.MaxWithdrawalsPerPayload) - 2
+		if netDrainPerPayload < 1 {
+			netDrainPerPayload = 1
+		}
+		if delayedCount > payloadCount*netDrainPerPayload {
+			fallback = true
+		}
+
+		// For block 1: check carry-over direct from last payload of prev epoch
+		if isFirstBlock && lastPrevEpochPayloadSlot > 0 {
+			blocks := sim.indexer.GetBlocksBySlot(lastPrevEpochPayloadSlot)
+			for _, b := range blocks {
+				blockIndex := b.GetBlockIndex(sim.indexer.ctx)
+				if blockIndex != nil && blockIndex.BuilderIndex != math.MaxUint64 {
+					hasCarryOver = true
+				}
+			}
+		}
+	}
+
+	// Build classifications
+	payments := make([]builderPaymentClassification, builderCount)
+
+	if fallback {
+		for i := range payments {
+			payments[i] = builderPaymentClassification{Type: dbtypes.WithdrawalTypeBuilderPayment}
+		}
+		return payments
+	}
+
+	// Get previous block slot for direct payment ref slot
+	var prevBlockSlot phase0.Slot
+	if sim.prevState.block != nil {
+		prevBlockSlot = sim.prevState.block.Slot
+	}
+
+	for i := range payments {
+		if isFirstBlock {
+			// Block 1: [carry_over_direct?, delayed_0, ..., delayed_D]
+			if hasCarryOver && i == 0 {
+				// First entry = carry-over direct from prev epoch's last payload
+				payments[i].Type = dbtypes.WithdrawalTypeBuilderPayment
+				if lastPrevEpochPayloadSlot > 0 {
+					slot := uint64(lastPrevEpochPayloadSlot)
+					payments[i].RefSlot = &slot
+				}
+			} else {
+				// Remaining = delayed
+				delayedIdx := i
+				if hasCarryOver {
+					delayedIdx = i - 1
+				}
+				payments[i].Type = dbtypes.WithdrawalTypeBuilderDelayedPayment
+				payments[i].RefSlot = sim.resolveDelayedPaymentRefSlot(delayedIdx, block)
+			}
+		} else {
+			// Block 2+: [remaining_delayed..., direct_from_prev_block?]
+			if i < delayedCount {
+				// Delayed entry (front of queue)
+				payments[i].Type = dbtypes.WithdrawalTypeBuilderDelayedPayment
+				payments[i].RefSlot = sim.resolveDelayedPaymentRefSlot(i, block)
+			} else {
+				// Direct entry (back of queue)
+				payments[i].Type = dbtypes.WithdrawalTypeBuilderPayment
+				if prevBlockSlot > 0 {
+					slot := uint64(prevBlockSlot)
+					payments[i].RefSlot = &slot
+				}
+			}
+		}
+	}
+
+	return payments
+}
+
+// resolveDelayedPaymentRefSlot finds the slot a delayed builder payment is for
+// by matching the builder index against blocks with missed payloads.
+// Due to double-buffering in builder_pending_payments, delayed payments from epoch K
+// are evaluated at epoch K+2 boundary. So we look TWO epochs back from the block's epoch.
+// If the target epoch is already pruned from cache, falls back to DB query.
+func (sim *stateSimulator) resolveDelayedPaymentRefSlot(delayedIdx int, block *Block) *uint64 {
+	if delayedIdx < 0 || delayedIdx >= len(sim.prevState.builderPendingWithdrawals) {
+		return nil
+	}
+
+	builderIndex := sim.prevState.builderPendingWithdrawals[delayedIdx].BuilderIndex
+	chainState := sim.indexer.consensusPool.GetChainState()
+	blockEpoch := chainState.EpochOfSlot(block.Slot)
+	if blockEpoch < 2 {
+		return nil
+	}
+
+	// Delayed payments from epoch K-2 are evaluated at epoch K boundary
+	sourceEpoch := blockEpoch - 2
+	sourceEpochFirstSlot := chainState.EpochToSlot(sourceEpoch)
+	sourceEpochEndSlot := chainState.EpochToSlot(sourceEpoch + 1)
+
+	// Check if the source epoch is still in the block cache
+	_, prunedEpoch := sim.indexer.GetBlockCacheState()
+	if sourceEpoch >= prunedEpoch {
+		// Source epoch is in cache — search cached blocks
+		for slot := sourceEpochFirstSlot; slot < sourceEpochEndSlot; slot++ {
+			blocks := sim.indexer.GetBlocksBySlot(slot)
+			for _, b := range blocks {
+				blockIndex := b.GetBlockIndex(sim.indexer.ctx)
+				if blockIndex == nil {
+					continue
+				}
+				if blockIndex.BuilderIndex == uint64(builderIndex) && (!b.HasExecutionPayload() || b.isPayloadOrphaned) {
+					s := uint64(slot)
+					return &s
+				}
+			}
+		}
+	} else {
+		// Source epoch is finalized/pruned — query DB for blocks with missed payloads
+		dbSlots := db.GetSlotsRange(sim.indexer.ctx, uint64(sourceEpochEndSlot-1), uint64(sourceEpochFirstSlot), false, false)
+		for _, assignedSlot := range dbSlots {
+			if assignedSlot.Block == nil {
+				continue
+			}
+			dbBuilderIndex := assignedSlot.Block.BuilderIndex
+			if dbBuilderIndex < 0 {
+				continue // self-built (MaxUint64 stored as -1 in int64)
+			}
+			if uint64(dbBuilderIndex) == uint64(builderIndex) &&
+				(assignedSlot.Block.PayloadStatus == dbtypes.PayloadStatusMissing || assignedSlot.Block.PayloadStatus == dbtypes.PayloadStatusOrphaned) {
+				s := assignedSlot.Block.Slot
+				return &s
+			}
+		}
+	}
+
+	return nil
 }

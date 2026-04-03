@@ -231,6 +231,59 @@ func buildExitsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64,
 		}
 		pageData.RecentExitCount = uint64(len(pageData.RecentExits))
 
+	case "exitrequests":
+		// Load recent EL-triggered exit requests (amount=0)
+		exitRequestFilter := &services.CombinedWithdrawalRequestFilter{
+			Filter: &dbtypes.WithdrawalRequestFilter{
+				MaxAmount:    &zeroAmount,
+				WithOrphaned: 1,
+			},
+		}
+
+		dbExitRequests, _, _ := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, exitRequestFilter, 0, 20)
+		for _, exitReq := range dbExitRequests {
+			exitReqData := &models.ExitsPageDataRecentExitRequest{
+				SourceAddr: exitReq.SourceAddress(),
+				PublicKey:  exitReq.ValidatorPubkey(),
+			}
+
+			if validatorIndex := exitReq.ValidatorIndex(); validatorIndex != nil {
+				exitReqData.ValidatorValid = true
+				exitReqData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
+				if *validatorIndex&services.BuilderIndexFlag != 0 {
+					exitReqData.IsBuilder = true
+					exitReqData.ValidatorIndex = *validatorIndex &^ services.BuilderIndexFlag
+				} else {
+					exitReqData.ValidatorIndex = *validatorIndex
+				}
+			}
+
+			if request := exitReq.Request; request != nil {
+				exitReqData.IsIncluded = true
+				exitReqData.SlotNumber = request.SlotNumber
+				exitReqData.SlotRoot = request.SlotRoot
+				exitReqData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
+				exitReqData.Status = uint64(1)
+				exitReqData.Result = request.Result
+				exitReqData.ResultMessage = getWithdrawalResultMessage(request.Result, chainState.GetSpecs())
+				if exitReq.RequestOrphaned {
+					exitReqData.Status = uint64(2)
+				}
+			}
+
+			if transaction := exitReq.Transaction; transaction != nil {
+				exitReqData.TransactionHash = transaction.TxHash
+				exitReqData.LinkedTransaction = true
+				exitReqData.TxStatus = uint64(1)
+				if exitReq.TransactionOrphaned {
+					exitReqData.TxStatus = uint64(2)
+				}
+			}
+
+			pageData.RecentExitRequests = append(pageData.RecentExitRequests, exitReqData)
+		}
+		pageData.RecentExitRequestCount = uint64(len(pageData.RecentExitRequests))
+
 	case "exiting":
 		// Load exiting validators (limit to first 20 for tab)
 		count := uint64(len(nonConsolidatingValidators))
