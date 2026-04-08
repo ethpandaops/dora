@@ -843,19 +843,31 @@ func (dbw *dbWriter) persistBlockWithdrawals(tx *sqlx.Tx, block *Block, orphaned
 // If tx is nil (read path), only existing accounts are looked up.
 // If sim is non-nil, it's used to determine pending partial withdrawal count for type classification.
 func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideForkId *ForkKey, tx *sqlx.Tx, sim *stateSimulator) []*dbtypes.Withdrawal {
-	blockBody := block.GetBlock(dbw.indexer.ctx)
-	if blockBody == nil {
-		return nil
-	}
+	chainState := dbw.indexer.consensusPool.GetChainState()
 
-	executionPayload, err := blockBody.ExecutionPayload()
-	if err != nil || executionPayload == nil {
-		return nil
-	}
+	var executionWithdrawals []*capella.Withdrawal
+	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+		blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
+		if blockPayload != nil {
+			executionWithdrawals = blockPayload.Message.Payload.Withdrawals
+		}
+	} else {
+		blockBody := block.GetBlock(dbw.indexer.ctx)
+		if blockBody == nil {
+			return nil
+		}
 
-	withdrawals, err := executionPayload.Withdrawals()
-	if err != nil || len(withdrawals) == 0 {
-		return nil
+		executionPayload, err := blockBody.ExecutionPayload()
+		if err != nil || executionPayload == nil {
+			return nil
+		}
+
+		withdrawals, err := executionPayload.Withdrawals()
+		if err != nil || len(withdrawals) == 0 {
+			return nil
+		}
+
+		executionWithdrawals = withdrawals
 	}
 
 	forkId := uint64(block.forkId)
@@ -868,8 +880,8 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 
 	blockEpoch := dbw.indexer.consensusPool.GetChainState().EpochOfSlot(block.Slot)
 
-	dbWithdrawals := make([]*dbtypes.Withdrawal, len(withdrawals))
-	for idx, withdrawal := range withdrawals {
+	dbWithdrawals := make([]*dbtypes.Withdrawal, len(executionWithdrawals))
+	for idx, withdrawal := range executionWithdrawals {
 		// Classify withdrawal type and resolve reference slot
 		withdrawalType, refSlot := dbw.classifyWithdrawalType(idx, simResult, withdrawal.ValidatorIndex, phase0.Gwei(withdrawal.Amount), blockEpoch)
 
@@ -887,7 +899,7 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 	}
 
 	// Resolve account IDs for withdrawal addresses
-	dbw.resolveWithdrawalAccounts(withdrawals, dbWithdrawals, tx)
+	dbw.resolveWithdrawalAccounts(executionWithdrawals, dbWithdrawals, tx)
 
 	return dbWithdrawals
 }
