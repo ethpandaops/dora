@@ -237,7 +237,12 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 			}
 
 			withdrawalData.HasValidator = true
-			withdrawalData.ValidatorIndex = withdrawal.Validator
+			if withdrawal.Validator&services.BuilderIndexFlag != 0 {
+				withdrawalData.IsBuilder = true
+				withdrawalData.ValidatorIndex = withdrawal.Validator &^ services.BuilderIndexFlag
+			} else {
+				withdrawalData.ValidatorIndex = withdrawal.Validator
+			}
 			withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(withdrawal.Validator)
 
 			if withdrawal.AccountID > 0 {

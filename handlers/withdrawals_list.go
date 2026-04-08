@@ -304,7 +304,12 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 		}
 
 		withdrawalData.HasValidator = true
-		withdrawalData.ValidatorIndex = withdrawal.Validator
+		if withdrawal.Validator&services.BuilderIndexFlag != 0 {
+			withdrawalData.IsBuilder = true
+			withdrawalData.ValidatorIndex = withdrawal.Validator &^ services.BuilderIndexFlag
+		} else {
+			withdrawalData.ValidatorIndex = withdrawal.Validator
+		}
 		withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(withdrawal.Validator)
 
 		// Resolve address from account_id

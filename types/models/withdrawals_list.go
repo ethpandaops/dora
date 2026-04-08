@@ -46,6 +46,7 @@ type WithdrawalsListPageDataWithdrawal struct {
 	Orphaned       bool      `json:"orphaned"`
 	Type           uint8     `json:"type"`
 	HasValidator   bool      `json:"has_validator"`
+	IsBuilder      bool      `json:"is_builder"`
 	ValidatorIndex uint64    `json:"vindex"`
 	ValidatorName  string    `json:"vname"`
 	Address        []byte    `json:"address" ssz-size:"20"`

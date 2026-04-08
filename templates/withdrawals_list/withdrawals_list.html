@@ -218,7 +218,11 @@
                     </td>
                     <td>
                       {{ if $withdrawal.HasValidator }}
-                        {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                        {{- if $withdrawal.IsBuilder }}
+                          {{ formatBuilderWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                        {{- else }}
+                          {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                        {{- end }}
                       {{ else }}
                         -
                       {{ end }}
