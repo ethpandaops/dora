@@ -14,6 +14,7 @@ package statetransition
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/electra"
@@ -41,9 +42,17 @@ func NewStateTransition(specs *consensus.ChainSpec, ds *dynssz.DynSsz) *StateTra
 	}
 }
 
+// ApplyInfo collects optional timing information from block application.
+// Pass a non-nil pointer to ApplyBlockWithInfo to receive this data.
+type ApplyInfo struct {
+	// EpochTransitionDur is non-zero when the block's process_slots crossed an
+	// epoch boundary, triggering process_epoch.
+	EpochTransitionDur time.Duration
+}
+
 // ApplyBlock applies a beacon block to the state in-place.
 func (st *StateTransition) ApplyBlock(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock) error {
-	return applyBlockInternal(state, block, st.specs, st.dynSsz, st.caches, phase0.Root{})
+	return applyBlockInternal(state, block, st.specs, st.dynSsz, st.caches, phase0.Root{}, nil)
 }
 
 // ApplyBlockWithStateRoot is like ApplyBlock but accepts the current state's
@@ -52,7 +61,13 @@ func (st *StateTransition) ApplyBlock(state *spec.VersionedBeaconState, block *s
 // sourced from the previously applied block's state_root field. Passing an
 // incorrect hint will produce an inconsistent state and is undefined behavior.
 func (st *StateTransition) ApplyBlockWithStateRoot(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, parentStateRoot phase0.Root) error {
-	return applyBlockInternal(state, block, st.specs, st.dynSsz, st.caches, parentStateRoot)
+	return applyBlockInternal(state, block, st.specs, st.dynSsz, st.caches, parentStateRoot, nil)
+}
+
+// ApplyBlockWithInfo is like ApplyBlockWithStateRoot but also populates info
+// with timing details (e.g. epoch transition duration).
+func (st *StateTransition) ApplyBlockWithInfo(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, parentStateRoot phase0.Root, info *ApplyInfo) error {
+	return applyBlockInternal(state, block, st.specs, st.dynSsz, st.caches, parentStateRoot, info)
 }
 
 // ApplyExecutionPayload applies a Gloas execution payload to the state.
@@ -65,7 +80,7 @@ func (st *StateTransition) ApplyExecutionPayload(state *spec.VersionedBeaconStat
 
 // PrepareEpochPreState advances a post-block state to the pre-state of the target epoch.
 func (st *StateTransition) PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, payload *gloas.ExecutionPayloadEnvelope, info *TransitionInfo) error {
-	return prepareEpochPreStateInternal(state, epoch, payload, st.specs, info, st.caches)
+	return prepareEpochPreStateInternal(state, epoch, payload, st.specs, st.dynSsz, info, st.caches)
 }
 
 // TransitionInfo collects metadata from the state transition that callers may
@@ -94,7 +109,7 @@ type TransitionInfo struct {
 // conversions, balance updates, proposer lookahead, etc.
 //
 // If info is non-nil, it is populated with metadata from the transition.
-func prepareEpochPreStateInternal(state *spec.VersionedBeaconState, epoch phase0.Epoch, payload *gloas.ExecutionPayloadEnvelope, specs *consensus.ChainSpec, info *TransitionInfo, caches *stateTransitionCaches) error {
+func prepareEpochPreStateInternal(state *spec.VersionedBeaconState, epoch phase0.Epoch, payload *gloas.ExecutionPayloadEnvelope, specs *consensus.ChainSpec, ds *dynssz.DynSsz, info *TransitionInfo, caches *stateTransitionCaches) error {
 	if state.Version < spec.DataVersionFulu {
 		return nil
 	}
@@ -108,7 +123,7 @@ func prepareEpochPreStateInternal(state *spec.VersionedBeaconState, epoch phase0
 
 	// Step 2: Advance to the first slot of the target epoch.
 	targetSlot := phase0.Slot(uint64(epoch) * specs.SlotsPerEpoch)
-	if err := processSlots(state, targetSlot, specs, info, caches); err != nil {
+	if err := processSlots(state, targetSlot, specs, ds, info, caches); err != nil {
 		return fmt.Errorf("process_slots to epoch %d (slot %d): %w", epoch, targetSlot, err)
 	}
 
@@ -123,7 +138,7 @@ func prepareEpochPreStateInternal(state *spec.VersionedBeaconState, epoch phase0
 // outputs we need. Jumps directly to each epoch boundary.
 //
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#process_slots
-func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, specs *consensus.ChainSpec, info *TransitionInfo, caches *stateTransitionCaches) error {
+func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, specs *consensus.ChainSpec, ds *dynssz.DynSsz, info *TransitionInfo, caches *stateTransitionCaches) error {
 	currentSlot, err := state.Slot()
 	if err != nil {
 		return fmt.Errorf("failed to get state slot: %w", err)
@@ -133,7 +148,7 @@ func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, spec
 		return nil
 	}
 
-	s, err := newStateAccessorWithCaches(state, specs, caches)
+	s, err := newStateAccessorWithCaches(state, specs, ds, caches)
 	if err != nil {
 		return fmt.Errorf("failed to create state accessor: %w", err)
 	}
@@ -218,7 +233,7 @@ func processExecutionPayload(state *spec.VersionedBeaconState, envelope *gloas.E
 		return nil
 	}
 
-	s, err := newStateAccessor(state, specs)
+	s, err := newStateAccessor(state, specs, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create state accessor: %w", err)
 	}

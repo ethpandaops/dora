@@ -102,69 +102,109 @@ func convertValidatorIndexToBuilderIndex(validatorIdx phase0.ValidatorIndex) glo
 	return gloas.BuilderIndex(uint64(validatorIdx) &^ BuilderIndexFlag)
 }
 
+// getBalanceAfterWithdrawals returns a validator's balance minus any amounts
+// already scheduled in prior withdrawals within the same batch.
+// https://github.com/ethereum/consensus-specs/blob/master/specs/capella/beacon-chain.md#new-get_balance_after_withdrawals
+func getBalanceAfterWithdrawals(s *stateAccessor, vidx phase0.ValidatorIndex, withdrawals []*capella.Withdrawal) phase0.Gwei {
+	balance := s.Balances[vidx]
+	for _, w := range withdrawals {
+		if w.ValidatorIndex == vidx {
+			if balance >= w.Amount {
+				balance -= w.Amount
+			} else {
+				balance = 0
+			}
+		}
+	}
+	return balance
+}
+
+// isFullyWithdrawableValidator checks if a validator is fully withdrawable.
+// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-is_fully_withdrawable_validator
+func isFullyWithdrawableValidator(v *phase0.Validator, balance phase0.Gwei, epoch phase0.Epoch) bool {
+	return hasExecutionWithdrawalCredential(v) && v.WithdrawableEpoch <= epoch && balance > 0
+}
+
+// isPartiallyWithdrawableValidator checks if a validator is partially withdrawable (sweep).
+// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-is_partially_withdrawable_validator
+func isPartiallyWithdrawableValidator(v *phase0.Validator, balance phase0.Gwei, maxEB phase0.Gwei) bool {
+	return hasExecutionWithdrawalCredential(v) && v.EffectiveBalance == maxEB && balance > maxEB
+}
+
+// isEligibleForPartialWithdrawals checks if a validator can process a pending partial withdrawal.
+// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-is_eligible_for_partial_withdrawals
+func isEligibleForPartialWithdrawals(v *phase0.Validator, balance phase0.Gwei, minActivationBalance phase0.Gwei) bool {
+	return v.ExitEpoch == FarFutureEpoch &&
+		v.EffectiveBalance >= minActivationBalance &&
+		balance > minActivationBalance
+}
+
 // getExpectedWithdrawals computes the expected withdrawals for the current slot.
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-get_expected_withdrawals
 func getExpectedWithdrawals(s *stateAccessor) *expectedWithdrawals {
 	result := &expectedWithdrawals{}
 	nextIdx := s.NextWithdrawalIndex
 	maxWithdrawals := s.specs.MaxWithdrawalsPerPayload
-	// Builder/partial/builder-sweep withdrawals use MAX-1 limit
-	subLimit := maxWithdrawals - 1
+	epoch := s.currentEpoch()
 
-	// 1. Builder pending withdrawals
-	for _, bpw := range s.BuilderPendingWithdrawals {
-		if uint64(len(result.withdrawals)) >= subLimit {
-			break
+	// 1. Builder pending withdrawals (Gloas-specific)
+	if len(s.BuilderPendingWithdrawals) > 0 {
+		builderLimit := maxWithdrawals - 1
+		for _, bpw := range s.BuilderPendingWithdrawals {
+			if uint64(len(result.withdrawals)) >= builderLimit {
+				break
+			}
+			result.withdrawals = append(result.withdrawals, &capella.Withdrawal{
+				Index:          nextIdx,
+				ValidatorIndex: convertBuilderIndexToValidatorIndex(bpw.BuilderIndex),
+				Address:        bpw.FeeRecipient,
+				Amount:         bpw.Amount,
+			})
+			nextIdx++
+			result.processedBuilderWithdrawalsCount++
 		}
-		result.withdrawals = append(result.withdrawals, &capella.Withdrawal{
-			Index:          nextIdx,
-			ValidatorIndex: convertBuilderIndexToValidatorIndex(bpw.BuilderIndex),
-			Address:        bpw.FeeRecipient,
-			Amount:         bpw.Amount,
-		})
-		nextIdx++
-		result.processedBuilderWithdrawalsCount++
 	}
 
 	// 2. Pending partial withdrawals
-	epoch := s.currentEpoch()
-	for _, pw := range s.PendingPartialWithdrawals {
-		if uint64(len(result.withdrawals)) >= subLimit {
-			break
-		}
-		if pw.WithdrawableEpoch > epoch {
-			break
-		}
-		result.processedPartialWithdrawalsCount++
-
-		validator := s.Validators[pw.ValidatorIndex]
-		if validator.ExitEpoch != FarFutureEpoch || !hasExecutionWithdrawalCredential(validator) {
-			continue
+	// Limit: min(prior_count + MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP, MAX_WITHDRAWALS_PER_PAYLOAD - 1)
+	// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-get_pending_partial_withdrawals
+	{
+		partialLimit := uint64(len(result.withdrawals)) + s.specs.MaxPendingPartialsPerWithdrawalsSweep
+		if partialLimit > maxWithdrawals-1 {
+			partialLimit = maxWithdrawals - 1
 		}
 
-		balance := s.Balances[pw.ValidatorIndex]
 		minBalance := phase0.Gwei(s.specs.MinActivationBalance)
-		if balance <= minBalance {
-			continue
-		}
+		for _, pw := range s.PendingPartialWithdrawals {
+			if pw.WithdrawableEpoch > epoch || uint64(len(result.withdrawals)) >= partialLimit {
+				break
+			}
+			result.processedPartialWithdrawalsCount++
 
-		withdrawableAmount := balance - minBalance
-		amount := phase0.Gwei(pw.Amount)
-		if withdrawableAmount < amount {
-			amount = withdrawableAmount
-		}
+			validator := s.Validators[pw.ValidatorIndex]
+			balance := getBalanceAfterWithdrawals(s, pw.ValidatorIndex, result.withdrawals)
+			if !isEligibleForPartialWithdrawals(validator, balance, minBalance) {
+				continue
+			}
 
-		result.withdrawals = append(result.withdrawals, &capella.Withdrawal{
-			Index:          nextIdx,
-			ValidatorIndex: pw.ValidatorIndex,
-			Address:        getWithdrawalAddress(validator),
-			Amount:         amount,
-		})
-		nextIdx++
+			amount := balance - minBalance
+			if phase0.Gwei(pw.Amount) < amount {
+				amount = phase0.Gwei(pw.Amount)
+			}
+
+			result.withdrawals = append(result.withdrawals, &capella.Withdrawal{
+				Index:          nextIdx,
+				ValidatorIndex: pw.ValidatorIndex,
+				Address:        getWithdrawalAddress(validator),
+				Amount:         amount,
+			})
+			nextIdx++
+		}
 	}
 
 	// 3. Builder sweep withdrawals (Gloas-specific)
 	if len(s.Builders) > 0 {
+		builderSweepLimit := maxWithdrawals - 1
 		buildersLimit := uint64(len(s.Builders))
 		if s.specs.MaxBuildersPerWithdrawalsSweep > 0 && s.specs.MaxBuildersPerWithdrawalsSweep < buildersLimit {
 			buildersLimit = s.specs.MaxBuildersPerWithdrawalsSweep
@@ -172,7 +212,7 @@ func getExpectedWithdrawals(s *stateAccessor) *expectedWithdrawals {
 
 		builderIdx := s.NextWithdrawalBuilderIndex
 		for i := uint64(0); i < buildersLimit; i++ {
-			if uint64(len(result.withdrawals)) >= subLimit {
+			if uint64(len(result.withdrawals)) >= builderSweepLimit {
 				break
 			}
 
@@ -193,6 +233,7 @@ func getExpectedWithdrawals(s *stateAccessor) *expectedWithdrawals {
 	}
 
 	// 4. Validator sweep withdrawals (uses full MAX limit)
+	// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-get_validators_sweep_withdrawals
 	validatorCount := uint64(len(s.Validators))
 	if validatorCount > 0 {
 		startIdx := uint64(s.NextWithdrawalValidatorIndex)
@@ -204,16 +245,12 @@ func getExpectedWithdrawals(s *stateAccessor) *expectedWithdrawals {
 		for i := uint64(0); i < bound && uint64(len(result.withdrawals)) < maxWithdrawals; i++ {
 			vidx := phase0.ValidatorIndex((startIdx + i) % validatorCount)
 			validator := s.Validators[vidx]
-			balance := s.Balances[vidx]
+			balance := getBalanceAfterWithdrawals(s, vidx, result.withdrawals)
 
 			result.processedValidatorsSweepCount++
 
-			if !hasExecutionWithdrawalCredential(validator) {
-				continue
-			}
-
 			// Full withdrawal: exited and withdrawable
-			if validator.ExitEpoch != FarFutureEpoch && validator.WithdrawableEpoch <= epoch && balance > 0 {
+			if isFullyWithdrawableValidator(validator, balance, epoch) {
 				result.withdrawals = append(result.withdrawals, &capella.Withdrawal{
 					Index:          nextIdx,
 					ValidatorIndex: vidx,
@@ -224,9 +261,10 @@ func getExpectedWithdrawals(s *stateAccessor) *expectedWithdrawals {
 				continue
 			}
 
-			// Partial (sweep) withdrawal: excess balance
+			// Partial (sweep) withdrawal: excess balance above max effective balance,
+			// only when effective_balance has reached the max.
 			maxEB := s.getMaxEffectiveBalance(validator)
-			if balance > maxEB {
+			if isPartiallyWithdrawableValidator(validator, balance, maxEB) {
 				result.withdrawals = append(result.withdrawals, &capella.Withdrawal{
 					Index:          nextIdx,
 					ValidatorIndex: vidx,
@@ -236,7 +274,6 @@ func getExpectedWithdrawals(s *stateAccessor) *expectedWithdrawals {
 				nextIdx++
 			}
 		}
-
 	}
 
 	return result

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
@@ -26,12 +27,12 @@ import (
 // calls (when there are skipped slots) still compute HTR normally.
 //
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-block-processing
-func applyBlockInternal(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, specs *consensus.ChainSpec, ds *dynssz.DynSsz, caches *stateTransitionCaches, parentStateRoot phase0.Root) error {
+func applyBlockInternal(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, specs *consensus.ChainSpec, ds *dynssz.DynSsz, caches *stateTransitionCaches, parentStateRoot phase0.Root, info *ApplyInfo) error {
 	if state.Version < spec.DataVersionFulu {
 		return nil
 	}
 
-	s, err := newStateAccessorWithCaches(state, specs, caches)
+	s, err := newStateAccessorWithCaches(state, specs, ds, caches)
 	if err != nil {
 		return fmt.Errorf("failed to create state accessor: %w", err)
 	}
@@ -59,8 +60,12 @@ func applyBlockInternal(state *spec.VersionedBeaconState, block *spec.VersionedS
 		// mutated state and need fresh HTR.
 		stateRootHint = phase0.Root{}
 		if (uint64(s.Slot)+1)%slotsPerEpoch == 0 {
+			epochStart := time.Now()
 			if err := processEpochInternal(s, nil); err != nil {
 				return fmt.Errorf("process_epoch at slot %d: %w", s.Slot, err)
+			}
+			if info != nil {
+				info.EpochTransitionDur += time.Since(epochStart)
 			}
 		}
 		s.Slot++

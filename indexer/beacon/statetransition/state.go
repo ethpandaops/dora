@@ -12,6 +12,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
+	dynssz "github.com/pk910/dynamic-ssz"
 )
 
 // stateAccessor provides a unified interface to access and mutate beacon state fields
@@ -20,6 +21,7 @@ import (
 type stateAccessor struct {
 	version spec.DataVersion
 	specs   *consensus.ChainSpec
+	dynSsz  *dynssz.DynSsz
 
 	// Common fields shared by Fulu and Gloas (pointers into the underlying state).
 	Slot                          phase0.Slot
@@ -116,14 +118,15 @@ func (c *stateTransitionCaches) invalidateBalanceCaches() {
 	c.committeeCache = newCommitteeCache()
 }
 
-func newStateAccessor(state *spec.VersionedBeaconState, specs *consensus.ChainSpec) (*stateAccessor, error) {
-	return newStateAccessorWithCaches(state, specs, newStateTransitionCaches())
+func newStateAccessor(state *spec.VersionedBeaconState, specs *consensus.ChainSpec, ds *dynssz.DynSsz) (*stateAccessor, error) {
+	return newStateAccessorWithCaches(state, specs, ds, newStateTransitionCaches())
 }
 
-func newStateAccessorWithCaches(state *spec.VersionedBeaconState, specs *consensus.ChainSpec, caches *stateTransitionCaches) (*stateAccessor, error) {
+func newStateAccessorWithCaches(state *spec.VersionedBeaconState, specs *consensus.ChainSpec, ds *dynssz.DynSsz, caches *stateTransitionCaches) (*stateAccessor, error) {
 	s := &stateAccessor{
 		version:  state.Version,
 		specs:    specs,
+		dynSsz:   ds,
 		rawState: state,
 		caches:   caches,
 	}
@@ -312,14 +315,15 @@ func (s *stateAccessor) writeBack() {
 }
 
 // computeStateHTR computes the hash tree root of the underlying state.
+// Uses dynamic-ssz when available (roughly 2x faster than fastssz).
 // Must call writeBack() first to ensure all accessor fields are synced.
 func (s *stateAccessor) computeStateHTR() (phase0.Root, error) {
 	s.writeBack()
 	switch s.version {
 	case spec.DataVersionFulu:
-		return s.rawState.Fulu.HashTreeRoot()
+		return s.dynSsz.HashTreeRoot(s.rawState.Fulu)
 	case spec.DataVersionGloas:
-		return s.rawState.Gloas.HashTreeRoot()
+		return s.dynSsz.HashTreeRoot(s.rawState.Gloas)
 	default:
 		return phase0.Root{}, fmt.Errorf("unsupported version: %v", s.version)
 	}

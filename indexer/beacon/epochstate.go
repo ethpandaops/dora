@@ -418,7 +418,7 @@ func (s *epochState) tryReplayFromParentState(
 
 	replayStart := time.Now()
 	var blockApplyTotal time.Duration
-	for _, blk := range epochBlocks {
+	for i, blk := range epochBlocks {
 		beaconBlock := blk.GetBlock(ctx)
 		if beaconBlock == nil {
 			return nil
@@ -450,25 +450,44 @@ func (s *epochState) tryReplayFromParentState(
 				blk.Slot, gotStateRoot.String(), expectedStateRoot.String())
 			return nil
 		}
+		// Default: post-block HTR is the correct pre-state HTR for the next block
+		// (correct for Fulu and for Gloas when no payload is applied).
 		prevStateRoot = gotStateRoot
 		blockApplyTotal += time.Since(blockStart)
 
-		// For Gloas: apply execution payload if available. Skip the LAST block's
-		// payload — the dep block's state root is the pre-payload root, so
-		// PrepareEpochPreState will handle the payload.
-		isLastBlock := (blk == epochBlocks[len(epochBlocks)-1])
+		// For Gloas: apply execution payload if delivered AND accepted.
+		// A payload is "accepted" iff the next block in the canonical chain
+		// references it via bid.parent_block_hash; otherwise it was orphaned
+		// (the next block built on the parent payload instead) and must NOT
+		// be applied to the state.
+		// Skip the LAST block's payload — its acceptance is determined by the
+		// first block of the target epoch, which we don't have here. The
+		// PrepareEpochPreState call below handles it via the dep block payload.
+		isLastBlock := (i == len(epochBlocks)-1)
 		if parentState.Version >= spec.DataVersionGloas && !isLastBlock {
 			payload := blk.GetExecutionPayload(ctx)
-			if payload != nil && payload.Message != nil {
-				if err := st.ApplyExecutionPayload(parentState, payload); err != nil {
-					client.logger.Warnf("replay: ApplyExecutionPayload failed at slot %v: %v", blk.Slot, err)
+			if payload != nil && payload.Message != nil && payload.Message.Payload != nil {
+				nextBeaconBlock := epochBlocks[i+1].GetBlock(ctx)
+				if nextBeaconBlock == nil {
 					return nil
 				}
-				// Post-payload state HTR is recorded in the envelope itself.
-				prevStateRoot = payload.Message.StateRoot
-			} else {
-				// State mutated by something we can't predict — drop the hint.
-				prevStateRoot = phase0.Root{}
+				nextParentBlockHash, err := getBlockExecutionParentHash(nextBeaconBlock)
+				if err != nil {
+					client.logger.Warnf("replay: failed to read next bid parent hash at slot %v: %v", epochBlocks[i+1].Slot, err)
+					return nil
+				}
+
+				if payload.Message.Payload.BlockHash == nextParentBlockHash {
+					// Payload accepted by the next block — apply it.
+					if err := st.ApplyExecutionPayload(parentState, payload); err != nil {
+						client.logger.Warnf("replay: ApplyExecutionPayload failed at slot %v: %v", blk.Slot, err)
+						return nil
+					}
+					// Post-payload state HTR is recorded in the envelope itself.
+					prevStateRoot = payload.Message.StateRoot
+				}
+				// else: payload was orphaned (next block built on parent payload).
+				// Leave state unchanged; gotStateRoot is the correct hint.
 			}
 		}
 	}

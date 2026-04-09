@@ -151,9 +151,13 @@ func processAttestation(s *stateAccessor, att *electra.Attestation, cc *committe
 		justifiedCheckpoint = s.CurrentJustifiedCheckpoint
 	}
 
-	sourceCorrect := data.Source.Epoch == justifiedCheckpoint.Epoch && data.Source.Root == justifiedCheckpoint.Root
-	targetCorrect := data.Target.Root == getBlockRoot(s, data.Target.Epoch)
-	headCorrect := data.BeaconBlockRoot == getBlockRootAtSlot(s, data.Slot)
+	// Spec variable mapping (Deneb+):
+	//   is_matching_source = data.source == justified_checkpoint
+	//   is_matching_target = is_matching_source and target_root_matches
+	//   is_matching_head   = is_matching_target and head_root_matches
+	isMatchingSource := data.Source.Epoch == justifiedCheckpoint.Epoch && data.Source.Root == justifiedCheckpoint.Root
+	isMatchingTarget := isMatchingSource && data.Target.Root == getBlockRoot(s, data.Target.Epoch)
+	isMatchingHead := isMatchingTarget && data.BeaconBlockRoot == getBlockRootAtSlot(s, data.Slot)
 
 	// Gloas: payload_matches check for head attestation.
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_attestation
@@ -170,15 +174,17 @@ func processAttestation(s *stateAccessor, att *electra.Attestation, cc *committe
 		}
 	}
 
-	// Determine which flags to set
+	// Determine which flags to set.
+	// Modified in Deneb (EIP-7045): TIMELY_TARGET has no delay constraint.
+	// https://github.com/ethereum/consensus-specs/blob/master/specs/deneb/beacon-chain.md#modified-get_attestation_participation_flag_indices
 	var participationFlags [3]bool
-	if sourceCorrect && inclusionDelay <= intSqrt(s.specs.SlotsPerEpoch) {
+	if isMatchingSource && inclusionDelay <= intSqrt(s.specs.SlotsPerEpoch) {
 		participationFlags[TimelySourceFlagIndex] = true
 	}
-	if sourceCorrect && targetCorrect && inclusionDelay <= s.specs.SlotsPerEpoch {
+	if isMatchingTarget {
 		participationFlags[TimelyTargetFlagIndex] = true
 	}
-	if sourceCorrect && targetCorrect && headCorrect && payloadMatches && inclusionDelay == s.specs.MinAttestationInclusionDelay {
+	if isMatchingHead && payloadMatches && inclusionDelay == s.specs.MinAttestationInclusionDelay {
 		participationFlags[TimelyHeadFlagIndex] = true
 	}
 
@@ -640,9 +646,22 @@ func isAttestationSameSlot(s *stateAccessor, data *phase0.AttestationData) bool 
 func findValidatorByPubkey(s *stateAccessor, pubkey phase0.BLSPubKey) *phase0.ValidatorIndex {
 	if s.caches.pubkeyCache == nil {
 		epoch := s.currentEpoch()
+
+		// Include active validators AND recently-exited validators that could
+		// still be serving on a sync committee. Sync committees are recomputed
+		// every EPOCHS_PER_SYNC_COMMITTEE_PERIOD epochs; a committee chosen at
+		// the start of the current period serves for its full duration, so we
+		// need validators that were active at any point in the last 2 periods.
+		syncPeriod := phase0.Epoch(s.specs.EpochsPerSyncCommitteePeriod)
+		cutoff := phase0.Epoch(0)
+		if epoch > 2*syncPeriod {
+			cutoff = epoch - 2*syncPeriod
+		}
+
 		s.caches.pubkeyCache = make(map[phase0.BLSPubKey]phase0.ValidatorIndex, len(s.Validators))
 		for i, v := range s.Validators {
-			if isActiveValidator(v, epoch) {
+			// Active now, or exited recently enough to still be on a sync committee.
+			if isActiveValidator(v, epoch) || v.ExitEpoch >= cutoff {
 				s.caches.pubkeyCache[v.PublicKey] = phase0.ValidatorIndex(i)
 			}
 		}
