@@ -11,12 +11,14 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
 )
 
 // epochState represents a beacon state which a epoch status depends on.
 type epochState struct {
-	slotRoot  phase0.Root
-	stateRoot phase0.Root
+	slotRoot    phase0.Root
+	stateRoot   phase0.Root
+	targetEpoch phase0.Epoch // the epoch this state is being prepared for
 
 	loadingCancel  context.CancelFunc
 	loadingStatus  uint8
@@ -40,9 +42,10 @@ type epochState struct {
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
-func newEpochState(slotRoot phase0.Root) *epochState {
+func newEpochState(slotRoot phase0.Root, targetEpoch phase0.Epoch) *epochState {
 	return &epochState{
-		slotRoot: slotRoot,
+		slotRoot:    slotRoot,
+		targetEpoch: targetEpoch,
 	}
 }
 
@@ -138,17 +141,33 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		return nil, err
 	}
 
-	var executionPayload *gloas.SignedExecutionPayloadEnvelope
-	if beaconBlock != nil && beaconBlock.Version >= spec.DataVersionGloas {
-		if block != nil {
-			executionPayload = block.GetExecutionPayload(ctx)
+	specs := client.indexer.consensusPool.GetChainState().GetSpecs()
+
+	// For Fulu+: apply epoch transition to advance the state from the post-block state
+	// of the parent epoch's last block to the pre-state of the target epoch.
+	// This includes payload processing (Gloas) and epoch transitions across boundaries.
+	// Skip for genesis (epoch 0) — the genesis state is already the correct pre-state.
+	if resState.Version >= spec.DataVersionFulu && s.targetEpoch > 0 {
+		var payloadEnvelope *gloas.ExecutionPayloadEnvelope
+		if resState.Version >= spec.DataVersionGloas {
+			var executionPayload *gloas.SignedExecutionPayloadEnvelope
+			if block != nil {
+				executionPayload = block.GetExecutionPayload(ctx)
+			}
+			if executionPayload == nil {
+				executionPayload, _ = LoadExecutionPayload(ctx, client, s.slotRoot)
+			}
+			if executionPayload != nil {
+				payloadEnvelope = executionPayload.Message
+			}
 		}
-		if executionPayload == nil {
-			executionPayload, _ = LoadExecutionPayload(ctx, client, s.slotRoot)
+
+		if err := statetransition.PrepareEpochPreState(resState, s.targetEpoch, payloadEnvelope, specs); err != nil {
+			return nil, fmt.Errorf("error applying epoch transition for epoch %v: %w", s.targetEpoch, err)
 		}
 	}
 
-	err = s.processState(resState, beaconBlock, executionPayload, cache, client.indexer.consensusPool.GetChainState().GetSpecs())
+	err = s.processState(resState, cache, specs)
 	if err != nil {
 		return nil, err
 	}
@@ -166,23 +185,14 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 // processState processes the state and updates the epochState instance.
 // the function extracts and unifies all relevant information from the beacon state, so the full beacon state can be dropped from memory afterwards.
-func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock *spec.VersionedSignedBeaconBlock, executionPayload *gloas.SignedExecutionPayloadEnvelope, cache *epochCache, specs *consensus.ChainSpec) error {
+func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epochCache, specs *consensus.ChainSpec) error {
 	slot, err := state.Slot()
 	if err != nil {
 		return fmt.Errorf("error getting slot from state %v: %v", s.slotRoot.String(), err)
 	}
 
 	s.stateSlot = slot
-
 	dependentRoot := s.slotRoot
-	if state.Version >= spec.DataVersionFulu {
-		parentRoot, err := getLatestBlockHeaderParentRoot(state)
-		if err != nil {
-			return fmt.Errorf("error getting latest block header parent root from state %v: %v", s.slotRoot.String(), err)
-		}
-
-		dependentRoot = parentRoot
-	}
 
 	validatorList, err := state.Validators()
 	if err != nil {
@@ -199,7 +209,6 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, state.Gloas.Builders)
 		}
 
-		// Extract builder balances
 		builderBalances := make([]phase0.Gwei, len(state.Gloas.Builders))
 		for i, builder := range state.Gloas.Builders {
 			builderBalances[i] = builder.Balance
@@ -225,33 +234,7 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 	}
 
 	s.randaoMixes = randaoMixes
-
-	if state.Version >= spec.DataVersionFulu {
-		if state.Version >= spec.DataVersionGloas {
-			isPostPayload := isGloasPostPayloadState(state, slot)
-			if isPostPayload && executionPayload != nil &&
-				executionPayload.Message != nil &&
-				executionPayload.Message.ExecutionRequests != nil &&
-				len(executionPayload.Message.ExecutionRequests.Deposits) > 0 {
-				s.depositIndex = executionPayload.Message.ExecutionRequests.Deposits[0].Index
-			} else {
-				s.depositIndex = getStateDepositIndex(state)
-			}
-		} else {
-			blockRequests, err := beaconBlock.ExecutionRequests()
-			if err != nil {
-				return fmt.Errorf("error getting execution requests from block %v: %v",
-					s.slotRoot.String(), err)
-			}
-			if len(blockRequests.Deposits) > 0 {
-				s.depositIndex = blockRequests.Deposits[0].Index
-			} else {
-				s.depositIndex = getStateDepositIndex(state)
-			}
-		}
-	} else {
-		s.depositIndex = getStateDepositIndex(state)
-	}
+	s.depositIndex = getStateDepositIndex(state)
 
 	if state.Version >= spec.DataVersionAltair {
 		currentSyncCommittee, err := getStateCurrentSyncCommittee(state)
@@ -299,8 +282,6 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 		if err != nil {
 			return fmt.Errorf("error getting pending consolidation indices from state %v: %v", s.slotRoot.String(), err)
 		}
-
-		// apply epoch transition to get remaining pending consolidations
 		s.pendingConsolidations = pendingConsolidations
 	}
 

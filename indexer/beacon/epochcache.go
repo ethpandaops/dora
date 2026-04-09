@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/lru"
 
 	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
 )
 
 // epochStatsKey is the primary key for EpochStats entries in cache.
@@ -30,12 +31,18 @@ func getEpochStatsKey(epoch phase0.Epoch, dependentRoot phase0.Root) epochStatsK
 	return key
 }
 
+// epochStateKey is the key for epochState entries in cache.
+// Includes targetEpoch because the same dependentRoot may serve multiple epochs
+// (when all slots in intermediate epochs are missed), and each epoch needs its
+// own post-epoch-transition state values.
+type epochStateKey = epochStatsKey
+
 // epochCache is the cache for EpochStats (epoch status) and epochState (beacon state) structures.
 type epochCache struct {
 	indexer        *Indexer
 	cacheMutex     sync.RWMutex                  // mutex to protect statsMap & stateMap for concurrent read/write
 	statsMap       map[epochStatsKey]*EpochStats // epoch status cache by epochStatsKey
-	stateMap       map[phase0.Root]*epochState   // beacon state cache by dependentRoot
+	stateMap       map[epochStateKey]*epochState // beacon state cache by (dependentRoot, targetEpoch)
 	loadingChan    chan bool                     // limits concurrent state calls by channel capacity
 	syncMutex      sync.Mutex                    // mutex to protect syncCache for concurrent access
 	syncCache      []phase0.ValidatorIndex       // global sync committee cache for reuse if matching
@@ -52,7 +59,7 @@ func newEpochCache(indexer *Indexer) *epochCache {
 	cache := &epochCache{
 		indexer:     indexer,
 		statsMap:    map[epochStatsKey]*EpochStats{},
-		stateMap:    map[phase0.Root]*epochState{},
+		stateMap:    map[epochStateKey]*epochState{},
 		loadingChan: make(chan bool, indexer.maxParallelStateCalls),
 
 		votesCache: lru.NewCache[epochVotesKey, *EpochVotes](500),
@@ -88,17 +95,14 @@ func (cache *epochCache) ensureEpochDependentState(epochStats *EpochStats, first
 		return
 	}
 
-	// get or create beacon state which the epoch status depends on (dependentRoot beacon state)
-	epochState := cache.stateMap[epochStats.dependentRoot]
+	// get or create beacon state for this (dependentRoot, epoch) combination.
+	// Always loads the post-state of the dependent root (last block of parent epoch).
+	// For Fulu+, the epoch transition is applied after loading via statetransition.PrepareEpochPreState.
+	stateKey := getEpochStatsKey(epochStats.epoch, epochStats.dependentRoot)
+	epochState := cache.stateMap[stateKey]
 	if epochState == nil && !epochStats.ready {
-		stateRoot := epochStats.dependentRoot
-		chainState := cache.indexer.consensusPool.GetChainState()
-		if chainState.IsFuluEnabled(epochStats.epoch) {
-			stateRoot = firstBlockRoot
-		}
-
-		epochState = newEpochState(stateRoot)
-		cache.stateMap[epochStats.dependentRoot] = epochState
+		epochState = newEpochState(epochStats.dependentRoot, epochStats.epoch)
+		cache.stateMap[stateKey] = epochState
 
 		cache.indexer.logger.Infof("added epoch state request for epoch %v (%v) to queue", epochStats.epoch, epochStats.dependentRoot.String())
 	}
@@ -123,13 +127,27 @@ func (cache *epochCache) getEpochStats(epoch phase0.Epoch, dependentRoot phase0.
 }
 
 // getPendingEpochStats gets all EpochStats with unloaded epochStates.
+// Skips stats where another epochState with the same dependentRoot is already loading,
+// since those will be processed via the dedup path in loadEpochStats after the
+// first load completes.
 func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
+	// Collect roots that are currently being loaded.
+	loadingRoots := make(map[phase0.Root]bool)
+	for _, state := range cache.stateMap {
+		if state.loadingStatus == 1 {
+			loadingRoots[state.slotRoot] = true
+		}
+	}
+
 	pendingStats := make([]*EpochStats, 0)
 	for _, stats := range cache.statsMap {
 		if stats.dependentState != nil && stats.dependentState.loadingStatus == 0 {
+			if loadingRoots[stats.dependentState.slotRoot] {
+				continue // another epochState with same root is already loading
+			}
 			pendingStats = append(pendingStats, stats)
 		}
 	}
@@ -221,19 +239,9 @@ func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
 	delete(cache.statsMap, statsKey)
 
 	if epochStats.dependentState != nil {
-		foundOtherStats := false
-		for _, stats := range cache.statsMap {
-			if bytes.Equal(stats.dependentRoot[:], epochStats.dependentRoot[:]) {
-				foundOtherStats = true
-				break
-			}
-		}
-
-		if !foundOtherStats {
-			// no other epoch status depends on this beacon state
-			epochStats.dependentState.dispose()
-			delete(cache.stateMap, epochStats.dependentRoot)
-		}
+		stateKey := getEpochStatsKey(epochStats.epoch, epochStats.dependentRoot)
+		epochStats.dependentState.dispose()
+		delete(cache.stateMap, stateKey)
 	}
 }
 
@@ -487,17 +495,73 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 		}
 	}
 
-	dependentStats := []*EpochStats{}
-	cache.cacheMutex.Lock()
-	for _, stats := range cache.statsMap {
-		if stats.dependentState == epochStats.dependentState {
-			dependentStats = append(dependentStats, stats)
-		}
-	}
-	cache.cacheMutex.Unlock()
+	// Process the triggering EpochStats
+	go epochStats.processState(cache.indexer, validatorSet, loadDuration)
 
-	for _, stats := range dependentStats {
-		go stats.processState(cache.indexer, validatorSet, loadDuration)
+	// Find other pending epochStates with the same dependentRoot (different target epochs).
+	// These share the same raw state but need their own epoch transition applied.
+	// We advance the state sequentially through each epoch in order.
+	if state != nil {
+		type pendingEntry struct {
+			epochState *epochState
+			stats      *EpochStats
+		}
+
+		var pendingOthers []pendingEntry
+		cache.cacheMutex.RLock()
+		for _, stats := range cache.statsMap {
+			if stats == epochStats {
+				continue
+			}
+			if stats.dependentState == nil || stats.dependentState.loadingStatus != 0 {
+				continue
+			}
+			if stats.dependentState.slotRoot != epochStats.dependentState.slotRoot {
+				continue
+			}
+			pendingOthers = append(pendingOthers, pendingEntry{
+				epochState: stats.dependentState,
+				stats:      stats,
+			})
+		}
+		cache.cacheMutex.RUnlock()
+
+		if len(pendingOthers) > 0 {
+			specs := client.indexer.consensusPool.GetChainState().GetSpecs()
+
+			// Sort by target epoch so we advance the state forward incrementally.
+			sort.Slice(pendingOthers, func(i, j int) bool {
+				return pendingOthers[i].epochState.targetEpoch < pendingOthers[j].epochState.targetEpoch
+			})
+
+			for _, entry := range pendingOthers {
+				// Advance the already-loaded state to the next target epoch.
+				// Payload is nil since it was already applied on the first PrepareEpochPreState call.
+				if err := statetransition.PrepareEpochPreState(state, entry.epochState.targetEpoch, nil, specs); err != nil {
+					cache.indexer.logger.Errorf("error advancing state to epoch %v: %v", entry.epochState.targetEpoch, err)
+					continue
+				}
+
+				// Extract values from the advanced state.
+				if err := entry.epochState.processState(state, cache, specs); err != nil {
+					cache.indexer.logger.Errorf("error processing state for epoch %v: %v", entry.epochState.targetEpoch, err)
+					continue
+				}
+
+				entry.epochState.loadingStatus = 2
+
+				// Signal ready.
+				entry.epochState.readyChanMutex.Lock()
+				if entry.epochState.readyChan != nil {
+					close(entry.epochState.readyChan)
+					entry.epochState.readyChan = nil
+				}
+				entry.epochState.readyChanMutex.Unlock()
+
+				// Trigger EpochStats processing.
+				go entry.stats.processState(cache.indexer, validatorSet, loadDuration)
+			}
+		}
 	}
 
 	return true
