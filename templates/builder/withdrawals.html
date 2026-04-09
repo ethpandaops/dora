@@ -8,6 +8,7 @@
             <th>Slot</th>
             <th>Time</th>
             <th>Type</th>
+            <th>Ref</th>
             <th>Amount</th>
             <th>Status</th>
           </tr>
@@ -51,6 +52,17 @@
                     <span class="badge text-bg-secondary">Unknown</span>
                   {{ end }}
                 </td>
+                <td>
+                  {{ if gt $withdrawal.RefSlot 0 }}
+                    {{ if $withdrawal.RefSlotRoot }}
+                      <a href="/slot/0x{{ printf "%x" $withdrawal.RefSlotRoot }}">{{ formatAddCommas $withdrawal.RefSlot }}</a>
+                    {{ else }}
+                      {{ formatAddCommas $withdrawal.RefSlot }}
+                    {{ end }}
+                  {{ else }}
+                    -
+                  {{ end }}
+                </td>
                 <td class="text-monospace">
                   {{ formatEthFromGweiP $withdrawal.Amount 6 }}
                 </td>
@@ -64,7 +76,7 @@
               </tr>
             {{ end }}
             <tr>
-              <td colspan="5" class="text-center">
+              <td colspan="6" class="text-center">
                 {{ if gt .AdditionalWithdrawalCount 0 }}
                   <a class="text-white" href="/validators/withdrawals/filtered?f&f.entity=builder&f.mini={{ .Index }}&f.maxi={{ .Index }}">View {{ formatAddCommas .AdditionalWithdrawalCount }} more withdrawals</a>
                 {{ end }}
@@ -72,7 +84,7 @@
             </tr>
           {{ else }}
             <tr style="height: 430px;">
-              <td style="vertical-align: middle;" colspan="5">
+              <td style="vertical-align: middle;" colspan="6">
                 <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                   {{ template "timeline_svg" }}
                 </div>

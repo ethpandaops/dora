@@ -158,6 +158,7 @@
                 <th>Block</th>
                 <th>Time</th>
                 <th>Type</th>
+                <th>Ref</th>
                 <th>Validator</th>
                 <th>Address</th>
                 <th>Amount</th>
@@ -214,6 +215,17 @@
                         </span>
                       {{ else }}
                         <span class="badge text-bg-secondary">Unknown</span>
+                      {{ end }}
+                    </td>
+                    <td>
+                      {{ if gt $withdrawal.RefSlot 0 }}
+                        {{ if $withdrawal.RefSlotRoot }}
+                          <a href="/slot/0x{{ printf "%x" $withdrawal.RefSlotRoot }}">{{ formatAddCommas $withdrawal.RefSlot }}</a>
+                        {{ else }}
+                          {{ formatAddCommas $withdrawal.RefSlot }}
+                        {{ end }}
+                      {{ else }}
+                        -
                       {{ end }}
                     </td>
                     <td>

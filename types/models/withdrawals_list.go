@@ -51,4 +51,6 @@ type WithdrawalsListPageDataWithdrawal struct {
 	ValidatorName  string    `json:"vname"`
 	Address        []byte    `json:"address" ssz-size:"20"`
 	Amount         uint64    `json:"amount"` // Gwei
+	RefSlot        uint64    `json:"ref_slot"`
+	RefSlotRoot    []byte    `json:"ref_slot_root" ssz-size:"32"`
 }

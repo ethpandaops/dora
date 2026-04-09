@@ -60,8 +60,8 @@ type EpochStatsValues struct {
 	FirstDepositIndex          uint64
 	PendingWithdrawals         []electra.PendingPartialWithdrawal
 	BuilderPendingWithdrawals  []gloas.BuilderPendingWithdrawal
-	DelayedBuilderPaymentCount uint32      // number of delayed payments at the tail of BuilderPendingWithdrawals
-	SourceBlockSlot            phase0.Slot // slot of the source block (last block of parent epoch, before epoch transition)
+	DelayedBuilderPaymentCount uint32 // number of delayed payments at the tail of BuilderPendingWithdrawals
+	SourceBlockUid             uint64 // block UID of the source block (last block of parent epoch)
 	PendingConsolidations      []electra.PendingConsolidation
 	ConsolidatingBalance       phase0.Gwei
 }
@@ -82,7 +82,7 @@ type EpochStatsPacked struct {
 	PendingWithdrawals         []electra.PendingPartialWithdrawal `ssz-max:"10000000"`
 	BuilderPendingWithdrawals  []gloas.BuilderPendingWithdrawal   `ssz-max:"10000000"`
 	DelayedBuilderPaymentCount uint32
-	SourceBlockSlot            phase0.Slot
+	SourceBlockUid             uint64
 	PendingConsolidations      []electra.PendingConsolidation `ssz-max:"10000000"`
 	ConsolidatingBalance       phase0.Gwei
 }
@@ -184,7 +184,7 @@ func (es *EpochStats) buildPackedSSZ() ([]byte, error) {
 		PendingConsolidations:      es.values.PendingConsolidations,
 		BuilderPendingWithdrawals:  es.values.BuilderPendingWithdrawals,
 		DelayedBuilderPaymentCount: es.values.DelayedBuilderPaymentCount,
-		SourceBlockSlot:            es.values.SourceBlockSlot,
+		SourceBlockUid:             es.values.SourceBlockUid,
 		ConsolidatingBalance:       es.values.ConsolidatingBalance,
 	}
 
@@ -240,7 +240,7 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 		PendingConsolidations:      packedValues.PendingConsolidations,
 		BuilderPendingWithdrawals:  packedValues.BuilderPendingWithdrawals,
 		DelayedBuilderPaymentCount: packedValues.DelayedBuilderPaymentCount,
-		SourceBlockSlot:            packedValues.SourceBlockSlot,
+		SourceBlockUid:             packedValues.SourceBlockUid,
 		ConsolidatingBalance:       packedValues.ConsolidatingBalance,
 	}
 
@@ -398,7 +398,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		}
 	}
 	values.DelayedBuilderPaymentCount = dependentState.delayedBuilderPaymentCount
-	values.SourceBlockSlot = dependentState.sourceBlockSlot
+	values.SourceBlockUid = dependentState.sourceBlockUid
 
 	for i, pendingConsolidation := range dependentState.pendingConsolidations {
 		srcIndicee := pendingConsolidation.SourceIndex

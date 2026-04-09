@@ -655,15 +655,17 @@ func (sim *stateSimulator) classifyBuilderPayments(block *Block, builderCount in
 	// Delayed entries are at the tail: positions [builderCount - delayedCount, builderCount)
 	delayedStart := builderCount - int(delayedCount)
 
-	// For direct payment ref slots: use the last replayed block's slot if available,
-	// otherwise fall back to the source block slot (last block of parent epoch).
+	// For direct payment ref: use the last replayed block's UID if available,
+	// otherwise fall back to the source block UID (last block of parent epoch).
 	// At epoch start (no blocks replayed yet), prevState.block is nil, so we use
-	// SourceBlockSlot for the direct payment that carried over from the parent epoch.
-	var directRefSlot phase0.Slot
+	// SourceBlockUid which was saved before the epoch transition was applied.
+	var directRefBlockUID *uint64
 	if sim.prevState.block != nil {
-		directRefSlot = sim.prevState.block.Slot
-	} else {
-		directRefSlot = sim.epochStatsValues.SourceBlockSlot
+		uid := sim.prevState.block.BlockUID
+		directRefBlockUID = &uid
+	} else if sim.epochStatsValues.SourceBlockUid > 0 {
+		uid := sim.epochStatsValues.SourceBlockUid
+		directRefBlockUID = &uid
 	}
 
 	for i := range payments {
@@ -671,13 +673,12 @@ func (sim *stateSimulator) classifyBuilderPayments(block *Block, builderCount in
 			// Delayed entry (tail of queue, from epoch transition)
 			payments[i].Type = dbtypes.WithdrawalTypeBuilderDelayedPayment
 			payments[i].RefSlot = sim.resolveDelayedPaymentRefSlot(i, block)
-		} else if directRefSlot > 0 {
-			// Direct entry with known ref slot (from a previous block's delivered payload)
+		} else if directRefBlockUID != nil {
+			// Direct entry with known ref block (from a previous block's delivered payload)
 			payments[i].Type = dbtypes.WithdrawalTypeBuilderPayment
-			slot := uint64(directRefSlot)
-			payments[i].RefSlot = &slot
+			payments[i].RefSlot = directRefBlockUID
 		} else {
-			// Direct entry with unknown ref slot (rare leftover from earlier epochs)
+			// Direct entry with unknown ref block (rare leftover from earlier epochs)
 			payments[i].Type = dbtypes.WithdrawalTypeBuilderPayment
 		}
 	}
@@ -685,8 +686,8 @@ func (sim *stateSimulator) classifyBuilderPayments(block *Block, builderCount in
 	return payments
 }
 
-// resolveDelayedPaymentRefSlot finds the slot a delayed builder payment is for
-// by matching the builder index against blocks with missed payloads.
+// resolveDelayedPaymentRefSlot finds the block UID of the block a delayed builder payment
+// refers to, by matching the builder index against blocks with missed payloads.
 // Due to double-buffering in builder_pending_payments, delayed payments from epoch K
 // are evaluated at epoch K+2 boundary. So we look TWO epochs back from the block's epoch.
 // If the target epoch is already pruned from cache, falls back to DB query.
@@ -719,8 +720,8 @@ func (sim *stateSimulator) resolveDelayedPaymentRefSlot(delayedIdx int, block *B
 					continue
 				}
 				if blockIndex.BuilderIndex == uint64(builderIndex) && (!b.HasExecutionPayload() || b.isPayloadOrphaned) {
-					s := uint64(slot)
-					return &s
+					uid := b.BlockUID
+					return &uid
 				}
 			}
 		}
@@ -737,8 +738,8 @@ func (sim *stateSimulator) resolveDelayedPaymentRefSlot(delayedIdx int, block *B
 			}
 			if uint64(dbBuilderIndex) == uint64(builderIndex) &&
 				(assignedSlot.Block.PayloadStatus == dbtypes.PayloadStatusMissing || assignedSlot.Block.PayloadStatus == dbtypes.PayloadStatusOrphaned) {
-				s := assignedSlot.Block.Slot
-				return &s
+				uid := assignedSlot.Block.BlockUid
+				return &uid
 			}
 		}
 	}

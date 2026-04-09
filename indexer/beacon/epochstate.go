@@ -28,7 +28,7 @@ type epochState struct {
 	highPriority   bool
 
 	stateSlot                  phase0.Slot
-	sourceBlockSlot            phase0.Slot // slot of the source block (before epoch transition)
+	sourceBlockUid             uint64 // block UID of the source block (before epoch transition)
 	validatorBalances          []phase0.Gwei
 	builderBalances            []phase0.Gwei
 	randaoMixes                []phase0.Root
@@ -145,10 +145,13 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 	specs := client.indexer.consensusPool.GetChainState().GetSpecs()
 
-	// Save the source block slot before epoch transition (needed for ref slot of
+	// Save the source block UID before epoch transition (needed for ref slot of
 	// direct builder payments from the parent epoch's last block).
-	if sourceSlot, err := resState.Slot(); err == nil {
-		s.sourceBlockSlot = sourceSlot
+	if block != nil {
+		s.sourceBlockUid = block.BlockUID
+	} else if beaconBlock != nil {
+		slot, _ := beaconBlock.Slot()
+		s.sourceBlockUid = uint64(slot) << 16
 	}
 
 	// For Fulu+: apply epoch transition to advance the state from the post-block state

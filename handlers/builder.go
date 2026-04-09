@@ -266,6 +266,33 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 			pageData.AdditionalWithdrawalCount = totalRows - 10
 		}
 
+		// Batch resolve blocks (including ref slot blocks)
+		blockUids := make([]uint64, 0, len(dbWithdrawals)*2)
+		blockUidSet := make(map[uint64]bool, len(dbWithdrawals)*2)
+		for _, w := range dbWithdrawals {
+			if !blockUidSet[w.BlockUid] {
+				blockUidSet[w.BlockUid] = true
+				blockUids = append(blockUids, w.BlockUid)
+			}
+			if w.RefSlot != nil && !blockUidSet[*w.RefSlot] {
+				blockUidSet[*w.RefSlot] = true
+				blockUids = append(blockUids, *w.RefSlot)
+			}
+		}
+		blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+		if len(blockUids) > 0 {
+			blockFilter := &dbtypes.BlockFilter{
+				BlockUids:    blockUids,
+				WithOrphaned: 1,
+			}
+			blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, uint32(len(blockUids)), 0)
+			for _, b := range blocks {
+				if b.Block != nil {
+					blockMap[b.Block.BlockUid] = b
+				}
+			}
+		}
+
 		for _, w := range dbWithdrawals {
 			slot := w.BlockUid >> 16
 			wd := &models.BuilderPageDataWithdrawal{
@@ -276,14 +303,15 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 				Amount:     w.Amount,
 			}
 
-			// Resolve block root
-			blockFilter := &dbtypes.BlockFilter{
-				BlockUids:    []uint64{w.BlockUid},
-				WithOrphaned: 1,
+			if blockInfo, ok := blockMap[w.BlockUid]; ok && blockInfo.Block != nil {
+				wd.BlockRoot = blockInfo.Block.Root
 			}
-			blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, 1, 0)
-			if len(blocks) > 0 && blocks[0].Block != nil {
-				wd.BlockRoot = blocks[0].Block.Root
+
+			if w.RefSlot != nil {
+				wd.RefSlot = *w.RefSlot >> 16
+				if refBlock, ok := blockMap[*w.RefSlot]; ok && refBlock.Block != nil {
+					wd.RefSlotRoot = refBlock.Block.Root
+				}
 			}
 
 			pageData.Withdrawals = append(pageData.Withdrawals, wd)

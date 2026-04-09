@@ -625,13 +625,17 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 			}
 		}
 
-		// Batch resolve blocks
-		blockUids := make([]uint64, 0, len(dbWithdrawals))
-		blockUidSet := make(map[uint64]bool, len(dbWithdrawals))
+		// Batch resolve blocks (including ref slot blocks)
+		blockUids := make([]uint64, 0, len(dbWithdrawals)*2)
+		blockUidSet := make(map[uint64]bool, len(dbWithdrawals)*2)
 		for _, w := range dbWithdrawals {
 			if !blockUidSet[w.BlockUid] {
 				blockUidSet[w.BlockUid] = true
 				blockUids = append(blockUids, w.BlockUid)
+			}
+			if w.RefSlot != nil && !blockUidSet[*w.RefSlot] {
+				blockUidSet[*w.RefSlot] = true
+				blockUids = append(blockUids, *w.RefSlot)
 			}
 		}
 		blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
@@ -673,6 +677,13 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 				withdrawalData.BlockRoot = blockInfo.Block.Root
 				if blockInfo.Block.EthBlockNumber != nil {
 					withdrawalData.BlockNumber = *blockInfo.Block.EthBlockNumber
+				}
+			}
+
+			if withdrawal.RefSlot != nil {
+				withdrawalData.RefSlot = *withdrawal.RefSlot >> 16
+				if refBlock, ok := blockMap[*withdrawal.RefSlot]; ok && refBlock.Block != nil {
+					withdrawalData.RefSlotRoot = refBlock.Block.Root
 				}
 			}
 

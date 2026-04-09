@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -950,6 +951,48 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		pageData.WithdrawalsCount = uint64(len(executionWithdrawals))
 		pageData.Withdrawals = make([]*models.SlotPageWithdrawal, pageData.WithdrawalsCount)
+
+		// Try to get enriched withdrawal data (type + ref slot) from the chain service.
+		// This works for both cached (unfinalized) and DB (finalized) blocks.
+		var enrichedWithdrawals []*dbtypes.Withdrawal
+		if cacheBlock := services.GlobalBeaconService.GetBeaconIndexer().GetBlockByRoot(blockData.Root); cacheBlock != nil {
+			isCanonical := slices.Contains(services.GlobalBeaconService.GetCanonicalForkKeys(), cacheBlock.GetForkId())
+			enrichedWithdrawals = cacheBlock.GetDbWithdrawals(services.GlobalBeaconService.GetBeaconIndexer(), isCanonical)
+		}
+		if len(enrichedWithdrawals) == 0 {
+			dbWithdrawals, _ := db.GetWithdrawalsByBlockUid(ctx, blockUid)
+			enrichedWithdrawals = dbWithdrawals
+		}
+
+		// Build a lookup map by block index for enrichment
+		enrichedMap := make(map[int16]*dbtypes.Withdrawal, len(enrichedWithdrawals))
+		for _, ew := range enrichedWithdrawals {
+			enrichedMap[ew.BlockIdx] = ew
+		}
+
+		// Batch resolve ref slot block roots
+		refBlockUids := make([]uint64, 0)
+		refBlockUidSet := make(map[uint64]bool)
+		for _, ew := range enrichedWithdrawals {
+			if ew.RefSlot != nil && !refBlockUidSet[*ew.RefSlot] {
+				refBlockUidSet[*ew.RefSlot] = true
+				refBlockUids = append(refBlockUids, *ew.RefSlot)
+			}
+		}
+		refBlockMap := make(map[uint64]*dbtypes.AssignedSlot, len(refBlockUids))
+		if len(refBlockUids) > 0 {
+			refFilter := &dbtypes.BlockFilter{
+				BlockUids:    refBlockUids,
+				WithOrphaned: 1,
+			}
+			refBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, refFilter, 0, uint32(len(refBlockUids)), 0)
+			for _, b := range refBlocks {
+				if b.Block != nil {
+					refBlockMap[b.Block.BlockUid] = b
+				}
+			}
+		}
+
 		for i, withdrawal := range executionWithdrawals {
 			validatorIndex := uint64(withdrawal.ValidatorIndex)
 			isBuilder := validatorIndex&services.BuilderIndexFlag != 0
@@ -957,7 +1000,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			if isBuilder {
 				displayIndex = validatorIndex &^ services.BuilderIndexFlag
 			}
-			pageData.Withdrawals[i] = &models.SlotPageWithdrawal{
+			wd := &models.SlotPageWithdrawal{
 				Index:          uint64(withdrawal.Index),
 				ValidatorIndex: displayIndex,
 				ValidatorName:  services.GlobalBeaconService.GetValidatorName(validatorIndex),
@@ -965,6 +1008,19 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 				Address:        withdrawal.Address[:],
 				Amount:         uint64(withdrawal.Amount),
 			}
+
+			// Enrich with type and ref slot from chain service data
+			if enriched, ok := enrichedMap[int16(i)]; ok {
+				wd.Type = enriched.Type
+				if enriched.RefSlot != nil {
+					wd.RefSlot = *enriched.RefSlot >> 16
+					if refBlock, ok := refBlockMap[*enriched.RefSlot]; ok && refBlock.Block != nil {
+						wd.RefSlotRoot = refBlock.Block.Root
+					}
+				}
+			}
+
+			pageData.Withdrawals[i] = wd
 		}
 	}
 

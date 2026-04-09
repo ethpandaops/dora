@@ -132,12 +132,14 @@ type BuilderPageDataDeposit struct {
 
 // BuilderPageDataWithdrawal represents a withdrawal on the builder detail page
 type BuilderPageDataWithdrawal struct {
-	SlotNumber uint64    `json:"slot"`
-	BlockRoot  []byte    `json:"block_root" ssz-size:"32"`
-	Time       time.Time `json:"time"`
-	Orphaned   bool      `json:"orphaned"`
-	Type       uint8     `json:"type"`
-	Amount     uint64    `json:"amount"`
+	SlotNumber  uint64    `json:"slot"`
+	BlockRoot   []byte    `json:"block_root" ssz-size:"32"`
+	Time        time.Time `json:"time"`
+	Orphaned    bool      `json:"orphaned"`
+	Type        uint8     `json:"type"`
+	Amount      uint64    `json:"amount"`
+	RefSlot     uint64    `json:"ref_slot"`
+	RefSlotRoot []byte    `json:"ref_slot_root" ssz-size:"32"`
 }
 
 // BuilderPageDataExitTxDetails contains transaction details for EL-triggered exits
