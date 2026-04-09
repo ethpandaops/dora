@@ -136,6 +136,12 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 		return err
 	}
 
+	// insert withdrawals
+	err = dbw.persistBlockWithdrawals(tx, block, orphaned, overrideForkId, sim)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -729,6 +735,216 @@ func (dbw *dbWriter) buildDbVoluntaryExits(block *Block, orphaned bool, override
 	}
 
 	return dbVoluntaryExits
+}
+
+func (dbw *dbWriter) persistBlockWithdrawals(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) error {
+	dbWithdrawals := dbw.buildDbWithdrawals(block, orphaned, overrideForkId, tx, sim)
+	if len(dbWithdrawals) > 0 {
+		err := db.InsertWithdrawals(dbw.indexer.ctx, tx, dbWithdrawals)
+		if err != nil {
+			return fmt.Errorf("error inserting withdrawals: %v", err)
+		}
+	}
+
+	// Update fork_id/orphaned for all entries of this block_uid (including fee recipient entries written by EL tx indexer)
+	forkId := uint64(block.forkId)
+	if overrideForkId != nil {
+		forkId = uint64(*overrideForkId)
+	}
+
+	err := db.UpdateWithdrawalsForkId(dbw.indexer.ctx, tx, block.BlockUID, forkId, orphaned)
+	if err != nil {
+		return fmt.Errorf("error updating withdrawals fork id: %v", err)
+	}
+
+	return nil
+}
+
+// buildDbWithdrawals extracts CL withdrawals from the block and classifies their types.
+// If tx is non-nil (persist path), missing accounts are created using that transaction.
+// If tx is nil (read path), only existing accounts are looked up.
+// If sim is non-nil, it's used to determine pending partial withdrawal count for type classification.
+func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideForkId *ForkKey, tx *sqlx.Tx, sim *stateSimulator) []*dbtypes.Withdrawal {
+	blockBody := block.GetBlock(dbw.indexer.ctx)
+	if blockBody == nil {
+		return nil
+	}
+
+	executionPayload, err := blockBody.ExecutionPayload()
+	if err != nil || executionPayload == nil {
+		return nil
+	}
+
+	withdrawals, err := executionPayload.Withdrawals()
+	if err != nil || len(withdrawals) == 0 {
+		return nil
+	}
+
+	forkId := uint64(block.forkId)
+	if overrideForkId != nil {
+		forkId = uint64(*overrideForkId)
+	}
+
+	// Reconstruct sim from epoch stats if not provided (read path)
+	if sim == nil {
+		chainState := dbw.indexer.consensusPool.GetChainState()
+		epochStats := dbw.indexer.epochCache.getEpochStatsByEpochAndRoot(chainState.EpochOfSlot(block.Slot), block.Root)
+		if epochStats != nil {
+			sim = newStateSimulator(dbw.indexer, epochStats)
+		}
+	}
+
+	// Compute pending partial withdrawal count from sim state
+	pendingPartialCount := dbw.countPendingPartialWithdrawals(block, sim)
+
+	blockEpoch := dbw.indexer.consensusPool.GetChainState().EpochOfSlot(block.Slot)
+
+	dbWithdrawals := make([]*dbtypes.Withdrawal, len(withdrawals))
+	for idx, withdrawal := range withdrawals {
+		// Classify withdrawal type
+		withdrawalType := dbw.classifyWithdrawalType(idx, pendingPartialCount, withdrawal.ValidatorIndex, phase0.Gwei(withdrawal.Amount), blockEpoch)
+
+		dbWithdrawals[idx] = &dbtypes.Withdrawal{
+			BlockUid:  block.BlockUID,
+			BlockIdx:  int16(idx),
+			Type:      withdrawalType,
+			Orphaned:  orphaned,
+			ForkId:    forkId,
+			Validator: uint64(withdrawal.ValidatorIndex),
+			Address:   withdrawal.Address[:],
+			Amount:    uint64(withdrawal.Amount),
+		}
+	}
+
+	// Resolve account IDs for withdrawal addresses
+	dbw.resolveWithdrawalAccounts(withdrawals, dbWithdrawals, tx)
+
+	return dbWithdrawals
+}
+
+// countPendingPartialWithdrawals computes how many pending partial withdrawals
+// will be processed for the given block, following the consensus spec logic.
+// This replays the sim state up to (but not including) the target block to get
+// the pending withdrawals list, then counts how many would be processed.
+func (dbw *dbWriter) countPendingPartialWithdrawals(block *Block, sim *stateSimulator) int {
+	if sim == nil {
+		return 0
+	}
+
+	chainSpec := dbw.indexer.consensusPool.GetChainState().GetSpecs()
+	if chainSpec.MaxPendingPartialsPerWithdrawalsSweep == 0 {
+		return 0 // Pre-Electra: no pending partial withdrawals
+	}
+
+	// Replay state up to (but not including) target block
+	parentBlocks := sim.getParentBlocks(block)
+	state := sim.resetState(block)
+	if state == nil {
+		return 0
+	}
+	for _, parentBlock := range parentBlocks {
+		sim.applyBlock(parentBlock)
+	}
+
+	// Now sim.prevState.pendingWithdrawals reflects state before target block
+	processed := 0
+	for _, pw := range sim.prevState.pendingWithdrawals {
+		if pw.WithdrawableEpoch > sim.epochStats.epoch {
+			break
+		}
+
+		validator := sim.getValidator(pw.ValidatorIndex)
+		if validator == nil {
+			break
+		}
+
+		if validator.ExitEpoch != FarFutureEpoch || validator.EffectiveBalance < phase0.Gwei(chainSpec.MinActivationBalance) {
+			continue
+		}
+
+		processed++
+		if uint64(processed) >= chainSpec.MaxPendingPartialsPerWithdrawalsSweep {
+			break
+		}
+	}
+
+	return processed
+}
+
+// classifyWithdrawalType determines the withdrawal type based on position, validator state, and amount.
+func (dbw *dbWriter) classifyWithdrawalType(idx int, pendingPartialCount int, validatorIndex phase0.ValidatorIndex, amount phase0.Gwei, blockEpoch phase0.Epoch) uint8 {
+	// First N withdrawals are from pending partial withdrawals (EIP-7002 requested)
+	if idx < pendingPartialCount {
+		return dbtypes.WithdrawalTypeRequestedWithdrawal
+	}
+
+	// Check if this is a full withdrawal (validator exited and withdrawable, with significant amount)
+	// Only flag as full withdrawal when amount >= EJECTION_BALANCE - 0.5 ETH to avoid
+	// flagging small dust sweeps that happen after exit/consolidation.
+	validator := dbw.indexer.GetValidatorByIndex(validatorIndex, nil)
+	if validator != nil && validator.ExitEpoch != FarFutureEpoch && validator.WithdrawableEpoch <= blockEpoch {
+		chainSpec := dbw.indexer.consensusPool.GetChainState().GetSpecs()
+		fullWithdrawalThreshold := phase0.Gwei(0)
+		if chainSpec.EjectionBalance > 500000000 { // 0.5 ETH in Gwei
+			fullWithdrawalThreshold = phase0.Gwei(chainSpec.EjectionBalance - 500000000)
+		}
+		if amount >= fullWithdrawalThreshold {
+			return dbtypes.WithdrawalTypeFullWithdrawal
+		}
+	}
+
+	// Default: sweep withdrawal (excess balance or small dust after exit)
+	return dbtypes.WithdrawalTypeSweepWithdrawal
+}
+
+// resolveWithdrawalAccounts looks up account IDs for withdrawal addresses.
+// If tx is non-nil, missing accounts are created using that transaction.
+// If tx is nil, only existing accounts are resolved.
+func (dbw *dbWriter) resolveWithdrawalAccounts(withdrawals []*capella.Withdrawal, dbWithdrawals []*dbtypes.Withdrawal, tx *sqlx.Tx) {
+	// Collect unique withdrawal addresses
+	addrSet := make(map[bellatrix.ExecutionAddress]bool, len(withdrawals))
+	addrList := make([][]byte, 0, len(withdrawals))
+	for _, w := range withdrawals {
+		if !addrSet[w.Address] {
+			addrSet[w.Address] = true
+			addrList = append(addrList, w.Address[:])
+		}
+	}
+
+	// Batch lookup existing accounts
+	accountMap, err := db.GetElAccountsByAddresses(dbw.indexer.ctx, addrList)
+	if err != nil {
+		dbw.indexer.logger.Warnf("error looking up withdrawal accounts: %v", err)
+		return
+	}
+
+	// Create missing accounts only when we have a transaction (persist path)
+	if tx != nil {
+		for _, w := range withdrawals {
+			addrHex := fmt.Sprintf("0x%x", w.Address[:])
+			if _, ok := accountMap[addrHex]; !ok {
+				newAccount := &dbtypes.ElAccount{
+					Address: w.Address[:],
+				}
+
+				id, insertErr := db.InsertElAccount(dbw.indexer.ctx, tx, newAccount)
+				if insertErr != nil {
+					dbw.indexer.logger.Warnf("error inserting withdrawal account: %v", insertErr)
+					continue
+				}
+				newAccount.ID = id
+				accountMap[addrHex] = newAccount
+			}
+		}
+	}
+
+	// Set account IDs on withdrawal entries
+	for idx, w := range withdrawals {
+		addrHex := fmt.Sprintf("0x%x", w.Address[:])
+		if acct, ok := accountMap[addrHex]; ok && acct.ID > 0 {
+			dbWithdrawals[idx].AccountID = acct.ID
+		}
+	}
 }
 
 func (dbw *dbWriter) persistBlockSlashings(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {

@@ -433,13 +433,16 @@ type Validator struct {
 // EL Explorer types
 
 type ElBlock struct {
-	BlockUid     uint64 `db:"block_uid"`
-	Status       uint32 `db:"status"`
-	Events       uint32 `db:"events"`
-	Transactions uint32 `db:"transactions"`
-	Transfers    uint32 `db:"transfers"`
-	DataStatus   uint16 `db:"data_status"` // bit flags: 0x01=events, 0x02=call traces, 0x04=state changes
-	DataSize     int64  `db:"data_size"`   // compressed size in bytes of blockdb object
+	BlockUid     uint64  `db:"block_uid"`
+	Status       uint32  `db:"status"`
+	Events       uint32  `db:"events"`
+	Transactions uint32  `db:"transactions"`
+	Transfers    uint32  `db:"transfers"`
+	DataStatus   uint16  `db:"data_status"` // bit flags: 0x01=events, 0x02=call traces, 0x04=state changes
+	DataSize     int64   `db:"data_size"`   // compressed size in bytes of blockdb object
+	FeeAmount    float64 `db:"fee_amount"`
+	FeeAmountRaw []byte  `db:"fee_amount_raw"`
+	FeeAccountID *uint64 `db:"fee_account_id"`
 }
 
 // ElBlock DataStatus bit flags
@@ -550,16 +553,19 @@ type ElTokenTransfer struct {
 
 // Withdrawal types
 const (
-	WithdrawalTypeBeaconWithdrawal = 0
-	WithdrawalTypeFeeRecipient     = 1
+	WithdrawalTypeFullWithdrawal      = 1 // Full withdrawal after validator exit
+	WithdrawalTypeSweepWithdrawal     = 2 // Regular scheduled sweep (excess balance)
+	WithdrawalTypeRequestedWithdrawal = 3 // EIP-7002 requested partial withdrawal
 )
 
-type ElWithdrawal struct {
-	BlockUid   uint64  `db:"block_uid"`
-	BlockIndex uint16  `db:"block_index"`
-	AccountID  uint64  `db:"account_id"`
-	Type       uint8   `db:"type"` // 0=withdrawal, 1=fee_recipient
-	Amount     float64 `db:"amount"`
-	AmountRaw  []byte  `db:"amount_raw"`
-	Validator  *uint64 `db:"validator"` // validator index for withdrawals, null for fee recipient
+type Withdrawal struct {
+	BlockUid  uint64 `db:"block_uid"`
+	BlockIdx  int16  `db:"block_idx"`
+	Type      uint8  `db:"type"` // 1=full, 2=sweep, 3=requested
+	Orphaned  bool   `db:"orphaned"`
+	ForkId    uint64 `db:"fork_id"`
+	Validator uint64 `db:"validator"`
+	AccountID uint64 `db:"account_id"`
+	Address   []byte
+	Amount    uint64 `db:"amount"` // Gwei
 }
