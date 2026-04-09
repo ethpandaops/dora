@@ -22,6 +22,17 @@ import (
 	"github.com/ethpandaops/dora/clients/consensus"
 )
 
+// TransitionInfo collects metadata from the state transition that callers may
+// need for downstream processing. Pass a non-nil pointer to PrepareEpochPreState
+// to receive this information; pass nil if not needed.
+type TransitionInfo struct {
+	// DelayedBuilderPayments is the number of delayed builder payments appended
+	// to BuilderPendingWithdrawals by the last epoch transition's
+	// process_builder_pending_payments. This tells the state simulator how many
+	// entries at the tail of the queue are delayed (vs direct payments from block payloads).
+	DelayedBuilderPayments uint32
+}
+
 // PrepareEpochPreState takes a post-block state and mutates it into the pre-state
 // of the target epoch. This is the main entry point for epoch state preparation.
 //
@@ -35,7 +46,9 @@ import (
 // After this call, the state represents the pre-block state at the first slot of
 // the target epoch, with all epoch transitions applied — including builder payment
 // conversions, balance updates, proposer lookahead, etc.
-func PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, payload *gloas.ExecutionPayloadEnvelope, specs *consensus.ChainSpec) error {
+//
+// If info is non-nil, it is populated with metadata from the transition.
+func PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, payload *gloas.ExecutionPayloadEnvelope, specs *consensus.ChainSpec, info *TransitionInfo) error {
 	if state.Version < spec.DataVersionFulu {
 		return nil
 	}
@@ -49,7 +62,7 @@ func PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, 
 
 	// Step 2: Advance to the first slot of the target epoch.
 	targetSlot := phase0.Slot(uint64(epoch) * specs.SlotsPerEpoch)
-	if err := processSlots(state, targetSlot, specs); err != nil {
+	if err := processSlots(state, targetSlot, specs, info); err != nil {
 		return fmt.Errorf("process_slots to epoch %d (slot %d): %w", epoch, targetSlot, err)
 	}
 
@@ -64,7 +77,7 @@ func PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, 
 // outputs we need. Jumps directly to each epoch boundary.
 //
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#process_slots
-func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, specs *consensus.ChainSpec) error {
+func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, specs *consensus.ChainSpec, info *TransitionInfo) error {
 	currentSlot, err := state.Slot()
 	if err != nil {
 		return fmt.Errorf("failed to get state slot: %w", err)
@@ -92,7 +105,7 @@ func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, spec
 		}
 
 		s.Slot = nextBoundary
-		if err := processEpochInternal(s); err != nil {
+		if err := processEpochInternal(s, info); err != nil {
 			return fmt.Errorf("process_epoch at slot %d: %w", s.Slot, err)
 		}
 
@@ -192,7 +205,7 @@ func processExecutionPayload(state *spec.VersionedBeaconState, envelope *gloas.E
 //
 // Fulu: https://github.com/ethereum/consensus-specs/blob/master/specs/fulu/beacon-chain.md#modified-process_epoch
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_epoch
-func processEpochInternal(s *stateAccessor) error {
+func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 	if err := processJustificationAndFinalization(s); err != nil {
 		return fmt.Errorf("process_justification_and_finalization: %w", err)
 	}
@@ -223,7 +236,10 @@ func processEpochInternal(s *stateAccessor) error {
 
 	// Gloas-only: process builder pending payments
 	if s.version >= spec.DataVersionGloas {
-		processBuilderPendingPayments(s)
+		delayedCount := processBuilderPendingPayments(s)
+		if info != nil {
+			info.DelayedBuilderPayments = delayedCount
+		}
 	}
 
 	processEffectiveBalanceUpdates(s)

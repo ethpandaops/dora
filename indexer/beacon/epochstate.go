@@ -27,18 +27,20 @@ type epochState struct {
 	readyChan      chan bool
 	highPriority   bool
 
-	stateSlot                 phase0.Slot
-	validatorBalances         []phase0.Gwei
-	builderBalances           []phase0.Gwei
-	randaoMixes               []phase0.Root
-	depositIndex              uint64
-	syncCommittee             []phase0.ValidatorIndex
-	depositBalanceToConsume   phase0.Gwei
-	pendingDeposits           []*electra.PendingDeposit
-	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
-	builderPendingWithdrawals []*gloas.BuilderPendingWithdrawal
-	pendingConsolidations     []*electra.PendingConsolidation
-	proposerLookahead         []phase0.ValidatorIndex
+	stateSlot                  phase0.Slot
+	sourceBlockSlot            phase0.Slot // slot of the source block (before epoch transition)
+	validatorBalances          []phase0.Gwei
+	builderBalances            []phase0.Gwei
+	randaoMixes                []phase0.Root
+	depositIndex               uint64
+	syncCommittee              []phase0.ValidatorIndex
+	depositBalanceToConsume    phase0.Gwei
+	pendingDeposits            []*electra.PendingDeposit
+	pendingPartialWithdrawals  []*electra.PendingPartialWithdrawal
+	builderPendingWithdrawals  []*gloas.BuilderPendingWithdrawal
+	delayedBuilderPaymentCount uint32 // number of delayed payments at the tail of builderPendingWithdrawals
+	pendingConsolidations      []*electra.PendingConsolidation
+	proposerLookahead          []phase0.ValidatorIndex
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
@@ -143,6 +145,12 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 	specs := client.indexer.consensusPool.GetChainState().GetSpecs()
 
+	// Save the source block slot before epoch transition (needed for ref slot of
+	// direct builder payments from the parent epoch's last block).
+	if sourceSlot, err := resState.Slot(); err == nil {
+		s.sourceBlockSlot = sourceSlot
+	}
+
 	// For Fulu+: apply epoch transition to advance the state from the post-block state
 	// of the parent epoch's last block to the pre-state of the target epoch.
 	// This includes payload processing (Gloas) and epoch transitions across boundaries.
@@ -162,9 +170,11 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 			}
 		}
 
-		if err := statetransition.PrepareEpochPreState(resState, s.targetEpoch, payloadEnvelope, specs); err != nil {
+		var transitionInfo statetransition.TransitionInfo
+		if err := statetransition.PrepareEpochPreState(resState, s.targetEpoch, payloadEnvelope, specs, &transitionInfo); err != nil {
 			return nil, fmt.Errorf("error applying epoch transition for epoch %v: %w", s.targetEpoch, err)
 		}
+		s.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
 	}
 
 	err = s.processState(resState, cache, specs)

@@ -537,10 +537,12 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 			for _, entry := range pendingOthers {
 				// Advance the already-loaded state to the next target epoch.
 				// Payload is nil since it was already applied on the first PrepareEpochPreState call.
-				if err := statetransition.PrepareEpochPreState(state, entry.epochState.targetEpoch, nil, specs); err != nil {
+				var transitionInfo statetransition.TransitionInfo
+				if err := statetransition.PrepareEpochPreState(state, entry.epochState.targetEpoch, nil, specs, &transitionInfo); err != nil {
 					cache.indexer.logger.Errorf("error advancing state to epoch %v: %v", entry.epochState.targetEpoch, err)
 					continue
 				}
+				entry.epochState.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
 
 				// Extract values from the advanced state.
 				if err := entry.epochState.processState(state, cache, specs); err != nil {

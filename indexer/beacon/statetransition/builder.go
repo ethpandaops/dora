@@ -16,7 +16,9 @@ const (
 // the quorum threshold. Qualifying payments are promoted to BuilderPendingWithdrawals.
 // Then the 2-epoch window shifts forward.
 // New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_builder_pending_payments
-func processBuilderPendingPayments(s *stateAccessor) {
+// processBuilderPendingPayments returns the number of delayed payments appended to
+// BuilderPendingWithdrawals.
+func processBuilderPendingPayments(s *stateAccessor) uint32 {
 	slotsPerEpoch := s.specs.SlotsPerEpoch
 	quorum := getBuilderPaymentQuorumThreshold(s)
 
@@ -26,6 +28,7 @@ func processBuilderPendingPayments(s *stateAccessor) {
 		limit = uint64(len(s.BuilderPendingPayments))
 	}
 
+	count := uint32(0)
 	for i := uint64(0); i < limit; i++ {
 		payment := s.BuilderPendingPayments[i]
 		if payment == nil || payment.Withdrawal == nil {
@@ -33,6 +36,7 @@ func processBuilderPendingPayments(s *stateAccessor) {
 		}
 		if uint64(payment.Weight) >= quorum {
 			s.BuilderPendingWithdrawals = append(s.BuilderPendingWithdrawals, payment.Withdrawal)
+			count++
 		}
 	}
 
@@ -43,6 +47,8 @@ func processBuilderPendingPayments(s *stateAccessor) {
 			s.BuilderPendingPayments[i] = &gloas.BuilderPendingPayment{}
 		}
 	}
+
+	return count
 }
 
 // getBuilderPaymentQuorumThreshold computes the quorum threshold for builder payments.
