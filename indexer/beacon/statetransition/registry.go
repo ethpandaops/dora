@@ -1,65 +1,36 @@
 package statetransition
 
 import (
-	"sort"
-
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 )
 
 // processRegistryUpdates implements the Electra+ version of process_registry_updates.
+// Single loop with if/elif/elif chain — Electra removed activation churn here and
+// moved it to process_pending_deposits, so every eligible validator activates this
+// epoch (no churn limit, no sorting).
+//
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-process_registry_updates
 func processRegistryUpdates(s *stateAccessor) error {
 	currentEpoch := s.currentEpoch()
-	activationExitChurnLimit := s.getActivationExitChurnLimit()
+	activationEpoch := computeActivationExitEpoch(currentEpoch, s.specs)
 
-	// Process ejections
 	for i, v := range s.Validators {
-		if isActiveValidator(v, currentEpoch) &&
-			v.EffectiveBalance <= phase0.Gwei(s.specs.EjectionBalance) {
-			initiateValidatorExit(s, phase0.ValidatorIndex(i))
-		}
-	}
-
-	// Set activation eligibility
-	for _, v := range s.Validators {
-		if isEligibleForActivationQueue(v, s.specs) {
+		switch {
+		case isEligibleForActivationQueue(v, s.specs):
 			v.ActivationEligibilityEpoch = currentEpoch + 1
+		case isActiveValidator(v, currentEpoch) && v.EffectiveBalance <= phase0.Gwei(s.specs.EjectionBalance):
+			initiateValidatorExit(s, phase0.ValidatorIndex(i))
+		case isEligibleForActivation(v, s.FinalizedCheckpoint.Epoch):
+			v.ActivationEpoch = activationEpoch
 		}
-	}
-
-	// Dequeue validators for activation (Electra+: balance-based churn)
-	activationQueue := make([]phase0.ValidatorIndex, 0)
-	for i, v := range s.Validators {
-		if isEligibleForActivation(v, s.FinalizedCheckpoint.Epoch) {
-			activationQueue = append(activationQueue, phase0.ValidatorIndex(i))
-		}
-	}
-
-	// Sort by activation eligibility epoch, then by index
-	sort.Slice(activationQueue, func(i, j int) bool {
-		vi := s.Validators[activationQueue[i]]
-		vj := s.Validators[activationQueue[j]]
-		if vi.ActivationEligibilityEpoch != vj.ActivationEligibilityEpoch {
-			return vi.ActivationEligibilityEpoch < vj.ActivationEligibilityEpoch
-		}
-		return activationQueue[i] < activationQueue[j]
-	})
-
-	// Activate validators up to the churn limit
-	activatedBalance := phase0.Gwei(0)
-	for _, idx := range activationQueue {
-		v := s.Validators[idx]
-		if activatedBalance+s.getMaxEffectiveBalance(v) > activationExitChurnLimit {
-			break
-		}
-		activatedBalance += s.getMaxEffectiveBalance(v)
-		v.ActivationEpoch = computeActivationExitEpoch(currentEpoch, s.specs)
 	}
 
 	return nil
 }
 
-// initiateValidatorExit queues a validator for exit.
+// initiateValidatorExit queues a validator for exit, computing the exit epoch
+// via compute_exit_epoch_and_update_churn (which handles multi-epoch overflow).
+//
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-initiate_validator_exit
 func initiateValidatorExit(s *stateAccessor, index phase0.ValidatorIndex) {
 	v := s.Validators[index]
@@ -67,21 +38,56 @@ func initiateValidatorExit(s *stateAccessor, index phase0.ValidatorIndex) {
 		return // already exiting
 	}
 
-	exitQueueEpoch := computeActivationExitEpoch(s.currentEpoch(), s.specs)
-	if s.EarliestExitEpoch > exitQueueEpoch {
-		exitQueueEpoch = s.EarliestExitEpoch
-	}
-
-	// Consume exit churn
-	exitBalance := s.getMaxEffectiveBalance(v)
-	if s.ExitBalanceToConsume < exitBalance {
-		// Not enough churn left, push to next epoch
-		s.ExitBalanceToConsume += s.getActivationExitChurnLimit()
-		exitQueueEpoch++
-	}
-	s.ExitBalanceToConsume -= exitBalance
-	s.EarliestExitEpoch = exitQueueEpoch
+	// Spec uses validator.effective_balance, NOT max effective balance.
+	exitQueueEpoch := computeExitEpochAndUpdateChurn(s, v.EffectiveBalance)
 
 	v.ExitEpoch = exitQueueEpoch
 	v.WithdrawableEpoch = exitQueueEpoch + phase0.Epoch(s.specs.MinValidatorWithdrawbilityDelay)
+}
+
+// computeExitEpochAndUpdateChurn returns the earliest epoch at which an exit of
+// the given balance can be processed, while updating state.earliest_exit_epoch
+// and state.exit_balance_to_consume in place. Handles multi-epoch overflow.
+//
+// New in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-compute_exit_epoch_and_update_churn
+func computeExitEpochAndUpdateChurn(s *stateAccessor, exitBalance phase0.Gwei) phase0.Epoch {
+	earliestExitEpoch := computeActivationExitEpoch(s.currentEpoch(), s.specs)
+	if s.EarliestExitEpoch > earliestExitEpoch {
+		earliestExitEpoch = s.EarliestExitEpoch
+	}
+	perEpochChurn := s.getActivationExitChurnLimit()
+
+	var exitBalanceToConsume phase0.Gwei
+	if s.EarliestExitEpoch < earliestExitEpoch {
+		// New epoch for exits — refill the budget.
+		exitBalanceToConsume = perEpochChurn
+	} else {
+		exitBalanceToConsume = s.ExitBalanceToConsume
+	}
+
+	// If exit doesn't fit, push it forward by enough epochs to fit the balance.
+	if exitBalance > exitBalanceToConsume {
+		balanceToProcess := exitBalance - exitBalanceToConsume
+		additionalEpochs := (balanceToProcess-1)/perEpochChurn + 1
+		earliestExitEpoch += phase0.Epoch(additionalEpochs)
+		exitBalanceToConsume += phase0.Gwei(additionalEpochs) * perEpochChurn
+	}
+
+	s.ExitBalanceToConsume = exitBalanceToConsume - exitBalance
+	s.EarliestExitEpoch = earliestExitEpoch
+	return s.EarliestExitEpoch
+}
+
+// getPendingBalanceToWithdraw returns the sum of pending partial withdrawal
+// amounts for the given validator.
+//
+// New in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-get_pending_balance_to_withdraw
+func getPendingBalanceToWithdraw(s *stateAccessor, validatorIndex phase0.ValidatorIndex) phase0.Gwei {
+	total := phase0.Gwei(0)
+	for _, w := range s.PendingPartialWithdrawals {
+		if w.ValidatorIndex == validatorIndex {
+			total += w.Amount
+		}
+	}
+	return total
 }

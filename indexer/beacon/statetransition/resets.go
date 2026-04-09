@@ -3,7 +3,6 @@ package statetransition
 import (
 	"github.com/attestantio/go-eth2-client/spec/altair"
 	"github.com/attestantio/go-eth2-client/spec/capella"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 )
 
 // processEth1DataReset resets the ETH1 data votes at the start of a new voting period.
@@ -59,58 +58,4 @@ func processHistoricalSummariesUpdate(s *stateAccessor) {
 		BlockSummaryRoot: blockSummary,
 		StateSummaryRoot: stateSummary,
 	})
-}
-
-// processSyncCommitteeUpdates rotates the sync committee at period boundaries.
-// New in Altair: https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#sync-committee-updates
-func processSyncCommitteeUpdates(s *stateAccessor) {
-	nextEpoch := s.currentEpoch() + 1
-	if s.specs.EpochsPerSyncCommitteePeriod == 0 {
-		return
-	}
-	if uint64(nextEpoch)%s.specs.EpochsPerSyncCommitteePeriod != 0 {
-		return
-	}
-
-	s.CurrentSyncCommittee = s.NextSyncCommittee
-	s.NextSyncCommittee = computeNextSyncCommittee(s)
-}
-
-// computeNextSyncCommittee computes the next sync committee.
-// https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#get_next_sync_committee
-func computeNextSyncCommittee(s *stateAccessor) *altair.SyncCommittee {
-	indices := s.getActiveValidatorIndices(s.currentEpoch() + 1)
-	if len(indices) == 0 {
-		return s.NextSyncCommittee // fallback: keep current
-	}
-
-	epoch := s.currentEpoch() + 1
-	seed := getSeed(s, epoch, phase0.DomainType(s.specs.DomainSyncCommittee))
-
-	syncCommitteeSize := s.specs.SyncCommitteeSize
-	committee := make([]phase0.ValidatorIndex, 0, syncCommitteeSize)
-	pubkeys := make([]phase0.BLSPubKey, 0, syncCommitteeSize)
-
-	i := uint64(0)
-	for uint64(len(committee)) < syncCommitteeSize {
-		shuffledIndex := computeShuffledIndex(i%uint64(len(indices)), uint64(len(indices)), seed, s.specs)
-		candidateIndex := indices[shuffledIndex]
-
-		randomByte := getRandomByte(seed, i/32, i%32)
-		effectiveBalance := s.Validators[candidateIndex].EffectiveBalance
-		maxEB := s.getMaxEffectiveBalance(s.Validators[candidateIndex])
-
-		if effectiveBalance*255 >= maxEB*phase0.Gwei(randomByte) {
-			committee = append(committee, candidateIndex)
-			pubkeys = append(pubkeys, s.Validators[candidateIndex].PublicKey)
-		}
-		i++
-	}
-
-	// Compute aggregate pubkey placeholder (we don't actually need it for the explorer,
-	// but the struct requires it). Use empty value.
-	return &altair.SyncCommittee{
-		Pubkeys:         pubkeys,
-		AggregatePubkey: phase0.BLSPubKey{},
-	}
 }

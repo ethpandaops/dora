@@ -5,8 +5,8 @@ import (
 )
 
 // processSlashings implements the Electra+ version of process_slashings.
-// https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#slashings
-// Modified in Altair: https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#modified-process_slashings
+//
+// Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-process_slashings
 func processSlashings(s *stateAccessor) error {
 	currentEpoch := s.currentEpoch()
 	totalBalance := s.getTotalActiveBalance()
@@ -16,35 +16,33 @@ func processSlashings(s *stateAccessor) error {
 		totalSlashings += slashing
 	}
 
-	// Electra+: PROPORTIONAL_SLASHING_MULTIPLIER_BELLATRIX = 3
-	proportionalSlashingMultiplier := s.specs.ProportionalSlashingMultiplierBellatrix
-	if proportionalSlashingMultiplier == 0 {
-		proportionalSlashingMultiplier = s.specs.ProportionalSlashingMultiplier
-	}
-
-	adjustedTotalSlashingBalance := totalSlashings * phase0.Gwei(proportionalSlashingMultiplier)
+	adjustedTotalSlashingBalance := totalSlashings * phase0.Gwei(s.specs.ProportionalSlashingMultiplierBellatrix)
 	if adjustedTotalSlashingBalance > totalBalance {
 		adjustedTotalSlashingBalance = totalBalance
 	}
 
+	// Spec computes penalty_per_effective_balance_increment ONCE outside the loop:
+	//   penalty_per_effective_balance_increment = adjusted // (total // increment)
+	// then per validator:
+	//   penalty = penalty_per_effective_balance_increment * (effective_balance // increment)
+	// Doing the divisions in a different order loses precision for small slashings.
+	increment := phase0.Gwei(s.specs.EffectiveBalanceIncrement)
+	if increment == 0 || totalBalance < increment {
+		return nil
+	}
+	penaltyPerIncrement := adjustedTotalSlashingBalance / (totalBalance / increment)
+
+	halfSlashingsVector := phase0.Epoch(s.specs.EpochsPerSlashingVector / 2)
 	for i, v := range s.Validators {
 		if !v.Slashed {
 			continue
 		}
-
-		withdrawableEpoch := v.WithdrawableEpoch
-		halfSlashingsVector := phase0.Epoch(s.specs.EpochsPerSlashingVector / 2)
-
-		if currentEpoch+halfSlashingsVector != withdrawableEpoch {
+		if currentEpoch+halfSlashingsVector != v.WithdrawableEpoch {
 			continue
 		}
 
-		// Electra+: use per-validator max effective balance
-		effectiveBalance := v.EffectiveBalance
-		increment := phase0.Gwei(s.specs.EffectiveBalanceIncrement)
-		penaltyNumerator := effectiveBalance / increment * adjustedTotalSlashingBalance
-		penalty := penaltyNumerator / totalBalance * increment
-
+		effectiveBalanceIncrements := v.EffectiveBalance / increment
+		penalty := penaltyPerIncrement * effectiveBalanceIncrements
 		s.decreaseBalance(phase0.ValidatorIndex(i), penalty)
 	}
 

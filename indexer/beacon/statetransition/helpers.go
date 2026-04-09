@@ -13,9 +13,11 @@ func hash256(data []byte) phase0.Root {
 	return phase0.Root(sha256.Sum256(data))
 }
 
-// hashTreeRoot is a placeholder for hash_tree_root of a vector of roots.
-// For historical summaries, we need the Merkle root of block_roots and state_roots.
-// This is a simplified version — the actual HTR of a fixed-size vector.
+// hashTreeRoot computes the SSZ hash_tree_root of a fixed-size vector of
+// roots (e.g., state.block_roots / state.state_roots, both
+// Vector[Root, SLOTS_PER_HISTORICAL_ROOT]). Each root is already a 32-byte
+// chunk, so no chunkification or length mixin is needed — just the binary
+// Merkle tree over the leaves padded to the next power of two.
 func hashTreeRoot(roots []phase0.Root) phase0.Root {
 	if len(roots) == 0 {
 		return phase0.Root{}
@@ -99,15 +101,6 @@ func computeShuffledIndex(index, indexCount uint64, seed phase0.Root, specs *con
 	}
 
 	return index
-}
-
-// getRandomByte extracts a pseudo-random byte from a seed.
-func getRandomByte(seed phase0.Root, round, byteIndex uint64) uint8 {
-	var buf [40]byte
-	copy(buf[:32], seed[:])
-	binary.LittleEndian.PutUint64(buf[32:40], round)
-	h := hash256(buf[:])
-	return h[byteIndex%32]
 }
 
 // computeActivationExitEpoch returns the epoch at which a validator activation/exit takes effect.

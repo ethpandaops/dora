@@ -11,3 +11,5 @@ tmp-*
 .hack/devnet/generated-**
 .hack/devnet/custom-**
 
+cmd/statetransition-test/
+

@@ -5,10 +5,12 @@ import (
 )
 
 // processInactivityUpdates implements process_inactivity_updates (Altair+).
+// Skips the genesis epoch — score updates are based on the previous epoch's
+// participation, which doesn't exist at epoch 0.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#inactivity-scores
 func processInactivityUpdates(s *stateAccessor) error {
 	currentEpoch := s.currentEpoch()
-	if currentEpoch <= 1 {
+	if currentEpoch == 0 {
 		return nil
 	}
 
@@ -21,36 +23,30 @@ func processInactivityUpdates(s *stateAccessor) error {
 		targetParticipants[idx] = true
 	}
 
+	// Iterate over eligible validator indices: active in previous epoch OR (slashed and not yet withdrawable)
 	for i, v := range s.Validators {
-		if !isActiveValidator(v, previousEpoch) || v.Slashed {
+		if !isActiveValidator(v, previousEpoch) && !(v.Slashed && previousEpoch+1 < v.WithdrawableEpoch) {
 			continue
 		}
 
 		idx := phase0.ValidatorIndex(i)
 		if targetParticipants[idx] {
-			// Decrease inactivity score
-			if s.InactivityScores[i] > 0 {
-				decrease := s.specs.InactivityScoreRecoveryRate
-				if s.InactivityScores[i] < decrease {
-					s.InactivityScores[i] = 0
-				} else {
-					s.InactivityScores[i] -= decrease
-				}
+			// Decrease inactivity score by min(1, score)
+			if s.InactivityScores[i] >= 1 {
+				s.InactivityScores[i] -= 1
 			}
 		} else {
-			// Increase inactivity score
+			// Increase inactivity score by INACTIVITY_SCORE_BIAS
 			s.InactivityScores[i] += s.specs.InactivityScoreBias
 		}
 
 		if !isInactivityLeak {
-			// Not in inactivity leak: decrease score faster
-			if s.InactivityScores[i] > 0 {
-				decrease := uint64(1)
-				if s.InactivityScores[i] < decrease {
-					s.InactivityScores[i] = 0
-				} else {
-					s.InactivityScores[i] -= decrease
-				}
+			// Not in inactivity leak: decrease score by min(INACTIVITY_SCORE_RECOVERY_RATE, score)
+			recovery := s.specs.InactivityScoreRecoveryRate
+			if s.InactivityScores[i] >= recovery {
+				s.InactivityScores[i] -= recovery
+			} else {
+				s.InactivityScores[i] = 0
 			}
 		}
 	}
@@ -59,10 +55,11 @@ func processInactivityUpdates(s *stateAccessor) error {
 }
 
 // processRewardsAndPenalties implements the Altair+ version of process_rewards_and_penalties.
+// Skips the genesis epoch — rewards are for work done in the previous epoch.
 // Modified in Altair: https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#modified-get_flag_index_deltas
 func processRewardsAndPenalties(s *stateAccessor) error {
 	currentEpoch := s.currentEpoch()
-	if currentEpoch <= 1 {
+	if currentEpoch == 0 {
 		return nil
 	}
 
@@ -70,11 +67,13 @@ func processRewardsAndPenalties(s *stateAccessor) error {
 	totalActiveBalance := s.getTotalActiveBalance()
 	isInactivityLeak := isInInactivityLeak(s)
 
-	// Precompute participating balances and sets for each flag
+	// Precompute participating increments for each flag (matching spec: get_flag_index_deltas)
 	type flagData struct {
-		participatingBalance phase0.Gwei
-		participants         map[phase0.ValidatorIndex]bool
+		participatingIncrements uint64
+		participants            map[phase0.ValidatorIndex]bool
 	}
+
+	activeIncrements := uint64(totalActiveBalance) / s.specs.EffectiveBalanceIncrement
 
 	flags := make([]flagData, ParticipationFlagCount)
 	for fi := 0; fi < ParticipationFlagCount; fi++ {
@@ -88,41 +87,46 @@ func processRewardsAndPenalties(s *stateAccessor) error {
 		if balance < phase0.Gwei(s.specs.EffectiveBalanceIncrement) {
 			balance = phase0.Gwei(s.specs.EffectiveBalanceIncrement)
 		}
-		flags[fi] = flagData{participatingBalance: balance, participants: pMap}
+		flags[fi] = flagData{
+			participatingIncrements: uint64(balance) / s.specs.EffectiveBalanceIncrement,
+			participants:            pMap,
+		}
 	}
 
 	for i, v := range s.Validators {
+		// is_eligible_validator: active in previous epoch OR (slashed and not yet withdrawable)
 		if !isActiveValidator(v, previousEpoch) && !(v.Slashed && previousEpoch+1 < v.WithdrawableEpoch) {
 			continue
 		}
 
 		idx := phase0.ValidatorIndex(i)
-		baseReward := s.getBaseReward(idx)
+		baseReward := uint64(s.getBaseReward(idx))
 
 		for fi := 0; fi < ParticipationFlagCount; fi++ {
 			weight := ParticipationFlagWeights[fi]
 
 			if flags[fi].participants[idx] && !v.Slashed {
 				if !isInactivityLeak {
-					// Reward
-					rewardNumerator := baseReward * phase0.Gwei(weight) * flags[fi].participatingBalance
-					reward := rewardNumerator / (totalActiveBalance * WeightDenominator)
-					s.increaseBalance(idx, reward)
+					// Reward (spec: rewards[index] += base_reward * weight * participating_increments / (active_increments * WEIGHT_DENOMINATOR))
+					rewardNumerator := baseReward * weight * flags[fi].participatingIncrements
+					reward := rewardNumerator / (activeIncrements * WeightDenominator)
+					s.increaseBalance(idx, phase0.Gwei(reward))
 				}
-			} else {
-				// Penalty
-				penalty := baseReward * phase0.Gwei(weight) / WeightDenominator
-				s.decreaseBalance(idx, penalty)
+			} else if fi != TimelyHeadFlagIndex {
+				// Penalty (spec: skip TIMELY_HEAD_FLAG_INDEX for penalties)
+				penalty := baseReward * weight / WeightDenominator
+				s.decreaseBalance(idx, phase0.Gwei(penalty))
 			}
 		}
 
-		// Inactivity penalty (additional penalty for validators not participating in target)
+		// Inactivity penalty (spec: get_inactivity_penalty_deltas)
+		// penalty = effective_balance * inactivity_score / (INACTIVITY_SCORE_BIAS * INACTIVITY_PENALTY_QUOTIENT_BELLATRIX)
 		if !flags[TimelyTargetFlagIndex].participants[idx] || v.Slashed {
-			penaltyNumerator := v.EffectiveBalance * phase0.Gwei(s.InactivityScores[i])
-			penaltyDenominator := phase0.Gwei(s.specs.InactivityScoreRecoveryRate * s.getInactivityPenaltyQuotient())
+			penaltyNumerator := uint64(v.EffectiveBalance) * s.InactivityScores[i]
+			penaltyDenominator := s.specs.InactivityScoreBias * s.getInactivityPenaltyQuotient()
 			if penaltyDenominator > 0 {
 				penalty := penaltyNumerator / penaltyDenominator
-				s.decreaseBalance(idx, penalty)
+				s.decreaseBalance(idx, phase0.Gwei(penalty))
 			}
 		}
 	}

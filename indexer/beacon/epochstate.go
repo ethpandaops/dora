@@ -12,6 +12,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
+	"github.com/ethpandaops/dora/statecache"
 )
 
 // epochState represents a beacon state which a epoch status depends on.
@@ -128,19 +129,11 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	}
 
 	if beaconBlock != nil {
-		slot, _ := beaconBlock.Slot()
-		client.logger.Infof("loading state for block root %v (slot %v)", s.slotRoot.String(), slot)
-
 		var err error
 		s.stateRoot, err = beaconBlock.StateRoot()
 		if err != nil {
 			return nil, fmt.Errorf("error getting state root from beacon block %v: %v", s.slotRoot.String(), err)
 		}
-	}
-
-	resState, err := LoadBeaconState(ctx, client, s.stateRoot)
-	if err != nil {
-		return nil, err
 	}
 
 	specs := client.indexer.consensusPool.GetChainState().GetSpecs()
@@ -154,34 +147,75 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		s.sourceBlockUid = uint64(slot) << 16
 	}
 
-	// For Fulu+: apply epoch transition to advance the state from the post-block state
-	// of the parent epoch's last block to the pre-state of the target epoch.
-	// This includes payload processing (Gloas) and epoch transitions across boundaries.
-	// Skip for genesis (epoch 0) — the genesis state is already the correct pre-state.
-	if resState.Version >= spec.DataVersionFulu && s.targetEpoch > 0 {
-		var payloadEnvelope *gloas.ExecutionPayloadEnvelope
-		if resState.Version >= spec.DataVersionGloas {
-			var executionPayload *gloas.SignedExecutionPayloadEnvelope
-			if block != nil {
-				executionPayload = block.GetExecutionPayload(ctx)
-			}
-			if executionPayload == nil {
-				executionPayload, _ = LoadExecutionPayload(ctx, client, s.slotRoot)
-			}
-			if executionPayload != nil {
-				payloadEnvelope = executionPayload.Message
-			}
+	// Try loading from state cache first (post-epoch-transition state).
+	var resState *spec.VersionedBeaconState
+	sc := client.indexer.stateCache
+	if sc != nil && sc.Check(s.slotRoot, s.targetEpoch) {
+		resState = sc.Load(s.slotRoot, s.targetEpoch)
+		if resState != nil {
+			client.logger.Infof("loaded epoch %v state from cache (dep: %v)", s.targetEpoch, s.slotRoot.String())
 		}
-
-		var transitionInfo statetransition.TransitionInfo
-		if err := statetransition.PrepareEpochPreState(resState, s.targetEpoch, payloadEnvelope, specs, &transitionInfo); err != nil {
-			return nil, fmt.Errorf("error applying epoch transition for epoch %v: %w", s.targetEpoch, err)
-		}
-		s.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
 	}
 
-	err = s.processState(resState, cache, specs)
-	if err != nil {
+	// Try replaying from parent epoch's cached state + blocks. This is much
+	// cheaper than loading the full state from the beacon API (which can be
+	// hundreds of MB on mainnet). On any failure, falls through to API load.
+	if resState == nil && sc != nil && s.targetEpoch > 0 {
+		if replayed := s.tryReplayFromParentState(ctx, client, block, beaconBlock, specs, sc); replayed != nil {
+			resState = replayed
+		}
+	}
+
+	if resState == nil {
+		// Fall back to loading the full state from the beacon API.
+		apiStart := time.Now()
+		var err error
+		resState, err = LoadBeaconState(ctx, client, s.stateRoot)
+		if err != nil {
+			return nil, err
+		}
+		apiLoadDur := time.Since(apiStart)
+
+		// For Fulu+: apply epoch transition to advance the state from the post-block state
+		// of the parent epoch's last block to the pre-state of the target epoch.
+		// Skip for genesis (epoch 0) — the genesis state is already the correct pre-state.
+		var epochTransitionDur time.Duration
+		if resState.Version >= spec.DataVersionFulu && s.targetEpoch > 0 {
+			var payloadEnvelope *gloas.ExecutionPayloadEnvelope
+			if resState.Version >= spec.DataVersionGloas {
+				var executionPayload *gloas.SignedExecutionPayloadEnvelope
+				if block != nil {
+					executionPayload = block.GetExecutionPayload(ctx)
+				}
+				if executionPayload == nil {
+					executionPayload, _ = LoadExecutionPayload(ctx, client, s.slotRoot)
+				}
+				if executionPayload != nil {
+					payloadEnvelope = executionPayload.Message
+				}
+			}
+
+			epochStart := time.Now()
+			var transitionInfo statetransition.TransitionInfo
+			if err := statetransition.NewStateTransition(specs, client.indexer.dynSsz).PrepareEpochPreState(resState, s.targetEpoch, payloadEnvelope, &transitionInfo); err != nil {
+				return nil, fmt.Errorf("error applying epoch transition for epoch %v: %w", s.targetEpoch, err)
+			}
+			epochTransitionDur = time.Since(epochStart)
+			s.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
+		}
+
+		client.logger.Infof("loaded epoch %v state from beacon API in %v + epoch transition %v",
+			s.targetEpoch, apiLoadDur.Round(time.Millisecond), epochTransitionDur.Round(time.Millisecond))
+
+		// Store in state cache for future use.
+		if sc != nil {
+			if err := sc.Store(s.slotRoot, s.targetEpoch, resState); err != nil {
+				client.logger.Warnf("failed to cache state for epoch %v: %v", s.targetEpoch, err)
+			}
+		}
+	}
+
+	if err := s.processState(resState, cache, specs); err != nil {
 		return nil, err
 	}
 
@@ -302,6 +336,180 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	s.proposerLookahead = proposerLookahead
 
 	return nil
+}
+
+// tryReplayFromParentState attempts to reconstruct the dependent block's post-state
+// by loading the parent epoch's pre-state from cache and replaying all parent epoch
+// blocks using the state transition. Returns the post-epoch-transition state ready
+// for the target epoch, or nil if replay is not possible or verification fails.
+// On any failure (missing inputs, ApplyBlock error, HTR mismatch, epoch transition
+// error) the function returns nil and the caller falls back to loading the state
+// from the beacon API.
+func (s *epochState) tryReplayFromParentState(
+	ctx context.Context,
+	client *Client,
+	depBlock *Block,
+	depBeaconBlock *spec.VersionedSignedBeaconBlock,
+	specs *consensus.ChainSpec,
+	sc *statecache.StateCache,
+) *spec.VersionedBeaconState {
+	if depBlock == nil || depBeaconBlock == nil {
+		return nil
+	}
+
+	parentEpoch := s.targetEpoch - 1
+	slotsPerEpoch := specs.SlotsPerEpoch
+
+	// Walk back from depBlock to find the dependent root for the parent epoch
+	// (the last block before parentEpoch's first slot).
+	parentEpochFirstSlot := phase0.Slot(uint64(parentEpoch) * slotsPerEpoch)
+	walkBlock := depBlock
+	for walkBlock != nil && walkBlock.Slot >= parentEpochFirstSlot {
+		parentRoot := walkBlock.GetParentRoot()
+		if parentRoot == nil {
+			return nil
+		}
+		walkBlock = client.indexer.blockCache.getBlockByRoot(*parentRoot)
+	}
+	if walkBlock == nil {
+		return nil
+	}
+	parentDepRoot := walkBlock.Root
+
+	// Parent epoch's pre-state must be in cache.
+	if !sc.Check(parentDepRoot, parentEpoch) {
+		return nil
+	}
+	parentState := sc.Load(parentDepRoot, parentEpoch)
+	if parentState == nil {
+		return nil
+	}
+
+	// Skip replay across fork boundaries — the state version must match the
+	// dependent block's version (fork upgrades during state transition are not
+	// yet implemented).
+	if depBeaconBlock.Version != parentState.Version {
+		return nil
+	}
+
+	// Collect all blocks in the parent epoch in slot order.
+	var epochBlocks []*Block
+	walkBlock = depBlock
+	for walkBlock != nil && walkBlock.Slot >= parentEpochFirstSlot {
+		epochBlocks = append(epochBlocks, walkBlock)
+		parentRoot := walkBlock.GetParentRoot()
+		if parentRoot == nil {
+			break
+		}
+		walkBlock = client.indexer.blockCache.getBlockByRoot(*parentRoot)
+	}
+	for i, j := 0, len(epochBlocks)-1; i < j; i, j = i+1, j-1 {
+		epochBlocks[i], epochBlocks[j] = epochBlocks[j], epochBlocks[i]
+	}
+
+	// Reusable state transition; caches persist across all blocks in the epoch
+	// and the trailing epoch transition.
+	st := statetransition.NewStateTransition(specs, client.indexer.dynSsz)
+
+	// prevStateRoot is the verified post-block HTR from the previous iteration —
+	// the same value as the next block's pre-state HTR — passed as a hint to
+	// skip the expensive HTR computation in the first process_slot.
+	var prevStateRoot phase0.Root
+
+	replayStart := time.Now()
+	var blockApplyTotal time.Duration
+	for _, blk := range epochBlocks {
+		beaconBlock := blk.GetBlock(ctx)
+		if beaconBlock == nil {
+			return nil
+		}
+
+		blockStart := time.Now()
+		if err := st.ApplyBlockWithStateRoot(parentState, beaconBlock, prevStateRoot); err != nil {
+			client.logger.Warnf("replay: ApplyBlock failed at slot %v: %v", blk.Slot, err)
+			return nil
+		}
+
+		// Verify post-block state root matches the block header (post-block,
+		// pre-payload for Gloas). Catches state transition implementation bugs.
+		expectedStateRoot, _ := beaconBlock.StateRoot()
+		var gotStateRoot phase0.Root
+		var htrErr error
+		switch parentState.Version {
+		case spec.DataVersionFulu:
+			gotStateRoot, htrErr = parentState.Fulu.HashTreeRoot()
+		case spec.DataVersionGloas:
+			gotStateRoot, htrErr = parentState.Gloas.HashTreeRoot()
+		}
+		if htrErr != nil {
+			client.logger.Warnf("replay: HTR failed at slot %v: %v", blk.Slot, htrErr)
+			return nil
+		}
+		if gotStateRoot != expectedStateRoot {
+			client.logger.Warnf("replay: state root mismatch at slot %v (got %v, expected %v), falling back to API",
+				blk.Slot, gotStateRoot.String(), expectedStateRoot.String())
+			return nil
+		}
+		prevStateRoot = gotStateRoot
+		blockApplyTotal += time.Since(blockStart)
+
+		// For Gloas: apply execution payload if available. Skip the LAST block's
+		// payload — the dep block's state root is the pre-payload root, so
+		// PrepareEpochPreState will handle the payload.
+		isLastBlock := (blk == epochBlocks[len(epochBlocks)-1])
+		if parentState.Version >= spec.DataVersionGloas && !isLastBlock {
+			payload := blk.GetExecutionPayload(ctx)
+			if payload != nil && payload.Message != nil {
+				if err := st.ApplyExecutionPayload(parentState, payload); err != nil {
+					client.logger.Warnf("replay: ApplyExecutionPayload failed at slot %v: %v", blk.Slot, err)
+					return nil
+				}
+				// Post-payload state HTR is recorded in the envelope itself.
+				prevStateRoot = payload.Message.StateRoot
+			} else {
+				// State mutated by something we can't predict — drop the hint.
+				prevStateRoot = phase0.Root{}
+			}
+		}
+	}
+	blockReplayDur := time.Since(replayStart)
+
+	// Apply epoch transition to advance the state from the post-block state of
+	// the parent epoch's last block to the pre-state of the target epoch.
+	var epochTransitionDur time.Duration
+	if parentState.Version >= spec.DataVersionFulu {
+		var payloadEnvelope *gloas.ExecutionPayloadEnvelope
+		if parentState.Version >= spec.DataVersionGloas {
+			payload := depBlock.GetExecutionPayload(ctx)
+			if payload != nil {
+				payloadEnvelope = payload.Message
+			}
+		}
+
+		epochStart := time.Now()
+		var transitionInfo statetransition.TransitionInfo
+		if err := st.PrepareEpochPreState(parentState, s.targetEpoch, payloadEnvelope, &transitionInfo); err != nil {
+			client.logger.Warnf("replay: epoch transition failed for epoch %v: %v", s.targetEpoch, err)
+			return nil
+		}
+		epochTransitionDur = time.Since(epochStart)
+		s.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
+	}
+
+	client.logger.Infof(
+		"replayed epoch %v: %d blocks in %v (apply %v) + epoch transition %v",
+		parentEpoch, len(epochBlocks),
+		blockReplayDur.Round(time.Millisecond),
+		blockApplyTotal.Round(time.Millisecond),
+		epochTransitionDur.Round(time.Millisecond),
+	)
+
+	// Cache the post-epoch-transition state for the target epoch.
+	if err := sc.Store(s.slotRoot, s.targetEpoch, parentState); err != nil {
+		client.logger.Warnf("failed to cache replayed state for epoch %v: %v", s.targetEpoch, err)
+	}
+
+	return parentState
 }
 
 // isGloasPostPayloadState checks whether the Gloas state is post-payload

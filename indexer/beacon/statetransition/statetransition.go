@@ -20,7 +20,53 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
+	dynssz "github.com/pk910/dynamic-ssz"
 )
+
+// StateTransition holds the chain spec, dynamic SSZ encoder, and reusable caches
+// for applying multiple blocks and epoch transitions to the same state.
+// Create one per state replay session and reuse across ApplyBlock calls.
+type StateTransition struct {
+	specs  *consensus.ChainSpec
+	dynSsz *dynssz.DynSsz
+	caches *stateTransitionCaches
+}
+
+// NewStateTransition creates a new StateTransition with the given chain spec and dynssz encoder.
+func NewStateTransition(specs *consensus.ChainSpec, ds *dynssz.DynSsz) *StateTransition {
+	return &StateTransition{
+		specs:  specs,
+		dynSsz: ds,
+		caches: newStateTransitionCaches(),
+	}
+}
+
+// ApplyBlock applies a beacon block to the state in-place.
+func (st *StateTransition) ApplyBlock(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock) error {
+	return applyBlockInternal(state, block, st.specs, st.dynSsz, st.caches, phase0.Root{})
+}
+
+// ApplyBlockWithStateRoot is like ApplyBlock but accepts the current state's
+// hash tree root as a hint, skipping the expensive HTR computation in the first
+// process_slot. The hint must match the HTR of the current state — typically
+// sourced from the previously applied block's state_root field. Passing an
+// incorrect hint will produce an inconsistent state and is undefined behavior.
+func (st *StateTransition) ApplyBlockWithStateRoot(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, parentStateRoot phase0.Root) error {
+	return applyBlockInternal(state, block, st.specs, st.dynSsz, st.caches, parentStateRoot)
+}
+
+// ApplyExecutionPayload applies a Gloas execution payload to the state.
+func (st *StateTransition) ApplyExecutionPayload(state *spec.VersionedBeaconState, payload *gloas.SignedExecutionPayloadEnvelope) error {
+	if payload == nil || payload.Message == nil {
+		return nil
+	}
+	return processExecutionPayload(state, payload.Message, st.specs)
+}
+
+// PrepareEpochPreState advances a post-block state to the pre-state of the target epoch.
+func (st *StateTransition) PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, payload *gloas.ExecutionPayloadEnvelope, info *TransitionInfo) error {
+	return prepareEpochPreStateInternal(state, epoch, payload, st.specs, info, st.caches)
+}
 
 // TransitionInfo collects metadata from the state transition that callers may
 // need for downstream processing. Pass a non-nil pointer to PrepareEpochPreState
@@ -33,8 +79,8 @@ type TransitionInfo struct {
 	DelayedBuilderPayments uint32
 }
 
-// PrepareEpochPreState takes a post-block state and mutates it into the pre-state
-// of the target epoch. This is the main entry point for epoch state preparation.
+// PrepareEpochPreState is the standalone entry point (creates fresh caches).
+// Prefer StateTransition.PrepareEpochPreState for repeated use.
 //
 // The input state is typically the post-state of the last block of a parent epoch.
 // The function:
@@ -48,13 +94,13 @@ type TransitionInfo struct {
 // conversions, balance updates, proposer lookahead, etc.
 //
 // If info is non-nil, it is populated with metadata from the transition.
-func PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, payload *gloas.ExecutionPayloadEnvelope, specs *consensus.ChainSpec, info *TransitionInfo) error {
+func prepareEpochPreStateInternal(state *spec.VersionedBeaconState, epoch phase0.Epoch, payload *gloas.ExecutionPayloadEnvelope, specs *consensus.ChainSpec, info *TransitionInfo, caches *stateTransitionCaches) error {
 	if state.Version < spec.DataVersionFulu {
 		return nil
 	}
 
 	// Step 1: For Gloas+ pre-payload states, apply the execution payload transition.
-	if payload != nil && isPrePayloadState(state) {
+	if payload != nil && IsPrePayloadState(state) {
 		if err := processExecutionPayload(state, payload, specs); err != nil {
 			return fmt.Errorf("process_execution_payload: %w", err)
 		}
@@ -62,7 +108,7 @@ func PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, 
 
 	// Step 2: Advance to the first slot of the target epoch.
 	targetSlot := phase0.Slot(uint64(epoch) * specs.SlotsPerEpoch)
-	if err := processSlots(state, targetSlot, specs, info); err != nil {
+	if err := processSlots(state, targetSlot, specs, info, caches); err != nil {
 		return fmt.Errorf("process_slots to epoch %d (slot %d): %w", epoch, targetSlot, err)
 	}
 
@@ -77,7 +123,7 @@ func PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, 
 // outputs we need. Jumps directly to each epoch boundary.
 //
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#process_slots
-func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, specs *consensus.ChainSpec, info *TransitionInfo) error {
+func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, specs *consensus.ChainSpec, info *TransitionInfo, caches *stateTransitionCaches) error {
 	currentSlot, err := state.Slot()
 	if err != nil {
 		return fmt.Errorf("failed to get state slot: %w", err)
@@ -87,40 +133,63 @@ func processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, spec
 		return nil
 	}
 
-	s, err := newStateAccessor(state, specs)
+	s, err := newStateAccessorWithCaches(state, specs, caches)
 	if err != nil {
 		return fmt.Errorf("failed to create state accessor: %w", err)
 	}
 
 	slotsPerEpoch := specs.SlotsPerEpoch
 
-	// Jump to each epoch boundary and apply the epoch transition.
-	// The spec applies process_epoch when (state.slot + 1) % SLOTS_PER_EPOCH == 0,
-	// i.e. at the last slot of each epoch, then increments the slot.
-	for {
-		nextBoundary := phase0.Slot(((uint64(s.Slot)/slotsPerEpoch)+1)*slotsPerEpoch - 1)
+	for s.Slot < targetSlot {
+		processSlotBlockRootCaching(s)
 
-		if nextBoundary >= targetSlot {
-			break
+		// Apply epoch transition at epoch boundary (last slot of epoch).
+		if (uint64(s.Slot)+1)%slotsPerEpoch == 0 {
+			if err := processEpochInternal(s, info); err != nil {
+				return fmt.Errorf("process_epoch at slot %d: %w", s.Slot, err)
+			}
 		}
 
-		s.Slot = nextBoundary
-		if err := processEpochInternal(s, info); err != nil {
-			return fmt.Errorf("process_epoch at slot %d: %w", s.Slot, err)
-		}
-
-		s.Slot++ // cross into next epoch
+		s.Slot++
 	}
 
-	s.Slot = targetSlot
 	s.writeBack()
 
 	return nil
 }
 
-// isPrePayloadState checks whether a Gloas state is pre-payload
+// processSlotBlockRootCaching implements the essential parts of process_slot:
+// computes the state root, fills latest_block_header.state_root if zero,
+// then caches the block root. The state root must be computed first because
+// the block root depends on the header's state_root field.
+func processSlotBlockRootCaching(s *stateAccessor) {
+	stateRoot, err := s.computeStateHTR()
+	if err != nil {
+		return
+	}
+
+	idx := uint64(s.Slot) % s.specs.SlotsPerHistoricalRoot
+	s.StateRoots[idx] = stateRoot
+
+	// Fill latest_block_header.state_root if zero (set after each processBlockHeader).
+	if s.LatestBlockHeader != nil && s.LatestBlockHeader.StateRoot == (phase0.Root{}) {
+		s.LatestBlockHeader.StateRoot = stateRoot
+	}
+
+	blockRoot, err := s.computeLatestBlockHeaderHTR()
+	if err != nil {
+		return
+	}
+
+	s.BlockRoots[idx] = blockRoot
+
+	// Gloas: clear the next slot's execution payload availability bit.
+	s.clearNextSlotAvailabilityBit()
+}
+
+// IsPrePayloadState checks whether a Gloas state is pre-payload
 // (the execution payload for the latest block has NOT been processed yet).
-func isPrePayloadState(state *spec.VersionedBeaconState) bool {
+func IsPrePayloadState(state *spec.VersionedBeaconState) bool {
 	if state.Version < spec.DataVersionGloas || state.Gloas == nil {
 		return false
 	}
@@ -149,54 +218,62 @@ func processExecutionPayload(state *spec.VersionedBeaconState, envelope *gloas.E
 		return nil
 	}
 
-	g := state.Gloas
-	slotsPerEpoch := specs.SlotsPerEpoch
+	s, err := newStateAccessor(state, specs)
+	if err != nil {
+		return fmt.Errorf("failed to create state accessor: %w", err)
+	}
 
-	// Process deposit requests → convert to pending deposits.
-	// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-process_deposit_request
+	// Cache latest block header state root (spec: fill before payload processing).
+	// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_execution_payload
+	if s.LatestBlockHeader != nil && s.LatestBlockHeader.StateRoot == (phase0.Root{}) {
+		stateRoot, htrErr := s.computeStateHTR()
+		if htrErr != nil {
+			return fmt.Errorf("failed to compute state root for header fill: %w", htrErr)
+		}
+		s.LatestBlockHeader.StateRoot = stateRoot
+	}
+
+	// Process execution requests (deposits, withdrawals, consolidations).
 	if envelope.ExecutionRequests != nil {
 		for _, deposit := range envelope.ExecutionRequests.Deposits {
-			g.PendingDeposits = append(g.PendingDeposits, &electra.PendingDeposit{
+			s.PendingDeposits = append(s.PendingDeposits, &electra.PendingDeposit{
 				Pubkey:                deposit.Pubkey,
 				WithdrawalCredentials: deposit.WithdrawalCredentials,
 				Amount:                deposit.Amount,
 				Signature:             deposit.Signature,
-				Slot:                  g.Slot,
+				Slot:                  s.Slot,
 			})
 		}
 
-		// Note: withdrawal requests and consolidation requests are NOT processed here
-		// since they require full validator lookup and exit queue logic.
-		// For our purpose (advancing to epoch boundary), the pending deposits
-		// are the critical part. Withdrawal/consolidation requests affect the
-		// state sim which replays them separately.
+		for _, withdrawal := range envelope.ExecutionRequests.Withdrawals {
+			processWithdrawalRequest(s, withdrawal)
+		}
+
+		for _, consolidation := range envelope.ExecutionRequests.Consolidations {
+			processConsolidationRequest(s, consolidation)
+		}
 	}
 
 	// Queue the builder payment (direct withdrawal for delivered payload).
-	// The bid was recorded in builder_pending_payments during process_execution_payload_bid.
-	// Now that the payload is delivered, we move the payment to builder_pending_withdrawals
-	// and clear the pending payment entry.
-	paymentIdx := slotsPerEpoch + uint64(g.Slot)%slotsPerEpoch
-	if paymentIdx < uint64(len(g.BuilderPendingPayments)) {
-		payment := g.BuilderPendingPayments[paymentIdx]
+	slotsPerEpoch := specs.SlotsPerEpoch
+	paymentIdx := slotsPerEpoch + uint64(s.Slot)%slotsPerEpoch
+	if paymentIdx < uint64(len(s.BuilderPendingPayments)) {
+		payment := s.BuilderPendingPayments[paymentIdx]
 		if payment != nil && payment.Withdrawal != nil && payment.Withdrawal.Amount > 0 {
-			g.BuilderPendingWithdrawals = append(g.BuilderPendingWithdrawals, payment.Withdrawal)
+			s.BuilderPendingWithdrawals = append(s.BuilderPendingWithdrawals, payment.Withdrawal)
 		}
-		g.BuilderPendingPayments[paymentIdx] = &gloas.BuilderPendingPayment{}
+		s.BuilderPendingPayments[paymentIdx] = &gloas.BuilderPendingPayment{}
 	}
 
 	// Set execution payload availability bit.
-	bitfieldLen := uint64(len(g.ExecutionPayloadAvailability)) * 8
-	if bitfieldLen > 0 {
-		idx := uint64(g.Slot) % bitfieldLen
-		g.ExecutionPayloadAvailability[idx/8] |= 1 << (idx % 8)
-	}
+	s.setAvailabilityBit()
 
 	// Cache the execution payload block hash.
 	if envelope.Payload != nil {
-		copy(g.LatestBlockHash[:], envelope.Payload.BlockHash[:])
+		s.LatestBlockHash = envelope.Payload.BlockHash
 	}
 
+	s.writeBack()
 	return nil
 }
 
@@ -243,6 +320,8 @@ func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 	}
 
 	processEffectiveBalanceUpdates(s)
+	// Effective balances may have changed; clear caches that depend on them.
+	s.caches.invalidateBalanceCaches()
 	processSlashingsReset(s)
 	processRandaoMixesReset(s)
 	processHistoricalSummariesUpdate(s)

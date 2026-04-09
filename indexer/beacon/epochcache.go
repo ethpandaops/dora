@@ -538,7 +538,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 				// Advance the already-loaded state to the next target epoch.
 				// Payload is nil since it was already applied on the first PrepareEpochPreState call.
 				var transitionInfo statetransition.TransitionInfo
-				if err := statetransition.PrepareEpochPreState(state, entry.epochState.targetEpoch, nil, specs, &transitionInfo); err != nil {
+				if err := statetransition.NewStateTransition(specs, cache.indexer.dynSsz).PrepareEpochPreState(state, entry.epochState.targetEpoch, nil, &transitionInfo); err != nil {
 					cache.indexer.logger.Errorf("error advancing state to epoch %v: %v", entry.epochState.targetEpoch, err)
 					continue
 				}
@@ -551,6 +551,13 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 				}
 
 				entry.epochState.loadingStatus = 2
+
+				// Store in state cache.
+				if sc := cache.indexer.stateCache; sc != nil {
+					if err := sc.Store(entry.epochState.slotRoot, entry.epochState.targetEpoch, state); err != nil {
+						cache.indexer.logger.Warnf("failed to cache state for epoch %v: %v", entry.epochState.targetEpoch, err)
+					}
+				}
 
 				// Signal ready.
 				entry.epochState.readyChanMutex.Lock()
