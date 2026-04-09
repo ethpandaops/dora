@@ -77,14 +77,34 @@ jobs:
     - name: "Download build artifacts"
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 
-    # create draft release
+    # generate release artifacts
+    - name: "Generate release package: dora_${{ inputs.version }}_windows_amd64.zip"
+      run: |
+        cd explorer_windows_amd64
+        zip -r -q ../dora_${{ inputs.version }}_windows_amd64.zip .
+    - name: "Generate release package: dora_${{ inputs.version }}_linux_amd64.tar.gz"
+      run: |
+        cd explorer_linux_amd64
+        tar -czf ../dora_${{ inputs.version }}_linux_amd64.tar.gz .
+    - name: "Generate release package: dora_${{ inputs.version }}_linux_arm64.tar.gz"
+      run: |
+        cd explorer_linux_arm64
+        tar -czf ../dora_${{ inputs.version }}_linux_arm64.tar.gz .
+    - name: "Generate release package: dora_${{ inputs.version }}_darwin_amd64.tar.gz"
+      run: |
+        cd explorer_darwin_amd64
+        tar -czf ../dora_${{ inputs.version }}_darwin_amd64.tar.gz .
+    - name: "Generate release package: dora_${{ inputs.version }}_darwin_arm64.tar.gz"
+      run: |
+        cd explorer_darwin_arm64
+        tar -czf ../dora_${{ inputs.version }}_darwin_arm64.tar.gz .
+
     - name: Create latest release
-      uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1.1.4
-      id: create_release
+      uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
       with:
         draft: false
         prerelease: false
-        release_name: "v${{ inputs.version }}"
+        name: "v${{ inputs.version }}"
         tag_name: "v${{ inputs.version }}"
         body: |
           ### Major Changes
@@ -106,76 +126,9 @@ jobs:
           | [dora_${{ inputs.version }}_linux_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_arm64.tar.gz) | dora executables for linux/arm64 |
           | [dora_${{ inputs.version }}_darwin_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
           | [dora_${{ inputs.version }}_darwin_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-
-    # generate & upload release artifacts
-    - name: "Generate release package: dora_${{ inputs.version }}_windows_amd64.zip"
-      run: |
-        cd explorer_windows_amd64
-        zip -r -q ../dora_${{ inputs.version }}_windows_amd64.zip .
-    - name: "Upload release artifact: dora_${{ inputs.version }}_windows_amd64.zip"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_${{ inputs.version }}_windows_amd64.zip
-        asset_name: dora_${{ inputs.version }}_windows_amd64.zip
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-    
-    - name: "Generate release package: dora_${{ inputs.version }}_linux_amd64.tar.gz"
-      run: |
-        cd explorer_linux_amd64
-        tar -czf ../dora_${{ inputs.version }}_linux_amd64.tar.gz .
-    - name: "Upload release artifact: dora_${{ inputs.version }}_linux_amd64.tar.gz"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_${{ inputs.version }}_linux_amd64.tar.gz
-        asset_name: dora_${{ inputs.version }}_linux_amd64.tar.gz
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-    
-    - name: "Generate release package: dora_${{ inputs.version }}_linux_arm64.tar.gz"
-      run: |
-        cd explorer_linux_arm64
-        tar -czf ../dora_${{ inputs.version }}_linux_arm64.tar.gz .
-    - name: "Upload release artifact: dora_${{ inputs.version }}_linux_arm64.tar.gz"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_${{ inputs.version }}_linux_arm64.tar.gz
-        asset_name: dora_${{ inputs.version }}_linux_arm64.tar.gz
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-    
-    - name: "Generate release package: dora_${{ inputs.version }}_darwin_amd64.tar.gz"
-      run: |
-        cd explorer_darwin_amd64
-        tar -czf ../dora_${{ inputs.version }}_darwin_amd64.tar.gz .
-    - name: "Upload release artifact: dora_${{ inputs.version }}_darwin_amd64.tar.gz"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_${{ inputs.version }}_darwin_amd64.tar.gz
-        asset_name: dora_${{ inputs.version }}_darwin_amd64.tar.gz
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-
-    - name: "Generate release package: dora_${{ inputs.version }}_darwin_arm64.tar.gz"
-      run: |
-        cd explorer_darwin_arm64
-        tar -czf ../dora_${{ inputs.version }}_darwin_arm64.tar.gz .
-    - name: "Upload release artifact: dora_${{ inputs.version }}_darwin_arm64.tar.gz"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_${{ inputs.version }}_darwin_arm64.tar.gz
-        asset_name: dora_${{ inputs.version }}_darwin_arm64.tar.gz
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
+        files: |
+          dora_${{ inputs.version }}_windows_amd64.zip
+          dora_${{ inputs.version }}_linux_amd64.tar.gz
+          dora_${{ inputs.version }}_linux_arm64.tar.gz
+          dora_${{ inputs.version }}_darwin_amd64.tar.gz
+          dora_${{ inputs.version }}_darwin_arm64.tar.gz
