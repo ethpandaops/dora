@@ -10,8 +10,8 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	dasguardian "github.com/probe-lab/eth-das-guardian"
-	"github.com/probe-lab/eth-das-guardian/api"
+	dasguardian "github.com/ethpandaops/eth-das-guardian"
+	"github.com/ethpandaops/eth-das-guardian/api"
 	"github.com/sirupsen/logrus"
 )
 
@@ -131,10 +131,13 @@ func (d *dasGuardianAPI) Init(ctx context.Context) error {
 }
 
 func (d *dasGuardianAPI) GetStateVersion() string {
-	fuluForkEpoch := d.GetFuluForkEpoch()
 	currentEpoch := GlobalBeaconService.GetChainState().CurrentEpoch()
 
-	if currentEpoch >= phase0.Epoch(fuluForkEpoch) {
+	if currentEpoch >= phase0.Epoch(d.GetGloasForkEpoch()) {
+		return "gloas"
+	}
+
+	if currentEpoch >= phase0.Epoch(d.GetFuluForkEpoch()) {
 		return "fulu"
 	}
 
@@ -172,6 +175,19 @@ func (d *dasGuardianAPI) GetFuluForkEpoch() uint64 {
 	}
 
 	return *specs.FuluForkEpoch
+}
+
+func (d *dasGuardianAPI) GetGloasForkEpoch() uint64 {
+	specs := GlobalBeaconService.GetChainState().GetSpecs()
+	if specs == nil {
+		return 0
+	}
+
+	if specs.GloasForkEpoch == nil {
+		return math.MaxInt64
+	}
+
+	return *specs.GloasForkEpoch
 }
 
 func (d *dasGuardianAPI) GetNodeIdentity(ctx context.Context) (*api.NodeIdentity, error) {

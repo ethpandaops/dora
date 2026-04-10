@@ -8,6 +8,7 @@ require (
 	github.com/attestantio/go-eth2-client v0.28.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/ethereum/go-ethereum v1.17.0
+	github.com/ethpandaops/eth-das-guardian v0.0.0-20260410123341-c9663e34164d
 	github.com/ethpandaops/ethcore v0.0.0-20260225052739-1d2ffa8e298c
 	github.com/ethpandaops/ethwallclock v0.4.0
 	github.com/glebarez/go-sqlite v1.22.0
@@ -22,9 +23,8 @@ require (
 	github.com/mashingan/smapping v0.1.19
 	github.com/minio/minio-go/v7 v7.0.98
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.2.3-0.20260318065836-323b83c1a387
+	github.com/pk910/dynamic-ssz v1.3.0
 	github.com/pressly/goose/v3 v3.27.0
-	github.com/probe-lab/eth-das-guardian v0.2.2
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
@@ -255,4 +255,4 @@ require (
 	modernc.org/sqlite v1.46.1 // indirect
 )
 
-replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20260331085057-05aefaa5ce81
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20260401105128-4544cf21b737
