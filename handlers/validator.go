@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
@@ -33,6 +34,7 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 		"validator/recentDeposits.html",
 		"validator/withdrawalRequests.html",
 		"validator/consolidationRequests.html",
+		"validator/withdrawals.html",
 		"validator/txDetails.html",
 		"_svg/timeline.html",
 	)
@@ -77,9 +79,11 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getValidatorPageData(uint64(validator.Index), tabView)
+		pageData, err := getValidatorPageData(uint64(validator.Index), tabView)
+		data.Data = pageData
+		pageError = err
 	}
-	if data.Data == nil {
+	if data.Data == nil || data.Data.(*models.ValidatorPageData) == nil {
 		pageError = errors.New("validator not found")
 	}
 	if pageError != nil {
@@ -588,6 +592,105 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 		}
 
 		pageData.ConsolidationRequestCount = uint64(len(pageData.ConsolidationRequests))
+	}
+
+	// load recent withdrawals (beacon chain withdrawals)
+	if pageData.TabView == "withdrawals" {
+		withdrawalFilter := &dbtypes.WithdrawalFilter{
+			MinIndex:     validatorIndex,
+			MaxIndex:     validatorIndex,
+			WithOrphaned: 1,
+		}
+		dbWithdrawals, totalRows := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, 0, 10)
+		if totalRows > 10 {
+			pageData.AdditionalWithdrawalCount = totalRows - 10
+		}
+
+		// Batch resolve account IDs to addresses
+		accountIDs := make([]uint64, 0, len(dbWithdrawals))
+		accountIDSet := make(map[uint64]bool, len(dbWithdrawals))
+		for _, w := range dbWithdrawals {
+			if w.AccountID > 0 && !accountIDSet[w.AccountID] {
+				accountIDSet[w.AccountID] = true
+				accountIDs = append(accountIDs, w.AccountID)
+			}
+		}
+		accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDs))
+		if len(accountIDs) > 0 {
+			accounts, err := db.GetElAccountsByIDs(ctx, accountIDs)
+			if err == nil {
+				for _, acct := range accounts {
+					accountMap[acct.ID] = acct
+				}
+			}
+		}
+
+		// Batch resolve blocks (including ref slot blocks)
+		blockUids := make([]uint64, 0, len(dbWithdrawals)*2)
+		blockUidSet := make(map[uint64]bool, len(dbWithdrawals)*2)
+		for _, w := range dbWithdrawals {
+			if !blockUidSet[w.BlockUid] {
+				blockUidSet[w.BlockUid] = true
+				blockUids = append(blockUids, w.BlockUid)
+			}
+			if w.RefSlot != nil && !blockUidSet[*w.RefSlot] {
+				blockUidSet[*w.RefSlot] = true
+				blockUids = append(blockUids, *w.RefSlot)
+			}
+		}
+		blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+		if len(blockUids) > 0 {
+			blockFilter := &dbtypes.BlockFilter{
+				BlockUids:    blockUids,
+				WithOrphaned: 1,
+			}
+			blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, uint32(len(blockUids)), 0)
+			for _, b := range blocks {
+				if b.Block != nil {
+					blockMap[b.Block.BlockUid] = b
+				}
+			}
+		}
+
+		for _, withdrawal := range dbWithdrawals {
+			slot := withdrawal.BlockUid >> 16
+			withdrawalData := &models.ValidatorPageDataBeaconWithdrawal{
+				SlotNumber: slot,
+				Time:       chainState.SlotToTime(phase0.Slot(slot)),
+				Orphaned:   withdrawal.Orphaned,
+				Type:       withdrawal.Type,
+				Amount:     withdrawal.Amount,
+			}
+
+			hasAddress := false
+			if withdrawal.AccountID > 0 {
+				if acct, ok := accountMap[withdrawal.AccountID]; ok {
+					withdrawalData.Address = acct.Address
+					hasAddress = true
+				}
+			}
+			if !hasAddress && withdrawal.Address != nil {
+				withdrawalData.Address = withdrawal.Address
+			}
+
+			if blockInfo, ok := blockMap[withdrawal.BlockUid]; ok && blockInfo.Block != nil {
+				withdrawalData.BlockRoot = blockInfo.Block.Root
+				if blockInfo.Block.EthBlockNumber != nil {
+					withdrawalData.BlockNumber = *blockInfo.Block.EthBlockNumber
+				}
+			}
+
+			if withdrawal.RefSlot != nil {
+				withdrawalData.RefSlot = *withdrawal.RefSlot >> 16
+				if refBlock, ok := blockMap[*withdrawal.RefSlot]; ok && refBlock.Block != nil {
+					withdrawalData.RefSlotRoot = refBlock.Block.Root
+				}
+			}
+
+			pageData.Withdrawals = append(pageData.Withdrawals, withdrawalData)
+		}
+
+		pageData.WithdrawalCount = uint64(len(pageData.Withdrawals))
 	}
 
 	// Check for exit reason if validator is exiting or has exited

@@ -85,9 +85,12 @@ type BuilderPageData struct {
 	GloasIsActive bool   `json:"gloas_is_active"`
 
 	// Tab data (loaded conditionally)
-	RecentBlocks   []*BuilderPageDataBlock   `json:"recent_blocks"`
-	RecentBids     []*BuilderPageDataBid     `json:"recent_bids"`
-	RecentDeposits []*BuilderPageDataDeposit `json:"recent_deposits"`
+	RecentBlocks              []*BuilderPageDataBlock      `json:"recent_blocks"`
+	RecentBids                []*BuilderPageDataBid        `json:"recent_bids"`
+	RecentDeposits            []*BuilderPageDataDeposit    `json:"recent_deposits"`
+	Withdrawals               []*BuilderPageDataWithdrawal `json:"withdrawals"`
+	WithdrawalCount           uint64                       `json:"withdrawal_count"`
+	AdditionalWithdrawalCount uint64                       `json:"additional_withdrawal_count"`
 }
 
 // BuilderPageDataBlock represents a block/payload built by this builder
@@ -125,6 +128,18 @@ type BuilderPageDataDeposit struct {
 	SlotRoot   []byte    `json:"slot_root"`
 	Time       time.Time `json:"time"`
 	Orphaned   bool      `json:"orphaned"`
+}
+
+// BuilderPageDataWithdrawal represents a withdrawal on the builder detail page
+type BuilderPageDataWithdrawal struct {
+	SlotNumber  uint64    `json:"slot"`
+	BlockRoot   []byte    `json:"block_root" ssz-size:"32"`
+	Time        time.Time `json:"time"`
+	Orphaned    bool      `json:"orphaned"`
+	Type        uint8     `json:"type"`
+	Amount      uint64    `json:"amount"`
+	RefSlot     uint64    `json:"ref_slot"`
+	RefSlotRoot []byte    `json:"ref_slot_root" ssz-size:"32"`
 }
 
 // BuilderPageDataExitTxDetails contains transaction details for EL-triggered exits

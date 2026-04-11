@@ -3,15 +3,17 @@ package services
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/sirupsen/logrus"
+
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/prysmaticlabs/prysm/v5/container/slice"
-	"github.com/sirupsen/logrus"
 )
 
 type CombinedWithdrawalRequest struct {
@@ -79,6 +81,8 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(ctx context.Context, filte
 		MinIndex:      filter.Filter.MinIndex,
 		MaxIndex:      filter.Filter.MaxIndex,
 		ValidatorName: filter.Filter.ValidatorName,
+		MinAmount:     filter.Filter.MinAmount,
+		MaxAmount:     filter.Filter.MaxAmount,
 		WithOrphaned:  filter.Filter.WithOrphaned,
 	}
 
@@ -224,6 +228,18 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(ctx context.Conte
 						}
 						validatorName := bs.validatorNames.GetValidatorName(*withdrawalRequest.ValidatorIndex)
 						if !strings.Contains(validatorName, filter.ValidatorName) {
+							continue
+						}
+					}
+					if filter.MinAmount != nil {
+						reqAmount := db.ConvertInt64ToUint64(withdrawalRequest.Amount)
+						if reqAmount < *filter.MinAmount {
+							continue
+						}
+					}
+					if filter.MaxAmount != nil {
+						reqAmount := db.ConvertInt64ToUint64(withdrawalRequest.Amount)
+						if reqAmount > *filter.MaxAmount {
 							continue
 						}
 					}
@@ -420,4 +436,142 @@ func (bs *ChainService) GetWithdrawalQueueByFilter(ctx context.Context, filter *
 	}
 
 	return queue[start:end], totalCount, totalAmount
+}
+
+func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbtypes.WithdrawalFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.Withdrawal, uint64) {
+	chainState := bs.consensusPool.GetChainState()
+	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
+	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
+	currentSlot := chainState.CurrentSlot()
+	canonicalForkIds := bs.GetCanonicalForkKeys()
+
+	var filterAccountAddress []byte
+	hasFilterAccountAddress := false
+	if filter.AccountID != nil {
+		account, err := db.GetElAccountByID(ctx, *filter.AccountID)
+		if err == nil {
+			filterAccountAddress = account.Address
+			hasFilterAccountAddress = true
+		}
+	}
+
+	// Load most recent objects from indexer cache
+	cachedMatches := make([]*dbtypes.Withdrawal, 0)
+	for slotIdx := int64(currentSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
+		slot := uint64(slotIdx)
+		blocks := bs.beaconIndexer.GetBlocksBySlot(phase0.Slot(slot))
+		if blocks != nil {
+			for bidx := 0; bidx < len(blocks); bidx++ {
+				block := blocks[bidx]
+				isCanonical := slices.Contains(canonicalForkIds, block.GetForkId())
+				if filter.WithOrphaned != 1 {
+					if filter.WithOrphaned == 0 && !isCanonical {
+						continue
+					}
+					if filter.WithOrphaned == 2 && isCanonical {
+						continue
+					}
+				}
+
+				withdrawals := block.GetDbWithdrawals(bs.beaconIndexer, isCanonical)
+
+				for idx, withdrawal := range withdrawals {
+					if filter.MinIndex > 0 && withdrawal.Validator < filter.MinIndex {
+						continue
+					}
+					if filter.MaxIndex > 0 && withdrawal.Validator > filter.MaxIndex {
+						continue
+					}
+					if filter.AccountID != nil {
+						if withdrawal.AccountID > 0 {
+							if withdrawal.AccountID != *filter.AccountID {
+								continue
+							}
+						} else {
+							if !hasFilterAccountAddress || !bytes.Equal(withdrawal.Address, filterAccountAddress) {
+								continue
+							}
+						}
+					}
+					if len(filter.Types) > 0 && !slices.Contains(filter.Types, withdrawal.Type) {
+						continue
+					}
+					if filter.MinAmount != nil && withdrawal.Amount < *filter.MinAmount {
+						continue
+					}
+					if filter.MaxAmount != nil && withdrawal.Amount > *filter.MaxAmount {
+						continue
+					}
+					if filter.ValidatorName != "" {
+						validatorName := bs.validatorNames.GetValidatorName(withdrawal.Validator)
+						if !strings.Contains(validatorName, filter.ValidatorName) {
+							continue
+						}
+					}
+
+					cachedMatches = append(cachedMatches, withdrawals[idx])
+				}
+			}
+		}
+	}
+
+	cachedMatchesLen := uint64(len(cachedMatches))
+	cachedPages := cachedMatchesLen / uint64(pageSize)
+	resObjs := make([]*dbtypes.Withdrawal, 0)
+	resIdx := 0
+
+	cachedStart := pageIdx * uint64(pageSize)
+	cachedEnd := cachedStart + uint64(pageSize)
+
+	if cachedPages > 0 && pageIdx < cachedPages {
+		resObjs = append(resObjs, cachedMatches[cachedStart:cachedEnd]...)
+		resIdx += int(cachedEnd - cachedStart)
+	} else if pageIdx == cachedPages {
+		resObjs = append(resObjs, cachedMatches[cachedStart:]...)
+		resIdx += len(cachedMatches) - int(cachedStart)
+	}
+
+	// Load older objects from db
+	dbPage := pageIdx - cachedPages
+	if cachedPages > pageIdx {
+		dbPage = 0
+	}
+
+	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
+
+	var dbObjects []*dbtypes.Withdrawal
+	var dbCount uint64
+	var err error
+
+	if resIdx >= int(pageSize) {
+		_, dbCount, err = db.GetWithdrawalsFiltered(ctx, 0, 1, uint64(finalizedBlock), filter)
+	} else if dbPage == 0 {
+		dbObjects, dbCount, err = db.GetWithdrawalsFiltered(ctx, 0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
+	} else {
+		dbObjects, dbCount, err = db.GetWithdrawalsFiltered(ctx, (dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
+	}
+
+	if err != nil {
+		logrus.Warnf("ChainService.GetWithdrawalsByFilter error: %v", err)
+	} else {
+		for idx, dbObject := range dbObjects {
+			if dbObject.BlockUid>>16 > uint64(finalizedBlock) {
+				isCanonical := slices.Contains(canonicalForkIds, beacon.ForkKey(dbObject.ForkId))
+				dbObjects[idx].Orphaned = !isCanonical
+			}
+
+			if filter.WithOrphaned != 1 {
+				if filter.WithOrphaned == 0 && dbObjects[idx].Orphaned {
+					continue
+				}
+				if filter.WithOrphaned == 2 && !dbObjects[idx].Orphaned {
+					continue
+				}
+			}
+
+			resObjs = append(resObjs, dbObjects[idx])
+		}
+	}
+
+	return resObjs, cachedMatchesLen + dbCount
 }

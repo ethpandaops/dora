@@ -236,6 +236,9 @@ type SlotPageWithdrawal struct {
 	IsBuilder      bool   `json:"is_builder"`
 	Address        []byte `json:"address" ssz-size:"20"`
 	Amount         uint64 `json:"amount"`
+	Type           uint8  `json:"type"`
+	RefSlot        uint64 `json:"ref_slot"`
+	RefSlotRoot    []byte `json:"ref_slot_root" ssz-size:"32"`
 }
 
 type SlotPageBlob struct {

@@ -17,6 +17,7 @@ import (
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/statecache"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
 )
@@ -41,6 +42,7 @@ type Indexer struct {
 	maxParallelStateCalls uint16
 
 	// caches
+	stateCache        *statecache.StateCache
 	blockCache        *blockCache
 	epochCache        *epochCache
 	forkCache         *forkCache
@@ -114,6 +116,7 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 		blockDispatcher: &utils.Dispatcher[*Block]{},
 	}
 
+	indexer.stateCache = statecache.New(utils.Config, indexer.dynSsz)
 	indexer.blockCache = newBlockCache(indexer)
 	indexer.epochCache = newEpochCache(indexer)
 	indexer.forkCache = newForkCache(indexer)

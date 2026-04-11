@@ -545,6 +545,8 @@ func (indexer *Indexer) GetBuilderByIndex(index gloas.BuilderIndex, overrideFork
 }
 
 // GetRecentBuilderBalances returns the most recent builder balances for the given fork.
+// Starts with epoch-boundary balances and deducts any builder withdrawals processed
+// in blocks since the epoch start, reflecting the current head's state.
 func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phase0.Gwei {
 	chainState := indexer.consensusPool.GetChainState()
 
@@ -556,6 +558,7 @@ func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phas
 	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
 
 	var epochStats *EpochStats
+	var statsEpoch phase0.Epoch
 	for {
 		cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
 		if headEpoch-cEpoch > 2 {
@@ -574,6 +577,7 @@ func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phas
 		}
 
 		epochStats = stats
+		statsEpoch = cEpoch
 		break
 	}
 
@@ -581,5 +585,38 @@ func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phas
 		return nil
 	}
 
-	return epochStats.dependentState.builderBalances
+	// Copy epoch-boundary balances so we can mutate them.
+	src := epochStats.dependentState.builderBalances
+	balances := make([]phase0.Gwei, len(src))
+	copy(balances, src)
+
+	// Deduct builder withdrawals from blocks in the current epoch.
+	// Block UIDs encode the slot in the upper bits: uid = slot << 16.
+	epochStartSlot := chainState.EpochToSlot(statsEpoch)
+	nextEpochSlot := chainState.EpochToSlot(statsEpoch + 1)
+	minBlockUid := uint64(epochStartSlot) << 16
+	maxBlockUid := uint64(nextEpochSlot) << 16
+
+	withdrawals, err := db.GetWithdrawalsByBlockUidRange(indexer.ctx, minBlockUid, maxBlockUid, nil)
+	if err == nil {
+		for _, w := range withdrawals {
+			if w.Orphaned {
+				continue
+			}
+			// Builder withdrawals have the BuilderIndexFlag set in the Validator field.
+			if w.Validator&BuilderIndexFlag == 0 {
+				continue
+			}
+			builderIdx := w.Validator &^ BuilderIndexFlag
+			if builderIdx < uint64(len(balances)) {
+				if balances[builderIdx] >= phase0.Gwei(w.Amount) {
+					balances[builderIdx] -= phase0.Gwei(w.Amount)
+				} else {
+					balances[builderIdx] = 0
+				}
+			}
+		}
+	}
+
+	return balances
 }

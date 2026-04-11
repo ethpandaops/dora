@@ -6,6 +6,7 @@ import (
 
 // VoluntaryExitsPageData is a struct to hold info for the voluntary_exits page
 type VoluntaryExitsPageData struct {
+	FilterEntity        string `json:"filter_entity"` // "all", "validator", or "builder"
 	FilterMinSlot       uint64 `json:"filter_mins"`
 	FilterMaxSlot       uint64 `json:"filter_maxs"`
 	FilterMinIndex      uint64 `json:"filter_mini"`

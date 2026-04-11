@@ -335,34 +335,27 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		for i, block := range canonicalBlocks {
 			blockIndex := block.GetBlockIndex(indexer.ctx)
 			if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
-				fmt.Printf("payload status for slot %v: no execution payload\n", block.Slot)
 				continue // no execution payload
 			}
 
 			// Find the next canonical block
 			if i+1 >= len(allCanonicalBlocks) {
-				fmt.Printf("payload status for slot %v: no next canonical block\n", block.Slot)
 				continue
 			}
 
 			nextBlock := allCanonicalBlocks[i+1]
 			if nextBlock == nil {
-				fmt.Printf("payload status for slot %v: no next canonical block\n", block.Slot)
 				continue
 			}
 
 			nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
 			if nextBlockIndex == nil {
-				fmt.Printf("payload status for slot %v: no next canonical block index\n", block.Slot)
 				continue
 			}
 
 			// Check if next block builds on this block's payload
 			if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
-				fmt.Printf("payload status for slot %v: orphaned\n", block.Slot)
 				block.isPayloadOrphaned = true
-			} else {
-				fmt.Printf("payload status for slot %v: canonical\n", block.Slot)
 			}
 		}
 	}

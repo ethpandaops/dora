@@ -382,7 +382,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		dependentRoot = phase0.Root(depRoot)
 	}
 
-	epochState := newEpochState(dependentRoot)
+	epochState := newEpochState(dependentRoot, syncEpoch)
 	t1 := time.Now()
 	state, err := epochState.loadState(s.syncCtx, client, nil)
 	loadDuration := time.Since(t1)

@@ -207,6 +207,11 @@
           <i class="fa fa-wallet me-2"></i> Deposits
         </a>
       </li>
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "withdrawals" }} active{{ end }}" id="withdrawals-tab" data-lazy-tab="withdrawals" data-bs-toggle="tab" data-bs-target="#withdrawals" href="?v=withdrawals" role="tab" aria-controls="withdrawals" aria-selected="{{ if eq .TabView "withdrawals" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-arrow-down me-2"></i> Withdrawals
+        </a>
+      </li>
     </ul>
 
     <div class="tab-content" id="tabContent">
@@ -225,6 +230,11 @@
           {{ template "recentDeposits" . }}
         {{ end }}
       </div>
+      <div class="tab-pane fade{{ if eq .TabView "withdrawals" }} show active{{ end }}" id="withdrawals" role="tabpanel" aria-labelledby="withdrawals-tab" data-loaded="{{ if eq .TabView "withdrawals" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "withdrawals" }}
+          {{ template "builderWithdrawals" . }}
+        {{ end }}
+      </div>
     </div>
 
   </div>
@@ -236,6 +246,8 @@
     {{ template "recentBids" . }}
   {{ else if eq .TabView "deposits" }}
     {{ template "recentDeposits" . }}
+  {{ else if eq .TabView "withdrawals" }}
+    {{ template "builderWithdrawals" . }}
   {{ else }}
     Unknown tab
   {{ end }}
