@@ -318,6 +318,26 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	}
 
+	// Extract execution payload bid from Gloas blocks and add to bid cache.
+	// This ensures bids are persisted even when syncing from blocks (not just SSE events).
+	if blockBody.Version >= spec.DataVersionGloas && blockBody.Gloas != nil &&
+		blockBody.Gloas.Message != nil && blockBody.Gloas.Message.Body != nil &&
+		blockBody.Gloas.Message.Body.SignedExecutionPayloadBid != nil &&
+		blockBody.Gloas.Message.Body.SignedExecutionPayloadBid.Message != nil {
+		bidMsg := blockBody.Gloas.Message.Body.SignedExecutionPayloadBid.Message
+		dbw.indexer.blockBidCache.AddBid(&dbtypes.BlockBid{
+			ParentRoot:   bidMsg.ParentBlockRoot[:],
+			ParentHash:   bidMsg.ParentBlockHash[:],
+			BlockHash:    bidMsg.BlockHash[:],
+			FeeRecipient: bidMsg.FeeRecipient[:],
+			GasLimit:     uint64(bidMsg.GasLimit),
+			BuilderIndex: int64(bidMsg.BuilderIndex),
+			Slot:         uint64(bidMsg.Slot),
+			Value:        uint64(bidMsg.Value),
+			ElPayment:    uint64(bidMsg.ExecutionPayment),
+		})
+	}
+
 	dbBlock := dbtypes.Slot{
 		Slot:                  uint64(block.header.Message.Slot),
 		Proposer:              uint64(block.header.Message.ProposerIndex),

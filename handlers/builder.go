@@ -163,6 +163,12 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 		return nil, 0
 	}
 
+	// Override balance from the latest epoch state (builder cache doesn't track balance changes within epochs).
+	balances := services.GlobalBeaconService.GetBuilderBalances()
+	if int(builderIndex) < len(balances) {
+		builder.Balance = balances[builderIndex]
+	}
+
 	// Determine state
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	state := "Active"

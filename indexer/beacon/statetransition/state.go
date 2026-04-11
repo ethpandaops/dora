@@ -118,17 +118,15 @@ func (c *stateTransitionCaches) invalidateBalanceCaches() {
 	c.committeeCache = newCommitteeCache()
 }
 
-func newStateAccessor(state *spec.VersionedBeaconState, specs *consensus.ChainSpec, ds *dynssz.DynSsz) (*stateAccessor, error) {
-	return newStateAccessorWithCaches(state, specs, ds, newStateTransitionCaches())
-}
-
-func newStateAccessorWithCaches(state *spec.VersionedBeaconState, specs *consensus.ChainSpec, ds *dynssz.DynSsz, caches *stateTransitionCaches) (*stateAccessor, error) {
+// newAccessor creates a stateAccessor from the given state, pulling specs,
+// dynSsz, and caches from the StateTransition instance.
+func (st *StateTransition) newAccessor(state *spec.VersionedBeaconState) (*stateAccessor, error) {
 	s := &stateAccessor{
 		version:  state.Version,
-		specs:    specs,
-		dynSsz:   ds,
+		specs:    st.specs,
+		dynSsz:   st.dynSsz,
 		rawState: state,
-		caches:   caches,
+		caches:   st.caches,
 	}
 
 	switch state.Version {

@@ -11,8 +11,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethpandaops/dora/clients/consensus"
-	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/pk910/dynamic-ssz/sszutils"
 )
 
@@ -27,12 +25,12 @@ import (
 // calls (when there are skipped slots) still compute HTR normally.
 //
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-block-processing
-func applyBlockInternal(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, specs *consensus.ChainSpec, ds *dynssz.DynSsz, caches *stateTransitionCaches, parentStateRoot phase0.Root, info *ApplyInfo) error {
+func (st *StateTransition) applyBlock(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, parentStateRoot phase0.Root, info *ApplyInfo) error {
 	if state.Version < spec.DataVersionFulu {
 		return nil
 	}
 
-	s, err := newStateAccessorWithCaches(state, specs, ds, caches)
+	s, err := st.newAccessor(state)
 	if err != nil {
 		return fmt.Errorf("failed to create state accessor: %w", err)
 	}
@@ -50,7 +48,7 @@ func applyBlockInternal(state *spec.VersionedBeaconState, block *spec.VersionedS
 	//           process_epoch(state)
 	//       state.slot += 1
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#process_slots
-	slotsPerEpoch := specs.SlotsPerEpoch
+	slotsPerEpoch := st.specs.SlotsPerEpoch
 	stateRootHint := parentStateRoot
 	for s.Slot < blockSlot {
 		if err := processSlotRootCaching(s, stateRootHint); err != nil {
@@ -95,7 +93,7 @@ func applyBlockInternal(state *spec.VersionedBeaconState, block *spec.VersionedS
 
 	// process_execution_payload (Fulu) — caches the execution payload header
 	if state.Version == spec.DataVersionFulu {
-		processFuluExecutionPayload(s, block, ds)
+		processFuluExecutionPayload(s, block)
 	}
 
 	// process_execution_payload_bid (Gloas) — records the builder's bid
@@ -231,7 +229,7 @@ var _ = sszutils.Annotate[withdrawalList](`ssz-max:"16"`)
 
 // processFuluExecutionPayload caches the execution payload header for Fulu blocks.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/fulu/beacon-chain.md#modified-process_execution_payload
-func processFuluExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBeaconBlock, ds *dynssz.DynSsz) {
+func processFuluExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
 	if block.Fulu == nil || block.Fulu.Message == nil || block.Fulu.Message.Body == nil {
 		return
 	}
@@ -241,20 +239,16 @@ func processFuluExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBe
 		return
 	}
 
-	if ds == nil {
-		return
-	}
-
 	txs := make(transactionList, len(payload.Transactions))
 	copy(txs, payload.Transactions)
-	txRoot, err := ds.HashTreeRoot(txs)
+	txRoot, err := s.dynSsz.HashTreeRoot(txs)
 	if err != nil {
 		return
 	}
 
 	wds := make(withdrawalList, len(payload.Withdrawals))
 	copy(wds, payload.Withdrawals)
-	wdRoot, err := ds.HashTreeRoot(wds)
+	wdRoot, err := s.dynSsz.HashTreeRoot(wds)
 	if err != nil {
 		return
 	}
