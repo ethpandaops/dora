@@ -16,22 +16,15 @@ type committeeKey struct {
 	index uint64
 }
 
-// committeeCache caches computed beacon committees and shuffled permutations
+// committeeCache caches computed beacon committees
 // to avoid recomputation across multiple attestations.
 type committeeCache struct {
-	cache    map[committeeKey][]phase0.ValidatorIndex
-	shuffled map[shuffleKey][]phase0.ValidatorIndex // epoch seed → shuffled active indices
-}
-
-type shuffleKey struct {
-	seed  phase0.Root
-	count uint64
+	cache map[committeeKey][]phase0.ValidatorIndex
 }
 
 func newCommitteeCache() *committeeCache {
 	return &committeeCache{
-		cache:    make(map[committeeKey][]phase0.ValidatorIndex, 64),
-		shuffled: make(map[shuffleKey][]phase0.ValidatorIndex),
+		cache: make(map[committeeKey][]phase0.ValidatorIndex, 64),
 	}
 }
 
@@ -43,24 +36,6 @@ func (c *committeeCache) get(slot phase0.Slot, index uint64) []phase0.ValidatorI
 // put stores a committee in the cache.
 func (c *committeeCache) put(slot phase0.Slot, index uint64, committee []phase0.ValidatorIndex) {
 	c.cache[committeeKey{slot: slot, index: index}] = committee
-}
-
-// getShuffled returns a fully shuffled permutation of indices, cached by seed+count.
-func (c *committeeCache) getShuffled(indices []phase0.ValidatorIndex, seed phase0.Root, specs *consensus.ChainSpec) []phase0.ValidatorIndex {
-	key := shuffleKey{seed: seed, count: uint64(len(indices))}
-	if cached, ok := c.shuffled[key]; ok {
-		return cached
-	}
-
-	// Compute full shuffled permutation
-	indexCount := uint64(len(indices))
-	shuffled := make([]phase0.ValidatorIndex, indexCount)
-	for i := uint64(0); i < indexCount; i++ {
-		shuffled[i] = indices[computeShuffledIndex(i, indexCount, seed, specs)]
-	}
-
-	c.shuffled[key] = shuffled
-	return shuffled
 }
 
 // getCommitteeCountPerSlot returns the number of committees per slot for the given epoch.

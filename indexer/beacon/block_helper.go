@@ -721,54 +721,6 @@ func getStateProposerLookahead(v *spec.VersionedBeaconState) ([]phase0.Validator
 	}
 }
 
-// getLatestBlockHeaderParentRoot returns the parent root from the latest block header in the state.
-func getLatestBlockHeaderParentRoot(v *spec.VersionedBeaconState) (phase0.Root, error) {
-	switch v.Version {
-	case spec.DataVersionPhase0:
-		return phase0.Root{}, errors.New("no latest block header parent root in phase0 state")
-	case spec.DataVersionAltair:
-		return phase0.Root{}, errors.New("no latest block header parent root in altair state")
-	case spec.DataVersionBellatrix:
-		if v.Bellatrix == nil || v.Bellatrix.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no bellatrix state")
-		}
-
-		return v.Bellatrix.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionCapella:
-		if v.Capella == nil || v.Capella.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no capella state")
-		}
-
-		return v.Capella.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionDeneb:
-		if v.Deneb == nil || v.Deneb.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no deneb state")
-		}
-
-		return v.Deneb.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no electra state")
-		}
-
-		return v.Electra.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionFulu:
-		if v.Fulu == nil || v.Fulu.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no fulu state")
-		}
-
-		return v.Fulu.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no gloas state")
-		}
-
-		return v.Gloas.LatestBlockHeader.ParentRoot, nil
-	default:
-		return phase0.Root{}, errors.New("unknown version")
-	}
-}
-
 // getBlockSize returns the block size from a versioned beacon block.
 func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock) (int, error) {
 	switch block.Version {

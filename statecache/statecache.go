@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -68,31 +67,6 @@ type stateKey struct {
 // Format: <epoch>_<rootHex>.ssz.gz
 func (k stateKey) filename() string {
 	return fmt.Sprintf("%d_%s.ssz.gz", k.TargetEpoch, hex.EncodeToString(k.DependentRoot[:]))
-}
-
-// parseFilename parses a cache filename back into a stateKey.
-// Returns false if the filename doesn't match the expected format.
-func parseFilename(name string) (stateKey, bool) {
-	name = strings.TrimSuffix(name, ".ssz.gz")
-	parts := strings.SplitN(name, "_", 2)
-	if len(parts) != 2 {
-		return stateKey{}, false
-	}
-
-	epoch, err := strconv.ParseUint(parts[0], 10, 64)
-	if err != nil {
-		return stateKey{}, false
-	}
-
-	rootBytes, err := hex.DecodeString(parts[1])
-	if err != nil || len(rootBytes) != 32 {
-		return stateKey{}, false
-	}
-
-	var key stateKey
-	key.TargetEpoch = phase0.Epoch(epoch)
-	copy(key.DependentRoot[:], rootBytes)
-	return key, true
 }
 
 // Check returns true if a cached state exists for the given key.

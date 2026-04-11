@@ -530,17 +530,3 @@ func (s *epochState) tryReplayFromParentState(
 
 	return parentState
 }
-
-// isGloasPostPayloadState checks whether the Gloas state is post-payload
-// (i.e. execution payload deposits have been applied) for the given slot.
-func isGloasPostPayloadState(state *spec.VersionedBeaconState, slot phase0.Slot) bool {
-	if state.Gloas == nil {
-		return false
-	}
-	bitfieldLen := uint64(len(state.Gloas.ExecutionPayloadAvailability)) * 8
-	if bitfieldLen == 0 {
-		return false
-	}
-	idx := uint64(slot) % bitfieldLen
-	return state.Gloas.ExecutionPayloadAvailability[idx/8]&(1<<(idx%8)) != 0
-}
