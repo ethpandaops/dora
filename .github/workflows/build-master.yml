@@ -104,13 +104,34 @@ jobs:
           } catch (e) {
             console.log(e)
           }
+    # generate release artifacts
+    - name: "Generate release package: dora_snapshot_windows_amd64.zip"
+      run: |
+        cd explorer_windows_amd64
+        zip -r -q ../dora_snapshot_windows_amd64.zip .
+    - name: "Generate release package: dora_snapshot_linux_amd64.tar.gz"
+      run: |
+        cd explorer_linux_amd64
+        tar -czf ../dora_snapshot_linux_amd64.tar.gz .
+    - name: "Generate release package: dora_snapshot_linux_arm64.tar.gz"
+      run: |
+        cd explorer_linux_arm64
+        tar -czf ../dora_snapshot_linux_arm64.tar.gz .
+    - name: "Generate release package: dora_snapshot_darwin_amd64.tar.gz"
+      run: |
+        cd explorer_darwin_amd64
+        tar -czf ../dora_snapshot_darwin_amd64.tar.gz .
+    - name: "Generate release package: dora_snapshot_darwin_arm64.tar.gz"
+      run: |
+        cd explorer_darwin_arm64
+        tar -czf ../dora_snapshot_darwin_arm64.tar.gz .
+
     - name: Create snapshot release
-      uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1.1.4
-      id: create_release
+      uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
       with:
         draft: false
         prerelease: true
-        release_name: "Dev Snapshot"
+        name: "Dev Snapshot"
         tag_name: "snapshot"
         body: |
           ## Latest automatically built executables. (Unstable development snapshot)
@@ -126,76 +147,9 @@ jobs:
           | [dora_snapshot_linux_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_linux_arm64.tar.gz) | dora executables for linux/arm64 |
           | [dora_snapshot_darwin_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
           | [dora_snapshot_darwin_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-
-    # generate & upload release artifacts
-    - name: "Generate release package: dora_snapshot_windows_amd64.zip"
-      run: |
-        cd explorer_windows_amd64
-        zip -r -q ../dora_snapshot_windows_amd64.zip .
-    - name: "Upload snapshot release artifact: dora_snapshot_windows_amd64.zip"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_snapshot_windows_amd64.zip
-        asset_name: dora_snapshot_windows_amd64.zip
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-    
-    - name: "Generate release package: dora_snapshot_linux_amd64.tar.gz"
-      run: |
-        cd explorer_linux_amd64
-        tar -czf ../dora_snapshot_linux_amd64.tar.gz .
-    - name: "Upload snapshot release artifact: dora_snapshot_linux_amd64.tar.gz"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_snapshot_linux_amd64.tar.gz
-        asset_name: dora_snapshot_linux_amd64.tar.gz
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-    
-    - name: "Generate release package: dora_snapshot_linux_arm64.tar.gz"
-      run: |
-        cd explorer_linux_arm64
-        tar -czf ../dora_snapshot_linux_arm64.tar.gz .
-    - name: "Upload snapshot release artifact: dora_snapshot_linux_arm64.tar.gz"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_snapshot_linux_arm64.tar.gz
-        asset_name: dora_snapshot_linux_arm64.tar.gz
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-    
-    - name: "Generate release package: dora_snapshot_darwin_amd64.tar.gz"
-      run: |
-        cd explorer_darwin_amd64
-        tar -czf ../dora_snapshot_darwin_amd64.tar.gz .
-    - name: "Upload snapshot release artifact: dora_snapshot_darwin_amd64.tar.gz"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_snapshot_darwin_amd64.tar.gz
-        asset_name: dora_snapshot_darwin_amd64.tar.gz
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-
-    - name: "Generate release package: dora_snapshot_darwin_arm64.tar.gz"
-      run: |
-        cd explorer_darwin_arm64
-        tar -czf ../dora_snapshot_darwin_arm64.tar.gz .
-    - name: "Upload snapshot release artifact: dora_snapshot_darwin_arm64.tar.gz"
-      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dora_snapshot_darwin_arm64.tar.gz
-        asset_name: dora_snapshot_darwin_arm64.tar.gz
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
+        files: |
+          dora_snapshot_windows_amd64.zip
+          dora_snapshot_linux_amd64.tar.gz
+          dora_snapshot_linux_arm64.tar.gz
+          dora_snapshot_darwin_amd64.tar.gz
+          dora_snapshot_darwin_arm64.tar.gz
