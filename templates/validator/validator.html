@@ -273,7 +273,7 @@
       {{ end }}
     </div>
 
-    {{ template "txDetails" . }}
+    {{ template "txDetailsModal" . }}
   </div>
 {{ end }}
 {{ define "lazyPage" }}
@@ -322,9 +322,9 @@
 
   });
 </script>
-{{ template "txDetails-js" . }}
+{{ template "txDetailsModal-js" . }}
 {{ end }}
 {{ define "css" }}
 <link rel="stylesheet" href="/css/validator.css" />
-{{ template "txDetails-css" . }}
+{{ template "txDetailsModal-css" . }}
 {{ end }}

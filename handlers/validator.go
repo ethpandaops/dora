@@ -35,7 +35,7 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 		"validator/withdrawalRequests.html",
 		"validator/consolidationRequests.html",
 		"validator/withdrawals.html",
-		"validator/txDetails.html",
+		"_shared/txDetailsModal.html",
 		"_svg/timeline.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,

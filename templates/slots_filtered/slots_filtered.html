@@ -91,6 +91,14 @@
                     </div>
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Builder
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.builder" type="number" class="form-control" placeholder="Builder Index (-1 for self-built)" aria-label="Builder Index" value="{{ .FilterBuilder }}">
+                  </div>
+                </div>
               </div>
             </div>
             <div class="col-sm-12 col-md-6">
@@ -236,6 +244,7 @@
                 <option value="16" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                 <option value="17" {{ if .DisplayRecvDelay }}selected{{ end }}>Seen</option>
                 <option value="18" {{ if .DisplayExecTime }}selected{{ end }}>Execution Time</option>
+                <option value="19" {{ if .DisplayBuilder }}selected{{ end }}>Builder</option>
                 <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
               </select>
@@ -283,6 +292,7 @@
                 {{ if .DisplayTxCount }}<th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>{{ end }}
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
+                {{ if .DisplayBuilder }}<th>Builder</th>{{ end }}
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
@@ -356,6 +366,13 @@
                     {{- end }}
                     {{- if $g.DisplaySyncAgg }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatPercentageAlert $slot.SyncParticipation 2 95 80 }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayBuilder }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        {{ if $slot.HasBuilder }}
+                          {{ formatBuilder $slot.BuilderIndex $slot.BuilderName }}
+                        {{ end }}
+                      {{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayMevBlock }}
                       <td>{{ if not (eq $slot.Status 0) }}

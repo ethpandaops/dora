@@ -33,6 +33,7 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 		"builder/recentBids.html",
 		"builder/recentDeposits.html",
 		"builder/withdrawals.html",
+		"_shared/txDetailsModal.html",
 		"_svg/timeline.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
@@ -256,6 +257,9 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 	switch tabView {
 	case "blocks":
 		pageData.RecentBlocks = buildBuilderRecentBlocks(ctx, builderIndex, chainState)
+		if len(pageData.RecentBlocks) >= 20 {
+			pageData.HasMoreBlocks = true
+		}
 	case "bids":
 		pageData.RecentBids = buildBuilderRecentBids(ctx, builderIndex, chainState)
 	case "deposits":
@@ -329,7 +333,7 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 }
 
 func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBlock {
-	// Filter blocks by builder index using the new DB filter
+	// Filter blocks by builder index using the DB filter
 	builderIndexInt64 := int64(builderIndex)
 	filter := &dbtypes.BlockFilter{
 		BuilderIndex: &builderIndexInt64,
@@ -337,13 +341,10 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 		WithMissing:  0, // Exclude missing blocks
 	}
 
-	// Get blocks built by this builder
+	// Get blocks built by this builder via chainservice (cache + DB)
 	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, 20, 0)
 
-	// Collect block hashes for batch bid lookup
-	blockHashes := make([][]byte, 0, len(dbBlocks))
 	validBlocks := make([]*dbtypes.Slot, 0, len(dbBlocks))
-
 	for _, assignedSlot := range dbBlocks {
 		if assignedSlot.Block == nil {
 			continue
@@ -356,13 +357,13 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 		}
 
 		if len(slot.EthBlockHash) > 0 {
-			blockHashes = append(blockHashes, slot.EthBlockHash)
 			validBlocks = append(validBlocks, slot)
 		}
 	}
 
-	// Batch fetch all bids for these block hashes
-	bidsMap := db.GetBidsByBlockHashes(ctx, blockHashes, builderIndex)
+	// Look up bids via the indexer's bid accessor (checks in-memory cache first, then DB).
+	// Bids are keyed by parent block root, so we look up per block and match by block hash + builder.
+	indexer := services.GlobalBeaconService.GetBeaconIndexer()
 
 	// Build result
 	blocks := make([]*models.BuilderPageDataBlock, 0, len(validBlocks))
@@ -378,11 +379,16 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 			GasLimit:     slot.EthGasLimit,
 		}
 
-		// Look up bid info for Value and ElPayment from the batch result
-		blockHashKey := fmt.Sprintf("%x", slot.EthBlockHash)
-		if bid, ok := bidsMap[blockHashKey]; ok {
-			block.Value = bid.Value
-			block.ElPayment = bid.ElPayment
+		// Look up bid by parent root, then match by block hash and builder index
+		var parentRoot phase0.Root
+		copy(parentRoot[:], slot.ParentRoot)
+		bids := indexer.GetBlockBids(parentRoot)
+		for _, bid := range bids {
+			if bid.BuilderIndex == builderIndexInt64 && fmt.Sprintf("%x", bid.BlockHash) == fmt.Sprintf("%x", slot.EthBlockHash) {
+				block.Value = bid.Value
+				block.ElPayment = bid.ElPayment
+				break
+			}
 		}
 
 		blocks = append(blocks, block)
@@ -393,6 +399,43 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 
 func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBid {
 	bids, _ := db.GetBidsByBuilderIndex(ctx, builderIndex, 0, 20)
+	if len(bids) == 0 {
+		return nil
+	}
+
+	// Collect block hashes and determine slot range for batch lookup
+	bidBlockHashes := make(map[string]bool, len(bids))
+	var minSlot, maxSlot uint64
+	for i, bid := range bids {
+		bidBlockHashes[fmt.Sprintf("%x", bid.BlockHash)] = true
+		if i == 0 || bid.Slot > maxSlot {
+			maxSlot = bid.Slot
+		}
+		if i == 0 || bid.Slot < minSlot {
+			minSlot = bid.Slot
+		}
+	}
+
+	// Batch fetch blocks for the slot range via chainservice (covers cache + DB)
+	canonicalBlockHashes := make(map[string]bool, len(bids))
+	builderIndexInt64 := int64(builderIndex)
+	blockFilter := &dbtypes.BlockFilter{
+		BuilderIndex: &builderIndexInt64,
+		MinSlot:      &minSlot,
+		MaxSlot:      &maxSlot,
+		WithOrphaned: 1,
+		WithMissing:  0,
+	}
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, uint32(len(bids)*2), 0)
+	for _, assignedSlot := range dbBlocks {
+		if assignedSlot.Block == nil {
+			continue
+		}
+		hashKey := fmt.Sprintf("%x", assignedSlot.Block.EthBlockHash)
+		if bidBlockHashes[hashKey] && assignedSlot.Block.PayloadStatus == dbtypes.PayloadStatusCanonical {
+			canonicalBlockHashes[hashKey] = true
+		}
+	}
 
 	result := make([]*models.BuilderPageDataBid, 0, len(bids))
 	for _, bid := range bids {
@@ -406,16 +449,7 @@ func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState
 			GasLimit:     bid.GasLimit,
 			Value:        bid.Value,
 			ElPayment:    bid.ElPayment,
-			IsWinning:    false,
-		}
-
-		// Check if this bid won (payload was included)
-		slots := db.GetSlotsByBlockHash(ctx, bid.BlockHash)
-		for _, slot := range slots {
-			if slot.PayloadStatus == dbtypes.PayloadStatusCanonical {
-				bidData.IsWinning = true
-				break
-			}
+			IsWinning:    canonicalBlockHashes[fmt.Sprintf("%x", bid.BlockHash)],
 		}
 
 		result = append(result, bidData)
@@ -437,7 +471,9 @@ func buildBuilderRecentDeposits(ctx context.Context, pubkey []byte, chainState *
 	deposits, _ := services.GlobalBeaconService.GetDepositRequestsByFilter(ctx, depositFilter, 0, 20)
 	for _, deposit := range deposits {
 		entry := &models.BuilderPageDataDeposit{
-			Type: "deposit",
+			Type:             "deposit",
+			Amount:           deposit.Amount(),
+			DepositorAddress: deposit.SourceAddress(),
 		}
 		if deposit.Request != nil {
 			entry.SlotNumber = deposit.Request.SlotNumber
@@ -447,6 +483,21 @@ func buildBuilderRecentDeposits(ctx context.Context, pubkey []byte, chainState *
 		} else if deposit.Transaction != nil {
 			entry.Time = chainState.SlotToTime(phase0.Slot(deposit.Transaction.BlockTime))
 		}
+
+		// Add transaction details if available
+		if deposit.Transaction != nil {
+			entry.HasTransaction = true
+			entry.TransactionHash = deposit.Transaction.TxHash
+			entry.TransactionDetails = &models.BuilderPageDataDepositTxDetails{
+				BlockNumber: deposit.Transaction.BlockNumber,
+				BlockHash:   fmt.Sprintf("%#x", deposit.Transaction.BlockRoot),
+				BlockTime:   deposit.Transaction.BlockTime,
+				TxOrigin:    common.Address(deposit.Transaction.TxSender).Hex(),
+				TxTarget:    common.Address(deposit.Transaction.TxTarget).Hex(),
+				TxHash:      fmt.Sprintf("%#x", deposit.Transaction.TxHash),
+			}
+		}
+
 		result = append(result, entry)
 	}
 

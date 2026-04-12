@@ -30,6 +30,7 @@ type SlotsFilteredPageData struct {
 	FilterForkIds          string `json:"filter_fork_ids"`
 	FilterMinEpoch         string `json:"filter_min_epoch"`
 	FilterMaxEpoch         string `json:"filter_max_epoch"`
+	FilterBuilder          string `json:"filter_builder"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`
 	DisplaySlot         bool   `json:"dp_slot"`
@@ -49,6 +50,7 @@ type SlotsFilteredPageData struct {
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
 	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
 	DisplayExecTime     bool   `json:"dp_exectime"`
+	DisplayBuilder      bool   `json:"dp_builder"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	HasSnooperClients bool `json:"has_snooper_clients"`
@@ -112,4 +114,7 @@ type SlotsFilteredPageDataSlot struct {
 	ExecutionTimes        []ExecutionTimeDetail `json:"execution_times"`
 	IsMevBlock            bool                  `json:"is_mev_block"`
 	MevBlockRelays        string                `json:"mev_block_relays"`
+	HasBuilder            bool                  `json:"has_builder"`
+	BuilderIndex          uint64                `json:"builder_index"`
+	BuilderName           string                `json:"builder_name"`
 }
