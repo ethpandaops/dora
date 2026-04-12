@@ -878,12 +878,17 @@ func loadWithdrawalsTab(ctx context.Context, pageData *models.AddressPageData, a
 	for _, w := range dbWithdrawals {
 		slot := w.BlockUid >> 16
 		entry := &models.AddressPageDataWithdrawal{
-			BlockUid:       w.BlockUid,
-			BlockTime:      chainState.SlotToTime(phase0.Slot(slot)),
-			Type:           w.Type,
-			Amount:         w.Amount,
-			ValidatorIndex: w.Validator,
-			ValidatorName:  services.GlobalBeaconService.GetValidatorName(w.Validator),
+			BlockUid:      w.BlockUid,
+			BlockTime:     chainState.SlotToTime(phase0.Slot(slot)),
+			Type:          w.Type,
+			Amount:        w.Amount,
+			ValidatorName: services.GlobalBeaconService.GetValidatorName(w.Validator),
+		}
+		if w.Validator&services.BuilderIndexFlag != 0 {
+			entry.IsBuilder = true
+			entry.ValidatorIndex = w.Validator &^ services.BuilderIndexFlag
+		} else {
+			entry.ValidatorIndex = w.Validator
 		}
 
 		if blockInfo, ok := blockMap[w.BlockUid]; ok && blockInfo.Block != nil {

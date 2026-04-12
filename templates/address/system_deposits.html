@@ -56,7 +56,11 @@
                 {{ end }}
               </td>
               <td>
-                {{ formatValidatorWithIndex .ValidatorIndex .ValidatorName }}
+                {{ if .IsBuilder }}
+                  {{ formatBuilderWithIndex .ValidatorIndex .ValidatorName }}
+                {{ else }}
+                  {{ formatValidatorWithIndex .ValidatorIndex .ValidatorName }}
+                {{ end }}
               </td>
               <td class="text-monospace">
                 {{ formatEthFromGweiP .Amount 6 }}
