@@ -641,6 +641,18 @@ func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.Pendin
 	}
 }
 
+// getStateBuilderPendingWithdrawals returns the builder pending withdrawals from a versioned beacon state.
+func getStateBuilderPendingWithdrawals(v *spec.VersionedBeaconState) ([]*gloas.BuilderPendingWithdrawal, error) {
+	if v.Version < spec.DataVersionGloas {
+		return nil, nil // no builder pending withdrawals before gloas
+	}
+	if v.Gloas == nil {
+		return nil, errors.New("no gloas state")
+	}
+
+	return v.Gloas.BuilderPendingWithdrawals, nil
+}
+
 // getStatePendingConsolidations returns the pending consolidations from a versioned beacon state.
 func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.PendingConsolidation, error) {
 	switch v.Version {
@@ -706,54 +718,6 @@ func getStateProposerLookahead(v *spec.VersionedBeaconState) ([]phase0.Validator
 		return v.Gloas.ProposerLookahead, nil
 	default:
 		return nil, errors.New("unknown version")
-	}
-}
-
-// getLatestBlockHeaderParentRoot returns the parent root from the latest block header in the state.
-func getLatestBlockHeaderParentRoot(v *spec.VersionedBeaconState) (phase0.Root, error) {
-	switch v.Version {
-	case spec.DataVersionPhase0:
-		return phase0.Root{}, errors.New("no latest block header parent root in phase0 state")
-	case spec.DataVersionAltair:
-		return phase0.Root{}, errors.New("no latest block header parent root in altair state")
-	case spec.DataVersionBellatrix:
-		if v.Bellatrix == nil || v.Bellatrix.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no bellatrix state")
-		}
-
-		return v.Bellatrix.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionCapella:
-		if v.Capella == nil || v.Capella.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no capella state")
-		}
-
-		return v.Capella.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionDeneb:
-		if v.Deneb == nil || v.Deneb.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no deneb state")
-		}
-
-		return v.Deneb.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no electra state")
-		}
-
-		return v.Electra.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionFulu:
-		if v.Fulu == nil || v.Fulu.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no fulu state")
-		}
-
-		return v.Fulu.LatestBlockHeader.ParentRoot, nil
-	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.LatestBlockHeader == nil {
-			return phase0.Root{}, errors.New("no gloas state")
-		}
-
-		return v.Gloas.LatestBlockHeader.ParentRoot, nil
-	default:
-		return phase0.Root{}, errors.New("unknown version")
 	}
 }
 

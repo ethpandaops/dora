@@ -545,6 +545,8 @@ func (indexer *Indexer) GetBuilderByIndex(index gloas.BuilderIndex, overrideFork
 }
 
 // GetRecentBuilderBalances returns the most recent builder balances for the given fork.
+// Starts with epoch-boundary balances and replays in-epoch blocks to reflect live state:
+// builder withdrawals/payments are deducted and builder deposits are credited.
 func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phase0.Gwei {
 	chainState := indexer.consensusPool.GetChainState()
 
@@ -556,6 +558,7 @@ func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phas
 	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
 
 	var epochStats *EpochStats
+	var statsEpoch phase0.Epoch
 	for {
 		cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
 		if headEpoch-cEpoch > 2 {
@@ -574,6 +577,7 @@ func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phas
 		}
 
 		epochStats = stats
+		statsEpoch = cEpoch
 		break
 	}
 
@@ -581,5 +585,108 @@ func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phas
 		return nil
 	}
 
-	return epochStats.dependentState.builderBalances
+	// Copy epoch-boundary balances so we can mutate them.
+	src := epochStats.dependentState.builderBalances
+	balances := make([]phase0.Gwei, len(src))
+	copy(balances, src)
+
+	// Walk the canonical chain from head back to epoch start, collecting blocks to replay.
+	epochStartSlot := chainState.EpochToSlot(statsEpoch)
+	head := indexer.GetCanonicalHead(overrideForkId)
+
+	var epochBlocks []*Block
+	for block := head; block != nil && block.Slot >= epochStartSlot; {
+		epochBlocks = append(epochBlocks, block)
+		parentRoot := block.GetParentRoot()
+		if parentRoot == nil {
+			break
+		}
+		block = indexer.blockCache.getBlockByRoot(*parentRoot)
+	}
+
+	// Replay in slot order (reverse the collected list).
+	isEip7732 := chainState.IsEip7732Enabled(chainState.EpochOfSlot(epochStartSlot))
+	for i := len(epochBlocks) - 1; i >= 0; i-- {
+		block := epochBlocks[i]
+		indexer.applyBuilderBalanceChanges(block, balances, isEip7732)
+	}
+
+	return balances
+}
+
+// applyBuilderBalanceChanges extracts withdrawals and deposit requests from a
+// cached block body and applies the corresponding builder balance changes.
+func (indexer *Indexer) applyBuilderBalanceChanges(block *Block, balances []phase0.Gwei, isEip7732 bool) {
+	// Apply withdrawals (decrease builder balances).
+	if isEip7732 {
+		payload := block.GetExecutionPayload(indexer.ctx)
+		if payload != nil && payload.Message != nil && payload.Message.Payload != nil {
+			for _, w := range payload.Message.Payload.Withdrawals {
+				if uint64(w.ValidatorIndex)&BuilderIndexFlag == 0 {
+					continue
+				}
+				builderIdx := uint64(w.ValidatorIndex) &^ BuilderIndexFlag
+				if builderIdx < uint64(len(balances)) {
+					if balances[builderIdx] >= w.Amount {
+						balances[builderIdx] -= w.Amount
+					} else {
+						balances[builderIdx] = 0
+					}
+				}
+			}
+
+			// Apply deposit requests (increase builder balances).
+			if payload.Message.ExecutionRequests != nil {
+				for _, deposit := range payload.Message.ExecutionRequests.Deposits {
+					if validatorIdx, found := indexer.pubkeyCache.Get(deposit.Pubkey); found {
+						idx := uint64(validatorIdx)
+						if idx&BuilderIndexFlag != 0 {
+							builderIdx := idx &^ BuilderIndexFlag
+							if builderIdx < uint64(len(balances)) {
+								balances[builderIdx] += phase0.Gwei(deposit.Amount)
+							}
+						}
+					}
+				}
+			}
+		}
+	} else {
+		blockBody := block.GetBlock(indexer.ctx)
+		if blockBody == nil {
+			return
+		}
+
+		if execPayload, err := blockBody.ExecutionPayload(); err == nil && execPayload != nil {
+			if withdrawals, err := execPayload.Withdrawals(); err == nil {
+				for _, w := range withdrawals {
+					if uint64(w.ValidatorIndex)&BuilderIndexFlag == 0 {
+						continue
+					}
+					builderIdx := uint64(w.ValidatorIndex) &^ BuilderIndexFlag
+					if builderIdx < uint64(len(balances)) {
+						if balances[builderIdx] >= w.Amount {
+							balances[builderIdx] -= w.Amount
+						} else {
+							balances[builderIdx] = 0
+						}
+					}
+				}
+			}
+		}
+
+		// Apply deposit requests (increase builder balances).
+		if requests, err := blockBody.ExecutionRequests(); err == nil && requests != nil {
+			for _, deposit := range requests.Deposits {
+				if validatorIdx, found := indexer.pubkeyCache.Get(deposit.Pubkey); found {
+					idx := uint64(validatorIdx)
+					if idx&BuilderIndexFlag != 0 {
+						builderIdx := idx &^ BuilderIndexFlag
+						if builderIdx < uint64(len(balances)) {
+							balances[builderIdx] += phase0.Gwei(deposit.Amount)
+						}
+					}
+				}
+			}
+		}
+	}
 }

@@ -830,7 +830,6 @@ func (t *TxIndexer) checkAndRunCleanup() {
 			fields["internalTxs"] = retentionStats.InternalTxsDeleted
 			fields["eventIndices"] = retentionStats.EventIndicesDeleted
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
-			fields["withdrawals"] = retentionStats.WithdrawalsDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted
 		}
 		if blockdbPruned > 0 {

@@ -251,6 +251,11 @@ func (bs *ChainService) GetBuilderByIndex(index gloas.BuilderIndex) *gloas.Build
 	return bs.beaconIndexer.GetBuilderByIndex(index, nil)
 }
 
+// GetBuilderBalances returns the current builder balances (epoch-start adjusted for in-epoch withdrawals).
+func (bs *ChainService) GetBuilderBalances() []phase0.Gwei {
+	return bs.beaconIndexer.GetRecentBuilderBalances(nil)
+}
+
 // getBuilderStatus determines the status of a builder
 func getBuilderStatus(builder *gloas.Builder, currentEpoch phase0.Epoch, superseded bool) dbtypes.BuilderStatus {
 	if superseded {

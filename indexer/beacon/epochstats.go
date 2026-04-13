@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/electra"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
@@ -44,22 +45,25 @@ type EpochStats struct {
 
 // EpochStatsValues holds the values for the epoch-specific information.
 type EpochStatsValues struct {
-	RandaoMix             phase0.Hash32
-	NextRandaoMix         phase0.Hash32
-	ActiveIndices         []phase0.ValidatorIndex
-	EffectiveBalances     []uint32 // effective balance in full ETH of last epoch for pre-fulu stats, effective balance in full ETH of current epoch for fulu+ stats
-	ProposerDuties        []phase0.ValidatorIndex
-	AttesterDuties        [][][]duties.ActiveIndiceIndex
-	SyncCommitteeDuties   []phase0.ValidatorIndex
-	PtcDuties             [][]duties.ActiveIndiceIndex // [slot_index][ptc_member_index] - PTC duties for Gloas+ epochs
-	ActiveValidators      uint64
-	TotalBalance          phase0.Gwei
-	ActiveBalance         phase0.Gwei
-	EffectiveBalance      phase0.Gwei
-	FirstDepositIndex     uint64
-	PendingWithdrawals    []electra.PendingPartialWithdrawal
-	PendingConsolidations []electra.PendingConsolidation
-	ConsolidatingBalance  phase0.Gwei
+	RandaoMix                  phase0.Hash32
+	NextRandaoMix              phase0.Hash32
+	ActiveIndices              []phase0.ValidatorIndex
+	EffectiveBalances          []uint32 // effective balance in full ETH of last epoch for pre-fulu stats, effective balance in full ETH of current epoch for fulu+ stats
+	ProposerDuties             []phase0.ValidatorIndex
+	AttesterDuties             [][][]duties.ActiveIndiceIndex
+	SyncCommitteeDuties        []phase0.ValidatorIndex
+	PtcDuties                  [][]duties.ActiveIndiceIndex // [slot_index][ptc_member_index] - PTC duties for Gloas+ epochs
+	ActiveValidators           uint64
+	TotalBalance               phase0.Gwei
+	ActiveBalance              phase0.Gwei
+	EffectiveBalance           phase0.Gwei
+	FirstDepositIndex          uint64
+	PendingWithdrawals         []electra.PendingPartialWithdrawal
+	BuilderPendingWithdrawals  []gloas.BuilderPendingWithdrawal
+	DelayedBuilderPaymentCount uint32 // number of delayed payments at the tail of BuilderPendingWithdrawals
+	SourceBlockUid             uint64 // block UID of the source block (last block of parent epoch)
+	PendingConsolidations      []electra.PendingConsolidation
+	ConsolidatingBalance       phase0.Gwei
 }
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
@@ -67,17 +71,20 @@ type EpochStatsValues struct {
 //	generate ssz: (this is really ugly, needs path patching and post-fixing to work)
 //	sszgen --suffix ssz --path . --include $GOPATH/pkg/mod/github.com/attestantio/go-eth2-client\@v0.26.0/spec/phase0,$GOPATH/pkg/mod/github.com/attestantio/go-eth2-client\@v0.26.0/spec/electra --objs EpochStatsPacked
 type EpochStatsPacked struct {
-	ActiveValidators      []EpochStatsPackedValidator `ssz-max:"10000000"`
-	ProposerDuties        []phase0.ValidatorIndex     `ssz-max:"100"`
-	SyncCommitteeDuties   []phase0.ValidatorIndex     `ssz-max:"10000"`
-	RandaoMix             phase0.Hash32               `ssz-size:"32"`
-	NextRandaoMix         phase0.Hash32               `ssz-size:"32"`
-	TotalBalance          phase0.Gwei
-	ActiveBalance         phase0.Gwei
-	FirstDepositIndex     uint64
-	PendingWithdrawals    []electra.PendingPartialWithdrawal `ssz-max:"10000000"`
-	PendingConsolidations []electra.PendingConsolidation     `ssz-max:"10000000"`
-	ConsolidatingBalance  phase0.Gwei
+	ActiveValidators           []EpochStatsPackedValidator `ssz-max:"10000000"`
+	ProposerDuties             []phase0.ValidatorIndex     `ssz-max:"100"`
+	SyncCommitteeDuties        []phase0.ValidatorIndex     `ssz-max:"10000"`
+	RandaoMix                  phase0.Hash32               `ssz-size:"32"`
+	NextRandaoMix              phase0.Hash32               `ssz-size:"32"`
+	TotalBalance               phase0.Gwei
+	ActiveBalance              phase0.Gwei
+	FirstDepositIndex          uint64
+	PendingWithdrawals         []electra.PendingPartialWithdrawal `ssz-max:"10000000"`
+	BuilderPendingWithdrawals  []gloas.BuilderPendingWithdrawal   `ssz-max:"10000000"`
+	DelayedBuilderPaymentCount uint32
+	SourceBlockUid             uint64
+	PendingConsolidations      []electra.PendingConsolidation `ssz-max:"10000000"`
+	ConsolidatingBalance       phase0.Gwei
 }
 
 // EpochStatsPackedValidator holds the packed values for an active validator.
@@ -165,17 +172,20 @@ func (es *EpochStats) buildPackedSSZ() ([]byte, error) {
 	}
 
 	packedValues := &EpochStatsPacked{
-		ActiveValidators:      make([]EpochStatsPackedValidator, es.values.ActiveValidators),
-		ProposerDuties:        es.values.ProposerDuties,
-		SyncCommitteeDuties:   es.values.SyncCommitteeDuties,
-		RandaoMix:             es.values.RandaoMix,
-		NextRandaoMix:         es.values.NextRandaoMix,
-		TotalBalance:          es.values.TotalBalance,
-		ActiveBalance:         es.values.ActiveBalance,
-		FirstDepositIndex:     es.values.FirstDepositIndex,
-		PendingWithdrawals:    es.values.PendingWithdrawals,
-		PendingConsolidations: es.values.PendingConsolidations,
-		ConsolidatingBalance:  es.values.ConsolidatingBalance,
+		ActiveValidators:           make([]EpochStatsPackedValidator, es.values.ActiveValidators),
+		ProposerDuties:             es.values.ProposerDuties,
+		SyncCommitteeDuties:        es.values.SyncCommitteeDuties,
+		RandaoMix:                  es.values.RandaoMix,
+		NextRandaoMix:              es.values.NextRandaoMix,
+		TotalBalance:               es.values.TotalBalance,
+		ActiveBalance:              es.values.ActiveBalance,
+		FirstDepositIndex:          es.values.FirstDepositIndex,
+		PendingWithdrawals:         es.values.PendingWithdrawals,
+		PendingConsolidations:      es.values.PendingConsolidations,
+		BuilderPendingWithdrawals:  es.values.BuilderPendingWithdrawals,
+		DelayedBuilderPaymentCount: es.values.DelayedBuilderPaymentCount,
+		SourceBlockUid:             es.values.SourceBlockUid,
+		ConsolidatingBalance:       es.values.ConsolidatingBalance,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -216,19 +226,22 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 	}
 
 	values := &EpochStatsValues{
-		RandaoMix:             packedValues.RandaoMix,
-		NextRandaoMix:         packedValues.NextRandaoMix,
-		ActiveIndices:         make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
-		EffectiveBalances:     make([]uint32, len(packedValues.ActiveValidators)),
-		ProposerDuties:        packedValues.ProposerDuties,
-		SyncCommitteeDuties:   packedValues.SyncCommitteeDuties,
-		TotalBalance:          packedValues.TotalBalance,
-		ActiveBalance:         packedValues.ActiveBalance,
-		EffectiveBalance:      0,
-		FirstDepositIndex:     packedValues.FirstDepositIndex,
-		PendingWithdrawals:    packedValues.PendingWithdrawals,
-		PendingConsolidations: packedValues.PendingConsolidations,
-		ConsolidatingBalance:  packedValues.ConsolidatingBalance,
+		RandaoMix:                  packedValues.RandaoMix,
+		NextRandaoMix:              packedValues.NextRandaoMix,
+		ActiveIndices:              make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
+		EffectiveBalances:          make([]uint32, len(packedValues.ActiveValidators)),
+		ProposerDuties:             packedValues.ProposerDuties,
+		SyncCommitteeDuties:        packedValues.SyncCommitteeDuties,
+		TotalBalance:               packedValues.TotalBalance,
+		ActiveBalance:              packedValues.ActiveBalance,
+		EffectiveBalance:           0,
+		FirstDepositIndex:          packedValues.FirstDepositIndex,
+		PendingWithdrawals:         packedValues.PendingWithdrawals,
+		PendingConsolidations:      packedValues.PendingConsolidations,
+		BuilderPendingWithdrawals:  packedValues.BuilderPendingWithdrawals,
+		DelayedBuilderPaymentCount: packedValues.DelayedBuilderPaymentCount,
+		SourceBlockUid:             packedValues.SourceBlockUid,
+		ConsolidatingBalance:       packedValues.ConsolidatingBalance,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -377,6 +390,15 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	for i, pendingPartialWithdrawal := range dependentState.pendingPartialWithdrawals {
 		values.PendingWithdrawals[i] = *pendingPartialWithdrawal
 	}
+
+	if len(dependentState.builderPendingWithdrawals) > 0 {
+		values.BuilderPendingWithdrawals = make([]gloas.BuilderPendingWithdrawal, len(dependentState.builderPendingWithdrawals))
+		for i, bpw := range dependentState.builderPendingWithdrawals {
+			values.BuilderPendingWithdrawals[i] = *bpw
+		}
+	}
+	values.DelayedBuilderPaymentCount = dependentState.delayedBuilderPaymentCount
+	values.SourceBlockUid = dependentState.sourceBlockUid
 
 	for i, pendingConsolidation := range dependentState.pendingConsolidations {
 		srcIndicee := pendingConsolidation.SourceIndex

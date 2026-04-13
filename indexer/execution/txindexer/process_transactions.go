@@ -66,13 +66,11 @@ type txProcessingContext struct {
 	txResults []*txProcessingResult
 }
 
-// pendingSystemDeposit represents a system deposit before account IDs are resolved.
+// pendingSystemDeposit represents a fee recipient reward before account IDs are resolved.
 type pendingSystemDeposit struct {
-	depositType uint8
-	account     *pendingAccount
-	amount      float64
-	amountRaw   []byte
-	validator   *uint64
+	account   *pendingAccount
+	amount    float64
+	amountRaw []byte
 }
 
 // balanceDelta tracks cumulative balance changes for an account/token pair within a block.

@@ -39,6 +39,13 @@
                 <td>{{ formatEthFromGwei $block.Value }}</td>
               </tr>
             {{ end }}
+            {{ if .HasMoreBlocks }}
+            <tr>
+              <td colspan="6" class="text-center">
+                <a class="text-white" href="/slots/filtered?f&f.builder={{ .Index }}&d=0x407ff">View more blocks</a>
+              </td>
+            </tr>
+            {{ end }}
           {{ else }}
             <tr style="height: 430px;">
               <td></td>

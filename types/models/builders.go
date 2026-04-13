@@ -85,9 +85,13 @@ type BuilderPageData struct {
 	GloasIsActive bool   `json:"gloas_is_active"`
 
 	// Tab data (loaded conditionally)
-	RecentBlocks   []*BuilderPageDataBlock   `json:"recent_blocks"`
-	RecentBids     []*BuilderPageDataBid     `json:"recent_bids"`
-	RecentDeposits []*BuilderPageDataDeposit `json:"recent_deposits"`
+	RecentBlocks              []*BuilderPageDataBlock      `json:"recent_blocks"`
+	RecentBids                []*BuilderPageDataBid        `json:"recent_bids"`
+	RecentDeposits            []*BuilderPageDataDeposit    `json:"recent_deposits"`
+	Withdrawals               []*BuilderPageDataWithdrawal `json:"withdrawals"`
+	WithdrawalCount           uint64                       `json:"withdrawal_count"`
+	AdditionalWithdrawalCount uint64                       `json:"additional_withdrawal_count"`
+	HasMoreBlocks             bool                         `json:"has_more_blocks"`
 }
 
 // BuilderPageDataBlock represents a block/payload built by this builder
@@ -120,11 +124,38 @@ type BuilderPageDataBid struct {
 
 // BuilderPageDataDeposit represents a builder deposit transaction
 type BuilderPageDataDeposit struct {
-	Type       string    `json:"type"` // "deposit"
-	SlotNumber uint64    `json:"slot"`
-	SlotRoot   []byte    `json:"slot_root"`
-	Time       time.Time `json:"time"`
-	Orphaned   bool      `json:"orphaned"`
+	Type               string                           `json:"type"` // "deposit"
+	SlotNumber         uint64                           `json:"slot"`
+	SlotRoot           []byte                           `json:"slot_root"`
+	Time               time.Time                        `json:"time"`
+	Orphaned           bool                             `json:"orphaned"`
+	Amount             uint64                           `json:"amount"`
+	DepositorAddress   []byte                           `json:"depositor_address" ssz-size:"20"`
+	HasTransaction     bool                             `json:"has_transaction"`
+	TransactionHash    []byte                           `json:"tx_hash" ssz-size:"32"`
+	TransactionDetails *BuilderPageDataDepositTxDetails `json:"tx_details" ssz-type:"optional"`
+}
+
+// BuilderPageDataDepositTxDetails contains transaction details for deposit transactions
+type BuilderPageDataDepositTxDetails struct {
+	BlockNumber uint64 `json:"block"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   uint64 `json:"block_time"`
+	TxOrigin    string `json:"tx_origin"`
+	TxTarget    string `json:"tx_target"`
+	TxHash      string `json:"tx_hash"`
+}
+
+// BuilderPageDataWithdrawal represents a withdrawal on the builder detail page
+type BuilderPageDataWithdrawal struct {
+	SlotNumber  uint64    `json:"slot"`
+	BlockRoot   []byte    `json:"block_root" ssz-size:"32"`
+	Time        time.Time `json:"time"`
+	Orphaned    bool      `json:"orphaned"`
+	Type        uint8     `json:"type"`
+	Amount      uint64    `json:"amount"`
+	RefSlot     uint64    `json:"ref_slot"`
+	RefSlotRoot []byte    `json:"ref_slot_root" ssz-size:"32"`
 }
 
 // BuilderPageDataExitTxDetails contains transaction details for EL-triggered exits

@@ -292,50 +292,27 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 			}
 		}
 
-		// Insert system deposits (withdrawals and fee recipient rewards)
-		// BlockIndex 0 is reserved for fee recipients, withdrawals use 1+.
-		if len(procCtx.systemDeposits) > 0 {
-			// Resolve account IDs and create final withdrawal records
-			systemWithdrawals := make([]*dbtypes.ElWithdrawal, 0, len(procCtx.systemDeposits))
-			withdrawalIdx := uint16(1)
-			for _, pending := range procCtx.systemDeposits {
-				if pending.account.id == 0 {
-					continue // Skip if account ID not resolved
-				}
-
-				var blockIndex uint16
-				if pending.depositType == dbtypes.WithdrawalTypeFeeRecipient {
-					blockIndex = 0
-				} else {
-					blockIndex = withdrawalIdx
-					withdrawalIdx++
-				}
-
-				systemWithdrawals = append(systemWithdrawals, &dbtypes.ElWithdrawal{
-					BlockUid:   ref.BlockUID,
-					BlockIndex: blockIndex,
-					AccountID:  pending.account.id,
-					Type:       pending.depositType,
-					Amount:     pending.amount,
-					AmountRaw:  pending.amountRaw,
-					Validator:  pending.validator,
-				})
-			}
-
-			if len(systemWithdrawals) > 0 {
-				if err := db.InsertElWithdrawals(commitCtx, tx, systemWithdrawals); err != nil {
-					return fmt.Errorf("failed to insert system deposits: %w", err)
-				}
-			}
-		}
-
-		return db.InsertElBlock(commitCtx, tx, &dbtypes.ElBlock{
+		// Build el_block with fee data
+		elBlock := &dbtypes.ElBlock{
 			BlockUid:     ref.BlockUID,
 			Status:       0x01,
 			Events:       data.Stats.events,
 			Transactions: data.Stats.transactions,
 			Transfers:    data.Stats.transfers,
-		})
+		}
+
+		// Add fee recipient data to the block
+		for _, pending := range procCtx.systemDeposits {
+			if pending.account.id == 0 {
+				continue
+			}
+			accountID := pending.account.id
+			elBlock.FeeAmount = pending.amount
+			elBlock.FeeAmountRaw = pending.amountRaw
+			elBlock.FeeAccountID = &accountID
+		}
+
+		return db.InsertElBlock(commitCtx, tx, elBlock)
 	})
 
 	if err != nil {
@@ -374,40 +351,20 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	return stats, nil
 }
 
-// processBlockRewards processes fee recipient rewards and withdrawals from beacon block data.
+// processBlockRewards processes fee recipient rewards from beacon block data.
+// CL withdrawals are now handled by the beacon indexer.
 func (t *TxIndexer) processBlockRewards(procCtx *txProcessingContext, data *blockData) error {
 	// Process fee recipient if we have priority fees
 	if data.TotalPriorityFees != nil && data.TotalPriorityFees.Sign() > 0 {
 		// Ensure fee recipient account exists
 		feeRecipientAccount := procCtx.ensureAccount(data.FeeRecipient, nil, false)
 
-		// Create fee recipient withdrawal record (account ID will be resolved later)
+		// Store fee data for inclusion in el_blocks record
 		feeAmount := weiToFloat(data.TotalPriorityFees, 18) // ETH uses 18 decimals
 		procCtx.systemDeposits = append(procCtx.systemDeposits, &pendingSystemDeposit{
-			depositType: dbtypes.WithdrawalTypeFeeRecipient,
-			account:     feeRecipientAccount,
-			amount:      feeAmount,
-			amountRaw:   data.TotalPriorityFees.Bytes(),
-			validator:   nil,
-		})
-	}
-
-	// Process withdrawals if available
-	for _, withdrawal := range data.Withdrawals {
-		// Convert Gwei to Wei (1 Gwei = 10^9 Wei)
-		amountWei := new(big.Int).Mul(big.NewInt(int64(withdrawal.Amount)), big.NewInt(1e9))
-
-		// Ensure withdrawal address account exists
-		withdrawalAccount := procCtx.ensureAccount(withdrawal.Address, nil, false)
-
-		// Create withdrawal record (account ID will be resolved later)
-		withdrawalAmount := weiToFloat(amountWei, 18) // ETH uses 18 decimals
-		procCtx.systemDeposits = append(procCtx.systemDeposits, &pendingSystemDeposit{
-			depositType: dbtypes.WithdrawalTypeBeaconWithdrawal,
-			account:     withdrawalAccount,
-			amount:      withdrawalAmount,
-			amountRaw:   amountWei.Bytes(),
-			validator:   &withdrawal.Validator,
+			account:   feeRecipientAccount,
+			amount:    feeAmount,
+			amountRaw: data.TotalPriorityFees.Bytes(),
 		})
 	}
 
