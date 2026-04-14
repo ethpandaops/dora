@@ -45,6 +45,13 @@ func ReadConfig(cfg *types.Config, path string) error {
 			},
 		}
 	}
+
+	// ClientIndex selects a specific endpoint by index (0-based)
+	if cfg.BeaconApi.ClientIndex >= 0 && cfg.BeaconApi.ClientIndex < len(cfg.BeaconApi.Endpoints) {
+		selectedEndpoint := cfg.BeaconApi.Endpoints[cfg.BeaconApi.ClientIndex]
+		cfg.BeaconApi.Endpoints = []types.EndpointConfig{selectedEndpoint}
+	}
+
 	for idx, endpoint := range cfg.BeaconApi.Endpoints {
 		if endpoint.Name == "" {
 			url, _ := url.Parse(endpoint.Url)

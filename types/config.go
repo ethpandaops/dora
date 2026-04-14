@@ -97,6 +97,7 @@ type Config struct {
 		Endpoint     string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
 		Endpoints    []EndpointConfig `yaml:"endpoints"`
 		EndpointsURL string           `yaml:"endpointsUrl" envconfig:"BEACONAPI_ENDPOINTS_URL"`
+		ClientIndex  int              `yaml:"clientIndex" envconfig:"BEACONAPI_CLIENT_INDEX"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		SkipFinalAssignments bool   `yaml:"skipFinalAssignments" envconfig:"BEACONAPI_SKIP_FINAL_ASSIGNMENTS"`
@@ -131,7 +132,7 @@ type Config struct {
 		BadChainRoots []string `yaml:"badChainRoots" envconfig:"INDEXER_BAD_CHAIN_ROOTS"`
 
 		StateCache struct {
-			Enabled   bool   `yaml:"enabled" envconfig:"INDEXER_STATE_CACHE_ENABLED"`
+			Enabled   *bool  `yaml:"enabled" envconfig:"INDEXER_STATE_CACHE_ENABLED"`
 			Path      string `yaml:"path" envconfig:"INDEXER_STATE_CACHE_PATH"`
 			MaxStates uint   `yaml:"maxStates" envconfig:"INDEXER_STATE_CACHE_MAX_STATES"`
 		} `yaml:"stateCache"`

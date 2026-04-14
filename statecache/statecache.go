@@ -31,30 +31,52 @@ type StateCache struct {
 	path      string
 	maxStates uint
 	dynSsz    *dynssz.DynSsz
+	isTempDir bool
 }
 
 // New creates a new StateCache. Returns nil if the config disables caching.
 // The directory is created if it doesn't exist.
 func New(cfg *types.Config, dynSsz *dynssz.DynSsz) *StateCache {
 	scCfg := cfg.Indexer.StateCache
-	if !scCfg.Enabled || scCfg.Path == "" {
+
+	// Default to enabled when not explicitly set.
+	if scCfg.Enabled != nil && !*scCfg.Enabled {
 		return nil
+	}
+
+	path := scCfg.Path
+	if path == "" {
+		var err error
+		path, err = os.MkdirTemp("", "dora-statecache-*")
+		if err != nil {
+			return nil
+		}
 	}
 
 	maxStates := scCfg.MaxStates
 	if maxStates == 0 {
-		maxStates = 5
+		maxStates = 3
 	}
 
-	if err := os.MkdirAll(scCfg.Path, 0o750); err != nil {
+	if err := os.MkdirAll(path, 0o750); err != nil {
 		return nil
 	}
 
 	return &StateCache{
-		path:      scCfg.Path,
+		path:      path,
 		maxStates: maxStates,
 		dynSsz:    dynSsz,
+		isTempDir: scCfg.Path == "",
 	}
+}
+
+// Close removes the cache directory if it was auto-created as a temp dir.
+func (sc *StateCache) Close() {
+	if sc == nil || !sc.isTempDir {
+		return
+	}
+
+	os.RemoveAll(sc.path)
 }
 
 // stateKey identifies a cached state by dependent root and target epoch.

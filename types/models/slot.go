@@ -72,6 +72,7 @@ type SlotPageBlockData struct {
 	VoluntaryExitsCount        uint64                  `json:"voluntaryexits_count"`
 	SlashingsCount             uint64                  `json:"slashings_count"`
 	BlobsCount                 uint64                  `json:"blobs_count"`
+	ExecutionProofsCount       uint64                  `json:"execution_proofs_count"`
 	TransactionsCount          uint64                  `json:"transactions_count"`
 	DepositRequestsCount       uint64                  `json:"deposit_receipts_count"`
 	WithdrawalRequestsCount    uint64                  `json:"withdrawal_requests_count"`
@@ -94,6 +95,7 @@ type SlotPageBlockData struct {
 	BLSChanges            []*SlotPageBLSChange            `json:"bls_changes"`            // BLSChanges included in this block
 	Withdrawals           []*SlotPageWithdrawal           `json:"withdrawals"`            // Withdrawals included in this block
 	Blobs                 []*SlotPageBlob                 `json:"blobs"`                  // Blob sidecars included in this block
+	ExecutionProofs       []*SlotPageExecutionProof       `json:"execution_proofs"`       // Execution proofs included in this block
 	Transactions          []*SlotPageTransaction          `json:"transactions"`           // Transactions included in this block
 	DepositRequests       []*SlotPageDepositRequest       `json:"deposit_receipts"`       // DepositRequests included in this block
 	WithdrawalRequests    []*SlotPageWithdrawalRequest    `json:"withdrawal_requests"`    // WithdrawalRequests included in this block
@@ -369,4 +371,12 @@ type SlotPageInclusionList struct {
 	TransactionsCount          uint64                 `json:"transactions_count"`
 	TransactionsIncluded       []bool                 `json:"transactions_included"`
 	Signature                  []byte                 `json:"signature"`
+}
+
+type SlotPageExecutionProof struct {
+	ProofId   uint8  `json:"proof_id"`
+	Slot      uint64 `json:"slot"`
+	BlockHash []byte `json:"block_hash"`
+	BlockRoot []byte `json:"block_root"`
+	ProofData []byte `json:"proof_data"`
 }
