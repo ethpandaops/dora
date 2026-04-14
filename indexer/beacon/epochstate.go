@@ -250,14 +250,17 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 		cache.indexer.validatorCache.updateValidatorSet(slot, dependentRoot, validatorList)
 	}
 
-	// Process builder set for Gloas
-	if state.Version >= spec.DataVersionGloas && state.Gloas != nil {
+	// Process builder set for Gloas/Heze
+	if state.Version >= spec.DataVersionGloas {
+		builders, _ := state.Builders()
+
 		if cache != nil {
-			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, state.Gloas.Builders)
+			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, builders)
 		}
 
-		builderBalances := make([]phase0.Gwei, len(state.Gloas.Builders))
-		for i, builder := range state.Gloas.Builders {
+		// Extract builder balances
+		builderBalances := make([]phase0.Gwei, len(builders))
+		for i, builder := range builders {
 			builderBalances[i] = builder.Balance
 		}
 		s.builderBalances = builderBalances

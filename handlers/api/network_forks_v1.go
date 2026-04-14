@@ -137,6 +137,7 @@ func buildNetworkForks(chainState *consensus.ChainState) []*APINetworkForkInfo {
 	addConsensusFork("Electra", specs.ElectraForkEpoch, specs.ElectraForkVersion)
 	addConsensusFork("Fulu", specs.FuluForkEpoch, specs.FuluForkVersion)
 	addConsensusFork("Gloas", specs.GloasForkEpoch, specs.GloasForkVersion)
+	addConsensusFork("Heze", specs.HezeForkEpoch, specs.HezeForkVersion)
 
 	// Add BPO forks from BLOB_SCHEDULE
 	for i, blobSchedule := range specs.BlobSchedule {

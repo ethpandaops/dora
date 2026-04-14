@@ -42,15 +42,16 @@ type Indexer struct {
 	maxParallelStateCalls uint16
 
 	// caches
-	stateCache        *statecache.StateCache
-	blockCache        *blockCache
-	epochCache        *epochCache
-	forkCache         *forkCache
-	pubkeyCache       *pubkeyCache
-	validatorCache    *validatorCache
-	validatorActivity *validatorActivityCache
-	blockBidCache     *blockBidCache
-	builderCache      *builderCache
+	stateCache         *statecache.StateCache
+	blockCache         *blockCache
+	epochCache         *epochCache
+	forkCache          *forkCache
+	pubkeyCache        *pubkeyCache
+	validatorCache     *validatorCache
+	validatorActivity  *validatorActivityCache
+	blockBidCache      *blockBidCache
+	builderCache       *builderCache
+	inclusionListCache *inclusionListCache
 
 	// indexer state
 	clients               []*Client
@@ -125,6 +126,7 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
 	indexer.blockBidCache = newBlockBidCache(indexer)
 	indexer.builderCache = newBuilderCache(indexer)
+	indexer.inclusionListCache = newInclusionListCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	badChainRoots := utils.Config.Indexer.BadChainRoots

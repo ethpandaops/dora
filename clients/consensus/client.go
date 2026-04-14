@@ -56,6 +56,7 @@ type Client struct {
 	checkpointDispatcher          utils.Dispatcher[*v1.Finality]
 	executionPayloadDispatcher    utils.Dispatcher[*v1.ExecutionPayloadAvailableEvent]
 	executionPayloadBidDispatcher utils.Dispatcher[*gloas.SignedExecutionPayloadBid]
+	inclusionListDispatcher       utils.Dispatcher[*v1.InclusionListEvent]
 
 	specWarnings []string // warnings from incomplete spec checks
 	specs        map[string]interface{}
@@ -108,6 +109,10 @@ func (client *Client) SubscribeExecutionPayloadAvailableEvent(capacity int, bloc
 
 func (client *Client) SubscribeExecutionPayloadBidEvent(capacity int, blocking bool) *utils.Subscription[*gloas.SignedExecutionPayloadBid] {
 	return client.executionPayloadBidDispatcher.Subscribe(capacity, blocking)
+}
+
+func (client *Client) SubscribeInclusionListEvent(capacity int, blocking bool) *utils.Subscription[*v1.InclusionListEvent] {
+	return client.inclusionListDispatcher.Subscribe(capacity, blocking)
 }
 
 func (client *Client) GetPool() *Pool {
