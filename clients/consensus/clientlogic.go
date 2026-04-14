@@ -60,7 +60,7 @@ func (client *Client) checkClient() error {
 
 	err := client.rpcClient.Initialize(ctx)
 	if err != nil {
-		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
+		return fmt.Errorf("initialization of ethpandaops/go-eth2-client failed: %w", err)
 	}
 
 	// update node metadata

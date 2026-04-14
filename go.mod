@@ -7,6 +7,7 @@ require (
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/ethereum/go-ethereum v1.17.2
+	github.com/ethpandaops/eth-das-guardian v0.1.0
 	github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c
 	github.com/ethpandaops/ethwallclock v0.4.0
 	github.com/ethpandaops/go-eth2-client v0.0.1
