@@ -57,21 +57,25 @@ func InsertValidatorBatch(ctx context.Context, tx *sqlx.Tx, validators []*dbtype
 		return nil
 	}
 
-	valueStrings := make([]string, len(validators))
 	valueArgs := make([]interface{}, 0, len(validators)*9)
-	for i, val := range validators {
-		valueStrings[i] = fmt.Sprintf("($%v, $%v, $%v, $%v, $%v, $%v, $%v, $%v, $%v)",
-			i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9)
+	var values strings.Builder
+	for i, validator := range validators {
+		if i > 0 {
+			values.WriteByte(',')
+		}
+		values.WriteByte('(')
+		appendDollarPlaceholders(&values, i*9+1, 9, ", ")
+		values.WriteByte(')')
 		valueArgs = append(valueArgs,
-			val.ValidatorIndex,
-			val.Pubkey,
-			val.WithdrawalCredentials,
-			val.EffectiveBalance,
-			val.Slashed,
-			val.ActivationEligibilityEpoch,
-			val.ActivationEpoch,
-			val.ExitEpoch,
-			val.WithdrawableEpoch)
+			validator.ValidatorIndex,
+			validator.Pubkey,
+			validator.WithdrawalCredentials,
+			validator.EffectiveBalance,
+			validator.Slashed,
+			validator.ActivationEligibilityEpoch,
+			validator.ActivationEpoch,
+			validator.ExitEpoch,
+			validator.WithdrawableEpoch)
 	}
 
 	stmt := fmt.Sprintf(EngineQuery(map[dbtypes.DBEngineType]string{
@@ -95,7 +99,7 @@ func InsertValidatorBatch(ctx context.Context, tx *sqlx.Tx, validators []*dbtype
 				slashed, activation_eligibility_epoch, activation_epoch,
 				exit_epoch, withdrawable_epoch
 			) VALUES %s`,
-	}), strings.Join(valueStrings, ","))
+	}), values.String())
 
 	_, err := tx.ExecContext(ctx, stmt, valueArgs...)
 	if err != nil {
@@ -220,12 +224,12 @@ func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64
 		filterOp = "AND"
 	}
 	if len(filter.Indices) > 0 {
-		indices := []string{}
 		for _, index := range filter.Indices {
 			args = append(args, index)
-			indices = append(indices, fmt.Sprintf("$%v", len(args)))
 		}
-		fmt.Fprintf(sql, " %v validator_index IN (%s)", filterOp, strings.Join(indices, ","))
+		fmt.Fprintf(sql, " %v validator_index IN (", filterOp)
+		appendDollarPlaceholders(sql, len(args)-len(filter.Indices)+1, len(filter.Indices), ",")
+		fmt.Fprint(sql, ")")
 		filterOp = "AND"
 	}
 	if len(filter.PubKey) > 0 {
@@ -269,12 +273,12 @@ func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64
 		filterOp = "AND"
 	}
 	if len(filter.Status) > 0 {
-		values := []string{}
 		for _, status := range filter.Status {
 			args = append(args, status)
-			values = append(values, fmt.Sprintf("$%v", len(args)))
 		}
-		fmt.Fprintf(sql, " %v %v IN (%s)", filterOp, buildValidatorStatusSql(currentEpoch), strings.Join(values, ","))
+		fmt.Fprintf(sql, " %v %v IN (", filterOp, buildValidatorStatusSql(currentEpoch))
+		appendDollarPlaceholders(sql, len(args)-len(filter.Status)+1, len(filter.Status), ",")
+		fmt.Fprint(sql, ")")
 		filterOp = "AND"
 	}
 
@@ -317,12 +321,9 @@ func StreamValidatorsByIndexes(ctx context.Context, indexes []uint64, cb func(va
 
 		args := make([]any, len(batch))
 		for j, index := range batch {
-			if j > 0 {
-				fmt.Fprintf(&sql, ", ")
-			}
-			fmt.Fprintf(&sql, "$%v", j+1)
 			args[j] = index
 		}
+		appendDollarPlaceholders(&sql, 1, len(batch), ", ")
 		fmt.Fprintf(&sql, ")")
 
 		// Create index map for ordering

@@ -83,7 +83,7 @@ func GetConsolidationRequestTxsByDequeueRange(ctx context.Context, dequeueFirst 
 
 func GetConsolidationRequestTxsByTxHashes(ctx context.Context, txHashes [][]byte) []*dbtypes.ConsolidationRequestTx {
 	var sql strings.Builder
-	args := []interface{}{}
+	args := make([]any, len(txHashes))
 
 	fmt.Fprint(&sql, `SELECT consolidation_request_txs.*
 		FROM consolidation_request_txs
@@ -91,12 +91,9 @@ func GetConsolidationRequestTxsByTxHashes(ctx context.Context, txHashes [][]byte
 	`)
 
 	for idx, txHash := range txHashes {
-		if idx > 0 {
-			fmt.Fprintf(&sql, ", ")
-		}
-		args = append(args, txHash)
-		fmt.Fprintf(&sql, "$%v", len(args))
+		args[idx] = txHash
 	}
+	appendDollarPlaceholders(&sql, 1, len(txHashes), ", ")
 	fmt.Fprintf(&sql, ")")
 
 	consolidationTxs := []*dbtypes.ConsolidationRequestTx{}
@@ -190,23 +187,7 @@ func GetConsolidationRequestTxsFiltered(ctx context.Context, offset uint64, limi
 		filterOp = "AND"
 	}
 
-	if filter.WithOrphaned != 1 {
-		forkIdStr := make([]string, len(canonicalForkIds))
-		for i, forkId := range canonicalForkIds {
-			forkIdStr[i] = fmt.Sprintf("%v", forkId)
-		}
-		if len(forkIdStr) == 0 {
-			forkIdStr = append(forkIdStr, "0")
-		}
-
-		if filter.WithOrphaned == 0 {
-			fmt.Fprintf(&sql, " %v fork_id IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		} else if filter.WithOrphaned == 2 {
-			fmt.Fprintf(&sql, " %v fork_id NOT IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		}
-	}
+	appendWithOrphanedFilter(&sql, &args, &filterOp, filter.WithOrphaned, canonicalForkIds, "fork_id")
 
 	args = append(args, limit)
 	fmt.Fprintf(&sql, `) 

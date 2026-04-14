@@ -142,22 +142,23 @@ func GetMevBlocksByBlockHashes(ctx context.Context, blockHashes [][]byte) map[st
 
 	// Create a query with multiple parameters
 	queryArgs := make([]interface{}, len(blockHashes))
-	placeholders := make([]string, len(blockHashes))
 
 	for i, hash := range blockHashes {
 		queryArgs[i] = hash
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
 	}
 
-	query := fmt.Sprintf(`
+	var sql strings.Builder
+	fmt.Fprint(&sql, `
 	SELECT
 		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
 	FROM mev_blocks
-	WHERE block_hash IN (%s)
-	`, strings.Join(placeholders, ", "))
+	WHERE block_hash IN (`)
+	appendDollarPlaceholders(&sql, 1, len(blockHashes), ", ")
+	fmt.Fprint(&sql, `
+	`)
 
 	mevBlocks := []*dbtypes.MevBlock{}
-	err := ReaderDb.SelectContext(ctx, &mevBlocks, query, queryArgs...)
+	err := ReaderDb.SelectContext(ctx, &mevBlocks, sql.String(), queryArgs...)
 	if err != nil {
 		logger.Errorf("Error while fetching MEV blocks by hashes: %v", err)
 		return map[string]*dbtypes.MevBlock{}
@@ -166,7 +167,7 @@ func GetMevBlocksByBlockHashes(ctx context.Context, blockHashes [][]byte) map[st
 	// Convert to map for easy lookup
 	result := make(map[string]*dbtypes.MevBlock, len(mevBlocks))
 	for _, block := range mevBlocks {
-		result[fmt.Sprintf("%x", block.BlockHash)] = block
+		result[byteSliceMapKey(block.BlockHash)] = block
 	}
 
 	return result

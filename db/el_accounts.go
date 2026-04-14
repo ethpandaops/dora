@@ -292,12 +292,9 @@ func GetElAccountsByAddresses(ctx context.Context, addresses [][]byte) (map[stri
 
 	fmt.Fprint(&sql, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE address IN (")
 	for i, addr := range addresses {
-		if i > 0 {
-			fmt.Fprint(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%d", i+1)
 		args[i] = addr
 	}
+	appendDollarPlaceholders(&sql, 1, len(addresses), ", ")
 	fmt.Fprint(&sql, ")")
 
 	accounts := []*dbtypes.ElAccount{}
@@ -310,9 +307,7 @@ func GetElAccountsByAddresses(ctx context.Context, addresses [][]byte) (map[stri
 	// Build map from address to account
 	result := make(map[string]*dbtypes.ElAccount, len(accounts))
 	for _, account := range accounts {
-		// Use hex string of address as key for efficient lookup
-		key := fmt.Sprintf("%x", account.Address)
-		result[key] = account
+		result[byteSliceMapKey(account.Address)] = account
 	}
 	return result, nil
 }
@@ -328,12 +323,9 @@ func GetElAccountsByIDs(ctx context.Context, ids []uint64) ([]*dbtypes.ElAccount
 
 	fmt.Fprint(&sql, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE id IN (")
 	for i, id := range ids {
-		if i > 0 {
-			fmt.Fprint(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%d", i+1)
 		args[i] = id
 	}
+	appendDollarPlaceholders(&sql, 1, len(ids), ", ")
 	fmt.Fprint(&sql, ")")
 
 	accounts := []*dbtypes.ElAccount{}

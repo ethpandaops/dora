@@ -76,12 +76,9 @@ func GetElBlocksByUids(ctx context.Context, blockUids []uint64) ([]*dbtypes.ElBl
 	args := make([]any, len(blockUids))
 	fmt.Fprintf(&sql, "SELECT %s FROM el_blocks WHERE block_uid IN (", elBlockColumns)
 	for i, uid := range blockUids {
-		if i > 0 {
-			fmt.Fprint(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%v", i+1)
 		args[i] = uid
 	}
+	appendDollarPlaceholders(&sql, 1, len(blockUids), ", ")
 	fmt.Fprint(&sql, ")")
 
 	blocks := []*dbtypes.ElBlock{}
@@ -103,12 +100,9 @@ func ResetElBlockDataStatus(ctx context.Context, dbTx *sqlx.Tx, blockUids []uint
 	args := make([]any, len(blockUids))
 	fmt.Fprint(&sql, "UPDATE el_blocks SET data_status = 0, data_size = 0 WHERE block_uid IN (")
 	for i, uid := range blockUids {
-		if i > 0 {
-			fmt.Fprint(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%v", i+1)
 		args[i] = uid
 	}
+	appendDollarPlaceholders(&sql, 1, len(blockUids), ", ")
 	fmt.Fprint(&sql, ")")
 
 	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
