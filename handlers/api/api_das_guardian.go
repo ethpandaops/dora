@@ -12,7 +12,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/utils"
-	dasguardian "github.com/probe-lab/eth-das-guardian"
+	dasguardian "github.com/ethpandaops/eth-das-guardian"
 	"github.com/sirupsen/logrus"
 )
 
