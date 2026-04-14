@@ -103,12 +103,9 @@ func GetElTransactionsByHashes(ctx context.Context, txHashes [][]byte) ([]*dbtyp
 
 	fmt.Fprint(&sql, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE tx_hash IN (")
 	for i, h := range txHashes {
-		if i > 0 {
-			fmt.Fprint(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%d", i+1)
 		args[i] = h
 	}
+	appendDollarPlaceholders(&sql, 1, len(txHashes), ", ")
 	fmt.Fprint(&sql, ")")
 
 	txs := []*dbtypes.ElTransaction{}
