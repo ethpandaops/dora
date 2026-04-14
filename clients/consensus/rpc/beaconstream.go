@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
@@ -36,15 +37,17 @@ type BeaconStreamStatus struct {
 }
 
 type BeaconStream struct {
-	ctx          context.Context
-	ctxCancel    context.CancelFunc
-	logger       logrus.FieldLogger
-	running      bool
-	events       uint16
-	client       *BeaconClient
-	ReadyChan    chan *BeaconStreamStatus
-	EventChan    chan *BeaconStreamEvent
-	lastHeadSeen time.Time
+	ctx              context.Context
+	ctxCancel        context.CancelFunc
+	logger           logrus.FieldLogger
+	running          bool
+	events           uint16
+	client           *BeaconClient
+	ReadyChan        chan *BeaconStreamStatus
+	EventChan        chan *BeaconStreamEvent
+	lastHeadSeen     time.Time
+	ancillaryLock    sync.Mutex
+	ancillaryStarted uint16
 }
 
 func (bc *BeaconClient) NewBlockStream(ctx context.Context, logger logrus.FieldLogger, events uint16) *BeaconStream {
@@ -74,7 +77,6 @@ func (bs *BeaconStream) startStream() {
 		bs.running = false
 	}()
 
-	// Subscribe to basic events (block, head, finalized_checkpoint)
 	basicEvents := bs.events & (StreamBlockEvent | StreamHeadEvent | StreamFinalizedEvent)
 	basicStream := bs.subscribeStream(bs.client.endpoint, basicEvents)
 	if basicStream == nil {
@@ -82,38 +84,12 @@ func (bs *BeaconStream) startStream() {
 	}
 	defer basicStream.Close()
 
-	// Subscribe to advanced events (execution_payload_available, execution_payload_bid, inclusion_list)
-	// These are in a separate stream because clients may not support them yet,
-	// and subscribing to unsupported topics can cause the entire subscription to fail.
-	// Run in a separate goroutine so it doesn't block the basic stream.
-	advancedEvents := bs.events & (StreamExecutionPayloadEvent | StreamExecutionPayloadBidEvent | StreamInclusionListEvent)
-	advancedStreamChan := make(chan *eventstream.Stream, 1)
-	if advancedEvents > 0 {
-		go func() {
-			stream := bs.subscribeStream(bs.client.endpoint, advancedEvents)
-			select {
-			case advancedStreamChan <- stream:
-			case <-bs.ctx.Done():
-				if stream != nil {
-					stream.Close()
-				}
-			}
-		}()
-	}
-
-	var advancedStream *eventstream.Stream
-	defer func() {
-		if advancedStream != nil {
-			advancedStream.Close()
-		}
-	}()
+	bs.ensureAncillaryStreams(bs.events)
 
 	for {
 		select {
 		case <-bs.ctx.Done():
 			return
-
-		// Basic stream events
 		case evt := <-basicStream.Events:
 			switch evt.Event() {
 			case "block":
@@ -129,13 +105,56 @@ func (bs *BeaconStream) startStream() {
 			}
 		case err := <-basicStream.Errors:
 			bs.handleStreamError(basicStream, err)
+		}
+	}
+}
 
-		// Advanced stream connection established
-		case stream := <-advancedStreamChan:
-			advancedStream = stream
+// UpdateEvents opens SSE requests for any new event bits without restarting
+// already-running streams. Additive only.
+func (bs *BeaconStream) UpdateEvents(events uint16) {
+	bs.ancillaryLock.Lock()
+	bs.events |= events
+	bs.ancillaryLock.Unlock()
 
-		// Advanced stream events (no Ready/Error forwarding)
-		case evt := <-bs.getAdvancedStreamEvents(advancedStream):
+	bs.ensureAncillaryStreams(events)
+}
+
+func (bs *BeaconStream) ensureAncillaryStreams(events uint16) {
+	gloasEvents := events & (StreamExecutionPayloadEvent | StreamExecutionPayloadBidEvent)
+	bs.startAncillaryStream(gloasEvents)
+
+	hezeEvents := events & StreamInclusionListEvent
+	bs.startAncillaryStream(hezeEvents)
+}
+
+func (bs *BeaconStream) startAncillaryStream(events uint16) {
+	if events == 0 {
+		return
+	}
+
+	bs.ancillaryLock.Lock()
+	if bs.ancillaryStarted&events == events {
+		bs.ancillaryLock.Unlock()
+		return
+	}
+	bs.ancillaryStarted |= events
+	bs.ancillaryLock.Unlock()
+
+	go bs.runAncillaryStream(events)
+}
+
+func (bs *BeaconStream) runAncillaryStream(events uint16) {
+	stream := bs.subscribeStream(bs.client.endpoint, events)
+	if stream == nil {
+		return
+	}
+	defer stream.Close()
+
+	for {
+		select {
+		case <-bs.ctx.Done():
+			return
+		case evt := <-stream.Events:
 			switch evt.Event() {
 			case "execution_payload_available":
 				bs.processExecutionPayloadAvailableEvent(evt)
@@ -144,38 +163,12 @@ func (bs *BeaconStream) startStream() {
 			case "inclusion_list":
 				bs.processInclusionListEvent(evt)
 			}
-		case <-bs.getAdvancedStreamReady(advancedStream):
-			// Don't forward ready events from advanced stream
-		case <-bs.getAdvancedStreamErrors(advancedStream):
-			// Silently retry - clients may not support these events yet
+		case <-stream.Ready:
+		case <-stream.Errors:
 			time.Sleep(10 * time.Millisecond)
-			advancedStream.RetryNow()
+			stream.RetryNow()
 		}
 	}
-}
-
-// getAdvancedStreamEvents returns the events channel or a nil channel if stream is nil.
-func (bs *BeaconStream) getAdvancedStreamEvents(stream *eventstream.Stream) chan eventstream.StreamEvent {
-	if stream == nil {
-		return nil
-	}
-	return stream.Events
-}
-
-// getAdvancedStreamReady returns the ready channel or a nil channel if stream is nil.
-func (bs *BeaconStream) getAdvancedStreamReady(stream *eventstream.Stream) chan bool {
-	if stream == nil {
-		return nil
-	}
-	return stream.Ready
-}
-
-// getAdvancedStreamErrors returns the errors channel or a nil channel if stream is nil.
-func (bs *BeaconStream) getAdvancedStreamErrors(stream *eventstream.Stream) chan error {
-	if stream == nil {
-		return nil
-	}
-	return stream.Errors
 }
 
 // handleStreamError handles stream errors and forwards them to the ReadyChan.

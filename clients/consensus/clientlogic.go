@@ -229,8 +229,9 @@ func (client *Client) runClientLogic() error {
 		currentEpoch := client.pool.chainState.CurrentEpoch()
 		currentSlot := client.pool.chainState.CurrentSlot()
 
-		if client.buildEventStreamMask() != streamMask {
-			return fmt.Errorf("event stream topics changed after fork activation, reconnecting")
+		if newMask := client.buildEventStreamMask(); newMask != streamMask {
+			blockStream.UpdateEvents(newMask &^ streamMask)
+			streamMask = newMask
 		}
 
 		if currentEpoch-client.lastSyncUpdateEpoch >= 1 {
