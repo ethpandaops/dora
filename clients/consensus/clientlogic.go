@@ -121,6 +121,23 @@ func (client *Client) checkClient() error {
 	return nil
 }
 
+func (client *Client) buildEventStreamMask() uint16 {
+	events := uint16(rpc.StreamBlockEvent | rpc.StreamHeadEvent | rpc.StreamFinalizedEvent)
+
+	chainState := client.pool.chainState
+	currentEpoch := chainState.CurrentEpoch()
+
+	if chainState.IsEip7732Enabled(currentEpoch) {
+		events |= rpc.StreamExecutionPayloadEvent | rpc.StreamExecutionPayloadBidEvent
+	}
+
+	if chainState.IsEip7805Enabled(currentEpoch) {
+		events |= rpc.StreamInclusionListEvent
+	}
+
+	return events
+}
+
 func (client *Client) runClientLogic() error {
 	// get latest header
 	err := client.pollClientHead()
@@ -133,11 +150,11 @@ func (client *Client) runClientLogic() error {
 		return fmt.Errorf("beacon node is synchronizing")
 	}
 
-	// start event stream
+	streamMask := client.buildEventStreamMask()
 	blockStream := client.rpcClient.NewBlockStream(
 		client.clientCtx,
 		client.logger,
-		rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent|rpc.StreamExecutionPayloadEvent|rpc.StreamExecutionPayloadBidEvent|rpc.StreamInclusionListEvent,
+		streamMask,
 	)
 	defer blockStream.Close()
 
@@ -211,6 +228,11 @@ func (client *Client) runClientLogic() error {
 
 		currentEpoch := client.pool.chainState.CurrentEpoch()
 		currentSlot := client.pool.chainState.CurrentSlot()
+
+		if newMask := client.buildEventStreamMask(); newMask != streamMask {
+			blockStream.UpdateEvents(newMask &^ streamMask)
+			streamMask = newMask
+		}
 
 		if currentEpoch-client.lastSyncUpdateEpoch >= 1 {
 			// update sync status
