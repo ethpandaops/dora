@@ -5,7 +5,6 @@ go 1.25.1
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/allegro/bigcache/v3 v3.1.0
-	github.com/attestantio/go-eth2-client v0.27.1
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/ethereum/go-ethereum v1.17.2
 	github.com/ethpandaops/eth-das-guardian v0.1.0
