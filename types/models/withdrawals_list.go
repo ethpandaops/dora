@@ -6,12 +6,15 @@ import (
 
 // WithdrawalsListPageData is a struct to hold info for the withdrawals list page.
 type WithdrawalsListPageData struct {
-	FilterValidator    string `json:"filter_validator"`
-	FilterAddress      string `json:"filter_address"`
-	FilterWithType     string `json:"filter_type"`
-	FilterMinAmount    string `json:"filter_min_amount"`
-	FilterMaxAmount    string `json:"filter_max_amount"`
-	FilterWithOrphaned uint8  `json:"filter_orphaned"`
+	FilterEntity        string `json:"filter_entity"` // "all", "validator", or "builder"
+	FilterMinIndex      uint64 `json:"filter_mini"`
+	FilterMaxIndex      uint64 `json:"filter_maxi"`
+	FilterValidatorName string `json:"filter_vname"`
+	FilterAddress       string `json:"filter_address"`
+	FilterWithType      string `json:"filter_type"`
+	FilterMinAmount     string `json:"filter_min_amount"`
+	FilterMaxAmount     string `json:"filter_max_amount"`
+	FilterWithOrphaned  uint8  `json:"filter_orphaned"`
 
 	Withdrawals     []*WithdrawalsListPageDataWithdrawal `json:"withdrawals"`
 	WithdrawalCount uint64                               `json:"withdrawal_count"`
@@ -43,8 +46,11 @@ type WithdrawalsListPageDataWithdrawal struct {
 	Orphaned       bool      `json:"orphaned"`
 	Type           uint8     `json:"type"`
 	HasValidator   bool      `json:"has_validator"`
+	IsBuilder      bool      `json:"is_builder"`
 	ValidatorIndex uint64    `json:"vindex"`
 	ValidatorName  string    `json:"vname"`
 	Address        []byte    `json:"address" ssz-size:"20"`
 	Amount         uint64    `json:"amount"` // Gwei
+	RefSlot        uint64    `json:"ref_slot"`
+	RefSlotRoot    []byte    `json:"ref_slot_root" ssz-size:"32"`
 }

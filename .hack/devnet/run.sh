@@ -147,6 +147,10 @@ indexer:
   cachePersistenceDelay: 8
   disableIndexWriter: false
   syncEpochCooldown: 1
+  stateCache:
+    enabled: true
+    path: "${__dir}/generated-state-cache"
+    maxStates: 5
 executionIndexer:
   enabled: true
   retention: 4368h

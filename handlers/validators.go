@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"

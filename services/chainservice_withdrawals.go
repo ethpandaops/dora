@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
@@ -476,7 +476,10 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 				withdrawals := block.GetDbWithdrawals(bs.beaconIndexer, isCanonical)
 
 				for idx, withdrawal := range withdrawals {
-					if filter.Validator != nil && withdrawal.Validator != *filter.Validator {
+					if filter.MinIndex > 0 && withdrawal.Validator < filter.MinIndex {
+						continue
+					}
+					if filter.MaxIndex > 0 && withdrawal.Validator > filter.MaxIndex {
 						continue
 					}
 					if filter.AccountID != nil {

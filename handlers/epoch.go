@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -91,7 +91,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	specs := chainState.GetSpecs()
 	currentSlot := chainState.CurrentSlot()
 	currentEpoch := chainState.EpochOfSlot(currentSlot)
-	if epoch > uint64(currentEpoch) {
+	if epoch > uint64(currentEpoch)+1 {
 		return nil, -1
 	}
 
@@ -105,7 +105,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	}
 
 	nextEpoch := epoch + 1
-	if nextEpoch > uint64(currentEpoch) {
+	if nextEpoch > uint64(currentEpoch)+1 {
 		nextEpoch = 0
 	}
 	firstSlot := chainState.EpochToSlot(phase0.Epoch(epoch))
@@ -170,12 +170,18 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 				pageData.MissedCount++
 			}
 
+			payloadStatus := dbSlot.PayloadStatus
+			if !chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
+				payloadStatus = dbtypes.PayloadStatusCanonical
+			}
+
 			slotData := &models.EpochPageDataSlot{
 				Slot:                  slot,
 				Epoch:                 uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
 				Ts:                    chainState.SlotToTime(phase0.Slot(slot)),
 				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Status:                uint8(dbSlot.Status),
+				PayloadStatus:         uint8(payloadStatus),
 				Proposer:              dbSlot.Proposer,
 				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				AttestationCount:      dbSlot.AttestationCount,

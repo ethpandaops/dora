@@ -39,6 +39,7 @@ type WithdrawalsPageDataRecentWithdrawal struct {
 	ValidatorValid    bool      `json:"vvalid"`
 	ValidatorIndex    uint64    `json:"vindex"`
 	ValidatorName     string    `json:"vname"`
+	IsBuilder         bool      `json:"is_builder"`
 	PublicKey         []byte    `json:"pubkey" ssz-size:"48"`
 	LinkedTransaction bool      `json:"linked_tx"`
 	TransactionHash   []byte    `json:"tx_hash" ssz-size:"32"`
@@ -66,8 +67,11 @@ type WithdrawalsPageDataBeaconWithdrawal struct {
 	Orphaned       bool      `json:"orphaned"`
 	Type           uint8     `json:"type"`
 	HasValidator   bool      `json:"has_validator"`
+	IsBuilder      bool      `json:"is_builder"`
 	ValidatorIndex uint64    `json:"vindex"`
 	ValidatorName  string    `json:"vname"`
 	Address        []byte    `json:"address" ssz-size:"20"`
 	Amount         uint64    `json:"amount"` // Gwei
+	RefSlot        uint64    `json:"ref_slot"`
+	RefSlotRoot    []byte    `json:"ref_slot_root" ssz-size:"32"`
 }

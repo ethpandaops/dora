@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
@@ -44,7 +44,10 @@ func WithdrawalsList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var validator string
+	var entity string
+	var minIndex uint64
+	var maxIndex uint64
+	var vname string
 	var address string
 	var minAmount string
 	var maxAmount string
@@ -52,8 +55,17 @@ func WithdrawalsList(w http.ResponseWriter, r *http.Request) {
 	var withOrphaned uint64
 
 	if urlArgs.Has("f") {
-		if urlArgs.Has("f.validator") {
-			validator = urlArgs.Get("f.validator")
+		if urlArgs.Has("f.entity") {
+			entity = urlArgs.Get("f.entity")
+		}
+		if urlArgs.Has("f.mini") {
+			minIndex, _ = strconv.ParseUint(urlArgs.Get("f.mini"), 10, 64)
+		}
+		if urlArgs.Has("f.maxi") {
+			maxIndex, _ = strconv.ParseUint(urlArgs.Get("f.maxi"), 10, 64)
+		}
+		if urlArgs.Has("f.vname") {
+			vname = urlArgs.Get("f.vname")
 		}
 		if urlArgs.Has("f.address") {
 			address = urlArgs.Get("f.address")
@@ -74,10 +86,20 @@ func WithdrawalsList(w http.ResponseWriter, r *http.Request) {
 		withOrphaned = 1
 	}
 
+	// Apply builder flag to index filters when entity=builder
+	if entity == "builder" {
+		if minIndex > 0 {
+			minIndex |= services.BuilderIndexFlag
+		}
+		if maxIndex > 0 {
+			maxIndex |= services.BuilderIndexFlag
+		}
+	}
+
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredWithdrawalsListPageData(pageIdx, pageSize, validator, address, withType, minAmount, maxAmount, uint8(withOrphaned))
+		data.Data, pageError = getFilteredWithdrawalsListPageData(pageIdx, pageSize, entity, minIndex, maxIndex, vname, address, withType, minAmount, maxAmount, uint8(withOrphaned))
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -89,11 +111,11 @@ func WithdrawalsList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredWithdrawalsListPageData(pageIdx uint64, pageSize uint64, validator string, address string, withType string, minAmount string, maxAmount string, withOrphaned uint8) (*models.WithdrawalsListPageData, error) {
+func getFilteredWithdrawalsListPageData(pageIdx uint64, pageSize uint64, entity string, minIndex uint64, maxIndex uint64, vname string, address string, withType string, minAmount string, maxAmount string, withOrphaned uint8) (*models.WithdrawalsListPageData, error) {
 	pageData := &models.WithdrawalsListPageData{}
-	pageCacheKey := fmt.Sprintf("withdrawals_list:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, validator, address, withType, minAmount, maxAmount, withOrphaned)
+	pageCacheKey := fmt.Sprintf("withdrawals_list:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, entity, minIndex, maxIndex, vname, address, withType, minAmount, maxAmount, withOrphaned)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildFilteredWithdrawalsListPageData(pageCall.CallCtx, pageIdx, pageSize, validator, address, withType, minAmount, maxAmount, withOrphaned)
+		pageData, cacheTimeout := buildFilteredWithdrawalsListPageData(pageCall.CallCtx, pageIdx, pageSize, entity, minIndex, maxIndex, vname, address, withType, minAmount, maxAmount, withOrphaned)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -107,10 +129,23 @@ func getFilteredWithdrawalsListPageData(pageIdx uint64, pageSize uint64, validat
 	return pageData, pageErr
 }
 
-func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, pageSize uint64, validator string, address string, withType string, minAmount string, maxAmount string, withOrphaned uint8) (*models.WithdrawalsListPageData, time.Duration) {
+func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, pageSize uint64, entity string, minIndex uint64, maxIndex uint64, vname string, address string, withType string, minAmount string, maxAmount string, withOrphaned uint8) (*models.WithdrawalsListPageData, time.Duration) {
+	if entity == "" {
+		entity = "all"
+	}
+
 	filterArgs := url.Values{}
-	if validator != "" {
-		filterArgs.Add("f.validator", validator)
+	if entity != "all" {
+		filterArgs.Add("f.entity", entity)
+	}
+	if minIndex != 0 {
+		filterArgs.Add("f.mini", fmt.Sprintf("%v", minIndex))
+	}
+	if maxIndex != 0 {
+		filterArgs.Add("f.maxi", fmt.Sprintf("%v", maxIndex))
+	}
+	if vname != "" {
+		filterArgs.Add("f.vname", vname)
 	}
 	if address != "" {
 		filterArgs.Add("f.address", address)
@@ -128,16 +163,27 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 		filterArgs.Add("f.orphaned", fmt.Sprintf("%v", withOrphaned))
 	}
 
+	// Display indices without the builder flag for the filter UI
+	displayMinIndex := minIndex
+	displayMaxIndex := maxIndex
+	if entity == "builder" {
+		displayMinIndex = minIndex &^ services.BuilderIndexFlag
+		displayMaxIndex = maxIndex &^ services.BuilderIndexFlag
+	}
+
 	pageData := &models.WithdrawalsListPageData{
-		FilterValidator:    validator,
-		FilterAddress:      address,
-		FilterWithType:     withType,
-		FilterMinAmount:    minAmount,
-		FilterMaxAmount:    maxAmount,
-		FilterWithOrphaned: withOrphaned,
+		FilterEntity:        entity,
+		FilterMinIndex:      displayMinIndex,
+		FilterMaxIndex:      displayMaxIndex,
+		FilterValidatorName: vname,
+		FilterAddress:       address,
+		FilterWithType:      withType,
+		FilterMinAmount:     minAmount,
+		FilterMaxAmount:     maxAmount,
+		FilterWithOrphaned:  withOrphaned,
 	}
 	cacheTimeout := 5 * time.Minute
-	logrus.Debugf("withdrawals_list page called: %v:%v [%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, validator, address, withType, minAmount, maxAmount, withOrphaned)
+	logrus.Debugf("withdrawals_list page called: %v:%v [%v,%v,%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, entity, minIndex, maxIndex, vname, address, withType, minAmount, maxAmount)
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
 	} else {
@@ -156,17 +202,14 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 
 	// Build filter
 	withdrawalFilter := &dbtypes.WithdrawalFilter{
+		MinIndex:     minIndex,
+		MaxIndex:     maxIndex,
 		WithOrphaned: withOrphaned,
 	}
 
-	// Parse validator filter (index or name)
-	if validator != "" {
-		validatorIndex, err := strconv.ParseUint(validator, 10, 64)
-		if err == nil {
-			withdrawalFilter.Validator = &validatorIndex
-		} else {
-			withdrawalFilter.ValidatorName = validator
-		}
+	// Only apply name filter when a specific entity is selected
+	if entity != "all" && vname != "" {
+		withdrawalFilter.ValidatorName = vname
 	}
 
 	// Parse address filter -> resolve to account_id
@@ -183,7 +226,7 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 	// Parse type filter (comma-separated list of type values 1-3)
 	if withType != "" {
 		for _, t := range strings.Split(withType, ",") {
-			if v, err := strconv.ParseUint(strings.TrimSpace(t), 10, 8); err == nil && v >= 1 && v <= 3 {
+			if v, err := strconv.ParseUint(strings.TrimSpace(t), 10, 8); err == nil && v >= 1 && v <= 6 {
 				withdrawalFilter.Types = append(withdrawalFilter.Types, uint8(v))
 			}
 		}
@@ -226,13 +269,17 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 		}
 	}
 
-	// Batch resolve blocks for block root and number
-	blockUids := make([]uint64, 0, len(dbWithdrawals))
-	blockUidSet := make(map[uint64]bool, len(dbWithdrawals))
+	// Batch resolve blocks for block root, number, and ref slot
+	blockUids := make([]uint64, 0, len(dbWithdrawals)*2)
+	blockUidSet := make(map[uint64]bool, len(dbWithdrawals)*2)
 	for _, w := range dbWithdrawals {
 		if !blockUidSet[w.BlockUid] {
 			blockUidSet[w.BlockUid] = true
 			blockUids = append(blockUids, w.BlockUid)
+		}
+		if w.RefSlot != nil && !blockUidSet[*w.RefSlot] {
+			blockUidSet[*w.RefSlot] = true
+			blockUids = append(blockUids, *w.RefSlot)
 		}
 	}
 	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
@@ -261,7 +308,12 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 		}
 
 		withdrawalData.HasValidator = true
-		withdrawalData.ValidatorIndex = withdrawal.Validator
+		if withdrawal.Validator&services.BuilderIndexFlag != 0 {
+			withdrawalData.IsBuilder = true
+			withdrawalData.ValidatorIndex = withdrawal.Validator &^ services.BuilderIndexFlag
+		} else {
+			withdrawalData.ValidatorIndex = withdrawal.Validator
+		}
 		withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(withdrawal.Validator)
 
 		// Resolve address from account_id
@@ -278,6 +330,14 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 			withdrawalData.BlockRoot = blockInfo.Block.Root
 			if blockInfo.Block.EthBlockNumber != nil {
 				withdrawalData.BlockNumber = *blockInfo.Block.EthBlockNumber
+			}
+		}
+
+		// Resolve ref slot (block UID of the slot this builder payment refers to)
+		if withdrawal.RefSlot != nil {
+			withdrawalData.RefSlot = *withdrawal.RefSlot >> 16
+			if refBlock, ok := blockMap[*withdrawal.RefSlot]; ok && refBlock.Block != nil {
+				withdrawalData.RefSlotRoot = refBlock.Block.Root
 			}
 		}
 

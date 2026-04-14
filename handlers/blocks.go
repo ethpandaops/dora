@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -20,6 +19,7 @@ import (
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -114,6 +114,7 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 			17: true,
 			18: false,
 			19: false,
+			20: false, // Builder (hidden by default)
 		}
 	}
 
@@ -148,6 +149,7 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 	pageData.DisplayBlockSize = displayMap[17]
 	pageData.DisplayRecvDelay = displayMap[18]
 	pageData.DisplayExecTime = displayMap[19]
+	pageData.DisplayBuilder = displayMap[20]
 	pageData.DisplayColCount = uint64(len(displayMap))
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -295,6 +297,18 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 						}
 					}
 					slotData.MevBlockRelays = strings.Join(relays, ", ")
+				}
+			}
+
+			// Add builder info
+			if pageData.DisplayBuilder {
+				if dbSlot.BuilderIndex == -1 {
+					slotData.HasBuilder = true
+					slotData.BuilderIndex = math.MaxUint64
+				} else if dbSlot.BuilderIndex >= 0 {
+					slotData.HasBuilder = true
+					slotData.BuilderIndex = uint64(dbSlot.BuilderIndex)
+					slotData.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(dbSlot.BuilderIndex) | services.BuilderIndexFlag)
 				}
 			}
 
