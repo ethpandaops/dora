@@ -39,12 +39,9 @@ var logger = logrus.StandardLogger().WithField("module", "db")
 func checkDbConn(dbConn *sqlx.DB, dataBaseName string) {
 	// The golang sql driver does not properly implement PingContext
 	// therefore we use a timer to catch db connection timeouts
-	dbConnectionTimeout := time.NewTimer(15 * time.Second)
-
-	go func() {
-		<-dbConnectionTimeout.C
+	dbConnectionTimeout := time.AfterFunc(15*time.Second, func() {
 		logger.Fatalf("timeout while connecting to %s", dataBaseName)
-	}()
+	})
 
 	err := dbConn.Ping()
 	if err != nil {
@@ -130,11 +127,12 @@ func mustInitPgsql(writer *types.PgsqlDatabaseConfig, reader *types.PgsqlDatabas
 }
 
 func MustInitDB(dbcfg *types.DatabaseConfig) {
-	if dbcfg.Engine == "sqlite" {
+	switch dbcfg.Engine {
+	case "sqlite":
 		sqliteConfig := (*types.SqliteDatabaseConfig)(dbcfg.Sqlite)
 		DbEngine = dbtypes.DBEngineSqlite
 		writerDb, ReaderDb = mustInitSqlite(sqliteConfig)
-	} else if dbcfg.Engine == "pgsql" {
+	case "pgsql":
 		readerConfig := (*types.PgsqlDatabaseConfig)(dbcfg.Pgsql)
 		writerConfig := (*types.PgsqlDatabaseConfig)(dbcfg.PgsqlWriter)
 		if writerConfig.Host == "" {
@@ -142,7 +140,7 @@ func MustInitDB(dbcfg *types.DatabaseConfig) {
 		}
 		DbEngine = dbtypes.DBEnginePgsql
 		writerDb, ReaderDb = mustInitPgsql(writerConfig, readerConfig)
-	} else {
+	default:
 		logger.Fatalf("unknown database engine type: %s", dbcfg.Engine)
 	}
 }
