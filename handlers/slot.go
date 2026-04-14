@@ -749,23 +749,33 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	}
 
 	if payloadBid, err := blockData.Block.SignedExecutionPayloadBid(); err == nil {
-		commitments := make([][]byte, len(payloadBid.Message.BlobKZGCommitments))
-		for i := range payloadBid.Message.BlobKZGCommitments {
-			commitments[i] = payloadBid.Message.BlobKZGCommitments[i][:]
+		blobKzgCommitments, _ := payloadBid.BlobKZGCommitments()
+		parentBlockHash, _ := payloadBid.ParentBlockHash()
+		parentBlockRoot, _ := payloadBid.ParentBlockRoot()
+		blockHash, _ := payloadBid.BlockHash()
+		gasLimit, _ := payloadBid.GasLimit()
+		builderIndex, _ := payloadBid.BuilderIndex()
+		slot, _ := payloadBid.Slot()
+		value, _ := payloadBid.Value()
+		signature, _ := payloadBid.Signature()
+
+		commitments := make([][]byte, len(blobKzgCommitments))
+		for i := range blobKzgCommitments {
+			commitments[i] = blobKzgCommitments[i][:]
 		}
 
 		pageData.PayloadHeader = &models.SlotPagePayloadHeader{
 			PayloadStatus:      uint16(0),
-			ParentBlockHash:    payloadBid.Message.ParentBlockHash[:],
-			ParentBlockRoot:    payloadBid.Message.ParentBlockRoot[:],
-			BlockHash:          payloadBid.Message.BlockHash[:],
-			GasLimit:           uint64(payloadBid.Message.GasLimit),
-			BuilderIndex:       uint64(payloadBid.Message.BuilderIndex),
-			BuilderName:        services.GlobalBeaconService.GetValidatorName(uint64(payloadBid.Message.BuilderIndex) | services.BuilderIndexFlag),
-			Slot:               uint64(payloadBid.Message.Slot),
-			Value:              uint64(payloadBid.Message.Value),
+			ParentBlockHash:    parentBlockHash[:],
+			ParentBlockRoot:    parentBlockRoot[:],
+			BlockHash:          blockHash[:],
+			GasLimit:           uint64(gasLimit),
+			BuilderIndex:       uint64(builderIndex),
+			BuilderName:        services.GlobalBeaconService.GetValidatorName(uint64(builderIndex) | services.BuilderIndexFlag),
+			Slot:               uint64(slot),
+			Value:              uint64(value),
 			BlobKZGCommitments: commitments,
-			Signature:          payloadBid.Signature[:],
+			Signature:          signature[:],
 		}
 	}
 
