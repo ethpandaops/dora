@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/lru"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/indexer/beacon/statetransition"

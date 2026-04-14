@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/electra"
-	"github.com/attestantio/go-eth2-client/spec/gloas"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	"github.com/mashingan/smapping"
 )
@@ -69,7 +69,7 @@ type EpochStatsValues struct {
 // EpochStatsPacked holds the packed values for the epoch-specific information.
 //
 //	generate ssz: (this is really ugly, needs path patching and post-fixing to work)
-//	sszgen --suffix ssz --path . --include $GOPATH/pkg/mod/github.com/attestantio/go-eth2-client\@v0.26.0/spec/phase0,$GOPATH/pkg/mod/github.com/attestantio/go-eth2-client\@v0.26.0/spec/electra --objs EpochStatsPacked
+//	sszgen --suffix ssz --path . --include $GOPATH/pkg/mod/github.com/ethpandaops/go-eth2-client\@v0.26.0/spec/phase0,$GOPATH/pkg/mod/github.com/ethpandaops/go-eth2-client\@v0.26.0/spec/electra --objs EpochStatsPacked
 type EpochStatsPacked struct {
 	ActiveValidators           []EpochStatsPackedValidator `ssz-max:"10000000"`
 	ProposerDuties             []phase0.ValidatorIndex     `ssz-max:"100"`

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/ethpandaops/dora/blockdb/types"
 	dtypes "github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )

@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 const seedSize = int8(32)

@@ -1,8 +1,8 @@
 package statetransition
 
 import (
-	"github.com/attestantio/go-eth2-client/spec/altair"
-	"github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/altair"
+	"github.com/ethpandaops/go-eth2-client/spec/capella"
 )
 
 // processEth1DataReset resets the ETH1 data votes at the start of a new voting period.
