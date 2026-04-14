@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -127,7 +127,7 @@ func getTransactionPageData(txHash []byte, tabView string, selectedBlockUid uint
 	pageCacheKey := fmt.Sprintf("tx:%x:%v:%v", txHash, tabView, selectedBlockUid)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildTransactionPageData(pageCall.CallCtx, txHash, tabView, selectedBlockUid)
-		_ = cacheTimeout
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
@@ -904,8 +904,8 @@ func buildStateChangesFromBlockdb(accounts []bdbtypes.StateChangeAccount) []*mod
 			CodeChanged: (a.Flags & bdbtypes.StateChangeFlagCodeChanged) != 0,
 			PreCode:     a.PreCode,
 			PostCode:    a.PostCode,
-			PreCodeLen:  len(a.PreCode),
-			PostCodeLen: len(a.PostCode),
+			PreCodeLen:  uint64(len(a.PreCode)),
+			PostCodeLen: uint64(len(a.PostCode)),
 
 			StorageChanged: (a.Flags & bdbtypes.StateChangeFlagStorageChanged) != 0,
 		}

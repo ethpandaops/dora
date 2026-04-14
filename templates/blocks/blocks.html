@@ -48,6 +48,7 @@
                   <option value="17" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                   <option value="18" {{ if .DisplayRecvDelay }}selected{{ end }}>Receive Delay</option>
                   <option value="19" {{ if .DisplayExecTime }}selected{{ end }}>Execution Time</option>
+                  <option value="20" {{ if .DisplayBuilder }}selected{{ end }}>Builder</option>
                   <option value="12" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                   <option value="13" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                 </select>
@@ -88,6 +89,7 @@
                 {{ if .DisplayTxCount }}<th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>{{ end }}
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
+                {{ if .DisplayBuilder }}<th>Builder</th>{{ end }}
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
@@ -107,7 +109,7 @@
                     <td class="graph-container" style="min-width: {{ $treeWidth }}px;">
                       {{ range $j, $graph := $slot.ForkGraph }}
                         <div class="graph-fork" data-index="{{ $graph.Index }}" style="left: {{ $graph.Left }}px;">
-                          {{- range $tile, $val := $graph.Tiles -}}
+                          {{- range $tile := $graph.Tiles -}}
                             <div class="graph-layer graph-layer-{{ $tile }}"></div>
                           {{- end -}}
                           {{- if $graph.Block }}
@@ -162,6 +164,11 @@
                         </div>
                       {{ end }}</td>{{ end }}
                       {{ if $g.DisplaySyncAgg }}<td>{{ if not (eq $slot.Status 0) }}{{ formatPercentageAlert $slot.SyncParticipation 2 95 80 }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayBuilder }}<td>{{ if not (eq $slot.Status 0) }}
+                        {{ if $slot.HasBuilder }}
+                          {{ formatBuilder $slot.BuilderIndex $slot.BuilderName }}
+                        {{ end }}
+                      {{ end }}</td>{{ end }}
                       {{ if $g.DisplayMevBlock }}<td>{{ if not (eq $slot.Status 0) }}
                         {{ if $slot.IsMevBlock }}
                           <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.MevBlockRelays }}">Yes</span>
@@ -190,6 +197,7 @@
                       {{ if $g.DisplayTxCount }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGasUsage }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplaySyncAgg }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayBuilder }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayMevBlock }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGasLimit }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayBlockSize }}{{ $colCount = add $colCount 1 }}{{ end }}
@@ -228,8 +236,8 @@
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
-                  {{ range $key, $value := .UrlParams }}
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                  {{ range $param := .UrlParams }}
+                    <input type="hidden" name="{{ $param.Key }}" value="{{ $param.Value }}">
                   {{ end }}
                   <input type="hidden" id="maxSlot" value="{{ .MaxSlot }}">
                   <input type="hidden" id="pageSize" value="{{ .PageSize }}">

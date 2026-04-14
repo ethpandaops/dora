@@ -19,7 +19,7 @@ type SlotPageData struct {
 	Future                 bool                  `json:"future"`
 	Proposer               uint64                `json:"proposer"`
 	ProposerName           string                `json:"proposer_name"`
-	Block                  *SlotPageBlockData    `json:"block"`
+	Block                  *SlotPageBlockData    `json:"block" ssz-type:"optional"`
 	Badges                 []*SlotPageBlockBadge `json:"badges"`
 	SlotBlocks             []*SlotPageSlotBlock  `json:"slot_blocks"`
 	TracoorUrl             string                `json:"tracoor_url"`
@@ -27,7 +27,7 @@ type SlotPageData struct {
 
 // SlotPageSlotBlock represents a block entry for the slot (for multi-block display)
 type SlotPageSlotBlock struct {
-	BlockRoot []byte `json:"block_root"`
+	BlockRoot []byte `json:"block_root" ssz-size:"32"`
 	Status    uint16 `json:"status"` // 0: missed, 1: canonical, 2: orphaned
 	IsCurrent bool   `json:"is_current"`
 }
@@ -48,38 +48,45 @@ const (
 )
 
 type SlotPageBlockData struct {
-	BlockRoot                  []byte                 `json:"blockroot"`
-	ParentRoot                 []byte                 `json:"parentroot"`
-	StateRoot                  []byte                 `json:"stateroot"`
-	BodyRoot                   []byte                 `json:"bodyroot"`
-	Signature                  []byte                 `json:"signature"`
-	RandaoReveal               []byte                 `json:"randaoreveal"`
-	Graffiti                   []byte                 `json:"graffiti"`
-	Eth1dataDepositroot        []byte                 `json:"eth1data_depositroot"`
-	Eth1dataDepositcount       uint64                 `json:"eth1data_depositcount"`
-	Eth1dataBlockhash          []byte                 `json:"eth1data_blockhash"`
-	SyncAggregateBits          []byte                 `json:"syncaggregate_bits"`
-	SyncAggregateSignature     []byte                 `json:"syncaggregate_signature"`
-	SyncAggParticipation       float64                `json:"syncaggregate_participation"`
-	SyncAggCommittee           []types.NamedValidator `json:"syncaggregate_committee"`
-	ValidatorNames             map[uint64]string      `json:"validator_names"`
-	SpecValues                 map[string]interface{} `json:"spec_values"`
-	ProposerSlashingsCount     uint64                 `json:"proposer_slashings_count"`
-	AttesterSlashingsCount     uint64                 `json:"attester_slashings_count"`
-	AttestationsCount          uint64                 `json:"attestations_count"`
-	DepositsCount              uint64                 `json:"deposits_count"`
-	WithdrawalsCount           uint64                 `json:"withdrawals_count"`
-	BLSChangesCount            uint64                 `json:"bls_changes_count"`
-	VoluntaryExitsCount        uint64                 `json:"voluntaryexits_count"`
-	SlashingsCount             uint64                 `json:"slashings_count"`
-	BlobsCount                 uint64                 `json:"blobs_count"`
-	ExecutionProofsCount       uint64                 `json:"execution_proofs_count"`
-	TransactionsCount          uint64                 `json:"transactions_count"`
-	DepositRequestsCount       uint64                 `json:"deposit_receipts_count"`
-	WithdrawalRequestsCount    uint64                 `json:"withdrawal_requests_count"`
-	ConsolidationRequestsCount uint64                 `json:"consolidation_requests_count"`
+	BlockRoot                  []byte                  `json:"blockroot" ssz-size:"32"`
+	ParentRoot                 []byte                  `json:"parentroot" ssz-size:"32"`
+	StateRoot                  []byte                  `json:"stateroot" ssz-size:"32"`
+	BodyRoot                   []byte                  `json:"bodyroot" ssz-size:"32"`
+	Signature                  []byte                  `json:"signature" ssz-size:"96"`
+	RandaoReveal               []byte                  `json:"randaoreveal" ssz-size:"96"`
+	Graffiti                   []byte                  `json:"graffiti"`
+	Eth1dataDepositroot        []byte                  `json:"eth1data_depositroot" ssz-size:"32"`
+	Eth1dataDepositcount       uint64                  `json:"eth1data_depositcount"`
+	Eth1dataBlockhash          []byte                  `json:"eth1data_blockhash" ssz-size:"32"`
+	SyncAggregateBits          []byte                  `json:"syncaggregate_bits"`
+	SyncAggregateSignature     []byte                  `json:"syncaggregate_signature" ssz-size:"96"`
+	SyncAggParticipation       float64                 `json:"syncaggregate_participation"`
+	SyncAggCommittee           []types.NamedValidator  `json:"syncaggregate_committee"`
+	ValidatorNames             []SlotPageValidatorName `json:"validator_names"`
+	ProposerSlashingsCount     uint64                  `json:"proposer_slashings_count"`
+	AttesterSlashingsCount     uint64                  `json:"attester_slashings_count"`
+	AttestationsCount          uint64                  `json:"attestations_count"`
+	DepositsCount              uint64                  `json:"deposits_count"`
+	WithdrawalsCount           uint64                  `json:"withdrawals_count"`
+	BLSChangesCount            uint64                  `json:"bls_changes_count"`
+	VoluntaryExitsCount        uint64                  `json:"voluntaryexits_count"`
+	SlashingsCount             uint64                  `json:"slashings_count"`
+	BlobsCount                 uint64                  `json:"blobs_count"`
+	ExecutionProofsCount       uint64                  `json:"execution_proofs_count"`
+	TransactionsCount          uint64                  `json:"transactions_count"`
+	DepositRequestsCount       uint64                  `json:"deposit_receipts_count"`
+	WithdrawalRequestsCount    uint64                  `json:"withdrawal_requests_count"`
+	ConsolidationRequestsCount uint64                  `json:"consolidation_requests_count"`
+	BidsCount                  uint64                  `json:"bids_count"`
+	PtcVotesCount              uint64                  `json:"ptc_votes_count"`
 
-	ExecutionData         *SlotPageExecutionData          `json:"execution_data"`
+	SlotsPerEpoch        uint64 `json:"slots_per_epoch"`
+	TargetCommitteeSize  uint64 `json:"target_committee_size"`
+	MaxCommitteesPerSlot uint64 `json:"max_committees_per_slot"`
+
+	PayloadHeader *SlotPagePayloadHeader `json:"payload_header"`
+	ExecutionData *SlotPageExecutionData `json:"execution_data"`
+
 	Attestations          []*SlotPageAttestation          `json:"attestations"`           // Attestations included in this block
 	Deposits              []*SlotPageDeposit              `json:"deposits"`               // Deposits included in this block
 	VoluntaryExits        []*SlotPageVoluntaryExit        `json:"voluntary_exits"`        // Voluntary Exits included in this block
@@ -93,31 +100,54 @@ type SlotPageBlockData struct {
 	DepositRequests       []*SlotPageDepositRequest       `json:"deposit_receipts"`       // DepositRequests included in this block
 	WithdrawalRequests    []*SlotPageWithdrawalRequest    `json:"withdrawal_requests"`    // WithdrawalRequests included in this block
 	ConsolidationRequests []*SlotPageConsolidationRequest `json:"consolidation_requests"` // ConsolidationRequests included in this block
+	Bids                  []*SlotPageBid                  `json:"bids"`                   // Execution payload bids for this block (ePBS)
+	PtcVotes              *SlotPagePtcVotes               `json:"ptc_votes"`              // PTC votes included in this block (for previous slot)
+	InclusionLists        []*SlotPageInclusionList        `json:"inclusion_lists"`        // Inclusion lists for this slot (EIP-7805)
+	InclusionListsCount   uint64                          `json:"inclusion_lists_count"`
 }
 
 type SlotPageExecutionData struct {
-	ParentHash         []byte    `json:"parent_hash"`
+	ParentHash         []byte    `json:"parent_hash" ssz-size:"32"`
 	FeeRecipient       []byte    `json:"fee_recipient"`
-	StateRoot          []byte    `json:"state_root"`
-	ReceiptsRoot       []byte    `json:"receipts_root"`
-	LogsBloom          []byte    `json:"logs_bloom"`
-	Random             []byte    `json:"random"`
+	StateRoot          []byte    `json:"state_root" ssz-size:"32"`
+	ReceiptsRoot       []byte    `json:"receipts_root" ssz-size:"32"`
+	LogsBloom          []byte    `json:"logs_bloom" ssz-size:"256"`
+	Random             []byte    `json:"random" ssz-size:"32"`
 	GasLimit           uint64    `json:"gas_limit"`
 	GasUsed            uint64    `json:"gas_used"`
 	Timestamp          uint64    `json:"timestamp"`
 	Time               time.Time `json:"time"`
 	ExtraData          []byte    `json:"extra_data"`
 	BaseFeePerGas      uint64    `json:"base_fee_per_gas"`
-	BlockHash          []byte    `json:"block_hash"`
+	BlockHash          []byte    `json:"block_hash" ssz-size:"32"`
 	BlockNumber        uint64    `json:"block_number"`
-	BlobGasUsed        *uint64   `json:"blob_gas_used,omitempty"`
-	BlobLimit          *uint64   `json:"blob_limit,omitempty"`
-	BlobGasLimit       *uint64   `json:"blob_gas_limit,omitempty"`
-	ExcessBlobGas      *uint64   `json:"excess_blob_gas,omitempty"`
-	BlobBaseFee        *uint64   `json:"blob_base_fee,omitempty"`
-	BlobBaseFeeEIP7918 *uint64   `json:"blob_base_fee_eip7918,omitempty"`
+	BlobGasUsed        *uint64   `json:"blob_gas_used,omitempty" ssz-type:"optional"`
+	BlobLimit          *uint64   `json:"blob_limit,omitempty" ssz-type:"optional"`
+	BlobGasLimit       *uint64   `json:"blob_gas_limit,omitempty" ssz-type:"optional"`
+	ExcessBlobGas      *uint64   `json:"excess_blob_gas,omitempty" ssz-type:"optional"`
+	BlobBaseFee        *uint64   `json:"blob_base_fee,omitempty" ssz-type:"optional"`
+	BlobBaseFeeEIP7918 *uint64   `json:"blob_base_fee_eip7918,omitempty" ssz-type:"optional"`
 	IsEIP7918Active    bool      `json:"is_eip7918_active"`
 	HasExecData        bool      `json:"has_exec_data"`
+}
+
+type SlotPageValidatorName struct {
+	Key   uint64 `json:"k"`
+	Value string `json:"v"`
+}
+
+type SlotPagePayloadHeader struct {
+	PayloadStatus      uint16   `json:"payload_status"`
+	ParentBlockHash    []byte   `json:"parent_block_hash"`
+	ParentBlockRoot    []byte   `json:"parent_block_root"`
+	BlockHash          []byte   `json:"block_hash"`
+	GasLimit           uint64   `json:"gas_limit"`
+	BuilderIndex       uint64   `json:"builder_index"`
+	BuilderName        string   `json:"builder_name"`
+	Slot               uint64   `json:"slot"`
+	Value              uint64   `json:"value"`
+	BlobKZGCommitments [][]byte `json:"blob_kzg_commitments"`
+	Signature          []byte   `json:"signature"`
 }
 
 type SlotPageAttestation struct {
@@ -129,50 +159,53 @@ type SlotPageAttestation struct {
 	Validators         []uint64 `json:"validators"`
 	IncludedValidators []uint64 `json:"included_validators"`
 
-	Signature []byte `json:"signature"`
+	PayloadStatus *uint64 `json:"payload_status,omitempty"`
 
-	BeaconBlockRoot []byte `json:"beaconblockroot"`
+	Signature []byte `json:"signature" ssz-size:"96"`
+
+	BeaconBlockRoot []byte `json:"beaconblockroot" ssz-size:"32"`
 	BeaconBlockSlot uint64 `json:"beaconblockslot"`
 	SourceEpoch     uint64 `json:"source_epoch"`
-	SourceRoot      []byte `json:"source_root"`
+	SourceRoot      []byte `json:"source_root" ssz-size:"32"`
 	TargetEpoch     uint64 `json:"target_epoch"`
-	TargetRoot      []byte `json:"target_root"`
+	TargetRoot      []byte `json:"target_root" ssz-size:"32"`
 }
 
 type SlotPageDeposit struct {
-	PublicKey             []byte `json:"publickey"`
-	Withdrawalcredentials []byte `json:"withdrawalcredentials"`
+	PublicKey             []byte `json:"publickey" ssz-size:"48"`
+	Withdrawalcredentials []byte `json:"withdrawalcredentials" ssz-size:"32"`
 	Amount                uint64 `json:"amount"`
-	Signature             []byte `json:"signature"`
+	Signature             []byte `json:"signature" ssz-size:"96"`
 }
 
 type SlotPageVoluntaryExit struct {
 	ValidatorIndex uint64 `json:"validatorindex"`
 	ValidatorName  string `json:"validatorname"`
+	IsBuilder      bool   `json:"is_builder"`
 	Epoch          uint64 `json:"epoch"`
-	Signature      []byte `json:"signature"`
+	Signature      []byte `json:"signature" ssz-size:"96"`
 }
 
 // BlockPageAttesterSlashing is a struct to hold data for attester slashings on the block page
 type SlotPageAttesterSlashing struct {
 	Attestation1Indices         []uint64               `json:"attestation1_indices"`
-	Attestation1Signature       []byte                 `json:"attestation1_signature"`
+	Attestation1Signature       []byte                 `json:"attestation1_signature" ssz-size:"96"`
 	Attestation1Slot            uint64                 `json:"attestation1_slot"`
 	Attestation1Index           uint64                 `json:"attestation1_index"`
-	Attestation1BeaconBlockRoot []byte                 `json:"attestation1_beaconblockroot"`
+	Attestation1BeaconBlockRoot []byte                 `json:"attestation1_beaconblockroot" ssz-size:"32"`
 	Attestation1SourceEpoch     uint64                 `json:"attestation1_source_epoch"`
-	Attestation1SourceRoot      []byte                 `json:"attestation1_source_root"`
+	Attestation1SourceRoot      []byte                 `json:"attestation1_source_root" ssz-size:"32"`
 	Attestation1TargetEpoch     uint64                 `json:"attestation1_target_epoch"`
-	Attestation1TargetRoot      []byte                 `json:"attestation1_target_root"`
+	Attestation1TargetRoot      []byte                 `json:"attestation1_target_root" ssz-size:"32"`
 	Attestation2Indices         []uint64               `json:"attestation2_indices"`
-	Attestation2Signature       []byte                 `json:"attestation2_signature"`
+	Attestation2Signature       []byte                 `json:"attestation2_signature" ssz-size:"96"`
 	Attestation2Slot            uint64                 `json:"attestation2_slot"`
 	Attestation2Index           uint64                 `json:"attestation2_index"`
-	Attestation2BeaconBlockRoot []byte                 `json:"attestation2_beaconblockroot"`
+	Attestation2BeaconBlockRoot []byte                 `json:"attestation2_beaconblockroot" ssz-size:"32"`
 	Attestation2SourceEpoch     uint64                 `json:"attestation2_source_epoch"`
-	Attestation2SourceRoot      []byte                 `json:"attestation2_source_root"`
+	Attestation2SourceRoot      []byte                 `json:"attestation2_source_root" ssz-size:"32"`
 	Attestation2TargetEpoch     uint64                 `json:"attestation2_target_epoch"`
-	Attestation2TargetRoot      []byte                 `json:"attestation2_target_root"`
+	Attestation2TargetRoot      []byte                 `json:"attestation2_target_root" ssz-size:"32"`
 	SlashedValidators           []types.NamedValidator `json:"validators"`
 }
 
@@ -181,41 +214,45 @@ type SlotPageProposerSlashing struct {
 	ProposerIndex     uint64 `json:"proposerindex"`
 	ProposerName      string `json:"proposername"`
 	Header1Slot       uint64 `json:"header1_slot"`
-	Header1ParentRoot []byte `json:"header1_parentroot"`
-	Header1StateRoot  []byte `json:"header1_stateroot"`
-	Header1BodyRoot   []byte `json:"header1_bodyroot"`
-	Header1Signature  []byte `json:"header1_signature"`
+	Header1ParentRoot []byte `json:"header1_parentroot" ssz-size:"32"`
+	Header1StateRoot  []byte `json:"header1_stateroot" ssz-size:"32"`
+	Header1BodyRoot   []byte `json:"header1_bodyroot" ssz-size:"32"`
+	Header1Signature  []byte `json:"header1_signature" ssz-size:"96"`
 	Header2Slot       uint64 `json:"header2_slot"`
-	Header2ParentRoot []byte `json:"header2_parentroot"`
-	Header2StateRoot  []byte `json:"header2_stateroot"`
-	Header2BodyRoot   []byte `json:"header2_bodyroot"`
-	Header2Signature  []byte `json:"header2_signature"`
+	Header2ParentRoot []byte `json:"header2_parentroot" ssz-size:"32"`
+	Header2StateRoot  []byte `json:"header2_stateroot" ssz-size:"32"`
+	Header2BodyRoot   []byte `json:"header2_bodyroot" ssz-size:"32"`
+	Header2Signature  []byte `json:"header2_signature" ssz-size:"96"`
 }
 
 type SlotPageBLSChange struct {
 	ValidatorIndex uint64 `json:"validatorindex"`
 	ValidatorName  string `json:"validatorname"`
-	BlsPubkey      []byte `json:"pubkey"`
-	Address        []byte `json:"address"`
-	Signature      []byte `json:"signature"`
+	BlsPubkey      []byte `json:"pubkey" ssz-size:"48"`
+	Address        []byte `json:"address" ssz-size:"20"`
+	Signature      []byte `json:"signature" ssz-size:"96"`
 }
 
 type SlotPageWithdrawal struct {
 	Index          uint64 `json:"index"`
 	ValidatorIndex uint64 `json:"validatorindex"`
 	ValidatorName  string `json:"validatorname"`
-	Address        []byte `json:"address"`
+	IsBuilder      bool   `json:"is_builder"`
+	Address        []byte `json:"address" ssz-size:"20"`
 	Amount         uint64 `json:"amount"`
+	Type           uint8  `json:"type"`
+	RefSlot        uint64 `json:"ref_slot"`
+	RefSlotRoot    []byte `json:"ref_slot_root" ssz-size:"32"`
 }
 
 type SlotPageBlob struct {
 	Index         uint64 `json:"index"`
-	KzgCommitment []byte `json:"kzg_commitment"`
+	KzgCommitment []byte `json:"kzg_commitment" ssz-size:"48"`
 	HaveData      bool   `json:"have_data"`
 	IsShort       bool   `json:"is_short"`
 	BlobShort     []byte `json:"blob_short"`
 	Blob          []byte `json:"blob"`
-	KzgProof      []byte `json:"kzg_proof"`
+	KzgProof      []byte `json:"kzg_proof" ssz-size:"48"`
 }
 
 type SlotPageBlobDetails struct {
@@ -227,9 +264,9 @@ type SlotPageBlobDetails struct {
 
 type SlotPageTransaction struct {
 	Index         uint64  `json:"index"`
-	Hash          []byte  `json:"hash"`
-	From          []byte  `json:"from"`
-	To            []byte  `json:"to"`
+	Hash          []byte  `json:"hash" ssz-size:"32"`
+	From          []byte  `json:"from" ssz-size:"20"`
+	To            []byte  `json:"to" ssz-size:"20"`
 	Value         float64 `json:"value"`
 	Data          []byte  `json:"data"`
 	DataLen       uint64  `json:"datalen"`
@@ -250,36 +287,90 @@ type SlotPageTransaction struct {
 }
 
 type SlotPageDepositRequest struct {
-	PublicKey       []byte `db:"pubkey"`
+	PublicKey       []byte `db:"pubkey" ssz-size:"48"`
 	Exists          bool   `db:"exists"`
+	IsBuilder       bool   `db:"is_builder"`
 	ValidatorIndex  uint64 `db:"valindex"`
 	ValidatorName   string `db:"valname"`
-	WithdrawalCreds []byte `db:"withdrawal_creds"`
+	WithdrawalCreds []byte `db:"withdrawal_creds" ssz-size:"32"`
 	Amount          uint64 `db:"amount"`
-	Signature       []byte `db:"signature"`
+	Signature       []byte `db:"signature" ssz-size:"96"`
 	Index           uint64 `db:"index"`
 }
 
 type SlotPageWithdrawalRequest struct {
-	Address        []byte `db:"address"`
-	PublicKey      []byte `db:"pubkey"`
+	Address        []byte `db:"address" ssz-size:"20"`
+	PublicKey      []byte `db:"pubkey" ssz-size:"48"`
 	Exists         bool   `db:"exists"`
 	ValidatorIndex uint64 `db:"valindex"`
 	ValidatorName  string `db:"valname"`
+	IsBuilder      bool   `db:"is_builder"`
 	Amount         uint64 `db:"amount"`
 }
 
 type SlotPageConsolidationRequest struct {
-	Address      []byte `db:"address"`
-	SourcePubkey []byte `db:"source_pubkey"`
-	SourceFound  bool   `db:"source_bool"`
-	SourceIndex  uint64 `db:"source_index"`
-	SourceName   string `db:"source_name"`
-	TargetPubkey []byte `db:"target_pubkey"`
-	TargetFound  bool   `db:"target_bool"`
-	TargetIndex  uint64 `db:"target_index"`
-	TargetName   string `db:"target_name"`
-	Epoch        uint64 `db:"epoch"`
+	Address         []byte `db:"address" ssz-size:"20"`
+	SourcePubkey    []byte `db:"source_pubkey" ssz-size:"48"`
+	SourceFound     bool   `db:"source_bool"`
+	SourceIndex     uint64 `db:"source_index"`
+	SourceName      string `db:"source_name"`
+	SourceIsBuilder bool   `db:"source_is_builder"`
+	TargetPubkey    []byte `db:"target_pubkey" ssz-size:"48"`
+	TargetFound     bool   `db:"target_bool"`
+	TargetIndex     uint64 `db:"target_index"`
+	TargetName      string `db:"target_name"`
+	TargetIsBuilder bool   `db:"target_is_builder"`
+	Epoch           uint64 `db:"epoch"`
+}
+
+type SlotPageBid struct {
+	ParentRoot   []byte `json:"parent_root"`
+	ParentHash   []byte `json:"parent_hash"`
+	BlockHash    []byte `json:"block_hash"`
+	FeeRecipient []byte `json:"fee_recipient"`
+	GasLimit     uint64 `json:"gas_limit"`
+	BuilderIndex uint64 `json:"builder_index"`
+	BuilderName  string `json:"builder_name"`
+	IsSelfBuilt  bool   `json:"is_self_built"`
+	Slot         uint64 `json:"slot"`
+	Value        uint64 `json:"value"`
+	ElPayment    uint64 `json:"el_payment"`
+	TotalValue   uint64 `json:"total_value"`
+	IsWinning    bool   `json:"is_winning"`
+}
+
+// SlotPagePtcVotes holds PTC (Payload Timeliness Committee) vote information for a slot.
+// These are payload attestations included in this block for the PREVIOUS slot.
+type SlotPagePtcVotes struct {
+	VotedSlot       uint64                  `json:"voted_slot"`        // The slot the votes are for (previous slot)
+	VotedBlockRoot  []byte                  `json:"voted_block_root"`  // The block root being voted on
+	TotalPtcSize    uint64                  `json:"total_ptc_size"`    // Total PTC committee size
+	Aggregates      []*SlotPagePtcAggregate `json:"aggregates"`        // Up to 4 aggregates for different vote flag combinations
+	NonVoters       []types.NamedValidator  `json:"non_voters"`        // Validators that did not vote
+	NonVoterCount   uint64                  `json:"non_voter_count"`   // Number of non-voters
+	NonVoterPercent float64                 `json:"non_voter_percent"` // Percentage of non-voters
+	Participation   float64                 `json:"participation"`     // Overall participation rate
+}
+
+// SlotPagePtcAggregate represents a single PTC vote aggregate for a specific vote flag combination.
+type SlotPagePtcAggregate struct {
+	PayloadPresent    bool                   `json:"payload_present"`     // Whether the payload was present
+	BlobDataAvailable bool                   `json:"blob_data_available"` // Whether blob data was available
+	AggregationBits   []byte                 `json:"aggregation_bits"`    // Bitfield of participating validators
+	Validators        []types.NamedValidator `json:"validators"`          // Validators that voted
+	Signature         []byte                 `json:"signature"`           // Aggregate signature
+	VoteCount         uint64                 `json:"vote_count"`          // Number of votes in this aggregate
+	VotePercent       float64                `json:"vote_percent"`        // Percentage of committee
+}
+
+// SlotPageInclusionList holds data for an inclusion list entry on the slot page.
+type SlotPageInclusionList struct {
+	Validator                  types.NamedValidator   `json:"validator"`
+	InclusionListCommitteeRoot []byte                 `json:"inclusion_list_committee_root"`
+	Transactions               []*SlotPageTransaction `json:"transactions"`
+	TransactionsCount          uint64                 `json:"transactions_count"`
+	TransactionsIncluded       []bool                 `json:"transactions_included"`
+	Signature                  []byte                 `json:"signature"`
 }
 
 type SlotPageExecutionProof struct {

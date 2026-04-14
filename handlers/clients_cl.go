@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"reflect"
 	"sort"
@@ -9,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
@@ -17,6 +17,7 @@ import (
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
 	"github.com/ethpandaops/dora/utils"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -179,7 +180,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	var cacheTime time.Duration
 	specs := chainState.GetSpecs()
 	if specs != nil {
-		cacheTime = time.Duration(specs.SecondsPerSlot) * time.Second
+		cacheTime = time.Duration(specs.SlotDurationMs) * time.Millisecond
 	} else {
 		cacheTime = 1 * time.Second
 	}
@@ -709,6 +710,30 @@ func getChainSpecFieldOrders() (configFields []string, presetFields []string, do
 		return []string{}, []string{}, []string{}, map[string]interface{}{}
 	}
 
+	// A check-if-fork tag references a field (typically *ForkEpoch) in ChainSpec.
+	// If the referenced field is unset (nil pointer) or pinned to far-future
+	// (math.MaxUint64), the gated field should not appear in the expected spec.
+	specValue := reflect.ValueOf(specs).Elem()
+	isForkScheduled := func(checkIfForkTag string) bool {
+		if checkIfForkTag == "" {
+			return true
+		}
+		f := specValue.FieldByName(checkIfForkTag)
+		if !f.IsValid() {
+			return true
+		}
+		if f.Kind() == reflect.Ptr {
+			if f.IsNil() {
+				return false
+			}
+			f = f.Elem()
+		}
+		if f.Kind() == reflect.Uint64 && f.Uint() == math.MaxUint64 {
+			return false
+		}
+		return true
+	}
+
 	encodeValue := func(value interface{}) interface{} {
 		switch v := value.(type) {
 		case time.Duration:
@@ -739,58 +764,40 @@ func getChainSpecFieldOrders() (configFields []string, presetFields []string, do
 		return result
 	}
 
-	// Get config fields
-	configType := reflect.TypeOf(specs.ChainSpecConfig)
-	configValues := reflect.ValueOf(specs.ChainSpecConfig)
-	for i := 0; i < configType.NumField(); i++ {
-		field := configType.Field(i)
-		yamlTag := field.Tag.Get("yaml")
+	collectFields := func(structType reflect.Type, structValues reflect.Value, handleBlobSchedule bool) []string {
+		var fields []string
+		for i := 0; i < structType.NumField(); i++ {
+			field := structType.Field(i)
+			yamlTag := field.Tag.Get("yaml")
 
-		if yamlTag != "" && yamlTag != "-" {
+			if yamlTag == "" || yamlTag == "-" {
+				continue
+			}
+
 			tagParts := strings.Split(yamlTag, ",")
-			if len(tagParts) > 0 && tagParts[0] != "" {
-				configFields = append(configFields, tagParts[0])
+			if len(tagParts) == 0 || tagParts[0] == "" {
+				continue
+			}
 
-				if tagParts[0] == "BLOB_SCHEDULE" {
-					expectedValues[tagParts[0]] = encodeBlobSchedule(configValues.Field(i).Interface().([]consensus.BlobScheduleEntry))
-				} else {
-					expectedValues[tagParts[0]] = encodeValue(configValues.Field(i).Interface())
-				}
+			if !isForkScheduled(field.Tag.Get("check-if-fork")) {
+				continue
+			}
+
+			name := tagParts[0]
+			fields = append(fields, name)
+
+			if handleBlobSchedule && name == "BLOB_SCHEDULE" {
+				expectedValues[name] = encodeBlobSchedule(structValues.Field(i).Interface().([]consensus.BlobScheduleEntry))
+			} else {
+				expectedValues[name] = encodeValue(structValues.Field(i).Interface())
 			}
 		}
+		return fields
 	}
 
-	// Get preset fields
-	presetType := reflect.TypeOf(specs.ChainSpecPreset)
-	presetValues := reflect.ValueOf(specs.ChainSpecPreset)
-	for i := 0; i < presetType.NumField(); i++ {
-		field := presetType.Field(i)
-		yamlTag := field.Tag.Get("yaml")
-
-		if yamlTag != "" && yamlTag != "-" {
-			tagParts := strings.Split(yamlTag, ",")
-			if len(tagParts) > 0 && tagParts[0] != "" {
-				presetFields = append(presetFields, tagParts[0])
-				expectedValues[tagParts[0]] = encodeValue(presetValues.Field(i).Interface())
-			}
-		}
-	}
-
-	// Get domain type fields
-	domainTypeType := reflect.TypeOf(specs.ChainSpecDomainTypes)
-	domainTypeValues := reflect.ValueOf(specs.ChainSpecDomainTypes)
-	for i := 0; i < domainTypeType.NumField(); i++ {
-		field := domainTypeType.Field(i)
-		yamlTag := field.Tag.Get("yaml")
-
-		if yamlTag != "" && yamlTag != "-" {
-			tagParts := strings.Split(yamlTag, ",")
-			if len(tagParts) > 0 && tagParts[0] != "" {
-				domainTypeFields = append(domainTypeFields, tagParts[0])
-				expectedValues[tagParts[0]] = encodeValue(domainTypeValues.Field(i).Interface())
-			}
-		}
-	}
+	configFields = collectFields(reflect.TypeOf(specs.ChainSpecConfig), reflect.ValueOf(specs.ChainSpecConfig), true)
+	presetFields = collectFields(reflect.TypeOf(specs.ChainSpecPreset), reflect.ValueOf(specs.ChainSpecPreset), false)
+	domainTypeFields = collectFields(reflect.TypeOf(specs.ChainSpecDomainTypes), reflect.ValueOf(specs.ChainSpecDomainTypes), false)
 
 	return configFields, presetFields, domainTypeFields, expectedValues
 }

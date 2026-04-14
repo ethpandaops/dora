@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -297,13 +297,19 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 	pageData.LastValidator = pageData.FirstValidator + uint64(len(pageData.Validators))
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams = make([]models.UrlParam, 0)
 	for key, values := range filterArgs {
 		if len(values) > 0 {
-			pageData.UrlParams[key] = values[0]
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{
+				Key:   key,
+				Value: values[0],
+			})
 		}
 	}
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{
+		Key:   "c",
+		Value: fmt.Sprintf("%v", pageData.PageSize),
+	})
 
 	pageData.FilteredPageLink = fmt.Sprintf("/validators?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 

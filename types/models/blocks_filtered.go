@@ -58,7 +58,7 @@ type BlocksFilteredPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type BlocksFilteredPageDataBlock struct {
@@ -73,8 +73,8 @@ type BlocksFilteredPageDataBlock struct {
 	GasUsed             uint64    `json:"gas_used"`
 	GasLimit            uint64    `json:"gas_limit"`
 	BlockSize           uint64    `json:"block_size"`
-	BlockRoot           []byte    `json:"block_root"`
+	BlockRoot           []byte    `json:"block_root" ssz-size:"32"`
 	IsMevBlock          bool      `json:"is_mev_block"`
 	MevBlockRelays      string    `json:"mev_block_relays"`
-	FeeRecipient        []byte    `json:"fee_recipient"`
+	FeeRecipient        []byte    `json:"fee_recipient" ssz-size:"20"`
 }

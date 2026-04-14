@@ -7,12 +7,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -78,7 +79,9 @@ func getFilteredQueuedWithdrawalsPageData(pageIdx uint64, pageSize uint64, minIn
 	pageData := &models.QueuedWithdrawalsPageData{}
 	pageCacheKey := fmt.Sprintf("queued_withdrawals:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, validatorName, pubkey)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredQueuedWithdrawalsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, validatorName, pubkey)
+		pageData, cacheTimeout := buildFilteredQueuedWithdrawalsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, validatorName, pubkey)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.QueuedWithdrawalsPageData)
@@ -90,7 +93,8 @@ func getFilteredQueuedWithdrawalsPageData(pageIdx uint64, pageSize uint64, minIn
 	return pageData, pageErr
 }
 
-func buildFilteredQueuedWithdrawalsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, validatorName string, pubkey string) *models.QueuedWithdrawalsPageData {
+func buildFilteredQueuedWithdrawalsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, validatorName string, pubkey string) (*models.QueuedWithdrawalsPageData, time.Duration) {
+	cacheTimeout := 5 * time.Minute
 	filterArgs := url.Values{}
 	if minIndex != 0 {
 		filterArgs.Add("f.mini", fmt.Sprintf("%v", minIndex))
@@ -200,18 +204,18 @@ func buildFilteredQueuedWithdrawalsPageData(ctx context.Context, pageIdx uint64,
 	}
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams = make([]models.UrlParam, 0)
 	for key, values := range filterArgs {
 		if len(values) > 0 {
-			pageData.UrlParams[key] = values[0]
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: key, Value: values[0]})
 		}
 	}
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
 
 	pageData.FirstPageLink = fmt.Sprintf("/validators/queued_withdrawals?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/validators/queued_withdrawals?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
 	pageData.NextPageLink = fmt.Sprintf("/validators/queued_withdrawals?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/validators/queued_withdrawals?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
-	return pageData
+	return pageData, cacheTimeout
 }

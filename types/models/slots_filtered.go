@@ -6,26 +6,31 @@ import (
 
 // SlotsPageData is a struct to hold info for the slots page
 type SlotsFilteredPageData struct {
-	FilterGraffiti        string `json:"filter_graffiti"`
-	FilterInvertGraffiti  bool   `json:"filter_invert_graffiti"`
-	FilterExtraData       string `json:"filter_extra_data"`
-	FilterInvertExtraData bool   `json:"filter_invert_extra_data"`
-	FilterProposer        string `json:"filter_proposer"`
-	FilterProposerName    string `json:"filter_pname"`
-	FilterInvertProposer  bool   `json:"filter_invert_proposer"`
-	FilterWithOrphaned    uint8  `json:"filter_orphaned"`
-	FilterWithMissing     uint8  `json:"filter_missing"`
-	FilterMinSyncAgg      string `json:"filter_min_sync"`
-	FilterMaxSyncAgg      string `json:"filter_max_sync"`
-	FilterMinExecTime     string `json:"filter_min_exec"`
-	FilterMaxExecTime     string `json:"filter_max_exec"`
-	FilterMinTxCount      string `json:"filter_min_tx"`
-	FilterMaxTxCount      string `json:"filter_max_tx"`
-	FilterMinBlobCount    string `json:"filter_min_blob"`
-	FilterMaxBlobCount    string `json:"filter_max_blob"`
-	FilterForkIds         string `json:"filter_fork_ids"`
-	FilterMinEpoch        string `json:"filter_min_epoch"`
-	FilterMaxEpoch        string `json:"filter_max_epoch"`
+	FilterGraffiti         string `json:"filter_graffiti"`
+	FilterInvertGraffiti   bool   `json:"filter_invert_graffiti"`
+	FilterExtraData        string `json:"filter_extra_data"`
+	FilterInvertExtraData  bool   `json:"filter_invert_extra_data"`
+	FilterProposer         string `json:"filter_proposer"`
+	FilterProposerName     string `json:"filter_pname"`
+	FilterInvertProposer   bool   `json:"filter_invert_proposer"`
+	FilterStatusMissing    bool   `json:"filter_status_missing"`
+	FilterStatusCanonical  bool   `json:"filter_status_canonical"`
+	FilterStatusOrphaned   bool   `json:"filter_status_orphaned"`
+	FilterPayloadMissing   bool   `json:"filter_payload_missing"`
+	FilterPayloadCanonical bool   `json:"filter_payload_canonical"`
+	FilterPayloadOrphaned  bool   `json:"filter_payload_orphaned"`
+	FilterMinSyncAgg       string `json:"filter_min_sync"`
+	FilterMaxSyncAgg       string `json:"filter_max_sync"`
+	FilterMinExecTime      string `json:"filter_min_exec"`
+	FilterMaxExecTime      string `json:"filter_max_exec"`
+	FilterMinTxCount       string `json:"filter_min_tx"`
+	FilterMaxTxCount       string `json:"filter_max_tx"`
+	FilterMinBlobCount     string `json:"filter_min_blob"`
+	FilterMaxBlobCount     string `json:"filter_max_blob"`
+	FilterForkIds          string `json:"filter_fork_ids"`
+	FilterMinEpoch         string `json:"filter_min_epoch"`
+	FilterMaxEpoch         string `json:"filter_max_epoch"`
+	FilterBuilder          string `json:"filter_builder"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`
 	DisplaySlot         bool   `json:"dp_slot"`
@@ -45,6 +50,7 @@ type SlotsFilteredPageData struct {
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
 	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
 	DisplayExecTime     bool   `json:"dp_exectime"`
+	DisplayBuilder      bool   `json:"dp_builder"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	HasSnooperClients bool `json:"has_snooper_clients"`
@@ -70,7 +76,7 @@ type SlotsFilteredPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type SlotsFilteredPageDataSlot struct {
@@ -80,6 +86,7 @@ type SlotsFilteredPageDataSlot struct {
 	Finalized             bool                  `json:"scheduled"`
 	Scheduled             bool                  `json:"finalized"`
 	Status                uint8                 `json:"status"`
+	PayloadStatus         uint8                 `json:"payload_status"`
 	Synchronized          bool                  `json:"synchronized"`
 	Proposer              uint64                `json:"proposer"`
 	ProposerName          string                `json:"proposer_name"`
@@ -98,8 +105,8 @@ type SlotsFilteredPageDataSlot struct {
 	GasUsed               uint64                `json:"gas_used"`
 	GasLimit              uint64                `json:"gas_limit"`
 	BlockSize             uint64                `json:"block_size"`
-	BlockRoot             []byte                `json:"block_root"`
-	ParentRoot            []byte                `json:"parent_root"`
+	BlockRoot             []byte                `json:"block_root" ssz-size:"32"`
+	ParentRoot            []byte                `json:"parent_root" ssz-size:"32"`
 	RecvDelay             int32                 `json:"recv_delay"`
 	MinExecTime           uint32                `json:"min_exec_time"`
 	MaxExecTime           uint32                `json:"max_exec_time"`
@@ -107,4 +114,7 @@ type SlotsFilteredPageDataSlot struct {
 	ExecutionTimes        []ExecutionTimeDetail `json:"execution_times"`
 	IsMevBlock            bool                  `json:"is_mev_block"`
 	MevBlockRelays        string                `json:"mev_block_relays"`
+	HasBuilder            bool                  `json:"has_builder"`
+	BuilderIndex          uint64                `json:"builder_index"`
+	BuilderName           string                `json:"builder_name"`
 }

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution"
@@ -92,7 +92,7 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	// Epoch duration = slots per epoch * slot duration
-	epochDuration := time.Duration(specs.SlotsPerEpoch) * time.Duration(specs.SecondsPerSlot) * time.Second
+	epochDuration := time.Duration(specs.SlotsPerEpoch*specs.SlotDurationMs) * time.Millisecond
 	cacheTime := epochDuration
 
 	// Get all validators (we'll filter out exited ones in processing)

@@ -34,17 +34,17 @@ type IncludedDepositsPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type IncludedDepositsPageDataDeposit struct {
 	Index                 uint64                                    `json:"index"`
 	HasIndex              bool                                      `json:"has_index"`
-	PublicKey             []byte                                    `json:"pubkey"`
-	Withdrawalcredentials []byte                                    `json:"wtdcreds"`
+	PublicKey             []byte                                    `json:"pubkey" ssz-size:"48"`
+	Withdrawalcredentials []byte                                    `json:"wtdcreds" ssz-size:"32"`
 	Amount                uint64                                    `json:"amount"`
 	SlotNumber            uint64                                    `json:"slot"`
-	SlotRoot              []byte                                    `json:"slot_root"`
+	SlotRoot              []byte                                    `json:"slot_root" ssz-size:"32"`
 	Time                  time.Time                                 `json:"time"`
 	Orphaned              bool                                      `json:"orphaned"`
 	ValidatorStatus       string                                    `json:"vstatus"`
@@ -54,14 +54,15 @@ type IncludedDepositsPageDataDeposit struct {
 	IsQueued              bool                                      `json:"is_queued"`
 	QueuePosition         uint64                                    `json:"queue_position"`
 	EstimatedTime         time.Time                                 `json:"estimated_time"`
-	DepositorAddress      []byte                                    `json:"depositor_address"`
-	TransactionHash       []byte                                    `json:"tx_hash"`
+	DepositorAddress      []byte                                    `json:"depositor_address" ssz-size:"20"`
+	TransactionHash       []byte                                    `json:"tx_hash" ssz-size:"32"`
 	HasTransaction        bool                                      `json:"has_transaction"`
-	TransactionDetails    *IncludedDepositsPageDataDepositTxDetails `json:"tx_details"`
+	TransactionDetails    *IncludedDepositsPageDataDepositTxDetails `json:"tx_details" ssz-type:"optional"`
 	InvalidSignature      bool                                      `json:"invalid_signature"`
 	ValidatorExists       bool                                      `json:"validator_exists"`
 	ValidatorIndex        uint64                                    `json:"validator_index"`
 	ValidatorName         string                                    `json:"validator_name"`
+	IsBuilder             bool                                      `json:"is_builder"`
 }
 
 type IncludedDepositsPageDataDepositTxDetails struct {

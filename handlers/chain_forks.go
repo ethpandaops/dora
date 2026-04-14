@@ -9,13 +9,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,8 +23,8 @@ import (
 func getDefaultChainForksPageSize() uint64 {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
-	secondsPerEpoch := specs.SlotsPerEpoch * specs.SecondsPerSlot
-	return uint64(24*3600) / secondsPerEpoch // 1 day worth of epochs
+	msPerEpoch := specs.SlotsPerEpoch * specs.SlotDurationMs
+	return uint64(24*3600*1000) / msPerEpoch // 1 day worth of epochs
 }
 
 // ChainForks will return the chain forks visualization page using a go template
@@ -51,8 +51,8 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 			// Calculate max allowed epochs (14 days)
 			chainState := services.GlobalBeaconService.GetChainState()
 			specs := chainState.GetSpecs()
-			secondsPerEpoch := specs.SlotsPerEpoch * specs.SecondsPerSlot
-			maxEpochs := uint64(14*24*3600) / secondsPerEpoch
+			msPerEpoch := specs.SlotsPerEpoch * specs.SlotDurationMs
+			maxEpochs := uint64(14*24*3600*1000) / msPerEpoch
 
 			if parsed <= maxEpochs {
 				pageSizeEpochs = parsed
@@ -123,18 +123,18 @@ func getChainForksPageData() (*models.ChainForksPageData, error) {
 	genesis := chainState.GetGenesis()
 
 	// Calculate epoch counts for time selectors
-	secondsPerEpoch := specs.SlotsPerEpoch * specs.SecondsPerSlot
+	msPerEpoch := specs.SlotsPerEpoch * specs.SlotDurationMs
 
 	pageData := &models.ChainForksPageData{
 		ChainSpecs: &models.ChainSpecs{
 			SlotsPerEpoch:  uint64(specs.SlotsPerEpoch),
-			SecondsPerSlot: uint64(specs.SecondsPerSlot),
+			SlotDurationMs: specs.SlotDurationMs,
 			GenesisTime:    uint64(genesis.GenesisTime.Unix()),
 			CurrentSlot:    uint64(chainState.CurrentSlot()),
-			EpochsFor12h:   uint64(12*3600) / secondsPerEpoch,
-			EpochsFor1d:    uint64(24*3600) / secondsPerEpoch,
-			EpochsFor7d:    uint64(7*24*3600) / secondsPerEpoch,
-			EpochsFor14d:   uint64(14*24*3600) / secondsPerEpoch,
+			EpochsFor12h:   uint64(12*3600*1000) / msPerEpoch,
+			EpochsFor1d:    uint64(24*3600*1000) / msPerEpoch,
+			EpochsFor7d:    uint64(7*24*3600*1000) / msPerEpoch,
+			EpochsFor14d:   uint64(14*24*3600*1000) / msPerEpoch,
 		},
 	}
 
@@ -184,7 +184,7 @@ func buildChainForksDiagramData(ctx context.Context, startSlot uint64, pageSizeE
 
 	var cacheTime time.Duration
 	if startSlot > finalizedSlot {
-		cacheTime = time.Duration(specs.SecondsPerSlot) * 12 * time.Second
+		cacheTime = time.Duration(specs.SlotDurationMs) * 12 * time.Millisecond
 	} else {
 		cacheTime = 30 * time.Minute
 	}

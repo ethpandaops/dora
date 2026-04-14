@@ -18,6 +18,14 @@ const (
 	Orphaned
 )
 
+type PayloadStatus uint8
+
+const (
+	PayloadStatusMissing PayloadStatus = iota
+	PayloadStatusCanonical
+	PayloadStatusOrphaned
+)
+
 type SlotHeader struct {
 	Slot     uint64     `db:"slot"`
 	Proposer uint64     `db:"proposer"`
@@ -25,40 +33,43 @@ type SlotHeader struct {
 }
 
 type Slot struct {
-	Slot                  uint64     `db:"slot"`
-	Proposer              uint64     `db:"proposer"`
-	Status                SlotStatus `db:"status"`
-	Root                  []byte     `db:"root"`
-	ParentRoot            []byte     `db:"parent_root"`
-	StateRoot             []byte     `db:"state_root"`
-	Graffiti              []byte     `db:"graffiti"`
-	GraffitiText          string     `db:"graffiti_text"`
-	AttestationCount      uint64     `db:"attestation_count"`
-	DepositCount          uint64     `db:"deposit_count"`
-	ExitCount             uint64     `db:"exit_count"`
-	WithdrawCount         uint64     `db:"withdraw_count"`
-	WithdrawAmount        uint64     `db:"withdraw_amount"`
-	AttesterSlashingCount uint64     `db:"attester_slashing_count"`
-	ProposerSlashingCount uint64     `db:"proposer_slashing_count"`
-	BLSChangeCount        uint64     `db:"bls_change_count"`
-	EthTransactionCount   uint64     `db:"eth_transaction_count"`
-	BlobCount             uint64     `db:"blob_count"`
-	EthGasUsed            uint64     `db:"eth_gas_used"`
-	EthGasLimit           uint64     `db:"eth_gas_limit"`
-	EthBaseFee            uint64     `db:"eth_base_fee"`
-	EthFeeRecipient       []byte     `db:"eth_fee_recipient"`
-	EthBlockNumber        *uint64    `db:"eth_block_number"`
-	EthBlockHash          []byte     `db:"eth_block_hash"`
-	EthBlockExtra         []byte     `db:"eth_block_extra"`
-	EthBlockExtraText     string     `db:"eth_block_extra_text"`
-	SyncParticipation     float32    `db:"sync_participation"`
-	ForkId                uint64     `db:"fork_id"`
-	BlockSize             uint64     `db:"block_size"`
-	RecvDelay             int32      `db:"recv_delay"`
-	MinExecTime           uint32     `db:"min_exec_time"`
-	MaxExecTime           uint32     `db:"max_exec_time"`
-	ExecTimes             []byte     `db:"exec_times"`
-	BlockUid              uint64     `db:"block_uid"`
+	Slot                  uint64        `db:"slot"`
+	Proposer              uint64        `db:"proposer"`
+	Status                SlotStatus    `db:"status"`
+	Root                  []byte        `db:"root"`
+	ParentRoot            []byte        `db:"parent_root"`
+	StateRoot             []byte        `db:"state_root"`
+	Graffiti              []byte        `db:"graffiti"`
+	GraffitiText          string        `db:"graffiti_text"`
+	AttestationCount      uint64        `db:"attestation_count"`
+	DepositCount          uint64        `db:"deposit_count"`
+	ExitCount             uint64        `db:"exit_count"`
+	WithdrawCount         uint64        `db:"withdraw_count"`
+	WithdrawAmount        uint64        `db:"withdraw_amount"`
+	AttesterSlashingCount uint64        `db:"attester_slashing_count"`
+	ProposerSlashingCount uint64        `db:"proposer_slashing_count"`
+	BLSChangeCount        uint64        `db:"bls_change_count"`
+	EthTransactionCount   uint64        `db:"eth_transaction_count"`
+	BlobCount             uint64        `db:"blob_count"`
+	EthGasUsed            uint64        `db:"eth_gas_used"`
+	EthGasLimit           uint64        `db:"eth_gas_limit"`
+	EthBaseFee            uint64        `db:"eth_base_fee"`
+	EthFeeRecipient       []byte        `db:"eth_fee_recipient"`
+	EthBlockNumber        *uint64       `db:"eth_block_number"`
+	EthBlockHash          []byte        `db:"eth_block_hash"`
+	EthBlockParentHash    []byte        `db:"eth_block_parent_hash"`
+	EthBlockExtra         []byte        `db:"eth_block_extra"`
+	EthBlockExtraText     string        `db:"eth_block_extra_text"`
+	SyncParticipation     float32       `db:"sync_participation"`
+	ForkId                uint64        `db:"fork_id"`
+	BlockSize             uint64        `db:"block_size"`
+	RecvDelay             int32         `db:"recv_delay"`
+	MinExecTime           uint32        `db:"min_exec_time"`
+	MaxExecTime           uint32        `db:"max_exec_time"`
+	ExecTimes             []byte        `db:"exec_times"`
+	PayloadStatus         PayloadStatus `db:"payload_status"`
+	BlockUid              uint64        `db:"block_uid"`
+	BuilderIndex          int64         `db:"builder_index"` // Builder index, -1 for self-built blocks (MaxUint64)
 }
 
 type Epoch struct {
@@ -84,15 +95,18 @@ type Epoch struct {
 	EthGasUsed            uint64  `db:"eth_gas_used"`
 	EthGasLimit           uint64  `db:"eth_gas_limit"`
 	SyncParticipation     float32 `db:"sync_participation"`
+	PayloadCount          uint64  `db:"payload_count"`
 }
 
 type OrphanedBlock struct {
-	Root      []byte `db:"root"`
-	HeaderVer uint64 `db:"header_ver"`
-	HeaderSSZ []byte `db:"header_ssz"`
-	BlockVer  uint64 `db:"block_ver"`
-	BlockSSZ  []byte `db:"block_ssz"`
-	BlockUid  uint64 `db:"block_uid"`
+	Root       []byte `db:"root"`
+	HeaderVer  uint64 `db:"header_ver"`
+	HeaderSSZ  []byte `db:"header_ssz"`
+	BlockVer   uint64 `db:"block_ver"`
+	BlockSSZ   []byte `db:"block_ssz"`
+	PayloadVer uint64 `db:"payload_ver"`
+	PayloadSSZ []byte `db:"payload_ssz"`
+	BlockUid   uint64 `db:"block_uid"`
 }
 
 type SlotAssignment struct {
@@ -121,6 +135,8 @@ type UnfinalizedBlock struct {
 	HeaderSSZ   []byte                 `db:"header_ssz"`
 	BlockVer    uint64                 `db:"block_ver"`
 	BlockSSZ    []byte                 `db:"block_ssz"`
+	PayloadVer  uint64                 `db:"payload_ver"`
+	PayloadSSZ  []byte                 `db:"payload_ssz"`
 	Status      UnfinalizedBlockStatus `db:"status"`
 	ForkId      uint64                 `db:"fork_id"`
 	RecvDelay   int32                  `db:"recv_delay"`
@@ -156,6 +172,7 @@ type UnfinalizedEpoch struct {
 	EthGasUsed            uint64  `db:"eth_gas_used"`
 	EthGasLimit           uint64  `db:"eth_gas_limit"`
 	SyncParticipation     float32 `db:"sync_participation"`
+	PayloadCount          uint64  `db:"payload_count"`
 }
 
 type OrphanedEpoch struct {
@@ -433,13 +450,16 @@ type Validator struct {
 // EL Explorer types
 
 type ElBlock struct {
-	BlockUid     uint64 `db:"block_uid"`
-	Status       uint32 `db:"status"`
-	Events       uint32 `db:"events"`
-	Transactions uint32 `db:"transactions"`
-	Transfers    uint32 `db:"transfers"`
-	DataStatus   uint16 `db:"data_status"` // bit flags: 0x01=events, 0x02=call traces, 0x04=state changes
-	DataSize     int64  `db:"data_size"`   // compressed size in bytes of blockdb object
+	BlockUid     uint64  `db:"block_uid"`
+	Status       uint32  `db:"status"`
+	Events       uint32  `db:"events"`
+	Transactions uint32  `db:"transactions"`
+	Transfers    uint32  `db:"transfers"`
+	DataStatus   uint16  `db:"data_status"` // bit flags: 0x01=events, 0x02=call traces, 0x04=state changes
+	DataSize     int64   `db:"data_size"`   // compressed size in bytes of blockdb object
+	FeeAmount    float64 `db:"fee_amount"`
+	FeeAmountRaw []byte  `db:"fee_amount_raw"`
+	FeeAccountID *uint64 `db:"fee_account_id"`
 }
 
 // ElBlock DataStatus bit flags
@@ -548,18 +568,49 @@ type ElTokenTransfer struct {
 	AmountRaw  []byte  `db:"amount_raw"`
 }
 
+// ePBS types
+
+type BlockBid struct {
+	ParentRoot   []byte `db:"parent_root"`
+	ParentHash   []byte `db:"parent_hash"`
+	BlockHash    []byte `db:"block_hash"`
+	FeeRecipient []byte `db:"fee_recipient"`
+	GasLimit     uint64 `db:"gas_limit"`
+	BuilderIndex int64  `db:"builder_index"`
+	Slot         uint64 `db:"slot"`
+	Value        uint64 `db:"value"`
+	ElPayment    uint64 `db:"el_payment"`
+}
+
+type Builder struct {
+	Pubkey            []byte `db:"pubkey"`
+	BuilderIndex      uint64 `db:"builder_index"`
+	Version           uint8  `db:"version"`
+	ExecutionAddress  []byte `db:"execution_address"`
+	DepositEpoch      int64  `db:"deposit_epoch"`
+	WithdrawableEpoch int64  `db:"withdrawable_epoch"`
+	Superseded        bool   `db:"superseded"`
+}
+
 // Withdrawal types
 const (
-	WithdrawalTypeBeaconWithdrawal = 0
-	WithdrawalTypeFeeRecipient     = 1
+	WithdrawalTypeFullWithdrawal        = 1 // Full withdrawal after validator exit
+	WithdrawalTypeSweepWithdrawal       = 2 // Regular scheduled sweep (excess balance)
+	WithdrawalTypeRequestedWithdrawal   = 3 // EIP-7002 requested partial withdrawal
+	WithdrawalTypeBuilderFullWithdrawal = 4 // Builder sweep (full balance withdrawal)
+	WithdrawalTypeBuilderPayment        = 5 // Builder direct payment (payload delivered)
+	WithdrawalTypeBuilderDelayedPayment = 6 // Builder delayed/quorum payment (missed payload)
 )
 
-type ElWithdrawal struct {
-	BlockUid   uint64  `db:"block_uid"`
-	BlockIndex uint16  `db:"block_index"`
-	AccountID  uint64  `db:"account_id"`
-	Type       uint8   `db:"type"` // 0=withdrawal, 1=fee_recipient
-	Amount     float64 `db:"amount"`
-	AmountRaw  []byte  `db:"amount_raw"`
-	Validator  *uint64 `db:"validator"` // validator index for withdrawals, null for fee recipient
+type Withdrawal struct {
+	BlockUid  uint64 `db:"block_uid"`
+	BlockIdx  int16  `db:"block_idx"`
+	Type      uint8  `db:"type"` // 1=full, 2=sweep, 3=requested, 4=builder_payment, 5=builder_full, 6=builder_delayed
+	Orphaned  bool   `db:"orphaned"`
+	ForkId    uint64 `db:"fork_id"`
+	Validator uint64 `db:"validator"`
+	AccountID uint64 `db:"account_id"`
+	Address   []byte
+	RefSlot   *uint64 `db:"ref_slot"` // Reference slot (for builder payments: the slot the payment is for)
+	Amount    uint64  `db:"amount"`   // Gwei
 }

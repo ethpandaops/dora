@@ -2,13 +2,13 @@
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 mb-1 mb-md-0">
-        <i class="fas fa-square-plus mx-2"></i> Consolidation Requests
+        <i class="fas fa-square-plus mx-2"></i> Consolidations
       </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
           <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
-          <li class="breadcrumb-item"><a href="/validators/consolidations" title="Consolidation Requests">Consolidation Requests</a></li>
+          <li class="breadcrumb-item"><a href="/validators/consolidations" title="Consolidations">Consolidations</a></li>
           <li class="breadcrumb-item active" aria-current="page">Filtered</li>
         </ol>
       </nav>
@@ -350,9 +350,9 @@
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
                   <input type="hidden" name="f">
-                  {{ range $key, $value := .UrlParams }}
-                    {{ if ne $key "p" }}
-                      <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                  {{ range $param := .UrlParams }}
+                    {{ if ne $param.Key "p" }}
+                      <input type="hidden" name="{{ $param.Key }}" value="{{ $param.Value }}">
                     {{ end }}
                   {{ end }}
                   <div class="input-group" style="width: 120px;">

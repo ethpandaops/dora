@@ -14,7 +14,7 @@ type PageData struct {
 	ExplorerTitle           string
 	ExplorerSubtitle        string
 	ChainSlotsPerEpoch      uint64
-	ChainSecondsPerSlot     uint64
+	ChainSlotDurationMs     uint64
 	ChainGenesisTimestamp   uint64
 	CurrentEpoch            uint64
 	LatestFinalizedEpoch    uint64

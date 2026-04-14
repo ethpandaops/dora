@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -15,6 +15,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -107,7 +108,9 @@ func getFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minSlo
 	pageData := &models.ElConsolidationsPageData{}
 	pageCacheKey := fmt.Sprintf("el_consolidations:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, withOrphaned, pubkey)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredElConsolidationsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, withOrphaned, pubkey)
+		pageData, cacheTimeout := buildFilteredElConsolidationsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, withOrphaned, pubkey)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ElConsolidationsPageData)
@@ -119,7 +122,7 @@ func getFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minSlo
 	return pageData, pageErr
 }
 
-func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minSrcIndex uint64, maxSrcIndex uint64, srcVName string, minTgtIndex uint64, maxTgtIndex uint64, tgtVName string, withOrphaned uint8, pubkey string) *models.ElConsolidationsPageData {
+func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minSrcIndex uint64, maxSrcIndex uint64, srcVName string, minTgtIndex uint64, maxTgtIndex uint64, tgtVName string, withOrphaned uint8, pubkey string) (*models.ElConsolidationsPageData, time.Duration) {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -168,11 +171,13 @@ func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, 
 		FilterWithOrphaned:     withOrphaned,
 		FilterPublicKey:        pubkey,
 	}
+	cacheTimeout := 5 * time.Minute
 	logrus.Debugf("el_consolidations page called: %v:%v [%v,%v,%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minSlot, maxSlot, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName)
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
+	} else {
+		cacheTimeout = 15 * time.Minute
 	}
-
 	if pageSize > 100 {
 		pageSize = 100
 	}
@@ -287,20 +292,20 @@ func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, 
 	}
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams = make([]models.UrlParam, 0)
 	for key, values := range filterArgs {
 		if len(values) > 0 {
-			pageData.UrlParams[key] = values[0]
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: key, Value: values[0]})
 		}
 	}
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
 
 	pageData.FirstPageLink = fmt.Sprintf("/validators/el_consolidations?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/validators/el_consolidations?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
 	pageData.NextPageLink = fmt.Sprintf("/validators/el_consolidations?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/validators/el_consolidations?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
-	return pageData
+	return pageData, cacheTimeout
 }
 
 func getConsolidationResultMessage(result uint8, specs *consensus.ChainSpec) string {

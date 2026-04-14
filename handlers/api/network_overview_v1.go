@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution/rpc"
@@ -15,6 +14,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -53,8 +53,8 @@ type APICurrentState struct {
 	CurrentEpoch         uint64  `json:"current_epoch"`
 	CurrentEpochProgress float64 `json:"current_epoch_progress"`
 	SlotsPerEpoch        uint64  `json:"slots_per_epoch"`
-	SecondsPerSlot       uint64  `json:"seconds_per_slot"`
-	SecondsPerEpoch      uint64  `json:"seconds_per_epoch"`
+	SlotDurationMs       uint64  `json:"slot_duration_ms"`
+	EpochDurationMs      uint64  `json:"epoch_duration_ms"`
 }
 
 // APICheckpoints contains finalization and justification information
@@ -186,8 +186,8 @@ func buildNetworkOverviewData(ctx context.Context) (*APINetworkOverviewData, tim
 		CurrentEpoch:         uint64(currentEpoch),
 		CurrentEpochProgress: float64(100) * float64(currentSlotIndex) / float64(specs.SlotsPerEpoch),
 		SlotsPerEpoch:        specs.SlotsPerEpoch,
-		SecondsPerSlot:       uint64(specs.SecondsPerSlot),
-		SecondsPerEpoch:      uint64(specs.SecondsPerSlot * specs.SlotsPerEpoch),
+		SlotDurationMs:       specs.SlotDurationMs,
+		EpochDurationMs:      specs.SlotDurationMs * specs.SlotsPerEpoch,
 	}
 
 	// Checkpoints
@@ -279,7 +279,6 @@ func buildNetworkOverviewData(ctx context.Context) (*APINetworkOverviewData, tim
 		IsSynced:       isSynced,
 	}
 
-	// Cache for SecondsPerSlot duration
-	cacheTimeout := time.Duration(specs.SecondsPerSlot) * time.Second
+	cacheTimeout := time.Duration(specs.SlotDurationMs) * time.Millisecond
 	return data, cacheTimeout
 }

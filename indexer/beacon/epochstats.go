@@ -9,12 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/electra"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	"github.com/mashingan/smapping"
 )
@@ -44,39 +45,46 @@ type EpochStats struct {
 
 // EpochStatsValues holds the values for the epoch-specific information.
 type EpochStatsValues struct {
-	RandaoMix             phase0.Hash32
-	NextRandaoMix         phase0.Hash32
-	ActiveIndices         []phase0.ValidatorIndex
-	EffectiveBalances     []uint32
-	ProposerDuties        []phase0.ValidatorIndex
-	AttesterDuties        [][][]duties.ActiveIndiceIndex
-	SyncCommitteeDuties   []phase0.ValidatorIndex
-	ActiveValidators      uint64
-	TotalBalance          phase0.Gwei
-	ActiveBalance         phase0.Gwei
-	EffectiveBalance      phase0.Gwei
-	FirstDepositIndex     uint64
-	PendingWithdrawals    []electra.PendingPartialWithdrawal
-	PendingConsolidations []electra.PendingConsolidation
-	ConsolidatingBalance  phase0.Gwei
+	RandaoMix                  phase0.Hash32
+	NextRandaoMix              phase0.Hash32
+	ActiveIndices              []phase0.ValidatorIndex
+	EffectiveBalances          []uint32 // effective balance in full ETH of last epoch for pre-fulu stats, effective balance in full ETH of current epoch for fulu+ stats
+	ProposerDuties             []phase0.ValidatorIndex
+	AttesterDuties             [][][]duties.ActiveIndiceIndex
+	SyncCommitteeDuties        []phase0.ValidatorIndex
+	PtcDuties                  [][]duties.ActiveIndiceIndex // [slot_index][ptc_member_index] - PTC duties for Gloas+ epochs
+	ActiveValidators           uint64
+	TotalBalance               phase0.Gwei
+	ActiveBalance              phase0.Gwei
+	EffectiveBalance           phase0.Gwei
+	FirstDepositIndex          uint64
+	PendingWithdrawals         []electra.PendingPartialWithdrawal
+	BuilderPendingWithdrawals  []gloas.BuilderPendingWithdrawal
+	DelayedBuilderPaymentCount uint32 // number of delayed payments at the tail of BuilderPendingWithdrawals
+	SourceBlockUid             uint64 // block UID of the source block (last block of parent epoch)
+	PendingConsolidations      []electra.PendingConsolidation
+	ConsolidatingBalance       phase0.Gwei
 }
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
 //
 //	generate ssz: (this is really ugly, needs path patching and post-fixing to work)
-//	sszgen --suffix ssz --path . --include $GOPATH/pkg/mod/github.com/attestantio/go-eth2-client\@v0.26.0/spec/phase0,$GOPATH/pkg/mod/github.com/attestantio/go-eth2-client\@v0.26.0/spec/electra --objs EpochStatsPacked
+//	sszgen --suffix ssz --path . --include $GOPATH/pkg/mod/github.com/ethpandaops/go-eth2-client\@v0.26.0/spec/phase0,$GOPATH/pkg/mod/github.com/ethpandaops/go-eth2-client\@v0.26.0/spec/electra --objs EpochStatsPacked
 type EpochStatsPacked struct {
-	ActiveValidators      []EpochStatsPackedValidator `ssz-max:"10000000"`
-	ProposerDuties        []phase0.ValidatorIndex     `ssz-max:"100"`
-	SyncCommitteeDuties   []phase0.ValidatorIndex     `ssz-max:"10000"`
-	RandaoMix             phase0.Hash32               `ssz-size:"32"`
-	NextRandaoMix         phase0.Hash32               `ssz-size:"32"`
-	TotalBalance          phase0.Gwei
-	ActiveBalance         phase0.Gwei
-	FirstDepositIndex     uint64
-	PendingWithdrawals    []electra.PendingPartialWithdrawal `ssz-max:"10000000"`
-	PendingConsolidations []electra.PendingConsolidation     `ssz-max:"10000000"`
-	ConsolidatingBalance  phase0.Gwei
+	ActiveValidators           []EpochStatsPackedValidator `ssz-max:"10000000"`
+	ProposerDuties             []phase0.ValidatorIndex     `ssz-max:"100"`
+	SyncCommitteeDuties        []phase0.ValidatorIndex     `ssz-max:"10000"`
+	RandaoMix                  phase0.Hash32               `ssz-size:"32"`
+	NextRandaoMix              phase0.Hash32               `ssz-size:"32"`
+	TotalBalance               phase0.Gwei
+	ActiveBalance              phase0.Gwei
+	FirstDepositIndex          uint64
+	PendingWithdrawals         []electra.PendingPartialWithdrawal `ssz-max:"10000000"`
+	BuilderPendingWithdrawals  []gloas.BuilderPendingWithdrawal   `ssz-max:"10000000"`
+	DelayedBuilderPaymentCount uint32
+	SourceBlockUid             uint64
+	PendingConsolidations      []electra.PendingConsolidation `ssz-max:"10000000"`
+	ConsolidatingBalance       phase0.Gwei
 }
 
 // EpochStatsPackedValidator holds the packed values for an active validator.
@@ -164,17 +172,20 @@ func (es *EpochStats) buildPackedSSZ() ([]byte, error) {
 	}
 
 	packedValues := &EpochStatsPacked{
-		ActiveValidators:      make([]EpochStatsPackedValidator, es.values.ActiveValidators),
-		ProposerDuties:        es.values.ProposerDuties,
-		SyncCommitteeDuties:   es.values.SyncCommitteeDuties,
-		RandaoMix:             es.values.RandaoMix,
-		NextRandaoMix:         es.values.NextRandaoMix,
-		TotalBalance:          es.values.TotalBalance,
-		ActiveBalance:         es.values.ActiveBalance,
-		FirstDepositIndex:     es.values.FirstDepositIndex,
-		PendingWithdrawals:    es.values.PendingWithdrawals,
-		PendingConsolidations: es.values.PendingConsolidations,
-		ConsolidatingBalance:  es.values.ConsolidatingBalance,
+		ActiveValidators:           make([]EpochStatsPackedValidator, es.values.ActiveValidators),
+		ProposerDuties:             es.values.ProposerDuties,
+		SyncCommitteeDuties:        es.values.SyncCommitteeDuties,
+		RandaoMix:                  es.values.RandaoMix,
+		NextRandaoMix:              es.values.NextRandaoMix,
+		TotalBalance:               es.values.TotalBalance,
+		ActiveBalance:              es.values.ActiveBalance,
+		FirstDepositIndex:          es.values.FirstDepositIndex,
+		PendingWithdrawals:         es.values.PendingWithdrawals,
+		PendingConsolidations:      es.values.PendingConsolidations,
+		BuilderPendingWithdrawals:  es.values.BuilderPendingWithdrawals,
+		DelayedBuilderPaymentCount: es.values.DelayedBuilderPaymentCount,
+		SourceBlockUid:             es.values.SourceBlockUid,
+		ConsolidatingBalance:       es.values.ConsolidatingBalance,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -215,19 +226,22 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 	}
 
 	values := &EpochStatsValues{
-		RandaoMix:             packedValues.RandaoMix,
-		NextRandaoMix:         packedValues.NextRandaoMix,
-		ActiveIndices:         make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
-		EffectiveBalances:     make([]uint32, len(packedValues.ActiveValidators)),
-		ProposerDuties:        packedValues.ProposerDuties,
-		SyncCommitteeDuties:   packedValues.SyncCommitteeDuties,
-		TotalBalance:          packedValues.TotalBalance,
-		ActiveBalance:         packedValues.ActiveBalance,
-		EffectiveBalance:      0,
-		FirstDepositIndex:     packedValues.FirstDepositIndex,
-		PendingWithdrawals:    packedValues.PendingWithdrawals,
-		PendingConsolidations: packedValues.PendingConsolidations,
-		ConsolidatingBalance:  packedValues.ConsolidatingBalance,
+		RandaoMix:                  packedValues.RandaoMix,
+		NextRandaoMix:              packedValues.NextRandaoMix,
+		ActiveIndices:              make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
+		EffectiveBalances:          make([]uint32, len(packedValues.ActiveValidators)),
+		ProposerDuties:             packedValues.ProposerDuties,
+		SyncCommitteeDuties:        packedValues.SyncCommitteeDuties,
+		TotalBalance:               packedValues.TotalBalance,
+		ActiveBalance:              packedValues.ActiveBalance,
+		EffectiveBalance:           0,
+		FirstDepositIndex:          packedValues.FirstDepositIndex,
+		PendingWithdrawals:         packedValues.PendingWithdrawals,
+		PendingConsolidations:      packedValues.PendingConsolidations,
+		BuilderPendingWithdrawals:  packedValues.BuilderPendingWithdrawals,
+		DelayedBuilderPaymentCount: packedValues.DelayedBuilderPaymentCount,
+		SourceBlockUid:             packedValues.SourceBlockUid,
+		ConsolidatingBalance:       packedValues.ConsolidatingBalance,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -265,7 +279,9 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 			proposerDuties = append(proposerDuties, proposerIndex)
 		}
 
-		values.ProposerDuties = proposerDuties
+		if len(values.ProposerDuties) == 0 {
+			values.ProposerDuties = proposerDuties
+		}
 		if beaconState.RandaoMix != nil {
 			values.RandaoMix = *beaconState.RandaoMix
 		}
@@ -273,6 +289,17 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 		// compute committees
 		attesterDuties, _ := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
 		values.AttesterDuties = attesterDuties
+
+		// compute PTC duties (Gloas+ only)
+		if chainState.IsEip7732Enabled(es.epoch) && attesterDuties != nil {
+			ptcDuties := make([][]duties.ActiveIndiceIndex, chainState.GetSpecs().SlotsPerEpoch)
+			for slotIndex := uint64(0); slotIndex < chainState.GetSpecs().SlotsPerEpoch; slotIndex++ {
+				slot := chainState.EpochToSlot(es.epoch) + phase0.Slot(slotIndex)
+				ptc, _ := duties.GetPtcDuties(chainState.GetSpecs(), beaconState, attesterDuties[slotIndex], slot)
+				ptcDuties[slotIndex] = ptc
+			}
+			values.PtcDuties = ptcDuties
+		}
 	}
 
 	return values, nil
@@ -291,6 +318,7 @@ func (es *EpochStats) pruneValues() {
 		ProposerDuties:        es.values.ProposerDuties,
 		AttesterDuties:        nil, // prune
 		SyncCommitteeDuties:   es.values.SyncCommitteeDuties,
+		PtcDuties:             nil, // prune - only needed for recent epochs
 		ActiveValidators:      es.values.ActiveValidators,
 		TotalBalance:          es.values.TotalBalance,
 		ActiveBalance:         es.values.ActiveBalance,
@@ -322,7 +350,7 @@ func (es *EpochStats) loadValuesFromDb(ctx context.Context, chainState *consensu
 }
 
 // processState processes the epoch state and computes proposer and attester duties.
-func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator) {
+func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator, loadDuration time.Duration) {
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
@@ -362,6 +390,15 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	for i, pendingPartialWithdrawal := range dependentState.pendingPartialWithdrawals {
 		values.PendingWithdrawals[i] = *pendingPartialWithdrawal
 	}
+
+	if len(dependentState.builderPendingWithdrawals) > 0 {
+		values.BuilderPendingWithdrawals = make([]gloas.BuilderPendingWithdrawal, len(dependentState.builderPendingWithdrawals))
+		for i, bpw := range dependentState.builderPendingWithdrawals {
+			values.BuilderPendingWithdrawals[i] = *bpw
+		}
+	}
+	values.DelayedBuilderPaymentCount = dependentState.delayedBuilderPaymentCount
+	values.SourceBlockUid = dependentState.sourceBlockUid
 
 	for i, pendingConsolidation := range dependentState.pendingConsolidations {
 		srcIndicee := pendingConsolidation.SourceIndex
@@ -424,7 +461,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			offset = slotsPerEpoch
 		}
 
-		values.ProposerDuties = dependentState.proposerLookahead[offset : offset+slotsPerEpoch]
+		values.ProposerDuties = dependentState.proposerLookahead[offset:]
 	} else {
 		proposerDuties := []phase0.ValidatorIndex{}
 		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
@@ -449,6 +486,20 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		indexer.logger.Warnf("failed computing attester duties for epoch %v: %v", es.epoch, err)
 	}
 	values.AttesterDuties = attesterDuties
+
+	// compute PTC duties (Gloas+ only)
+	if chainState.IsEip7732Enabled(es.epoch) && attesterDuties != nil {
+		ptcDuties := make([][]duties.ActiveIndiceIndex, chainState.GetSpecs().SlotsPerEpoch)
+		for slotIndex := uint64(0); slotIndex < chainState.GetSpecs().SlotsPerEpoch; slotIndex++ {
+			slot := chainState.EpochToSlot(es.epoch) + phase0.Slot(slotIndex)
+			ptc, ptcErr := duties.GetPtcDuties(chainState.GetSpecs(), beaconState, attesterDuties[slotIndex], slot)
+			if ptcErr != nil {
+				indexer.logger.Warnf("failed computing PTC duties for slot %v: %v", slot, ptcErr)
+			}
+			ptcDuties[slotIndex] = ptc
+		}
+		values.PtcDuties = ptcDuties
+	}
 
 	if beaconState.RandaoMix != nil {
 		values.RandaoMix = *beaconState.RandaoMix
@@ -475,12 +526,13 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	es.isInDb = true
 
 	indexer.logger.Infof(
-		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
+		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, load: %v ms, process: %v ms), %v bytes",
 		es.epoch,
 		es.dependentRoot.String(),
 		dependentState.stateRoot.String(),
 		values.ActiveValidators,
 		len(validatorSet),
+		loadDuration.Milliseconds(),
 		time.Since(t1).Milliseconds(),
 		len(packedSsz),
 	)
@@ -555,14 +607,20 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 
 		// compute proposers
 		proposerDuties := []phase0.ValidatorIndex{}
-		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
-			proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
-			proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
-			if err == nil {
-				proposerIndex = values.ActiveIndices[proposer]
-			}
 
-			proposerDuties = append(proposerDuties, proposerIndex)
+		specs := chainState.GetSpecs()
+		if parentState.dependentState != nil && uint64(len(parentState.dependentState.proposerLookahead)) > specs.SlotsPerEpoch {
+			proposerDuties = parentState.dependentState.proposerLookahead[specs.SlotsPerEpoch:]
+		} else {
+			for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
+				proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
+				proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
+				if err == nil {
+					proposerIndex = values.ActiveIndices[proposer]
+				}
+
+				proposerDuties = append(proposerDuties, proposerIndex)
+			}
 		}
 
 		values.ProposerDuties = proposerDuties
@@ -570,6 +628,17 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		// compute committees
 		attesterDuties, _ := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
 		values.AttesterDuties = attesterDuties
+
+		// compute PTC duties (Gloas+ only)
+		if chainState.IsEip7732Enabled(es.epoch) && attesterDuties != nil {
+			ptcDuties := make([][]duties.ActiveIndiceIndex, chainState.GetSpecs().SlotsPerEpoch)
+			for slotIndex := uint64(0); slotIndex < chainState.GetSpecs().SlotsPerEpoch; slotIndex++ {
+				slot := chainState.EpochToSlot(es.epoch) + phase0.Slot(slotIndex)
+				ptc, _ := duties.GetPtcDuties(chainState.GetSpecs(), beaconState, attesterDuties[slotIndex], slot)
+				ptcDuties[slotIndex] = ptc
+			}
+			values.PtcDuties = ptcDuties
+		}
 
 		es.precalcValues = values
 

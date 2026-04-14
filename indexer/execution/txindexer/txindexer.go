@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
@@ -153,6 +153,51 @@ func (t *TxIndexer) GetSyncEpoch() phase0.Epoch {
 	t.queueMutex.Lock()
 	defer t.queueMutex.Unlock()
 	return t.syncEpoch
+}
+
+// TxIndexerDebugStats holds debug statistics for the tx indexer.
+type TxIndexerDebugStats struct {
+	Mode               string
+	Running            bool
+	SyncEpoch          uint64
+	HighPrioQueueLen   int
+	LowPrioQueueLen    int
+	BalanceHighPrioLen int
+	BalanceLowPrioLen  int
+}
+
+// GetDebugStats returns current debug statistics.
+func (t *TxIndexer) GetDebugStats() *TxIndexerDebugStats {
+	t.queueMutex.Lock()
+	highLen := len(t.highPrioQueue)
+	lowLen := len(t.lowPrioQueue)
+	syncEpoch := t.syncEpoch
+	t.queueMutex.Unlock()
+
+	var modeName string
+	switch t.mode {
+	case ModeDisabled:
+		modeName = "Disabled"
+	case ModeLightweight:
+		modeName = "Lightweight"
+	case ModeFull:
+		modeName = "Full"
+	}
+
+	balHigh, balLow := 0, 0
+	if t.balanceLookup != nil {
+		balHigh, balLow = t.balanceLookup.GetQueueStats()
+	}
+
+	return &TxIndexerDebugStats{
+		Mode:               modeName,
+		Running:            t.running,
+		SyncEpoch:          uint64(syncEpoch),
+		HighPrioQueueLen:   highLen,
+		LowPrioQueueLen:    lowLen,
+		BalanceHighPrioLen: balHigh,
+		BalanceLowPrioLen:  balLow,
+	}
 }
 
 // GetReadyClients returns a list of ready EL clients that have reached the finalized block.
@@ -334,11 +379,11 @@ func (t *TxIndexer) enqueueBeaconBlock(block *beacon.Block, highPriority bool) {
 		IsRecent:  highPriority,
 	}
 
-	// For high priority blocks (from subscription), delay processing by SecondsPerSlot + 2 seconds
+	// For high priority blocks (from subscription), delay processing by one slot + 2 seconds
 	// to allow for potential reorgs to settle.
 	if highPriority {
 		specs := t.indexerCtx.ChainState.GetSpecs()
-		delay := time.Duration(specs.SecondsPerSlot+2) * time.Second
+		delay := time.Duration(specs.SlotDurationMs)*time.Millisecond + 2*time.Second
 		ref.ProcessTime = time.Now().Add(delay)
 	}
 
@@ -785,7 +830,6 @@ func (t *TxIndexer) checkAndRunCleanup() {
 			fields["internalTxs"] = retentionStats.InternalTxsDeleted
 			fields["eventIndices"] = retentionStats.EventIndicesDeleted
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
-			fields["withdrawals"] = retentionStats.WithdrawalsDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted
 		}
 		if blockdbPruned > 0 {

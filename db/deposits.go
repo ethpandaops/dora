@@ -139,14 +139,18 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 		}
 
 		if len(txFilter.WithdrawalAddress) > 0 {
+			// 0x01 = ETH1, 0x02 = compounding, 0x03 = builder deposit
 			wdcreds1 := make([]byte, 32)
 			wdcreds1[0] = 0x01
 			copy(wdcreds1[12:], txFilter.WithdrawalAddress)
 			wdcreds2 := make([]byte, 32)
 			wdcreds2[0] = 0x02
 			copy(wdcreds2[12:], txFilter.WithdrawalAddress)
-			args = append(args, wdcreds1, wdcreds2)
-			fmt.Fprintf(&sql, " %v (deposits.withdrawalcredentials = $%v OR deposits.withdrawalcredentials = $%v)", filterOp, len(args)-1, len(args))
+			wdcreds3 := make([]byte, 32)
+			wdcreds3[0] = 0x03
+			copy(wdcreds3[12:], txFilter.WithdrawalAddress)
+			args = append(args, wdcreds1, wdcreds2, wdcreds3)
+			fmt.Fprintf(&sql, " %v (deposits.withdrawalcredentials = $%v OR deposits.withdrawalcredentials = $%v OR deposits.withdrawalcredentials = $%v)", filterOp, len(args)-2, len(args)-1, len(args))
 			filterOp = "AND"
 		}
 

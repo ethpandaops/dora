@@ -91,31 +91,41 @@
                     </div>
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Builder
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.builder" type="number" class="form-control" placeholder="Builder Index (-1 for self-built)" aria-label="Builder Index" value="{{ .FilterBuilder }}">
+                  </div>
+                </div>
               </div>
             </div>
             <div class="col-sm-12 col-md-6">
               <div class="container">
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Missing Blocks</nobr>
+                    <nobr>Block Status</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.missing" aria-controls="missing" class="form-control">
-                      <option value="0" {{ if eq .FilterWithMissing 0 }}selected{{ end }}>Hide missing</option>
-                      <option value="1" {{ if eq .FilterWithMissing 1 }}selected{{ end }}>Show all</option>
-                      <option value="2" {{ if eq .FilterWithMissing 2 }}selected{{ end }}>Missing only</option>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input type="hidden" id="statusMaskField" />
+                    <select name="f.status" multiple="multiple" class="filter-multiselect">
+                      <option value="1" {{ if .FilterStatusMissing }}selected{{ end }}>Missing</option>
+                      <option value="2" {{ if .FilterStatusCanonical }}selected{{ end }}>Canonical</option>
+                      <option value="3" {{ if .FilterStatusOrphaned }}selected{{ end }}>Orphaned</option>
                     </select>
                   </div>
                 </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Orphaned Blocks</nobr>
+                    <nobr>Payload Status</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.orphaned" aria-controls="orphaned" class="form-control">
-                      <option value="0" {{ if eq .FilterWithOrphaned 0 }}selected{{ end }}>Hide orphaned</option>
-                      <option value="1" {{ if eq .FilterWithOrphaned 1 }}selected{{ end }}>Show all</option>
-                      <option value="2" {{ if eq .FilterWithOrphaned 2 }}selected{{ end }}>Orphaned only</option>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input type="hidden" id="payloadStatusMaskField" />
+                    <select name="f.pstatus" multiple="multiple" class="filter-multiselect">
+                      <option value="1" {{ if .FilterPayloadMissing }}selected{{ end }}>Missing</option>
+                      <option value="2" {{ if .FilterPayloadCanonical }}selected{{ end }}>Canonical</option>
+                      <option value="3" {{ if .FilterPayloadOrphaned }}selected{{ end }}>Orphaned</option>
                     </select>
                   </div>
                 </div>
@@ -234,6 +244,7 @@
                 <option value="16" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                 <option value="17" {{ if .DisplayRecvDelay }}selected{{ end }}>Seen</option>
                 <option value="18" {{ if .DisplayExecTime }}selected{{ end }}>Execution Time</option>
+                <option value="19" {{ if .DisplayBuilder }}selected{{ end }}>Builder</option>
                 <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
               </select>
@@ -281,6 +292,7 @@
                 {{ if .DisplayTxCount }}<th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>{{ end }}
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
+                {{ if .DisplayBuilder }}<th>Builder</th>{{ end }}
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
@@ -310,9 +322,9 @@
                       {{- if eq $slot.Slot 0 }}
                         <span class="badge rounded-pill text-bg-info">Genesis</span>
                       {{- else if eq $slot.Status 1 }}
-                        <span class="badge rounded-pill text-bg-success">Proposed</span>
+                        <span class="badge rounded-pill text-bg-success {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}">Proposed</span>
                       {{- else if eq $slot.Status 2 }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                        <span class="badge rounded-pill text-bg-info {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}">Missed (Orphaned)</span>
                       {{- else if $slot.Scheduled }}
                         <span class="badge rounded-pill text-bg-secondary">Scheduled</span>
                       {{- else if not $slot.Synchronized }}
@@ -320,7 +332,7 @@
                       {{- else if eq $slot.Status 0 }}
                         <span class="badge rounded-pill text-bg-warning">Missed</span>
                       {{- else }}
-                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                        <span class="badge rounded-pill text-bg-dark {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}">Unknown</span>
                       {{- end }}
                     </td>
                     {{- end }}
@@ -354,6 +366,13 @@
                     {{- end }}
                     {{- if $g.DisplaySyncAgg }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatPercentageAlert $slot.SyncParticipation 2 95 80 }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayBuilder }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        {{ if $slot.HasBuilder }}
+                          {{ formatBuilder $slot.BuilderIndex $slot.BuilderName }}
+                        {{ end }}
+                      {{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayMevBlock }}
                       <td>{{ if not (eq $slot.Status 0) }}
@@ -417,9 +436,9 @@
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
                   <input type="hidden" name="f">
-                  {{ range $key, $value := .UrlParams }}
-                    {{ if ne $key "s" }}
-                      <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                  {{ range $param := .UrlParams }}
+                    {{ if ne $param.Key "s" }}
+                      <input type="hidden" name="{{ $param.Key }}" value="{{ $param.Value }}">
                     {{ end }}
                   {{ end }}
                   <div class="input-group" style="width: 120px;">
@@ -463,17 +482,25 @@
 <script type="text/javascript">
 $('#slotsFilterForm').submit(function () {
   $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
-  var displayColumns = Array.prototype.filter.call($(this).find('select[name="d"]').prop('name', '').find("option"), function(el) {
-    return el.selected;
-  }).map(function(el) {
-    return el.value;
-  });
-  if(displayColumns.length > 0) {
-    var displayMask = 0;
-    displayColumns.forEach(function(col) {
-      displayMask |= 1 << (parseInt(col) - 1);
+
+  // Encode multiselect bitmasks
+  var multiselectFields = [
+    { select: 'select[name="d"]', hidden: '#displayColumnsField', param: 'd' },
+    { select: 'select[name="f.status"]', hidden: '#statusMaskField', param: 'f.status' },
+    { select: 'select[name="f.pstatus"]', hidden: '#payloadStatusMaskField', param: 'f.pstatus' }
+  ];
+  for (var i = 0; i < multiselectFields.length; i++) {
+    var field = multiselectFields[i];
+    var selected = Array.prototype.filter.call($(this).find(field.select).prop('name', '').find("option"), function(el) {
+      return el.selected;
+    }).map(function(el) {
+      return el.value;
     });
-    $(this).find("#displayColumnsField").prop('name', 'd').val("0x" + displayMask.toString(16));
+    var mask = 0;
+    selected.forEach(function(val) {
+      mask |= 1 << (parseInt(val) - 1);
+    });
+    $(this).find(field.hidden).prop('name', field.param).val("0x" + mask.toString(16));
   }
 });
 $(function() {

@@ -10,7 +10,7 @@ type BlocksPageData struct {
 	SlotCount     uint64                `json:"slot_count"`
 	FirstSlot     uint64                `json:"first_slot"`
 	LastSlot      uint64                `json:"last_slot"`
-	ForkTreeWidth int                   `json:"forktree_width"`
+	ForkTreeWidth int32                 `json:"forktree_width"`
 
 	DisplayChain        bool   `json:"dp_chain"`
 	DisplayNumber       bool   `json:"dp_number"`
@@ -31,6 +31,7 @@ type BlocksPageData struct {
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
 	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
 	DisplayExecTime     bool   `json:"dp_exectime"`
+	DisplayBuilder      bool   `json:"dp_builder"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	IsDefaultPage    bool   `json:"default_page"`
@@ -49,8 +50,8 @@ type BlocksPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
-	MaxSlot   uint64            `json:"max_slot"`
+	UrlParams []UrlParam `json:"url_params"`
+	MaxSlot   uint64     `json:"max_slot"`
 }
 
 type BlocksPageDataSlot struct {
@@ -78,8 +79,8 @@ type BlocksPageDataSlot struct {
 	GasUsed               uint64                     `json:"gas_used"`
 	GasLimit              uint64                     `json:"gas_limit"`
 	BlockSize             uint64                     `json:"block_size"`
-	BlockRoot             []byte                     `json:"block_root"`
-	ParentRoot            []byte                     `json:"parent_root"`
+	BlockRoot             []byte                     `json:"block_root" ssz-size:"32"`
+	ParentRoot            []byte                     `json:"parent_root" ssz-size:"32"`
 	RecvDelay             int32                      `json:"recv_delay"`
 	MinExecTime           uint32                     `json:"min_exec_time"`
 	MaxExecTime           uint32                     `json:"max_exec_time"`
@@ -88,11 +89,14 @@ type BlocksPageDataSlot struct {
 	ForkGraph             []*BlocksPageDataForkGraph `json:"fork_graph"`
 	IsMevBlock            bool                       `json:"is_mev_block"`
 	MevBlockRelays        string                     `json:"mev_block_relays"`
+	HasBuilder            bool                       `json:"has_builder"`
+	BuilderIndex          uint64                     `json:"builder_index"`
+	BuilderName           string                     `json:"builder_name"`
 }
 
 type BlocksPageDataForkGraph struct {
-	Index int             `json:"index"`
-	Left  int             `json:"left"`
-	Tiles map[string]bool `json:"tiles"`
-	Block bool            `json:"block"`
+	Index int32    `json:"index"`
+	Left  int32    `json:"left"`
+	Tiles []string `json:"tiles"`
+	Block bool     `json:"block"`
 }

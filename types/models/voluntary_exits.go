@@ -6,6 +6,7 @@ import (
 
 // VoluntaryExitsPageData is a struct to hold info for the voluntary_exits page
 type VoluntaryExitsPageData struct {
+	FilterEntity        string `json:"filter_entity"` // "all", "validator", or "builder"
 	FilterMinSlot       uint64 `json:"filter_mins"`
 	FilterMaxSlot       uint64 `json:"filter_maxs"`
 	FilterMinIndex      uint64 `json:"filter_mini"`
@@ -31,18 +32,19 @@ type VoluntaryExitsPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type VoluntaryExitsPageDataExit struct {
 	SlotNumber      uint64    `json:"slot"`
-	SlotRoot        []byte    `json:"slot_root"`
+	SlotRoot        []byte    `json:"slot_root" ssz-size:"32"`
 	Time            time.Time `json:"time"`
 	Orphaned        bool      `json:"orphaned"`
 	ValidatorIndex  uint64    `json:"vindex"`
 	ValidatorName   string    `json:"vname"`
-	PublicKey       []byte    `json:"pubkey"`
-	WithdrawalCreds []byte    `json:"wdcreds"`
+	IsBuilder       bool      `json:"is_builder"`
+	PublicKey       []byte    `json:"pubkey" ssz-size:"48"`
+	WithdrawalCreds []byte    `json:"wdcreds" ssz-size:"32"`
 	ValidatorStatus string    `json:"vstatus"`
 	ShowUpcheck     bool      `json:"show_upcheck"`
 	UpcheckActivity uint8     `json:"upcheck_act"`

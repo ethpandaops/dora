@@ -6,6 +6,7 @@ import (
 
 // ElWithdrawalsPageData is a struct to hold info for the el_withdrawals page
 type ElWithdrawalsPageData struct {
+	FilterEntity        string `json:"filter_entity"` // "all", "validator", or "builder"
 	FilterMinSlot       uint64 `json:"filter_mins"`
 	FilterMaxSlot       uint64 `json:"filter_maxs"`
 	FilterAddress       string `json:"filter_address"`
@@ -34,7 +35,7 @@ type ElWithdrawalsPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type ElWithdrawalsPageDataWithdrawal struct {
@@ -51,11 +52,12 @@ type ElWithdrawalsPageDataWithdrawal struct {
 	ValidatorValid    bool      `json:"vvalid"`
 	ValidatorIndex    uint64    `json:"vindex"`
 	ValidatorName     string    `json:"vname"`
+	IsBuilder         bool      `json:"is_builder"`
 	PublicKey         []byte    `json:"pubkey"`
 	LinkedTransaction bool      `json:"linked_tx"`
 	TransactionHash   []byte    `json:"tx_hash"`
 
-	TransactionDetails *ElWithdrawalsPageDataWithdrawalTxDetails `json:"tx_details"`
+	TransactionDetails *ElWithdrawalsPageDataWithdrawalTxDetails `json:"tx_details" ssz-type:"optional"`
 }
 
 type ElWithdrawalsPageDataWithdrawalTxDetails struct {

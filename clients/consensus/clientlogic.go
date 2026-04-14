@@ -7,8 +7,9 @@ import (
 	"runtime/debug"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
@@ -59,7 +60,7 @@ func (client *Client) checkClient() error {
 
 	err := client.rpcClient.Initialize(ctx)
 	if err != nil {
-		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
+		return fmt.Errorf("initialization of ethpandaops/go-eth2-client failed: %w", err)
 	}
 
 	// update node metadata
@@ -120,6 +121,23 @@ func (client *Client) checkClient() error {
 	return nil
 }
 
+func (client *Client) buildEventStreamMask() uint16 {
+	events := uint16(rpc.StreamBlockEvent | rpc.StreamHeadEvent | rpc.StreamFinalizedEvent)
+
+	chainState := client.pool.chainState
+	currentEpoch := chainState.CurrentEpoch()
+
+	if chainState.IsEip7732Enabled(currentEpoch) {
+		events |= rpc.StreamExecutionPayloadEvent | rpc.StreamExecutionPayloadBidEvent
+	}
+
+	if chainState.IsEip7805Enabled(currentEpoch) {
+		events |= rpc.StreamInclusionListEvent
+	}
+
+	return events
+}
+
 func (client *Client) runClientLogic() error {
 	// get latest header
 	err := client.pollClientHead()
@@ -132,8 +150,12 @@ func (client *Client) runClientLogic() error {
 		return fmt.Errorf("beacon node is synchronizing")
 	}
 
-	// start event stream
-	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, client.logger, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent)
+	streamMask := client.buildEventStreamMask()
+	blockStream := client.rpcClient.NewBlockStream(
+		client.clientCtx,
+		client.logger,
+		streamMask,
+	)
 	defer blockStream.Close()
 
 	// process events
@@ -165,6 +187,15 @@ func (client *Client) runClientLogic() error {
 				if err != nil {
 					client.logger.Warnf("failed processing finalized event: %v", err)
 				}
+
+			case rpc.StreamExecutionPayloadEvent:
+				client.executionPayloadDispatcher.Fire(evt.Data.(*v1.ExecutionPayloadAvailableEvent))
+
+			case rpc.StreamExecutionPayloadBidEvent:
+				client.executionPayloadBidDispatcher.Fire(evt.Data.(*gloas.SignedExecutionPayloadBid))
+
+			case rpc.StreamInclusionListEvent:
+				client.inclusionListDispatcher.Fire(evt.Data.(*v1.InclusionListEvent))
 			}
 
 			// fire through stream dispatcher first to preserve SSE ordering
@@ -197,6 +228,11 @@ func (client *Client) runClientLogic() error {
 
 		currentEpoch := client.pool.chainState.CurrentEpoch()
 		currentSlot := client.pool.chainState.CurrentSlot()
+
+		if newMask := client.buildEventStreamMask(); newMask != streamMask {
+			blockStream.UpdateEvents(newMask &^ streamMask)
+			streamMask = newMask
+		}
 
 		if currentEpoch-client.lastSyncUpdateEpoch >= 1 {
 			// update sync status

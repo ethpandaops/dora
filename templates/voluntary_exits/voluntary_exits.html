@@ -43,26 +43,36 @@
                 </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    Validator Index
+                    Entity Type
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <select name="f.entity" class="form-control entity-select">
+                      <option value="all" {{ if eq .FilterEntity "all" }}selected{{ end }}>All Entities</option>
+                      <option value="validator" {{ if eq .FilterEntity "validator" }}selected{{ end }}>Validators</option>
+                      <option value="builder" {{ if eq .FilterEntity "builder" }}selected{{ end }}>Builders</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <span class="entity-label" data-validator="Validator Index" data-builder="Builder Index">{{ if eq .FilterEntity "builder" }}Builder Index{{ else }}Validator Index{{ end }}</span>
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
                     <div class="flex-grow-1">
-                      <input name="f.mini" type="number" class="form-control" placeholder="Min Index" aria-label="Min Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMinIndex 0 }}{{ .FilterMinIndex }}{{ end }}">
+                      <input name="f.mini" type="number" class="form-control entity-field{{ if eq .FilterEntity "all" }} entity-field-disabled{{ end }}" placeholder="Min Index" {{ if eq .FilterEntity "all" }}readonly{{ end }} value="{{ if gt .FilterMinIndex 0 }}{{ .FilterMinIndex }}{{ end }}">
                     </div>
-                    <div class="text-center filter-amount-separator">
-                      -
-                    </div>
+                    <div class="text-center filter-amount-separator">-</div>
                     <div class="flex-grow-1">
-                      <input name="f.maxi" type="number" class="form-control" placeholder="Max Index" aria-label="Max Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxIndex 0 }}{{ .FilterMaxIndex }}{{ end }}">
+                      <input name="f.maxi" type="number" class="form-control entity-field{{ if eq .FilterEntity "all" }} entity-field-disabled{{ end }}" placeholder="Max Index" {{ if eq .FilterEntity "all" }}readonly{{ end }} value="{{ if gt .FilterMaxIndex 0 }}{{ .FilterMaxIndex }}{{ end }}">
                     </div>
                   </div>
                 </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    Validator Name
+                    <span class="entity-label" data-validator="Validator Name" data-builder="Builder Name">{{ if eq .FilterEntity "builder" }}Builder Name{{ else }}Validator Name{{ end }}</span>
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.vname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterValidatorName }}">
+                    <input name="f.vname" type="text" class="form-control entity-field entity-placeholder{{ if eq .FilterEntity "all" }} entity-field-disabled{{ end }}" placeholder="{{ if eq .FilterEntity "builder" }}Builder Name{{ else }}Validator Name{{ end }}" data-validator="Validator Name" data-builder="Builder Name" {{ if eq .FilterEntity "all" }}readonly{{ end }} value="{{ .FilterValidatorName }}">
                   </div>
                 </div>
               </div>
@@ -139,7 +149,13 @@
                     <td><a href="/slot/{{ $voluntaryExit.SlotNumber }}">{{ formatAddCommas $voluntaryExit.SlotNumber }}</a></td>
                     {{ end }}
                     <td data-timer="{{ $voluntaryExit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $voluntaryExit.Time }}">{{ formatRecentTimeShort $voluntaryExit.Time }}</span></td>
-                    <td>{{ formatValidatorWithIndex $voluntaryExit.ValidatorIndex $voluntaryExit.ValidatorName }}</td>
+                    <td>
+                      {{ if $voluntaryExit.IsBuilder }}
+                        {{ formatBuilderWithIndex $voluntaryExit.ValidatorIndex $voluntaryExit.ValidatorName }}
+                      {{ else }}
+                        {{ formatValidatorWithIndex $voluntaryExit.ValidatorIndex $voluntaryExit.ValidatorName }}
+                      {{ end }}
+                    </td>
                     <td>
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
@@ -204,9 +220,9 @@
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
                   <input type="hidden" name="f">
-                  {{ range $key, $value := .UrlParams }}
-                    {{ if ne $key "p" }}
-                      <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                  {{ range $i, $param := .UrlParams }}
+                    {{ if ne $param.Key "p" }}
+                      <input type="hidden" name="{{ $param.Key }}" value="{{ $param.Value }}">
                     {{ end }}
                   {{ end }}
                   <div class="input-group" style="width: 120px;">
@@ -271,6 +287,24 @@
         $('#pageJumpForm').submit();
       }
     });
+
+    function updateEntityFields(entity) {
+      var isAll = (entity === 'all');
+      $('.entity-field').each(function() {
+        $(this).prop('readonly', isAll).toggleClass('entity-field-disabled', isAll);
+        if (isAll) { $(this).val(''); }
+      });
+      if (!isAll) {
+        $('.entity-label').each(function() { $(this).text($(this).data(entity)); });
+        $('.entity-placeholder').each(function() { $(this).attr('placeholder', $(this).data(entity)); });
+      }
+    }
+    $('.entity-select').on('change', function() { updateEntityFields($(this).val()); });
+    $('.entity-field').on('mousedown', function() {
+      if ($(this).prop('readonly')) {
+        $('.entity-select').val('validator').trigger('change');
+      }
+    });
   });
 </script>
 {{ end }}
@@ -281,6 +315,12 @@
   padding-top: 6px;
   padding-left: 10px;
   padding-right: 10px;
+}
+
+.entity-field-disabled {
+  background-color: var(--bs-secondary-bg);
+  opacity: 0.65;
+  cursor: pointer;
 }
 
 </style>

@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -159,49 +160,129 @@ func buildExitsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64,
 		dbVoluntaryExits, _ := services.GlobalBeaconService.GetVoluntaryExitsByFilter(ctx, voluntaryExitFilter, 0, uint32(20))
 		for _, voluntaryExit := range dbVoluntaryExits {
 			exitData := &models.ExitsPageDataRecentExit{
-				SlotNumber:     voluntaryExit.SlotNumber,
-				SlotRoot:       voluntaryExit.SlotRoot,
-				Time:           chainState.SlotToTime(phase0.Slot(voluntaryExit.SlotNumber)),
-				Orphaned:       voluntaryExit.Orphaned,
-				ValidatorIndex: voluntaryExit.ValidatorIndex,
-				ValidatorName:  services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex),
+				SlotNumber: voluntaryExit.SlotNumber,
+				SlotRoot:   voluntaryExit.SlotRoot,
+				Time:       chainState.SlotToTime(phase0.Slot(voluntaryExit.SlotNumber)),
+				Orphaned:   voluntaryExit.Orphaned,
 			}
 
-			validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(voluntaryExit.ValidatorIndex), false)
-			if validator == nil {
-				exitData.ValidatorStatus = "Unknown"
-			} else {
-				exitData.PublicKey = validator.Validator.PublicKey[:]
-				exitData.WithdrawalCreds = validator.Validator.WithdrawalCredentials
+			// Check if this is a builder exit (validator index has BuilderIndexFlag set)
+			if voluntaryExit.ValidatorIndex&services.BuilderIndexFlag != 0 {
+				builderIndex := voluntaryExit.ValidatorIndex &^ services.BuilderIndexFlag
+				exitData.IsBuilder = true
+				exitData.ValidatorIndex = builderIndex
 
-				if strings.HasPrefix(validator.Status.String(), "pending") {
-					exitData.ValidatorStatus = "Pending"
-				} else if validator.Status == v1.ValidatorStateActiveOngoing {
-					exitData.ValidatorStatus = "Active"
-					exitData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateActiveExiting {
-					exitData.ValidatorStatus = "Exiting"
-					exitData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateActiveSlashed {
-					exitData.ValidatorStatus = "Slashed"
-					exitData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-					exitData.ValidatorStatus = "Exited"
-				} else if validator.Status == v1.ValidatorStateExitedSlashed {
-					exitData.ValidatorStatus = "Slashed"
+				// Resolve builder name via validatornames service (with BuilderIndexFlag)
+				exitData.ValidatorName = services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex)
+
+				builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
+				if builder == nil {
+					exitData.ValidatorStatus = "Unknown"
 				} else {
-					exitData.ValidatorStatus = validator.Status.String()
-				}
+					exitData.PublicKey = builder.PublicKey[:]
 
-				if exitData.ShowUpcheck {
-					exitData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
-					exitData.UpcheckMaximum = uint8(3)
+					// Determine builder status
+					currentEpoch := chainState.CurrentEpoch()
+					if builder.WithdrawableEpoch <= currentEpoch {
+						exitData.ValidatorStatus = "Exited"
+					} else {
+						exitData.ValidatorStatus = "Exiting"
+					}
+				}
+			} else {
+				// Regular validator exit
+				exitData.ValidatorIndex = voluntaryExit.ValidatorIndex
+				exitData.ValidatorName = services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex)
+
+				validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(voluntaryExit.ValidatorIndex), false)
+				if validator == nil {
+					exitData.ValidatorStatus = "Unknown"
+				} else {
+					exitData.PublicKey = validator.Validator.PublicKey[:]
+					exitData.WithdrawalCreds = validator.Validator.WithdrawalCredentials
+
+					if strings.HasPrefix(validator.Status.String(), "pending") {
+						exitData.ValidatorStatus = "Pending"
+					} else if validator.Status == v1.ValidatorStateActiveOngoing {
+						exitData.ValidatorStatus = "Active"
+						exitData.ShowUpcheck = true
+					} else if validator.Status == v1.ValidatorStateActiveExiting {
+						exitData.ValidatorStatus = "Exiting"
+						exitData.ShowUpcheck = true
+					} else if validator.Status == v1.ValidatorStateActiveSlashed {
+						exitData.ValidatorStatus = "Slashed"
+						exitData.ShowUpcheck = true
+					} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+						exitData.ValidatorStatus = "Exited"
+					} else if validator.Status == v1.ValidatorStateExitedSlashed {
+						exitData.ValidatorStatus = "Slashed"
+					} else {
+						exitData.ValidatorStatus = validator.Status.String()
+					}
+
+					if exitData.ShowUpcheck {
+						exitData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+						exitData.UpcheckMaximum = uint8(3)
+					}
 				}
 			}
 
 			pageData.RecentExits = append(pageData.RecentExits, exitData)
 		}
 		pageData.RecentExitCount = uint64(len(pageData.RecentExits))
+
+	case "exitrequests":
+		// Load recent EL-triggered exit requests (amount=0)
+		exitRequestFilter := &services.CombinedWithdrawalRequestFilter{
+			Filter: &dbtypes.WithdrawalRequestFilter{
+				MaxAmount:    &zeroAmount,
+				WithOrphaned: 1,
+			},
+		}
+
+		dbExitRequests, _, _ := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, exitRequestFilter, 0, 20)
+		for _, exitReq := range dbExitRequests {
+			exitReqData := &models.ExitsPageDataRecentExitRequest{
+				SourceAddr: exitReq.SourceAddress(),
+				PublicKey:  exitReq.ValidatorPubkey(),
+			}
+
+			if validatorIndex := exitReq.ValidatorIndex(); validatorIndex != nil {
+				exitReqData.ValidatorValid = true
+				exitReqData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
+				if *validatorIndex&services.BuilderIndexFlag != 0 {
+					exitReqData.IsBuilder = true
+					exitReqData.ValidatorIndex = *validatorIndex &^ services.BuilderIndexFlag
+				} else {
+					exitReqData.ValidatorIndex = *validatorIndex
+				}
+			}
+
+			if request := exitReq.Request; request != nil {
+				exitReqData.IsIncluded = true
+				exitReqData.SlotNumber = request.SlotNumber
+				exitReqData.SlotRoot = request.SlotRoot
+				exitReqData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
+				exitReqData.Status = uint64(1)
+				exitReqData.Result = request.Result
+				exitReqData.ResultMessage = getWithdrawalResultMessage(request.Result, chainState.GetSpecs())
+				if exitReq.RequestOrphaned {
+					exitReqData.Status = uint64(2)
+				}
+			}
+
+			if transaction := exitReq.Transaction; transaction != nil {
+				exitReqData.TransactionHash = transaction.TxHash
+				exitReqData.LinkedTransaction = true
+				exitReqData.TxStatus = uint64(1)
+				if exitReq.TransactionOrphaned {
+					exitReqData.TxStatus = uint64(2)
+				}
+			}
+
+			pageData.RecentExitRequests = append(pageData.RecentExitRequests, exitReqData)
+		}
+		pageData.RecentExitRequestCount = uint64(len(pageData.RecentExitRequests))
 
 	case "exiting":
 		// Load exiting validators (limit to first 20 for tab)

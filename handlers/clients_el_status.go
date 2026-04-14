@@ -140,10 +140,6 @@ func buildStatusResponse(status mimicry.Status) (*statusMessageResponse, error) 
 			response.Error = fmt.Sprintf("INVALID: earliestBlock (%d) > latestBlock (%d)",
 				s69.EarliestBlock, s69.LatestBlock)
 		}
-	} else if s68, ok := status.(*mimicry.Status68); ok {
-		response.ProtocolVersion = "eth68"
-		td := fmt.Sprintf("0x%x", s68.TD)
-		response.TotalDifficulty = &td
 	} else {
 		response.ProtocolVersion = "eth"
 	}

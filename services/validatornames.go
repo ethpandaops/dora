@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/config"
@@ -21,6 +20,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/maps"
@@ -299,12 +299,18 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 		vn.namesByDepositTarget = make(map[common.Address]*validatorNameEntry)
 		vn.namesMutex.Unlock()
 
+		if utils.Config.Frontend.ValidatorNamesInventory != "" {
+			err := vn.loadFromRangesApi(utils.Config.Frontend.ValidatorNamesInventory)
+			if err != nil {
+				logger_vn.WithError(err).Errorf("error while loading validator names inventory")
+			}
+		}
+
 		validatorNamesYaml := utils.Config.Frontend.ValidatorNamesYaml
 		if validatorNamesYaml == "" {
 			validatorNamesYaml = vn.getDefaultValidatorNames()
 		}
 
-		// load names
 		if strings.HasPrefix(validatorNamesYaml, "~internal/") {
 			err := vn.loadFromInternalYaml(validatorNamesYaml[10:])
 			if err != nil {
@@ -314,12 +320,6 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 			err := vn.loadFromYaml(validatorNamesYaml)
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names from yaml")
-			}
-		}
-		if utils.Config.Frontend.ValidatorNamesInventory != "" {
-			err := vn.loadFromRangesApi(utils.Config.Frontend.ValidatorNamesInventory)
-			if err != nil {
-				logger_vn.WithError(err).Errorf("error while loading validator names inventory")
 			}
 		}
 	}()

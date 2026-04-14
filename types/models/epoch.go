@@ -45,6 +45,7 @@ type EpochPageDataSlot struct {
 	Ts                    time.Time `json:"ts"`
 	Scheduled             bool      `json:"scheduled"`
 	Status                uint8     `json:"status"`
+	PayloadStatus         uint8     `json:"payload_status"`
 	Proposer              uint64    `json:"proposer"`
 	ProposerName          string    `json:"proposer_name"`
 	AttestationCount      uint64    `json:"attestation_count"`
@@ -58,5 +59,5 @@ type EpochPageDataSlot struct {
 	EthBlockNumber        uint64    `json:"eth_block_number"`
 	WithEthBlock          bool      `json:"with_eth_block"`
 	Graffiti              []byte    `json:"graffiti"`
-	BlockRoot             []byte    `json:"block_root"`
+	BlockRoot             []byte    `json:"block_root" ssz-size:"32"`
 }

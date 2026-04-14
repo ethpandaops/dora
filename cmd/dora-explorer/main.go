@@ -73,7 +73,7 @@ func main() {
 	}
 
 	if cfg.Frontend.Enabled {
-		err = services.StartFrontendCache()
+		err = services.StartFrontendCache(logger.WithField("module", "frontendcache"))
 		if err != nil {
 			logger.Fatalf("error starting frontend cache service: %v", err)
 		}
@@ -225,6 +225,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validators/slashings", handlers.Slashings).Methods("GET")
 	router.HandleFunc("/validators/el_withdrawals", handlers.ElWithdrawals).Methods("GET")
 	router.HandleFunc("/validators/withdrawals", handlers.Withdrawals).Methods("GET")
+	router.HandleFunc("/validators/withdrawals/filtered", handlers.WithdrawalsList).Methods("GET")
 	router.HandleFunc("/validators/queued_withdrawals", handlers.QueuedWithdrawals).Methods("GET")
 	router.HandleFunc("/validators/consolidations", handlers.Consolidations).Methods("GET")
 	router.HandleFunc("/validators/queued_consolidations", handlers.QueuedConsolidations).Methods("GET")
@@ -233,11 +234,13 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validators/submit_withdrawals", handlers.SubmitWithdrawal).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
+	router.HandleFunc("/builders", handlers.Builders).Methods("GET")
+	router.HandleFunc("/builder/{idxOrPubKey}", handlers.BuilderDetail).Methods("GET")
 
 	if utils.Config.Frontend.Pprof {
 		// add pprof handler
 		router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
-		router.HandleFunc("/debug/cache", handlers.DebugCache).Methods("GET")
+		router.HandleFunc("/debug/cache", handlers.DebugPage).Methods("GET")
 	}
 
 	if utils.Config.Frontend.Debug {
@@ -333,6 +336,7 @@ func startApi(router *mux.Router) {
 		{"/v1/network/overview", api.APINetworkOverviewV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/network/forks", api.APINetworkForksV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/network/splits", api.APINetworkSplitsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/network/client_head_forks", api.APINetworkClientHeadForksV1, []string{"GET", "OPTIONS"}, 1},
 
 		// Client APIs
 		{"/v1/clients/execution", api.APIExecutionClients, []string{"GET", "OPTIONS"}, 1},

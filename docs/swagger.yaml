@@ -11,6 +11,54 @@ definitions:
       justified_root:
         type: string
     type: object
+  api.APIClientHeadFork:
+    properties:
+      client_count:
+        type: integer
+      clients:
+        items:
+          $ref: '#/definitions/api.APIClientHeadForkPeer'
+        type: array
+      head_root:
+        type: string
+      head_slot:
+        type: integer
+    type: object
+  api.APIClientHeadForkPeer:
+    properties:
+      distance:
+        type: integer
+      head_slot:
+        type: integer
+      index:
+        type: integer
+      last_error:
+        type: string
+      last_refresh:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+      version:
+        type: string
+    type: object
+  api.APIClientHeadForksData:
+    properties:
+      fork_count:
+        type: integer
+      forks:
+        items:
+          $ref: '#/definitions/api.APIClientHeadFork'
+        type: array
+    type: object
+  api.APIClientHeadForksResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APIClientHeadForksData'
+      status:
+        type: string
+    type: object
   api.APIConsensusClientMetadata:
     properties:
       attnets:
@@ -158,9 +206,9 @@ definitions:
         type: number
       current_slot:
         type: integer
-      seconds_per_epoch:
+      epoch_duration_ms:
         type: integer
-      seconds_per_slot:
+      slot_duration_ms:
         type: integer
       slots_per_epoch:
         type: integer
@@ -2068,6 +2116,28 @@ paths:
       summary: Get MEV blocks
       tags:
       - mev_blocks
+  /v1/network/client_head_forks:
+    get:
+      description: Returns information about consensus client head forks, showing
+        which clients are on which chain head. Useful for detecting chain splits from
+        the client perspective.
+      operationId: getNetworkClientHeadForks
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIClientHeadForksResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get consensus client head forks
+      tags:
+      - network
   /v1/network/forks:
     get:
       consumes:

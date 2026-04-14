@@ -7,13 +7,14 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -96,7 +97,9 @@ func getFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uint6
 	pageData := &models.SlashingsPageData{}
 	pageCacheKey := fmt.Sprintf("slashings:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, sname, withReason, withOrphaned)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlashingsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, sname, withReason, withOrphaned)
+		pageData, cacheTimeout := buildFilteredSlashingsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, sname, withReason, withOrphaned)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlashingsPageData)
@@ -108,7 +111,7 @@ func getFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uint6
 	return pageData, pageErr
 }
 
-func buildFilteredSlashingsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, sname string, withReason uint8, withOrphaned uint8) *models.SlashingsPageData {
+func buildFilteredSlashingsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, sname string, withReason uint8, withOrphaned uint8) (*models.SlashingsPageData, time.Duration) {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -145,9 +148,12 @@ func buildFilteredSlashingsPageData(ctx context.Context, pageIdx uint64, pageSiz
 		FilterWithReason:    withReason,
 		FilterWithOrphaned:  withOrphaned,
 	}
+	cacheTimeout := 5 * time.Minute
 	logrus.Debugf("slashings page called: %v:%v [%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, sname)
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
+	} else {
+		cacheTimeout = 15 * time.Minute
 	}
 
 	if pageSize > 100 {
@@ -240,18 +246,18 @@ func buildFilteredSlashingsPageData(ctx context.Context, pageIdx uint64, pageSiz
 	}
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams = make([]models.UrlParam, 0)
 	for key, values := range filterArgs {
 		if len(values) > 0 {
-			pageData.UrlParams[key] = values[0]
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: key, Value: values[0]})
 		}
 	}
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
 
 	pageData.FirstPageLink = fmt.Sprintf("/validators/slashings?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/validators/slashings?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
 	pageData.NextPageLink = fmt.Sprintf("/validators/slashings?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/validators/slashings?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
-	return pageData
+	return pageData, cacheTimeout
 }

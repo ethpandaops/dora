@@ -28,7 +28,7 @@ type LatestBlobBlock struct {
 	BlobCount    uint64    `json:"blob_count"`
 	Proposer     uint64    `json:"proposer"`
 	ProposerName string    `json:"proposer_name"`
-	BlockRoot    []byte    `json:"block_root"`
+	BlockRoot    []byte    `json:"block_root" ssz-size:"32"`
 	Finalized    bool      `json:"finalized"`
 }
 
