@@ -25,7 +25,6 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v1.3.1-0.20260407212738-e97de623fd84
 	github.com/pressly/goose/v3 v3.27.0
-	github.com/probe-lab/eth-das-guardian v0.2.2
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
@@ -53,7 +52,6 @@ require (
 	github.com/OffchainLabs/go-bitfield v0.0.0-20251031151322-f427d04d8506 // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/VictoriaMetrics/fastcache v1.13.0 // indirect
-	github.com/attestantio/go-eth2-client v0.27.1 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/casbin/govaluate v1.10.0 // indirect
 	github.com/chuckpreslar/emission v0.0.0-20170206194824-a7ddd980baf9 // indirect
