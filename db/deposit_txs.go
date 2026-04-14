@@ -101,7 +101,7 @@ func GetDepositTxsByIndexes(ctx context.Context, indexes []uint64) []*dbtypes.De
 	}
 
 	var sql strings.Builder
-	args := []interface{}{}
+	args := make([]any, len(indexes))
 
 	fmt.Fprint(&sql, `SELECT deposit_txs.*
 		FROM deposit_txs
@@ -109,12 +109,9 @@ func GetDepositTxsByIndexes(ctx context.Context, indexes []uint64) []*dbtypes.De
 	`)
 
 	for idx, index := range indexes {
-		if idx > 0 {
-			fmt.Fprintf(&sql, ", ")
-		}
-		args = append(args, index)
-		fmt.Fprintf(&sql, "$%v", len(args))
+		args[idx] = index
 	}
+	appendDollarPlaceholders(&sql, 1, len(indexes), ", ")
 	fmt.Fprintf(&sql, ")")
 
 	err := ReaderDb.SelectContext(ctx, &depositTxs, sql.String(), args...)
@@ -164,13 +161,11 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 	}
 	if len(filter.PublicKeys) > 0 {
 		fmt.Fprintf(&sql, " %v publickey IN (", filterOp)
-		for i, pubKey := range filter.PublicKeys {
-			if i > 0 {
-				fmt.Fprintf(&sql, ", ")
-			}
+		start := len(args) + 1
+		for _, pubKey := range filter.PublicKeys {
 			args = append(args, pubKey)
-			fmt.Fprintf(&sql, "$%v", len(args))
 		}
+		appendDollarPlaceholders(&sql, start, len(filter.PublicKeys), ", ")
 		fmt.Fprintf(&sql, ")")
 		filterOp = "AND"
 	}
@@ -196,23 +191,7 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 		filterOp = "AND"
 	}
 
-	if filter.WithOrphaned != 1 {
-		forkIdStr := make([]string, len(canonicalForkIds))
-		for i, forkId := range canonicalForkIds {
-			forkIdStr[i] = fmt.Sprintf("%v", forkId)
-		}
-		if len(forkIdStr) == 0 {
-			forkIdStr = append(forkIdStr, "0")
-		}
-
-		if filter.WithOrphaned == 0 {
-			fmt.Fprintf(&sql, " %v fork_id IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		} else if filter.WithOrphaned == 2 {
-			fmt.Fprintf(&sql, " %v fork_id NOT IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		}
-	}
+	appendWithOrphanedFilter(&sql, &args, &filterOp, filter.WithOrphaned, canonicalForkIds, "fork_id")
 
 	if filter.WithValid == 0 {
 		fmt.Fprintf(&sql, " %v valid_signature IN (1, 2)", filterOp)
