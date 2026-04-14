@@ -9,18 +9,17 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/bellatrix"
-	"github.com/attestantio/go-eth2-client/spec/electra"
-	"github.com/attestantio/go-eth2-client/spec/gloas"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -753,20 +752,19 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	if payloadBid, err := blockData.Block.SignedExecutionPayloadBid(); err == nil {
 		blobKzgCommitments, _ := payloadBid.BlobKZGCommitments()
-		commitments := make([][]byte, len(blobKzgCommitments))
-		for i := range blobKzgCommitments {
-			commitments[i] = blobKzgCommitments[i][:]
-		}
-
 		parentBlockHash, _ := payloadBid.ParentBlockHash()
 		parentBlockRoot, _ := payloadBid.ParentBlockRoot()
 		blockHash, _ := payloadBid.BlockHash()
 		gasLimit, _ := payloadBid.GasLimit()
 		builderIndex, _ := payloadBid.BuilderIndex()
-		builderName := services.GlobalBeaconService.GetValidatorName(uint64(builderIndex) | services.BuilderIndexFlag)
 		slot, _ := payloadBid.Slot()
 		value, _ := payloadBid.Value()
 		signature, _ := payloadBid.Signature()
+
+		commitments := make([][]byte, len(blobKzgCommitments))
+		for i := range blobKzgCommitments {
+			commitments[i] = blobKzgCommitments[i][:]
+		}
 
 		pageData.PayloadHeader = &models.SlotPagePayloadHeader{
 			PayloadStatus:      uint16(0),
@@ -775,7 +773,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			BlockHash:          blockHash[:],
 			GasLimit:           uint64(gasLimit),
 			BuilderIndex:       uint64(builderIndex),
-			BuilderName:        builderName,
+			BuilderName:        services.GlobalBeaconService.GetValidatorName(uint64(builderIndex) | services.BuilderIndexFlag),
 			Slot:               uint64(slot),
 			Value:              uint64(value),
 			BlobKZGCommitments: commitments,
@@ -970,6 +968,48 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		pageData.WithdrawalsCount = uint64(len(executionWithdrawals))
 		pageData.Withdrawals = make([]*models.SlotPageWithdrawal, pageData.WithdrawalsCount)
+
+		// Try to get enriched withdrawal data (type + ref slot) from the chain service.
+		// This works for both cached (unfinalized) and DB (finalized) blocks.
+		var enrichedWithdrawals []*dbtypes.Withdrawal
+		if cacheBlock := services.GlobalBeaconService.GetBeaconIndexer().GetBlockByRoot(blockData.Root); cacheBlock != nil {
+			isCanonical := slices.Contains(services.GlobalBeaconService.GetCanonicalForkKeys(), cacheBlock.GetForkId())
+			enrichedWithdrawals = cacheBlock.GetDbWithdrawals(services.GlobalBeaconService.GetBeaconIndexer(), isCanonical)
+		}
+		if len(enrichedWithdrawals) == 0 {
+			dbWithdrawals, _ := db.GetWithdrawalsByBlockUid(ctx, blockUid)
+			enrichedWithdrawals = dbWithdrawals
+		}
+
+		// Build a lookup map by block index for enrichment
+		enrichedMap := make(map[int16]*dbtypes.Withdrawal, len(enrichedWithdrawals))
+		for _, ew := range enrichedWithdrawals {
+			enrichedMap[ew.BlockIdx] = ew
+		}
+
+		// Batch resolve ref slot block roots
+		refBlockUids := make([]uint64, 0)
+		refBlockUidSet := make(map[uint64]bool)
+		for _, ew := range enrichedWithdrawals {
+			if ew.RefSlot != nil && !refBlockUidSet[*ew.RefSlot] {
+				refBlockUidSet[*ew.RefSlot] = true
+				refBlockUids = append(refBlockUids, *ew.RefSlot)
+			}
+		}
+		refBlockMap := make(map[uint64]*dbtypes.AssignedSlot, len(refBlockUids))
+		if len(refBlockUids) > 0 {
+			refFilter := &dbtypes.BlockFilter{
+				BlockUids:    refBlockUids,
+				WithOrphaned: 1,
+			}
+			refBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, refFilter, 0, uint32(len(refBlockUids)), 0)
+			for _, b := range refBlocks {
+				if b.Block != nil {
+					refBlockMap[b.Block.BlockUid] = b
+				}
+			}
+		}
+
 		for i, withdrawal := range executionWithdrawals {
 			validatorIndex := uint64(withdrawal.ValidatorIndex)
 			isBuilder := validatorIndex&services.BuilderIndexFlag != 0
@@ -977,7 +1017,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			if isBuilder {
 				displayIndex = validatorIndex &^ services.BuilderIndexFlag
 			}
-			pageData.Withdrawals[i] = &models.SlotPageWithdrawal{
+			wd := &models.SlotPageWithdrawal{
 				Index:          uint64(withdrawal.Index),
 				ValidatorIndex: displayIndex,
 				ValidatorName:  services.GlobalBeaconService.GetValidatorName(validatorIndex),
@@ -985,6 +1025,19 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 				Address:        withdrawal.Address[:],
 				Amount:         uint64(withdrawal.Amount),
 			}
+
+			// Enrich with type and ref slot from chain service data
+			if enriched, ok := enrichedMap[int16(i)]; ok {
+				wd.Type = enriched.Type
+				if enriched.RefSlot != nil {
+					wd.RefSlot = *enriched.RefSlot >> 16
+					if refBlock, ok := refBlockMap[*enriched.RefSlot]; ok && refBlock.Block != nil {
+						wd.RefSlotRoot = refBlock.Block.Root
+					}
+				}
+			}
+
+			pageData.Withdrawals[i] = wd
 		}
 	}
 
@@ -1368,7 +1421,7 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 			BlobDataAvailable: pa.Data.BlobDataAvailable,
 			AggregationBits:   pa.AggregationBits,
 			Signature:         pa.Signature[:],
-			Validators:        make([]uint64, 0),
+			Validators:        make([]types.NamedValidator, 0),
 		}
 
 		// Count votes from aggregation bits and map to unique validators
@@ -1384,7 +1437,10 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 					vidx := uint64(ptcDuties[i])
 					if !aggValidatorSet[vidx] {
 						aggValidatorSet[vidx] = true
-						aggregate.Validators = append(aggregate.Validators, vidx)
+						aggregate.Validators = append(aggregate.Validators, types.NamedValidator{
+							Index: vidx,
+							Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+						})
 					}
 				}
 			}
@@ -1416,9 +1472,12 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 				nonVoterSet[v] = true
 			}
 		}
-		nonVoters := make([]uint64, 0, len(nonVoterSet))
+		nonVoters := make([]types.NamedValidator, 0, len(nonVoterSet))
 		for vidx := range nonVoterSet {
-			nonVoters = append(nonVoters, vidx)
+			nonVoters = append(nonVoters, types.NamedValidator{
+				Index: vidx,
+				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+			})
 		}
 		ptcVotes.NonVoters = nonVoters
 		ptcVotes.NonVoterCount = uint64(len(nonVoters))
@@ -1445,24 +1504,6 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 		for _, agg := range ptcVotes.Aggregates {
 			agg.VotePercent = float64(agg.VoteCount) / float64(ptcSize) * 100
 		}
-	}
-
-	// Populate validator names for all PTC validators
-	addName := func(index uint64, name string) {
-		for _, vn := range pageData.ValidatorNames {
-			if vn.Key == index {
-				return
-			}
-		}
-		pageData.ValidatorNames = append(pageData.ValidatorNames, models.SlotPageValidatorName{Key: index, Value: name})
-	}
-	for _, agg := range ptcVotes.Aggregates {
-		for _, vidx := range agg.Validators {
-			addName(vidx, services.GlobalBeaconService.GetValidatorName(vidx))
-		}
-	}
-	for _, vidx := range ptcVotes.NonVoters {
-		addName(vidx, services.GlobalBeaconService.GetValidatorName(vidx))
 	}
 
 	pageData.PtcVotes = ptcVotes

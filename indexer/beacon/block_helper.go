@@ -4,16 +4,15 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/altair"
-	"github.com/attestantio/go-eth2-client/spec/bellatrix"
-	"github.com/attestantio/go-eth2-client/spec/capella"
-	"github.com/attestantio/go-eth2-client/spec/deneb"
-	"github.com/attestantio/go-eth2-client/spec/electra"
-	"github.com/attestantio/go-eth2-client/spec/gloas"
-	"github.com/attestantio/go-eth2-client/spec/heze"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/altair"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/deneb"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
@@ -702,6 +701,18 @@ func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.Pendin
 	default:
 		return nil, errors.New("unknown version")
 	}
+}
+
+// getStateBuilderPendingWithdrawals returns the builder pending withdrawals from a versioned beacon state.
+func getStateBuilderPendingWithdrawals(v *spec.VersionedBeaconState) ([]*gloas.BuilderPendingWithdrawal, error) {
+	if v.Version < spec.DataVersionGloas {
+		return nil, nil // no builder pending withdrawals before gloas
+	}
+	if v.Gloas == nil {
+		return nil, errors.New("no gloas state")
+	}
+
+	return v.Gloas.BuilderPendingWithdrawals, nil
 }
 
 // getStatePendingConsolidations returns the pending consolidations from a versioned beacon state.

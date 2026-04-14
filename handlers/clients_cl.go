@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
@@ -17,6 +16,7 @@ import (
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
 	"github.com/ethpandaops/dora/utils"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/sirupsen/logrus"
 )
 

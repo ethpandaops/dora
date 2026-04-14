@@ -7,9 +7,9 @@ import (
 	"runtime/debug"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/gloas"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
@@ -60,7 +60,7 @@ func (client *Client) checkClient() error {
 
 	err := client.rpcClient.Initialize(ctx)
 	if err != nil {
-		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
+		return fmt.Errorf("initialization of ethpandaops/go-eth2-client failed: %w", err)
 	}
 
 	// update node metadata

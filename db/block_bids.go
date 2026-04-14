@@ -155,6 +155,50 @@ func GetBidsByBlockHashes(ctx context.Context, blockHashes [][]byte, builderInde
 	return result
 }
 
+// GetBidsBySlots returns the highest-value bid for each slot for a specific builder.
+// Returns a map keyed by slot number for easy lookup.
+func GetBidsBySlots(ctx context.Context, slots []uint64, builderIndex int64) map[uint64]*dbtypes.BlockBid {
+	result := make(map[uint64]*dbtypes.BlockBid, len(slots))
+	if len(slots) == 0 {
+		return result
+	}
+
+	var sql strings.Builder
+	args := make([]any, 0, len(slots)+1)
+
+	fmt.Fprint(&sql, `
+	SELECT
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+	FROM block_bids
+	WHERE builder_index = $1 AND slot IN (`)
+
+	args = append(args, builderIndex)
+	for i, slot := range slots {
+		if i > 0 {
+			fmt.Fprint(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%d", i+2)
+		args = append(args, slot)
+	}
+	fmt.Fprint(&sql, ") ORDER BY value DESC")
+
+	bids := []*dbtypes.BlockBid{}
+	err := ReaderDb.SelectContext(ctx, &bids, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching bids by slots: %v", err)
+		return result
+	}
+
+	for _, bid := range bids {
+		// Keep only the highest-value bid per slot
+		if _, exists := result[bid.Slot]; !exists {
+			result[bid.Slot] = bid
+		}
+	}
+
+	return result
+}
+
 // GetBidsByBuilderIndex returns bids submitted by a specific builder, ordered by slot descending
 func GetBidsByBuilderIndex(ctx context.Context, builderIndex uint64, offset uint64, limit uint32) ([]*dbtypes.BlockBid, uint64) {
 	var sql strings.Builder

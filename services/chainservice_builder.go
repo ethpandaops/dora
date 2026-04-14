@@ -6,8 +6,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/attestantio/go-eth2-client/spec/gloas"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -249,6 +249,11 @@ func (bs *ChainService) GetFilteredBuilderSet(ctx context.Context, filter *dbtyp
 // GetBuilderByIndex returns the builder by index
 func (bs *ChainService) GetBuilderByIndex(index gloas.BuilderIndex) *gloas.Builder {
 	return bs.beaconIndexer.GetBuilderByIndex(index, nil)
+}
+
+// GetBuilderBalances returns the current builder balances (epoch-start adjusted for in-epoch withdrawals).
+func (bs *ChainService) GetBuilderBalances() []phase0.Gwei {
+	return bs.beaconIndexer.GetRecentBuilderBalances(nil)
 }
 
 // getBuilderStatus determines the status of a builder

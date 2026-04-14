@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
@@ -830,7 +830,6 @@ func (t *TxIndexer) checkAndRunCleanup() {
 			fields["internalTxs"] = retentionStats.InternalTxsDeleted
 			fields["eventIndices"] = retentionStats.EventIndicesDeleted
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
-			fields["withdrawals"] = retentionStats.WithdrawalsDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted
 		}
 		if blockdbPruned > 0 {

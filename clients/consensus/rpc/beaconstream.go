@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/gloas"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc/eventstream"
@@ -77,9 +77,10 @@ func (bs *BeaconStream) startStream() {
 	// Subscribe to basic events (block, head, finalized_checkpoint)
 	basicEvents := bs.events & (StreamBlockEvent | StreamHeadEvent | StreamFinalizedEvent)
 	basicStream := bs.subscribeStream(bs.client.endpoint, basicEvents)
-	if basicStream != nil {
-		defer basicStream.Close()
+	if basicStream == nil {
+		return
 	}
+	defer basicStream.Close()
 
 	// Subscribe to advanced events (execution_payload_available, execution_payload_bid, inclusion_list)
 	// These are in a separate stream because clients may not support them yet,

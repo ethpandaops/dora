@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -41,6 +41,7 @@ func ElWithdrawals(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var entity string
 	var minSlot uint64
 	var maxSlot uint64
 	var sourceAddr string
@@ -52,6 +53,9 @@ func ElWithdrawals(w http.ResponseWriter, r *http.Request) {
 	var pubkey string
 
 	if urlArgs.Has("f") {
+		if urlArgs.Has("f.entity") {
+			entity = urlArgs.Get("f.entity")
+		}
 		if urlArgs.Has("f.mins") {
 			minSlot, _ = strconv.ParseUint(urlArgs.Get("f.mins"), 10, 64)
 		}
@@ -82,10 +86,21 @@ func ElWithdrawals(w http.ResponseWriter, r *http.Request) {
 	} else {
 		withOrphaned = 1
 	}
+
+	// Apply builder flag to index filters when entity=builder
+	if entity == "builder" {
+		if minIndex > 0 {
+			minIndex |= services.BuilderIndexFlag
+		}
+		if maxIndex > 0 {
+			maxIndex |= services.BuilderIndexFlag
+		}
+	}
+
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredElWithdrawalsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, uint8(withOrphaned), uint8(withType), pubkey)
+		data.Data, pageError = getFilteredElWithdrawalsPageData(pageIdx, pageSize, entity, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, uint8(withOrphaned), uint8(withType), pubkey)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -97,11 +112,11 @@ func ElWithdrawals(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) (*models.ElWithdrawalsPageData, error) {
+func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, entity string, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) (*models.ElWithdrawalsPageData, error) {
 	pageData := &models.ElWithdrawalsPageData{}
-	pageCacheKey := fmt.Sprintf("el_withdrawals:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
+	pageCacheKey := fmt.Sprintf("el_withdrawals:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, entity, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildFilteredElWithdrawalsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
+		pageData, cacheTimeout := buildFilteredElWithdrawalsPageData(pageCall.CallCtx, pageIdx, pageSize, entity, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -115,8 +130,15 @@ func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot u
 	return pageData, pageErr
 }
 
-func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) (*models.ElWithdrawalsPageData, time.Duration) {
+func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, entity string, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) (*models.ElWithdrawalsPageData, time.Duration) {
+	if entity == "" {
+		entity = "all"
+	}
+
 	filterArgs := url.Values{}
+	if entity != "all" {
+		filterArgs.Add("f.entity", entity)
+	}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
 	}
@@ -145,12 +167,21 @@ func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pag
 		filterArgs.Add("f.pubkey", pubkey)
 	}
 
+	// Display indices without the builder flag for the filter UI
+	displayMinIndex := minIndex
+	displayMaxIndex := maxIndex
+	if entity == "builder" {
+		displayMinIndex = minIndex &^ services.BuilderIndexFlag
+		displayMaxIndex = maxIndex &^ services.BuilderIndexFlag
+	}
+
 	pageData := &models.ElWithdrawalsPageData{
+		FilterEntity:        entity,
 		FilterAddress:       sourceAddr,
 		FilterMinSlot:       minSlot,
 		FilterMaxSlot:       maxSlot,
-		FilterMinIndex:      minIndex,
-		FilterMaxIndex:      maxIndex,
+		FilterMinIndex:      displayMinIndex,
+		FilterMaxIndex:      displayMaxIndex,
 		FilterValidatorName: vname,
 		FilterWithOrphaned:  withOrphaned,
 		FilterWithType:      withType,

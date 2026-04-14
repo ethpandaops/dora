@@ -49,20 +49,23 @@ type ValidatorPageData struct {
 	TabView         string `json:"tab_view"`
 	ElectraIsActive bool   `json:"electra_is_active"`
 
-	RecentBlocks                        []*ValidatorPageDataBlock         `json:"recent_blocks"`
-	RecentBlockCount                    uint64                            `json:"recent_block_count"`
-	RecentAttestations                  []*ValidatorPageDataAttestation   `json:"recent_attestations"`
-	RecentAttestationCount              uint64                            `json:"recent_attestation_count"`
-	RecentDeposits                      []*ValidatorPageDataDeposit       `json:"recent_deposits"`
-	RecentDepositCount                  uint64                            `json:"recent_deposit_count"`
-	AdditionalInitiatedDepositCount     uint64                            `json:"additional_initiated_deposit_count"`
-	AdditionalIncludedDepositCount      uint64                            `json:"additional_included_deposit_count"`
-	ConsolidationRequests               []*ValidatorPageDataConsolidation `json:"consolidation_requests"`
-	ConsolidationRequestCount           uint64                            `json:"consolidation_request_count"`
-	AdditionalConsolidationRequestCount uint64                            `json:"additional_consolidation_request_count"`
-	WithdrawalRequests                  []*ValidatorPageDataWithdrawal    `json:"withdrawal_requests"`
-	WithdrawalRequestCount              uint64                            `json:"withdrawal_request_count"`
-	AdditionalWithdrawalRequestCount    uint64                            `json:"additional_withdrawal_request_count"`
+	RecentBlocks                        []*ValidatorPageDataBlock            `json:"recent_blocks"`
+	RecentBlockCount                    uint64                               `json:"recent_block_count"`
+	RecentAttestations                  []*ValidatorPageDataAttestation      `json:"recent_attestations"`
+	RecentAttestationCount              uint64                               `json:"recent_attestation_count"`
+	RecentDeposits                      []*ValidatorPageDataDeposit          `json:"recent_deposits"`
+	RecentDepositCount                  uint64                               `json:"recent_deposit_count"`
+	AdditionalInitiatedDepositCount     uint64                               `json:"additional_initiated_deposit_count"`
+	AdditionalIncludedDepositCount      uint64                               `json:"additional_included_deposit_count"`
+	ConsolidationRequests               []*ValidatorPageDataConsolidation    `json:"consolidation_requests"`
+	ConsolidationRequestCount           uint64                               `json:"consolidation_request_count"`
+	AdditionalConsolidationRequestCount uint64                               `json:"additional_consolidation_request_count"`
+	WithdrawalRequests                  []*ValidatorPageDataWithdrawal       `json:"withdrawal_requests"`
+	WithdrawalRequestCount              uint64                               `json:"withdrawal_request_count"`
+	AdditionalWithdrawalRequestCount    uint64                               `json:"additional_withdrawal_request_count"`
+	Withdrawals                         []*ValidatorPageDataBeaconWithdrawal `json:"withdrawals"`
+	WithdrawalCount                     uint64                               `json:"withdrawal_count"`
+	AdditionalWithdrawalCount           uint64                               `json:"additional_withdrawal_count"`
 }
 
 type ValidatorPageDataBlock struct {
@@ -182,4 +185,18 @@ type ValidatorPageDataWithdrawalTxDetails struct {
 	TxOrigin    string `json:"tx_origin"`
 	TxTarget    string `json:"tx_target"`
 	TxHash      string `json:"tx_hash"`
+}
+
+// ValidatorPageDataBeaconWithdrawal represents a beacon chain withdrawal on the validator page.
+type ValidatorPageDataBeaconWithdrawal struct {
+	SlotNumber  uint64    `json:"slot"`
+	BlockRoot   []byte    `json:"block_root" ssz-size:"32"`
+	BlockNumber uint64    `json:"block_number"`
+	Time        time.Time `json:"time"`
+	Orphaned    bool      `json:"orphaned"`
+	Type        uint8     `json:"type"`
+	Address     []byte    `json:"address" ssz-size:"20"`
+	Amount      uint64    `json:"amount"`
+	RefSlot     uint64    `json:"ref_slot"`
+	RefSlotRoot []byte    `json:"ref_slot_root" ssz-size:"32"`
 }
