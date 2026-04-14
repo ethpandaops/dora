@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
 	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -13,6 +12,7 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

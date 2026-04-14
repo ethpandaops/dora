@@ -7,11 +7,11 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	dasguardian "github.com/ethpandaops/eth-das-guardian"
 	"github.com/ethpandaops/eth-das-guardian/api"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 

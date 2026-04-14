@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
 	dynssz "github.com/pk910/dynamic-ssz"

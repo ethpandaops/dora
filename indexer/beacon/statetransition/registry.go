@@ -1,7 +1,7 @@
 package statetransition
 
 import (
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 // processRegistryUpdates implements the Electra+ version of process_registry_updates.

@@ -3,7 +3,7 @@ package beacon
 import (
 	"fmt"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 func (indexer *Indexer) precalcNextEpochStats(epoch phase0.Epoch) error {

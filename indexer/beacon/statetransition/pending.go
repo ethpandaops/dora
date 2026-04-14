@@ -1,8 +1,8 @@
 package statetransition
 
 import (
-	"github.com/attestantio/go-eth2-client/spec/electra"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 // processPendingDeposits implements the Electra+ version of process_pending_deposits.

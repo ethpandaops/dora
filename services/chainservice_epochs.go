@@ -3,9 +3,9 @@ package services
 import (
 	"context"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 func (bs *ChainService) GetDbEpochs(ctx context.Context, firstEpoch uint64, limit uint32) []*dbtypes.Epoch {

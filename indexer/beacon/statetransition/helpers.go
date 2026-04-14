@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 // hash256 returns the SHA-256 hash of data.
