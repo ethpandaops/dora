@@ -90,6 +90,8 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 }
 
 func createMenuItems(active string) []types.MainMenuItem {
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
 	hiddenFor := []string{"confirmation", "login", "register"}
 
 	if utils.SliceContains(hiddenFor, active) {
@@ -204,6 +206,19 @@ func createMenuItems(active string) []types.MainMenuItem {
 		Links: validatorMenuLinks,
 	})
 
+	if specs != nil && specs.GloasForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.GloasForkEpoch {
+		builderMenu := []types.NavigationLink{
+			{
+				Label: "Builders",
+				Path:  "/builders",
+				Icon:  "fa-building",
+			},
+		}
+		validatorMenu = append(validatorMenu, types.NavigationGroup{
+			Links: builderMenu,
+		})
+	}
+
 	validatorActionsGroup := types.NavigationGroup{
 		Links: []types.NavigationLink{
 			{
@@ -219,8 +234,6 @@ func createMenuItems(active string) []types.MainMenuItem {
 		},
 	}
 
-	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
 	if specs != nil && specs.ElectraForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.ElectraForkEpoch {
 		validatorActionsGroup.Links = append(
 			validatorActionsGroup.Links,

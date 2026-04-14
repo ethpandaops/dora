@@ -31,6 +31,7 @@ type SlotsPageData struct {
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
 	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
 	DisplayExecTime     bool   `json:"dp_exectime"`
+	DisplayBuilder      bool   `json:"dp_builder"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	IsDefaultPage    bool   `json:"default_page"`
@@ -60,6 +61,7 @@ type SlotsPageDataSlot struct {
 	Finalized             bool                      `json:"scheduled"`
 	Scheduled             bool                      `json:"finalized"`
 	Status                uint8                     `json:"status"`
+	PayloadStatus         uint8                     `json:"payload_status"`
 	Synchronized          bool                      `json:"synchronized"`
 	Proposer              uint64                    `json:"proposer"`
 	ProposerName          string                    `json:"proposer_name"`
@@ -88,6 +90,9 @@ type SlotsPageDataSlot struct {
 	ForkGraph             []*SlotsPageDataForkGraph `json:"fork_graph"`
 	IsMevBlock            bool                      `json:"is_mev_block"`
 	MevBlockRelays        string                    `json:"mev_block_relays"`
+	HasBuilder            bool                      `json:"has_builder"`
+	BuilderIndex          uint64                    `json:"builder_index"`
+	BuilderName           string                    `json:"builder_name"`
 }
 
 type SlotsPageDataForkGraph struct {

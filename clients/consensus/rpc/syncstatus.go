@@ -1,6 +1,6 @@
 package rpc
 
-import v1 "github.com/attestantio/go-eth2-client/api/v1"
+import v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 
 type SyncStatus struct {
 	IsSyncing                bool

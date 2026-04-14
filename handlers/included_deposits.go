@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -201,15 +201,19 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	for _, deposit := range dbDeposits {
+		wdCreds := deposit.WithdrawalCredentials()
+		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
+
 		depositData := &models.IncludedDepositsPageDataDeposit{
 			PublicKey:             deposit.PublicKey(),
-			Withdrawalcredentials: deposit.WithdrawalCredentials(),
+			Withdrawalcredentials: wdCreds,
 			Amount:                deposit.Amount(),
 			Time:                  chainState.SlotToTime(phase0.Slot(deposit.Request.SlotNumber)),
 			SlotNumber:            deposit.Request.SlotNumber,
 			SlotRoot:              deposit.Request.SlotRoot,
 			Orphaned:              deposit.RequestOrphaned,
 			DepositorAddress:      deposit.SourceAddress(),
+			IsBuilder:             isBuilder,
 		}
 
 		if deposit.Request != nil {

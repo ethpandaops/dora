@@ -7,8 +7,9 @@ import (
 	"runtime/debug"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
@@ -59,7 +60,7 @@ func (client *Client) checkClient() error {
 
 	err := client.rpcClient.Initialize(ctx)
 	if err != nil {
-		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
+		return fmt.Errorf("initialization of ethpandaops/go-eth2-client failed: %w", err)
 	}
 
 	// update node metadata
@@ -133,7 +134,11 @@ func (client *Client) runClientLogic() error {
 	}
 
 	// start event stream
-	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, client.logger, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent)
+	blockStream := client.rpcClient.NewBlockStream(
+		client.clientCtx,
+		client.logger,
+		rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent|rpc.StreamExecutionPayloadEvent|rpc.StreamExecutionPayloadBidEvent,
+	)
 	defer blockStream.Close()
 
 	// process events
@@ -165,6 +170,12 @@ func (client *Client) runClientLogic() error {
 				if err != nil {
 					client.logger.Warnf("failed processing finalized event: %v", err)
 				}
+
+			case rpc.StreamExecutionPayloadEvent:
+				client.executionPayloadDispatcher.Fire(evt.Data.(*v1.ExecutionPayloadAvailableEvent))
+
+			case rpc.StreamExecutionPayloadBidEvent:
+				client.executionPayloadBidDispatcher.Fire(evt.Data.(*gloas.SignedExecutionPayloadBid))
 			}
 
 			// fire through stream dispatcher first to preserve SSE ordering

@@ -76,12 +76,16 @@ type SlotPageBlockData struct {
 	DepositRequestsCount       uint64                  `json:"deposit_receipts_count"`
 	WithdrawalRequestsCount    uint64                  `json:"withdrawal_requests_count"`
 	ConsolidationRequestsCount uint64                  `json:"consolidation_requests_count"`
+	BidsCount                  uint64                  `json:"bids_count"`
+	PtcVotesCount              uint64                  `json:"ptc_votes_count"`
 
 	SlotsPerEpoch        uint64 `json:"slots_per_epoch"`
 	TargetCommitteeSize  uint64 `json:"target_committee_size"`
 	MaxCommitteesPerSlot uint64 `json:"max_committees_per_slot"`
 
-	ExecutionData         *SlotPageExecutionData          `json:"execution_data"`
+	PayloadHeader *SlotPagePayloadHeader `json:"payload_header"`
+	ExecutionData *SlotPageExecutionData `json:"execution_data"`
+
 	Attestations          []*SlotPageAttestation          `json:"attestations"`           // Attestations included in this block
 	Deposits              []*SlotPageDeposit              `json:"deposits"`               // Deposits included in this block
 	VoluntaryExits        []*SlotPageVoluntaryExit        `json:"voluntary_exits"`        // Voluntary Exits included in this block
@@ -94,6 +98,8 @@ type SlotPageBlockData struct {
 	DepositRequests       []*SlotPageDepositRequest       `json:"deposit_receipts"`       // DepositRequests included in this block
 	WithdrawalRequests    []*SlotPageWithdrawalRequest    `json:"withdrawal_requests"`    // WithdrawalRequests included in this block
 	ConsolidationRequests []*SlotPageConsolidationRequest `json:"consolidation_requests"` // ConsolidationRequests included in this block
+	Bids                  []*SlotPageBid                  `json:"bids"`                   // Execution payload bids for this block (ePBS)
+	PtcVotes              *SlotPagePtcVotes               `json:"ptc_votes"`              // PTC votes included in this block (for previous slot)
 }
 
 type SlotPageExecutionData struct {
@@ -126,6 +132,20 @@ type SlotPageValidatorName struct {
 	Value string `json:"v"`
 }
 
+type SlotPagePayloadHeader struct {
+	PayloadStatus      uint16   `json:"payload_status"`
+	ParentBlockHash    []byte   `json:"parent_block_hash"`
+	ParentBlockRoot    []byte   `json:"parent_block_root"`
+	BlockHash          []byte   `json:"block_hash"`
+	GasLimit           uint64   `json:"gas_limit"`
+	BuilderIndex       uint64   `json:"builder_index"`
+	BuilderName        string   `json:"builder_name"`
+	Slot               uint64   `json:"slot"`
+	Value              uint64   `json:"value"`
+	BlobKZGCommitments [][]byte `json:"blob_kzg_commitments"`
+	Signature          []byte   `json:"signature"`
+}
+
 type SlotPageAttestation struct {
 	Slot           uint64   `json:"slot"`
 	CommitteeIndex []uint64 `json:"committeeindex"`
@@ -134,6 +154,8 @@ type SlotPageAttestation struct {
 	AggregationBits    []byte   `json:"aggregationbits"`
 	Validators         []uint64 `json:"validators"`
 	IncludedValidators []uint64 `json:"included_validators"`
+
+	PayloadStatus *uint64 `json:"payload_status,omitempty"`
 
 	Signature []byte `json:"signature" ssz-size:"96"`
 
@@ -155,6 +177,7 @@ type SlotPageDeposit struct {
 type SlotPageVoluntaryExit struct {
 	ValidatorIndex uint64 `json:"validatorindex"`
 	ValidatorName  string `json:"validatorname"`
+	IsBuilder      bool   `json:"is_builder"`
 	Epoch          uint64 `json:"epoch"`
 	Signature      []byte `json:"signature" ssz-size:"96"`
 }
@@ -210,8 +233,12 @@ type SlotPageWithdrawal struct {
 	Index          uint64 `json:"index"`
 	ValidatorIndex uint64 `json:"validatorindex"`
 	ValidatorName  string `json:"validatorname"`
+	IsBuilder      bool   `json:"is_builder"`
 	Address        []byte `json:"address" ssz-size:"20"`
 	Amount         uint64 `json:"amount"`
+	Type           uint8  `json:"type"`
+	RefSlot        uint64 `json:"ref_slot"`
+	RefSlotRoot    []byte `json:"ref_slot_root" ssz-size:"32"`
 }
 
 type SlotPageBlob struct {
@@ -258,6 +285,7 @@ type SlotPageTransaction struct {
 type SlotPageDepositRequest struct {
 	PublicKey       []byte `db:"pubkey" ssz-size:"48"`
 	Exists          bool   `db:"exists"`
+	IsBuilder       bool   `db:"is_builder"`
 	ValidatorIndex  uint64 `db:"valindex"`
 	ValidatorName   string `db:"valname"`
 	WithdrawalCreds []byte `db:"withdrawal_creds" ssz-size:"32"`
@@ -272,18 +300,61 @@ type SlotPageWithdrawalRequest struct {
 	Exists         bool   `db:"exists"`
 	ValidatorIndex uint64 `db:"valindex"`
 	ValidatorName  string `db:"valname"`
+	IsBuilder      bool   `db:"is_builder"`
 	Amount         uint64 `db:"amount"`
 }
 
 type SlotPageConsolidationRequest struct {
-	Address      []byte `db:"address" ssz-size:"20"`
-	SourcePubkey []byte `db:"source_pubkey" ssz-size:"48"`
-	SourceFound  bool   `db:"source_bool"`
-	SourceIndex  uint64 `db:"source_index"`
-	SourceName   string `db:"source_name"`
-	TargetPubkey []byte `db:"target_pubkey" ssz-size:"48"`
-	TargetFound  bool   `db:"target_bool"`
-	TargetIndex  uint64 `db:"target_index"`
-	TargetName   string `db:"target_name"`
-	Epoch        uint64 `db:"epoch"`
+	Address         []byte `db:"address" ssz-size:"20"`
+	SourcePubkey    []byte `db:"source_pubkey" ssz-size:"48"`
+	SourceFound     bool   `db:"source_bool"`
+	SourceIndex     uint64 `db:"source_index"`
+	SourceName      string `db:"source_name"`
+	SourceIsBuilder bool   `db:"source_is_builder"`
+	TargetPubkey    []byte `db:"target_pubkey" ssz-size:"48"`
+	TargetFound     bool   `db:"target_bool"`
+	TargetIndex     uint64 `db:"target_index"`
+	TargetName      string `db:"target_name"`
+	TargetIsBuilder bool   `db:"target_is_builder"`
+	Epoch           uint64 `db:"epoch"`
+}
+
+type SlotPageBid struct {
+	ParentRoot   []byte `json:"parent_root"`
+	ParentHash   []byte `json:"parent_hash"`
+	BlockHash    []byte `json:"block_hash"`
+	FeeRecipient []byte `json:"fee_recipient"`
+	GasLimit     uint64 `json:"gas_limit"`
+	BuilderIndex uint64 `json:"builder_index"`
+	BuilderName  string `json:"builder_name"`
+	IsSelfBuilt  bool   `json:"is_self_built"`
+	Slot         uint64 `json:"slot"`
+	Value        uint64 `json:"value"`
+	ElPayment    uint64 `json:"el_payment"`
+	TotalValue   uint64 `json:"total_value"`
+	IsWinning    bool   `json:"is_winning"`
+}
+
+// SlotPagePtcVotes holds PTC (Payload Timeliness Committee) vote information for a slot.
+// These are payload attestations included in this block for the PREVIOUS slot.
+type SlotPagePtcVotes struct {
+	VotedSlot       uint64                  `json:"voted_slot"`        // The slot the votes are for (previous slot)
+	VotedBlockRoot  []byte                  `json:"voted_block_root"`  // The block root being voted on
+	TotalPtcSize    uint64                  `json:"total_ptc_size"`    // Total PTC committee size
+	Aggregates      []*SlotPagePtcAggregate `json:"aggregates"`        // Up to 4 aggregates for different vote flag combinations
+	NonVoters       []types.NamedValidator  `json:"non_voters"`        // Validators that did not vote
+	NonVoterCount   uint64                  `json:"non_voter_count"`   // Number of non-voters
+	NonVoterPercent float64                 `json:"non_voter_percent"` // Percentage of non-voters
+	Participation   float64                 `json:"participation"`     // Overall participation rate
+}
+
+// SlotPagePtcAggregate represents a single PTC vote aggregate for a specific vote flag combination.
+type SlotPagePtcAggregate struct {
+	PayloadPresent    bool                   `json:"payload_present"`     // Whether the payload was present
+	BlobDataAvailable bool                   `json:"blob_data_available"` // Whether blob data was available
+	AggregationBits   []byte                 `json:"aggregation_bits"`    // Bitfield of participating validators
+	Validators        []types.NamedValidator `json:"validators"`          // Validators that voted
+	Signature         []byte                 `json:"signature"`           // Aggregate signature
+	VoteCount         uint64                 `json:"vote_count"`          // Number of votes in this aggregate
+	VotePercent       float64                `json:"vote_percent"`        // Percentage of committee
 }

@@ -8,6 +8,7 @@
               <th>Slot</th>
               <th>Time</th>
               <th>Type</th>
+              <th>Ref</th>
               <th>Address</th>
               <th>Amount</th>
               <th>Status</th>
@@ -36,8 +37,31 @@
                       <span class="badge text-bg-warning">
                         <i class="fas fa-hand-holding me-1"></i>Requested
                       </span>
+                    {{ else if eq $withdrawal.Type 4 }}
+                      <span class="badge text-bg-primary">
+                        <i class="fas fa-building me-1"></i>Builder Withdrawal
+                      </span>
+                    {{ else if eq $withdrawal.Type 5 }}
+                      <span class="badge text-bg-info">
+                        <i class="fas fa-building me-1"></i>Builder Payment
+                      </span>
+                    {{ else if eq $withdrawal.Type 6 }}
+                      <span class="badge text-bg-secondary">
+                        <i class="fas fa-building me-1"></i>Builder Delayed
+                      </span>
                     {{ else }}
                       <span class="badge text-bg-secondary">Unknown</span>
+                    {{ end }}
+                  </td>
+                  <td>
+                    {{ if gt $withdrawal.RefSlot 0 }}
+                      {{ if $withdrawal.RefSlotRoot }}
+                        <a href="/slot/0x{{ printf "%x" $withdrawal.RefSlotRoot }}">{{ formatAddCommas $withdrawal.RefSlot }}</a>
+                      {{ else }}
+                        {{ formatAddCommas $withdrawal.RefSlot }}
+                      {{ end }}
+                    {{ else }}
+                      -
                     {{ end }}
                   </td>
                   <td>
@@ -62,7 +86,7 @@
                 </tr>
               {{ end }}
               <tr>
-                <td colspan="6" class="text-center">
+                <td colspan="7" class="text-center">
                   {{ if gt .AdditionalWithdrawalCount 0 }}
                     <a class="text-white" href="/validators/withdrawals/filtered?f&f.mini={{ .Index }}&f.maxi={{ .Index }}">View {{ formatAddCommas .AdditionalWithdrawalCount }} more withdrawals</a>
                   {{ end }}
@@ -70,7 +94,7 @@
               </tr>
             {{ else }}
               <tr style="height: 430px;">
-                <td style="vertical-align: middle;" colspan="6">
+                <td style="vertical-align: middle;" colspan="7">
                   <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                     {{ template "timeline_svg" }}
                   </div>

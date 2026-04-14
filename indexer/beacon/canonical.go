@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 const FarFutureEpoch = phase0.Epoch(math.MaxUint64)
@@ -59,6 +59,10 @@ func (indexer *Indexer) IsCanonicalBlock(block *Block, overrideForkId *ForkKey) 
 func (indexer *Indexer) IsCanonicalBlockByHead(block *Block, headBlock *Block) bool {
 	if headBlock == nil || block == nil {
 		return false
+	}
+
+	if block == headBlock {
+		return true
 	}
 
 	if block.forkChecked && headBlock.forkChecked {

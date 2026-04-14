@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -144,7 +144,12 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 			}
 
 			if validatorIndex := withdrawal.ValidatorIndex(); validatorIndex != nil {
-				withdrawalData.ValidatorIndex = *validatorIndex
+				if *validatorIndex&services.BuilderIndexFlag != 0 {
+					withdrawalData.IsBuilder = true
+					withdrawalData.ValidatorIndex = *validatorIndex &^ services.BuilderIndexFlag
+				} else {
+					withdrawalData.ValidatorIndex = *validatorIndex
+				}
 				withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
 				withdrawalData.ValidatorValid = true
 			}
@@ -198,13 +203,17 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 			}
 		}
 
-		// Batch resolve blocks
-		blockUids := make([]uint64, 0, len(dbWithdrawals))
-		blockUidSet := make(map[uint64]bool, len(dbWithdrawals))
+		// Batch resolve blocks (including ref slot blocks)
+		blockUids := make([]uint64, 0, len(dbWithdrawals)*2)
+		blockUidSet := make(map[uint64]bool, len(dbWithdrawals)*2)
 		for _, w := range dbWithdrawals {
 			if !blockUidSet[w.BlockUid] {
 				blockUidSet[w.BlockUid] = true
 				blockUids = append(blockUids, w.BlockUid)
+			}
+			if w.RefSlot != nil && !blockUidSet[*w.RefSlot] {
+				blockUidSet[*w.RefSlot] = true
+				blockUids = append(blockUids, *w.RefSlot)
 			}
 		}
 		blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
@@ -232,7 +241,12 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 			}
 
 			withdrawalData.HasValidator = true
-			withdrawalData.ValidatorIndex = withdrawal.Validator
+			if withdrawal.Validator&services.BuilderIndexFlag != 0 {
+				withdrawalData.IsBuilder = true
+				withdrawalData.ValidatorIndex = withdrawal.Validator &^ services.BuilderIndexFlag
+			} else {
+				withdrawalData.ValidatorIndex = withdrawal.Validator
+			}
 			withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(withdrawal.Validator)
 
 			if withdrawal.AccountID > 0 {
@@ -247,6 +261,13 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 				withdrawalData.BlockRoot = blockInfo.Block.Root
 				if blockInfo.Block.EthBlockNumber != nil {
 					withdrawalData.BlockNumber = *blockInfo.Block.EthBlockNumber
+				}
+			}
+
+			if withdrawal.RefSlot != nil {
+				withdrawalData.RefSlot = *withdrawal.RefSlot >> 16
+				if refBlock, ok := blockMap[*withdrawal.RefSlot]; ok && refBlock.Block != nil {
+					withdrawalData.RefSlotRoot = refBlock.Block.Root
 				}
 			}
 

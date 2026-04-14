@@ -151,7 +151,11 @@
               </td>
               <td data-timer="{{ $exit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $exit.Time }}">{{ formatRecentTimeShort $exit.Time }}</span></td>
               <td>
-                {{ formatValidatorWithIndex $exit.ValidatorIndex $exit.ValidatorName }}
+                {{ if $exit.IsBuilder }}
+                  {{ formatBuilderWithIndex $exit.ValidatorIndex $exit.ValidatorName }}
+                {{ else }}
+                  {{ formatValidatorWithIndex $exit.ValidatorIndex $exit.ValidatorName }}
+                {{ end }}
               </td>
               <td>
                 <div class="d-flex">
@@ -339,7 +343,11 @@
               </td>
               <td>
                 {{- if $exitReq.ValidatorValid }}
-                  {{ formatValidatorWithIndex $exitReq.ValidatorIndex $exitReq.ValidatorName }}
+                  {{ if $exitReq.IsBuilder }}
+                    {{ formatBuilderWithIndex $exitReq.ValidatorIndex $exitReq.ValidatorName }}
+                  {{ else }}
+                    {{ formatValidatorWithIndex $exitReq.ValidatorIndex $exitReq.ValidatorName }}
+                  {{ end }}
                 {{- else }}
                   <div class="d-flex">
                     <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $exitReq.PublicKey }}</span>

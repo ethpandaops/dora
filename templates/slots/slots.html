@@ -48,6 +48,7 @@
                   <option value="17" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                   <option value="18" {{ if .DisplayRecvDelay }}selected{{ end }}>Receive Delay</option>
                   <option value="19" {{ if .DisplayExecTime }}selected{{ end }}>Execution Time</option>
+                  <option value="20" {{ if .DisplayBuilder }}selected{{ end }}>Builder</option>
                   <option value="12" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                   <option value="13" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                 </select>
@@ -88,6 +89,7 @@
                 {{ if .DisplayTxCount }}<th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>{{ end }}
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
+                {{ if .DisplayBuilder }}<th>Builder</th>{{ end }}
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
@@ -132,9 +134,9 @@
                       {{ if eq $slot.Slot 0 }}
                         <span class="badge rounded-pill text-bg-info">Genesis</span>
                       {{ else if eq $slot.Status 1 }}
-                        <span class="badge rounded-pill text-bg-success">Proposed</span>
+                        <span class="badge rounded-pill text-bg-success {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}">Proposed</span>
                       {{ else if eq $slot.Status 2 }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                        <span class="badge rounded-pill text-bg-info {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}">Missed (Orphaned)</span>
                       {{ else if $slot.Scheduled }}
                         <span class="badge rounded-pill text-bg-secondary">Scheduled</span>
                       {{ else if not $slot.Synchronized }}
@@ -142,7 +144,7 @@
                       {{ else if eq $slot.Status 0 }}
                         <span class="badge rounded-pill text-bg-warning">Missed</span>
                       {{ else }}
-                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                        <span class="badge rounded-pill text-bg-dark {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}">Unknown</span>
                       {{ end }}
                     </td>
                     {{ end }}
@@ -162,6 +164,11 @@
                         </div>
                       {{ end }}</td>{{ end }}
                       {{ if $g.DisplaySyncAgg }}<td>{{ if not (eq $slot.Status 0) }}{{ formatPercentageAlert $slot.SyncParticipation 2 95 80 }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayBuilder }}<td>{{ if not (eq $slot.Status 0) }}
+                        {{ if $slot.HasBuilder }}
+                          {{ formatBuilder $slot.BuilderIndex $slot.BuilderName }}
+                        {{ end }}
+                      {{ end }}</td>{{ end }}
                       {{ if $g.DisplayMevBlock }}<td>{{ if not (eq $slot.Status 0) }}
                         {{ if $slot.IsMevBlock }}
                           <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.MevBlockRelays }}">Yes</span>
@@ -190,6 +197,7 @@
                       {{ if $g.DisplayTxCount }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGasUsage }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplaySyncAgg }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayBuilder }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayMevBlock }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGasLimit }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayBlockSize }}{{ $colCount = add $colCount 1 }}{{ end }}
