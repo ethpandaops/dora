@@ -169,16 +169,13 @@ func GetSlotByRoot(ctx context.Context, root []byte) *dbtypes.Slot {
 }
 
 func GetSlotsByRoots(ctx context.Context, roots [][]byte) map[phase0.Root]*dbtypes.Slot {
-	argIdx := 0
 	args := make([]any, len(roots))
-	plcList := make([]string, len(roots))
 	for i, root := range roots {
-		plcList[i] = fmt.Sprintf("$%v", argIdx+1)
-		args[argIdx] = root
-		argIdx += 1
+		args[i] = root
 	}
 
-	sql := fmt.Sprintf(
+	var sql strings.Builder
+	fmt.Fprint(&sql,
 		`SELECT
 			root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
 			attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
@@ -187,13 +184,13 @@ func GetSlotsByRoots(ctx context.Context, roots [][]byte) map[phase0.Root]*dbtyp
 			eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
 			max_exec_time, exec_times, block_uid, payload_status, builder_index
 		FROM slots
-		WHERE root IN (%v)
-		ORDER BY slot DESC`,
-		strings.Join(plcList, ", "),
-	)
+		WHERE root IN (`)
+	appendDollarPlaceholders(&sql, 1, len(roots), ", ")
+	fmt.Fprint(&sql, `)
+		ORDER BY slot DESC`)
 
 	slots := []*dbtypes.Slot{}
-	err := ReaderDb.SelectContext(ctx, &slots, sql, args...)
+	err := ReaderDb.SelectContext(ctx, &slots, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching block by roots: %v", err)
 		return nil
@@ -361,13 +358,14 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		args = append(args, filter.BlockRoot)
 	}
 	if len(filter.BlockUids) > 0 {
-		blockUidPlaceholders := make([]string, len(filter.BlockUids))
-		for i, blockUid := range filter.BlockUids {
-			argIdx++
-			blockUidPlaceholders[i] = fmt.Sprintf("$%v", argIdx)
+		start := argIdx + 1
+		for _, blockUid := range filter.BlockUids {
 			args = append(args, blockUid)
 		}
-		fmt.Fprintf(&sql, ` AND slots.block_uid IN (%s) `, strings.Join(blockUidPlaceholders, ", "))
+		argIdx += len(filter.BlockUids)
+		fmt.Fprint(&sql, ` AND slots.block_uid IN (`)
+		appendDollarPlaceholders(&sql, start, len(filter.BlockUids), ", ")
+		fmt.Fprint(&sql, `) `)
 	}
 	if filter.ProposerIndex != nil {
 		argIdx++
@@ -460,13 +458,14 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		args = append(args, *filter.MaxBlobCount)
 	}
 	if len(filter.ForkIds) > 0 {
-		forkIdPlaceholders := make([]string, len(filter.ForkIds))
-		for i, forkId := range filter.ForkIds {
-			argIdx++
-			forkIdPlaceholders[i] = fmt.Sprintf("$%v", argIdx)
+		start := argIdx + 1
+		for _, forkId := range filter.ForkIds {
 			args = append(args, forkId)
 		}
-		fmt.Fprintf(&sql, ` AND slots.fork_id IN (%s) `, strings.Join(forkIdPlaceholders, ", "))
+		argIdx += len(filter.ForkIds)
+		fmt.Fprint(&sql, ` AND slots.fork_id IN (`)
+		appendDollarPlaceholders(&sql, start, len(filter.ForkIds), ", ")
+		fmt.Fprint(&sql, `) `)
 	}
 	if filter.EthBlockNumber != nil {
 		argIdx++
