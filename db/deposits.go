@@ -111,29 +111,14 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 		filterOp = "AND"
 	}
 
-	if filter.WithOrphaned != 1 {
-		forkIdStr := make([]string, len(canonicalForkIds))
-		for i, forkId := range canonicalForkIds {
-			forkIdStr[i] = fmt.Sprintf("%v", forkId)
-		}
-		if len(forkIdStr) == 0 {
-			forkIdStr = append(forkIdStr, "0")
-		}
-
-		if filter.WithOrphaned == 0 {
-			fmt.Fprintf(&sql, " %v deposits.fork_id IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		} else if filter.WithOrphaned == 2 {
-			fmt.Fprintf(&sql, " %v deposits.fork_id NOT IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		}
-	}
+	appendWithOrphanedFilter(&sql, &args, &filterOp, filter.WithOrphaned, canonicalForkIds, "deposits.fork_id")
 
 	if txFilter != nil {
-		if txFilter.WithValid == 0 {
+		switch txFilter.WithValid {
+		case 0:
 			fmt.Fprintf(&sql, " %v deposit_txs.valid_signature IN (1, 2)", filterOp)
 			filterOp = "AND"
-		} else if txFilter.WithValid == 2 {
+		case 2:
 			fmt.Fprintf(&sql, " %v deposit_txs.valid_signature = 0", filterOp)
 			filterOp = "AND"
 		}
