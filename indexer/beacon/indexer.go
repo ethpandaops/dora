@@ -479,6 +479,7 @@ func (indexer *Indexer) StopIndexer() {
 	}
 
 	indexer.pubkeyCache.Close()
+	indexer.stateCache.Close()
 }
 
 func (indexer *Indexer) runIndexerLoop() {
