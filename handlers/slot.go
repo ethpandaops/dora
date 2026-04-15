@@ -1045,7 +1045,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	}
 
 	// Fetch execution proofs for this block
-	getSlotPageExecutionProofs(pageData, blockData.Root)
+	getSlotPageExecutionProofs(pageData, blockData.Root, uint64(blockData.Header.Message.Slot))
 
 	// Load execution payload bids for ePBS (gloas+) blocks
 	if blockData.Block.Version >= spec.DataVersionGloas {
@@ -1292,7 +1292,7 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
 }
 
-func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot phase0.Root) {
+func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot phase0.Root, slot uint64) {
 	// Get a ready beacon client to fetch execution proofs
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 	client := beaconIndexer.GetReadyClient(false)
@@ -1316,46 +1316,30 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 		return
 	}
 
-	// Log successful fetch
-	logrus.WithFields(logrus.Fields{
-		"blockRoot":  fmt.Sprintf("0x%x", blockRoot),
-		"proofCount": len(proofsResponse.Data),
-	}).Info("Successfully fetched execution proofs")
+	// Block hash is sourced from the execution payload on the page itself,
+	// since the Lighthouse execution_proofs response does not include it.
+	var blockHash []byte
+	if pageData.ExecutionData != nil {
+		blockHash = pageData.ExecutionData.BlockHash
+	}
 
-	// Convert RPC proofs to page data model
-	pageData.ExecutionProofsCount = uint64(len(proofsResponse.Data))
-	pageData.ExecutionProofs = make([]*models.SlotPageExecutionProof, pageData.ExecutionProofsCount)
-	for i, proof := range proofsResponse.Data {
-		// Parse slot from string
-		slot, err := strconv.ParseUint(proof.Slot, 10, 64)
+	pageData.ExecutionProofs = make([]*models.SlotPageExecutionProof, 0, len(proofsResponse.Data))
+	for _, proof := range proofsResponse.Data {
+		proofData, err := hex.DecodeString(strings.TrimPrefix(proof.Message.ProofData, "0x"))
 		if err != nil {
-			logrus.WithError(err).WithField("slot", proof.Slot).Warn("Error parsing proof slot")
+			logrus.WithError(err).WithField("proofType", proof.Message.ProofType).Warn("Error decoding proof data")
 			continue
 		}
 
-		// Decode hex strings
-		blockHash, err := hex.DecodeString(strings.TrimPrefix(proof.BlockHash, "0x"))
-		if err != nil {
-			logrus.WithError(err).WithField("blockHash", proof.BlockHash).Warn("Error decoding block hash")
-			continue
-		}
-
-		blockRootBytes, err := hex.DecodeString(strings.TrimPrefix(proof.BlockRoot, "0x"))
-		if err != nil {
-			logrus.WithError(err).WithField("blockRoot", proof.BlockRoot).Warn("Error decoding block root")
-			continue
-		}
-
-		// proof.ProofData is already a byte array from JSON, no need to decode
-
-		pageData.ExecutionProofs[i] = &models.SlotPageExecutionProof{
-			ProofId:   proof.ProofId,
+		pageData.ExecutionProofs = append(pageData.ExecutionProofs, &models.SlotPageExecutionProof{
+			ProofId:   proof.Message.ProofType,
 			Slot:      slot,
 			BlockHash: blockHash,
-			BlockRoot: blockRootBytes,
-			ProofData: proof.ProofData,
-		}
+			BlockRoot: blockRoot[:],
+			ProofData: proofData,
+		})
 	}
+	pageData.ExecutionProofsCount = uint64(len(pageData.ExecutionProofs))
 }
 
 func getSlotPageBids(pageData *models.SlotPageBlockData) {

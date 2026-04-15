@@ -44,7 +44,7 @@
             <div class="col-md-10">
               {{ len $proof.ProofData }} bytes
               {{ if gt (len $proof.ProofData) 1024 }}
-                ({{ printf "%.2f" (div (len $proof.ProofData) 1024.0) }} KB)
+                ({{ printf "%.2f" (div (float64 (len $proof.ProofData)) 1024.0) }} KB)
               {{ end }}
             </div>
           </div>

@@ -52,7 +52,7 @@
           <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" id="proofs-tab" data-bs-toggle="tab" href="#proofs" role="tab" aria-controls="proofs" aria-selected="false">Proofs</a>
+          <a class="nav-link" id="proofs-tab" data-bs-toggle="tab" href="#proofs" role="tab" aria-controls="proofs" aria-selected="false">Proofs <span class="badge bg-secondary text-white">{{ .Block.ExecutionProofsCount }}</span></a>
         </li>
         {{ if gt .Block.PtcVotesCount 0 }}
           <li class="nav-item">
