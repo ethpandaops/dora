@@ -1,22 +1,29 @@
 package rpc
 
-// ExecutionProof represents a cryptographic proof of execution that
-// an execution payload is valid.
+// ExecutionProof represents a signed cryptographic proof attesting that
+// an execution payload is valid, as returned by the Lighthouse
+// /eth/v1/beacon/execution_proofs/{block_root} endpoint.
 type ExecutionProof struct {
-	// Which proof type (zkVM+EL combination) this proof belongs to
-	ProofId uint8 `json:"proof_id"`
+	Message        ExecutionProofMessage `json:"message"`
+	ValidatorIndex string                `json:"validator_index"`
+	Signature      string                `json:"signature"`
+}
 
-	// The slot of the beacon block this proof validates
-	Slot string `json:"slot"`
+// ExecutionProofMessage is the inner message of an ExecutionProof.
+type ExecutionProofMessage struct {
+	// Which proof type (zkVM+EL combination) this proof belongs to.
+	ProofType uint8 `json:"proof_type"`
 
-	// The block hash of the execution payload this proof validates
-	BlockHash string `json:"block_hash"`
+	// Hex-encoded proof bytes (e.g. "0x...").
+	ProofData string `json:"proof_data"`
 
-	// The beacon block root corresponding to the beacon block
-	BlockRoot string `json:"block_root"`
+	// Public input the proof commits to.
+	PublicInput ExecutionProofPublicInput `json:"public_input"`
+}
 
-	// The actual proof data (byte array)
-	ProofData []byte `json:"proof_data"`
+// ExecutionProofPublicInput is the public input committed to by an execution proof.
+type ExecutionProofPublicInput struct {
+	NewPayloadRequestRoot string `json:"new_payload_request_root"`
 }
 
 // ExecutionProofsResponse represents the API response for execution proofs
