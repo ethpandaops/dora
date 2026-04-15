@@ -410,7 +410,7 @@ func (c *blockdbCopier) enumerateS3(ctx context.Context, workCh chan<- copyWorkI
 			slot, rootPrefix, err := copyCmdParseS3ExecKey(obj.Key)
 			if err != nil {
 				c.errors.Add(1)
-				c.logger.WithError(err).WithField("key", obj.Key).Warn("skipping unparseable S3 key")
+				c.logger.WithError(err).WithField("key", obj.Key).Warn("skipping unparsable S3 key")
 
 				continue
 			}
