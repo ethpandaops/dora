@@ -1190,6 +1190,27 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 		return resBlocks
 	}
 
+	// When filtering by BlockUids, remove UIDs already found in cache to avoid
+	// expensive full-table DB scans for UIDs that don't exist in finalized data.
+	if len(filter.BlockUids) > 0 {
+		foundUids := make(map[uint64]struct{}, len(cachedMatches))
+		for _, match := range cachedMatches {
+			if match.block != nil {
+				foundUids[match.block.BlockUID] = struct{}{}
+			}
+		}
+		remaining := make([]uint64, 0, len(filter.BlockUids))
+		for _, uid := range filter.BlockUids {
+			if _, found := foundUids[uid]; !found {
+				remaining = append(remaining, uid)
+			}
+		}
+		filter.BlockUids = remaining
+		if len(filter.BlockUids) == 0 {
+			return resBlocks
+		}
+	}
+
 	// load finalized slots from db
 	dbPage := uint64(0)
 	if pageIdx > cachedPages {
