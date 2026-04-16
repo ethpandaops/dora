@@ -93,8 +93,19 @@ func (e *S3Engine) Close() error {
 }
 
 func (e *S3Engine) getObjectKey(root []byte, slot uint64) string {
-	rootHex := hex.EncodeToString(root[:4]) // First 4 bytes
+	rootHex := encodeRootPrefix(root)
 	return path.Join(e.pathPrefix, fmt.Sprintf("%06d", slot/10000), fmt.Sprintf("%010d_%s", slot, rootHex))
+}
+
+// encodeRootPrefix returns the hex-encoded 4-byte root prefix used in S3 object keys.
+func encodeRootPrefix(root []byte) string {
+	if len(root) < 4 {
+		return hex.EncodeToString(root)
+	}
+
+	buf := make([]byte, 8)
+	hex.Encode(buf, root[:4])
+	return string(buf)
 }
 
 // GetStoredComponents returns which components exist for a block by reading metadata.
@@ -446,19 +457,7 @@ func (e *S3Engine) AddBlock(
 	}
 
 	// Calculate what the new data provides
-	var newFlags types.BlockDataFlags
-	if len(blockData.HeaderData) > 0 {
-		newFlags |= types.BlockDataFlagHeader
-	}
-	if len(blockData.BodyData) > 0 {
-		newFlags |= types.BlockDataFlagBody
-	}
-	if blockData.PayloadVersion != 0 && len(blockData.PayloadData) > 0 {
-		newFlags |= types.BlockDataFlagPayload
-	}
-	if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
-		newFlags |= types.BlockDataFlagBal
-	}
+	newFlags := types.StoredFlagsFromBlockData(blockData)
 
 	// Check if we need to update (new data has more components)
 	needsUpdate := (newFlags &^ existingFlags) != 0
