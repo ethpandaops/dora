@@ -249,7 +249,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 			BlockTime:   blockTime,
 			IsOrphaned:  isOrphaned,
 			IsCanonical: isCanonical,
-			TxIndex:     tx.TxIndex,
+			TxIndex:     uint32(tx.TxUid & 0xFFFF),
 		}
 		pageData.InclusionBlocks = append(pageData.InclusionBlocks, inclusionBlock)
 
@@ -378,7 +378,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 		pageData.TxTypeName = fmt.Sprintf("Type %d", tx.TxType)
 	}
 	pageData.Nonce = tx.Nonce
-	pageData.TxIndex = tx.TxIndex
+	pageData.TxIndex = uint32(tx.TxUid & 0xFFFF)
 
 	// Load full transaction data from selected beacon block (must come before
 	// method resolution so InputData is available for calldata decoding).
@@ -1307,12 +1307,13 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 		return
 	}
 
-	if int(tx.TxIndex) >= len(execTxs) {
+	txIndex := tx.TxUid & 0xFFFF
+	if int(txIndex) >= len(execTxs) {
 		logrus.Debug("transaction index out of range")
 		return
 	}
 
-	rlpData := execTxs[tx.TxIndex]
+	rlpData := execTxs[txIndex]
 
 	// Store RLP as hex string for copy button
 	pageData.TxRLP = "0x" + hex.EncodeToString(rlpData)

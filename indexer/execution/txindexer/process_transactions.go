@@ -261,9 +261,8 @@ func (ctx *txProcessingContext) processTransaction(
 		methodID = tx.Data()[:4]
 	}
 
-	txIndex := uint32(receipt.TransactionIndex)
 	result.transaction = &dbtypes.ElTransaction{
-		TxUid:       ctx.block.BlockUID<<16 | uint64(txIndex),
+		TxUid:       ctx.block.BlockUID<<16 | uint64(receipt.TransactionIndex),
 		BlockUid:    ctx.block.BlockUID,
 		TxHash:      txHash[:],
 		FromID:      fromAccount.id,
@@ -280,7 +279,6 @@ func (ctx *txProcessingContext) processTransaction(
 		BlobCount:   blobCount,
 		BlockNumber: receipt.BlockNumber.Uint64(),
 		TxType:      tx.Type(),
-		TxIndex:     txIndex,
 		EffGasPrice: effGasPrice,
 	}
 

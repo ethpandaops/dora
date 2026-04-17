@@ -124,6 +124,10 @@ CREATE INDEX IF NOT EXISTS "el_internal_tx_from_only_idx"
 CREATE INDEX IF NOT EXISTS "el_internal_tx_to_only_idx"
     ON "el_transactions_internal" ("to_id" ASC);
 
+-- Step 5: Drop tx_index from el_transactions (redundant with tx_uid & 0xFFFF) ---
+-- SQLite 3.35.0+ supports ALTER TABLE DROP COLUMN
+ALTER TABLE "el_transactions" DROP COLUMN tx_index;
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

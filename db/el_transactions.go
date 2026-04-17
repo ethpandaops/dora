@@ -10,7 +10,7 @@ import (
 )
 
 // elTransactionColumns is the column list for el_transactions queries.
-const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price"
+const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price"
 
 func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElTransaction) error {
 	if len(txs) == 0 {
@@ -23,11 +23,11 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_transactions ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_transactions ",
 		}),
-		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price)",
+		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 19
+	fieldCount := 18
 
 	args := make([]any, len(txs)*fieldCount)
 	for i, tx := range txs {
@@ -60,12 +60,11 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 		args[argIdx+14] = tx.BlobCount
 		args[argIdx+15] = tx.BlockNumber
 		args[argIdx+16] = tx.TxType
-		args[argIdx+17] = tx.TxIndex
-		args[argIdx+18] = tx.EffGasPrice
+		args[argIdx+17] = tx.EffGasPrice
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET tx_uid = excluded.tx_uid, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, tx_index = excluded.tx_index, eff_gas_price = excluded.eff_gas_price",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET tx_uid = excluded.tx_uid, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -266,7 +265,6 @@ func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32,
 		0 AS blob_count,
 		0 AS block_number,
 		0 AS tx_type,
-		0 AS tx_index,
 		0 AS eff_gas_price
 	FROM cte
 	UNION ALL SELECT * FROM (
@@ -300,7 +298,7 @@ func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32,
 const MaxAccountTransactionCount = 100000
 
 // GetElTransactionsByAccountIDCombined fetches transactions where the account is either
-// sender (from_id) or receiver (to_id). Results are sorted by block_uid DESC, tx_index DESC.
+// sender (from_id) or receiver (to_id). Results are sorted by tx_uid DESC.
 // Returns transactions, total count (capped at MaxAccountTransactionCount), whether count is capped, and error.
 func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, bool, error) {
 	// Use UNION ALL instead of OR for better index usage.
@@ -326,7 +324,7 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 			ORDER BY block_uid DESC NULLS LAST
 			LIMIT $4) AS b
 		) combined
-		ORDER BY block_uid DESC, tx_index DESC
+		ORDER BY tx_uid DESC
 		LIMIT $5`, elTransactionColumns, elTransactionColumns, elTransactionColumns)
 	args = append(args, limit)
 

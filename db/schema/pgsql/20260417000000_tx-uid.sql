@@ -150,6 +150,9 @@ CREATE INDEX IF NOT EXISTS "el_internal_tx_to_only_idx"
     ON public."el_transactions_internal"
     ("to_id" ASC NULLS FIRST);
 
+-- Step 5: Drop tx_index from el_transactions (redundant with tx_uid & 0xFFFF) ---
+ALTER TABLE public."el_transactions" DROP COLUMN IF EXISTS tx_index;
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

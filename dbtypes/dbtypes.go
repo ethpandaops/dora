@@ -488,7 +488,6 @@ type ElTransaction struct {
 	BlobCount   uint32  `db:"blob_count"`
 	BlockNumber uint64  `db:"block_number"`
 	TxType      uint8   `db:"tx_type"`
-	TxIndex     uint32  `db:"tx_index"`
 	EffGasPrice float64 `db:"eff_gas_price"` // Effective gas price actually paid (in Gwei)
 }
 
