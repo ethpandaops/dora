@@ -207,19 +207,7 @@ func (e *TieredEngine) AddBlock(
 	existingFlags, _ := e.GetStoredComponents(ctx, slot, root)
 
 	// Determine what new data provides
-	var newFlags types.BlockDataFlags
-	if len(data.HeaderData) > 0 {
-		newFlags |= types.BlockDataFlagHeader
-	}
-	if len(data.BodyData) > 0 {
-		newFlags |= types.BlockDataFlagBody
-	}
-	if data.PayloadVersion != 0 && len(data.PayloadData) > 0 {
-		newFlags |= types.BlockDataFlagPayload
-	}
-	if data.BalVersion != 0 && len(data.BalData) > 0 {
-		newFlags |= types.BlockDataFlagBal
-	}
+	newFlags := types.StoredFlagsFromBlockData(data)
 
 	// Check if we need to update
 	needsUpdate := (newFlags &^ existingFlags) != 0

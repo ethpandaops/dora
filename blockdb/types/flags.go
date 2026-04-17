@@ -36,3 +36,26 @@ func (f BlockDataFlags) Add(flag BlockDataFlags) BlockDataFlags {
 func (f BlockDataFlags) Remove(flag BlockDataFlags) BlockDataFlags {
 	return f &^ flag
 }
+
+// StoredFlagsFromBlockData returns which block components are present in data.
+func StoredFlagsFromBlockData(data *BlockData) BlockDataFlags {
+	if data == nil {
+		return 0
+	}
+
+	var flags BlockDataFlags
+	if len(data.HeaderData) > 0 {
+		flags |= BlockDataFlagHeader
+	}
+	if len(data.BodyData) > 0 {
+		flags |= BlockDataFlagBody
+	}
+	if data.PayloadVersion != 0 && len(data.PayloadData) > 0 {
+		flags |= BlockDataFlagPayload
+	}
+	if data.BalVersion != 0 && len(data.BalData) > 0 {
+		flags |= BlockDataFlagBal
+	}
+
+	return flags
+}

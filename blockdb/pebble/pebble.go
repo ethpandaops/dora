@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -65,6 +66,12 @@ func makeKey(root []byte, blockType uint16) []byte {
 	return key
 }
 
+func makeKeyRange(root []byte) ([]byte, []byte) {
+	start := makeKey(root, 0)
+	end := makeKey(root, math.MaxUint16)
+	return start, end
+}
+
 // getComponent retrieves a single component from the database.
 // Returns (data, version, timestamp, error). Returns nil data if not found.
 func (e *PebbleEngine) getComponent(root []byte, blockType uint16) ([]byte, uint64, time.Time, error) {
@@ -92,48 +99,58 @@ func (e *PebbleEngine) getComponent(root []byte, blockType uint16) ([]byte, uint
 	return data, version, timestamp, nil
 }
 
-// setComponent stores a single component in the database.
-func (e *PebbleEngine) setComponent(root []byte, blockType uint16, version uint64, data []byte) error {
-	key := makeKey(root, blockType)
-
+// encodeComponentValue serializes a block component with its version and write timestamp.
+func encodeComponentValue(version uint64, data []byte) []byte {
 	value := make([]byte, valueHeaderSize+len(data))
 	binary.BigEndian.PutUint64(value[:8], version)
 	binary.BigEndian.PutUint64(value[8:16], uint64(time.Now().UnixNano()))
 	copy(value[valueHeaderSize:], data)
 
-	return e.db.Set(key, value, nil)
+	return value
 }
 
-// componentExists checks if a component exists in the database.
-func (e *PebbleEngine) componentExists(root []byte, blockType uint16) bool {
-	key := makeKey(root, blockType)
+// getStoredComponents scans the component key range for a block and returns the stored flags.
+func (e *PebbleEngine) getStoredComponents(root []byte) (types.BlockDataFlags, error) {
+	lowerBound, upperBound := makeKeyRange(root)
 
-	res, closer, err := e.db.Get(key)
-	if err == nil && len(res) >= valueHeaderSize {
-		closer.Close()
-		return true
+	iter, err := e.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return 0, err
 	}
-	return false
+	defer iter.Close()
+
+	var flags types.BlockDataFlags
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < 4 || len(iter.Value()) < valueHeaderSize {
+			continue
+		}
+
+		switch binary.BigEndian.Uint16(key[len(key)-2:]) {
+		case BlockTypeHeader:
+			flags |= types.BlockDataFlagHeader
+		case BlockTypeBody:
+			flags |= types.BlockDataFlagBody
+		case BlockTypePayload:
+			flags |= types.BlockDataFlagPayload
+		case BlockTypeBal:
+			flags |= types.BlockDataFlagBal
+		}
+
+		if flags == types.BlockDataFlagAll {
+			break
+		}
+	}
+
+	return flags, iter.Error()
 }
 
 // GetStoredComponents returns which components exist for a block.
 func (e *PebbleEngine) GetStoredComponents(_ context.Context, _ uint64, root []byte) (types.BlockDataFlags, error) {
-	var flags types.BlockDataFlags
-
-	if e.componentExists(root, BlockTypeHeader) {
-		flags |= types.BlockDataFlagHeader
-	}
-	if e.componentExists(root, BlockTypeBody) {
-		flags |= types.BlockDataFlagBody
-	}
-	if e.componentExists(root, BlockTypePayload) {
-		flags |= types.BlockDataFlagPayload
-	}
-	if e.componentExists(root, BlockTypeBal) {
-		flags |= types.BlockDataFlagBal
-	}
-
-	return flags, nil
+	return e.getStoredComponents(root)
 }
 
 // GetBlock retrieves block data with selective loading based on flags.
@@ -229,7 +246,7 @@ func (e *PebbleEngine) AddBlock(
 	dataCb func() (*types.BlockData, error),
 ) (bool, bool, error) {
 	// Check what components already exist
-	existingFlags, err := e.GetStoredComponents(context.Background(), 0, root)
+	existingFlags, err := e.getStoredComponents(root)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to check existing components: %w", err)
 	}
@@ -241,19 +258,7 @@ func (e *PebbleEngine) AddBlock(
 	}
 
 	// Determine what new components we have
-	var newFlags types.BlockDataFlags
-	if len(blockData.HeaderData) > 0 {
-		newFlags |= types.BlockDataFlagHeader
-	}
-	if len(blockData.BodyData) > 0 {
-		newFlags |= types.BlockDataFlagBody
-	}
-	if blockData.PayloadVersion != 0 && len(blockData.PayloadData) > 0 {
-		newFlags |= types.BlockDataFlagPayload
-	}
-	if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
-		newFlags |= types.BlockDataFlagBal
-	}
+	newFlags := types.StoredFlagsFromBlockData(blockData)
 
 	// Calculate components to add (new components not in existing)
 	toAdd := newFlags &^ existingFlags
@@ -266,29 +271,36 @@ func (e *PebbleEngine) AddBlock(
 	isNew := existingFlags == 0
 	isUpdated := !isNew
 
+	batch := e.db.NewBatch()
+	defer batch.Close()
+
 	// Store new components
 	if toAdd.Has(types.BlockDataFlagHeader) {
-		if err := e.setComponent(root, BlockTypeHeader, blockData.HeaderVersion, blockData.HeaderData); err != nil {
+		if err := batch.Set(makeKey(root, BlockTypeHeader), encodeComponentValue(blockData.HeaderVersion, blockData.HeaderData), nil); err != nil {
 			return false, false, fmt.Errorf("failed to store header: %w", err)
 		}
 	}
 
 	if toAdd.Has(types.BlockDataFlagBody) {
-		if err := e.setComponent(root, BlockTypeBody, blockData.BodyVersion, blockData.BodyData); err != nil {
+		if err := batch.Set(makeKey(root, BlockTypeBody), encodeComponentValue(blockData.BodyVersion, blockData.BodyData), nil); err != nil {
 			return false, false, fmt.Errorf("failed to store body: %w", err)
 		}
 	}
 
 	if toAdd.Has(types.BlockDataFlagPayload) {
-		if err := e.setComponent(root, BlockTypePayload, blockData.PayloadVersion, blockData.PayloadData); err != nil {
+		if err := batch.Set(makeKey(root, BlockTypePayload), encodeComponentValue(blockData.PayloadVersion, blockData.PayloadData), nil); err != nil {
 			return false, false, fmt.Errorf("failed to store payload: %w", err)
 		}
 	}
 
 	if toAdd.Has(types.BlockDataFlagBal) {
-		if err := e.setComponent(root, BlockTypeBal, blockData.BalVersion, blockData.BalData); err != nil {
+		if err := batch.Set(makeKey(root, BlockTypeBal), encodeComponentValue(blockData.BalVersion, blockData.BalData), nil); err != nil {
 			return false, false, fmt.Errorf("failed to store BAL: %w", err)
 		}
+	}
+
+	if err := batch.Commit(nil); err != nil {
+		return false, false, fmt.Errorf("failed to commit block components: %w", err)
 	}
 
 	return isNew, isUpdated, nil
