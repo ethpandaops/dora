@@ -262,6 +262,7 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 
 	result.transaction = &dbtypes.ElTransaction{
+		TxUid:       ctx.block.BlockUID<<16 | uint64(receipt.TransactionIndex),
 		BlockUid:    ctx.block.BlockUID,
 		TxHash:      txHash[:],
 		FromID:      fromAccount.id,
@@ -278,7 +279,6 @@ func (ctx *txProcessingContext) processTransaction(
 		BlobCount:   blobCount,
 		BlockNumber: receipt.BlockNumber.Uint64(),
 		TxType:      tx.Type(),
-		TxIndex:     uint32(receipt.TransactionIndex),
 		EffGasPrice: effGasPrice,
 	}
 
@@ -827,9 +827,7 @@ func (ctx *txProcessingContext) createTokenTransfer(
 	// If metadata IS loaded, use the actual decimals value (even if 0)
 
 	transfer := &dbtypes.ElTokenTransfer{
-		BlockUid:   ctx.block.BlockUID,
-		TxHash:     make([]byte, 32), // Will be set in commit
-		TxPos:      txPos,
+		TxUid:      0, // Will be set in commit from result.transaction.TxUid
 		TxIdx:      eventIndex,
 		TokenID:    0, // Will be set in commit from pendingToken.id
 		TokenType:  tokenType,
@@ -1111,8 +1109,7 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 		eventIndices := make([]*dbtypes.ElEventIndex, 0, len(result.events))
 		for _, pe := range result.events {
 			eventIndices = append(eventIndices, &dbtypes.ElEventIndex{
-				BlockUid:   ctx.block.BlockUID,
-				TxHash:     pe.txHash,
+				TxUid:      result.transaction.TxUid,
 				EventIndex: pe.eventIndex,
 				SourceID:   pe.sourceAccount.id,
 				Topic1:     pe.topic1,
@@ -1128,9 +1125,9 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 	if len(result.tokenTransfers) > 0 {
 		transfers := make([]*dbtypes.ElTokenTransfer, 0, len(result.tokenTransfers))
 		for _, pt := range result.tokenTransfers {
-			// Set tx hash from result
+			// Set tx_uid from result
 			if result.transaction != nil {
-				pt.transfer.TxHash = result.transaction.TxHash
+				pt.transfer.TxUid = result.transaction.TxUid
 			}
 
 			// Resolve token ID from pendingToken (always set now)
@@ -1155,8 +1152,7 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 		internalEntries := make([]*dbtypes.ElTransactionInternal, 0, len(result.internalCalls))
 		for _, ic := range result.internalCalls {
 			internalEntries = append(internalEntries, &dbtypes.ElTransactionInternal{
-				BlockUid:  ctx.block.BlockUID,
-				TxHash:    result.transaction.TxHash,
+				TxUid:     result.transaction.TxUid,
 				TxCallIdx: ic.txCallIdx,
 				CallType:  ic.callType,
 				FromID:    ic.fromAccount.id,

@@ -28,36 +28,40 @@ func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _
 	batchSize := int64(50000)
 	stats := &CleanupStats{}
 
-	// Delete transactions in batches
-	deleted, err := batchDeleteBeforeBlockUid(ctx, "el_transactions", blockUidThreshold, batchSize)
+	// tx_uid encodes block_uid in upper bits: tx_uid = block_uid << 16 | tx_index.
+	// All tx_uids for blocks below the threshold satisfy tx_uid < txUidThreshold.
+	txUidThreshold := blockUidThreshold << 16
+
+	// Delete transactions in batches (uses block_uid column)
+	deleted, err := batchDeleteBefore(ctx, "el_transactions", "block_uid", blockUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.TransactionsDeleted = deleted
 
-	// Delete internal transactions in batches
-	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_transactions_internal", blockUidThreshold, batchSize)
+	// Delete internal transactions in batches (uses tx_uid column)
+	deleted, err = batchDeleteBefore(ctx, "el_transactions_internal", "tx_uid", txUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.InternalTxsDeleted = deleted
 
-	// Delete event index entries in batches
-	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_event_index", blockUidThreshold, batchSize)
+	// Delete event index entries in batches (uses tx_uid column)
+	deleted, err = batchDeleteBefore(ctx, "el_event_index", "tx_uid", txUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.EventIndicesDeleted = deleted
 
-	// Delete token transfers in batches
-	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_token_transfers", blockUidThreshold, batchSize)
+	// Delete token transfers in batches (uses tx_uid column)
+	deleted, err = batchDeleteBefore(ctx, "el_token_transfers", "tx_uid", txUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.TokenTransfersDeleted = deleted
 
-	// Delete blocks in batches
-	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_blocks", blockUidThreshold, batchSize)
+	// Delete blocks in batches (uses block_uid column)
+	deleted, err = batchDeleteBefore(ctx, "el_blocks", "block_uid", blockUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
@@ -66,9 +70,9 @@ func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _
 	return stats, nil
 }
 
-// batchDeleteBeforeBlockUid deletes rows from a table where block_uid < threshold,
+// batchDeleteBefore deletes rows from a table where the given column < threshold,
 // in batches of batchSize to avoid long locks.
-func batchDeleteBeforeBlockUid(ctx context.Context, table string, blockUidThreshold uint64, batchSize int64) (int64, error) {
+func batchDeleteBefore(ctx context.Context, table string, column string, threshold uint64, batchSize int64) (int64, error) {
 	var totalDeleted int64
 
 	for {
@@ -77,22 +81,22 @@ func batchDeleteBeforeBlockUid(ctx context.Context, table string, blockUidThresh
 			var query string
 			if DbEngine == dbtypes.DBEnginePgsql {
 				query = `DELETE FROM ` + table + `
-					WHERE block_uid < $1
+					WHERE ` + column + ` < $1
 					AND ctid IN (
 						SELECT ctid FROM ` + table + `
-						WHERE block_uid < $1
+						WHERE ` + column + ` < $1
 						LIMIT $2
 					)`
 			} else {
 				query = `DELETE FROM ` + table + `
-					WHERE block_uid < $1
+					WHERE ` + column + ` < $1
 					AND rowid IN (
 						SELECT rowid FROM ` + table + `
-						WHERE block_uid < $1
+						WHERE ` + column + ` < $1
 						LIMIT $2
 					)`
 			}
-			result, err := tx.ExecContext(ctx, query, blockUidThreshold, batchSize)
+			result, err := tx.ExecContext(ctx, query, threshold, batchSize)
 			if err != nil {
 				return err
 			}

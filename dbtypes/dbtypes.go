@@ -471,6 +471,7 @@ const (
 )
 
 type ElTransaction struct {
+	TxUid       uint64  `db:"tx_uid"` // block_uid << 16 | tx_index
 	BlockUid    uint64  `db:"block_uid"`
 	TxHash      []byte  `db:"tx_hash"`
 	FromID      uint64  `db:"from_id"`
@@ -487,14 +488,12 @@ type ElTransaction struct {
 	BlobCount   uint32  `db:"blob_count"`
 	BlockNumber uint64  `db:"block_number"`
 	TxType      uint8   `db:"tx_type"`
-	TxIndex     uint32  `db:"tx_index"`
 	EffGasPrice float64 `db:"eff_gas_price"` // Effective gas price actually paid (in Gwei)
 }
 
 // ElTransactionInternal is a lightweight index of internal calls from call traces.
 type ElTransactionInternal struct {
-	BlockUid  uint64  `db:"block_uid"`
-	TxHash    []byte  `db:"tx_hash"`
+	TxUid     uint64  `db:"tx_uid"`     // block_uid << 16 | tx_index
 	TxCallIdx uint32  `db:"tx_callidx"` // Depth-first traversal index (0=top-level, skipped)
 	CallType  uint8   `db:"call_type"`  // 0=CALL, 1=STATICCALL, 2=DELEGATECALL, 3=CREATE, 4=CREATE2, 5=SELFDESTRUCT
 	FromID    uint64  `db:"from_id"`
@@ -505,8 +504,7 @@ type ElTransactionInternal struct {
 
 // ElEventIndex is a lightweight searchable index for events (full data in blockdb).
 type ElEventIndex struct {
-	BlockUid   uint64 `db:"block_uid"`
-	TxHash     []byte `db:"tx_hash"`
+	TxUid      uint64 `db:"tx_uid"` // block_uid << 16 | tx_index
 	EventIndex uint32 `db:"event_index"`
 	SourceID   uint64 `db:"source_id"`
 	Topic1     []byte `db:"topic1"`
@@ -555,9 +553,7 @@ type ElBalance struct {
 }
 
 type ElTokenTransfer struct {
-	BlockUid   uint64  `db:"block_uid"`
-	TxHash     []byte  `db:"tx_hash"`
-	TxPos      uint32  `db:"tx_pos"` // Transaction index in block
+	TxUid      uint64  `db:"tx_uid"` // block_uid << 16 | tx_index
 	TxIdx      uint32  `db:"tx_idx"` // Transfer index within transaction
 	TokenID    uint64  `db:"token_id"`
 	TokenType  uint8   `db:"token_type"`
