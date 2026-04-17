@@ -9,6 +9,9 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// elTransactionColumns is the column list for el_transactions queries.
+const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price"
+
 func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElTransaction) error {
 	if len(txs) == 0 {
 		return nil
@@ -20,11 +23,11 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_transactions ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_transactions ",
 		}),
-		"(block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price)",
+		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 18
+	fieldCount := 19
 
 	args := make([]any, len(txs)*fieldCount)
 	for i, tx := range txs {
@@ -40,28 +43,29 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 		}
 		fmt.Fprint(&sql, ")")
 
-		args[argIdx+0] = tx.BlockUid
-		args[argIdx+1] = tx.TxHash
-		args[argIdx+2] = tx.FromID
-		args[argIdx+3] = tx.ToID
-		args[argIdx+4] = tx.Nonce
-		args[argIdx+5] = tx.Reverted
-		args[argIdx+6] = tx.Amount
-		args[argIdx+7] = tx.AmountRaw
-		args[argIdx+8] = tx.MethodID
-		args[argIdx+9] = tx.GasLimit
-		args[argIdx+10] = tx.GasUsed
-		args[argIdx+11] = tx.GasPrice
-		args[argIdx+12] = tx.TipPrice
-		args[argIdx+13] = tx.BlobCount
-		args[argIdx+14] = tx.BlockNumber
-		args[argIdx+15] = tx.TxType
-		args[argIdx+16] = tx.TxIndex
-		args[argIdx+17] = tx.EffGasPrice
+		args[argIdx+0] = tx.TxUid
+		args[argIdx+1] = tx.BlockUid
+		args[argIdx+2] = tx.TxHash
+		args[argIdx+3] = tx.FromID
+		args[argIdx+4] = tx.ToID
+		args[argIdx+5] = tx.Nonce
+		args[argIdx+6] = tx.Reverted
+		args[argIdx+7] = tx.Amount
+		args[argIdx+8] = tx.AmountRaw
+		args[argIdx+9] = tx.MethodID
+		args[argIdx+10] = tx.GasLimit
+		args[argIdx+11] = tx.GasUsed
+		args[argIdx+12] = tx.GasPrice
+		args[argIdx+13] = tx.TipPrice
+		args[argIdx+14] = tx.BlobCount
+		args[argIdx+15] = tx.BlockNumber
+		args[argIdx+16] = tx.TxType
+		args[argIdx+17] = tx.TxIndex
+		args[argIdx+18] = tx.EffGasPrice
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, tx_index = excluded.tx_index, eff_gas_price = excluded.eff_gas_price",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET tx_uid = excluded.tx_uid, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, tx_index = excluded.tx_index, eff_gas_price = excluded.eff_gas_price",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -74,7 +78,7 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 
 func GetElTransaction(ctx context.Context, blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, error) {
 	tx := &dbtypes.ElTransaction{}
-	err := ReaderDb.GetContext(ctx, tx, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
+	err := ReaderDb.GetContext(ctx, tx, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +87,7 @@ func GetElTransaction(ctx context.Context, blockUid uint64, txHash []byte) (*dbt
 
 func GetElTransactionsByHash(ctx context.Context, txHash []byte) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.SelectContext(ctx, &txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
+	err := ReaderDb.SelectContext(ctx, &txs, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +105,7 @@ func GetElTransactionsByHashes(ctx context.Context, txHashes [][]byte) ([]*dbtyp
 	var sql strings.Builder
 	args := make([]any, len(txHashes))
 
-	fmt.Fprint(&sql, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE tx_hash IN (")
+	fmt.Fprint(&sql, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash IN (")
 	for i, h := range txHashes {
 		args[i] = h
 	}
@@ -115,9 +119,34 @@ func GetElTransactionsByHashes(ctx context.Context, txHashes [][]byte) ([]*dbtyp
 	return txs, nil
 }
 
+// GetElTransactionsByTxUids returns all transaction records matching the given
+// tx_uids. Used by handlers to resolve tx_hash and other fields from dependent
+// table results that only store tx_uid.
+func GetElTransactionsByTxUids(ctx context.Context, txUids []uint64) ([]*dbtypes.ElTransaction, error) {
+	if len(txUids) == 0 {
+		return []*dbtypes.ElTransaction{}, nil
+	}
+
+	var sql strings.Builder
+	args := make([]any, len(txUids))
+
+	fmt.Fprint(&sql, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_uid IN (")
+	for i, uid := range txUids {
+		args[i] = uid
+	}
+	appendDollarPlaceholders(&sql, 1, len(txUids), ", ")
+	fmt.Fprint(&sql, ")")
+
+	txs := []*dbtypes.ElTransaction{}
+	if err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...); err != nil {
+		return nil, err
+	}
+	return txs, nil
+}
+
 func GetElTransactionsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.SelectContext(ctx, &txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE block_uid = $1", blockUid)
+	err := ReaderDb.SelectContext(ctx, &txs, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE block_uid = $1", blockUid)
 	if err != nil {
 		return nil, err
 	}
@@ -137,14 +166,12 @@ func GetElTransactionsByAccountID(ctx context.Context, accountID uint64, isFrom 
 	// NULLS LAST matches the composite index definition to enable index scans.
 	fmt.Fprintf(&sql, `
 		SELECT
-			block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
-			method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
-			tx_type, tx_index, eff_gas_price,
+			%s,
 			COUNT(*) OVER() AS total_count
 		FROM el_transactions
 		WHERE %s = $1
 		ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
-		LIMIT $2`, column)
+		LIMIT $2`, elTransactionColumns, column)
 	args = append(args, limit)
 
 	if offset > 0 {
@@ -184,11 +211,11 @@ func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32,
 	var sql strings.Builder
 	args := []any{}
 
-	fmt.Fprint(&sql, `
+	fmt.Fprintf(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price
+		SELECT %s
 		FROM el_transactions
-	`)
+	`, elTransactionColumns)
 
 	filterOp := "WHERE"
 	if filter.FromID > 0 {
@@ -222,7 +249,8 @@ func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32,
 	args = append(args, limit)
 	fmt.Fprintf(&sql, `
 	SELECT
-		count(*) AS block_uid,
+		count(*) AS tx_uid,
+		0 AS block_uid,
 		null AS tx_hash,
 		0 AS from_id,
 		0 AS to_id,
@@ -263,7 +291,7 @@ func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32,
 		return []*dbtypes.ElTransaction{}, 0, nil
 	}
 
-	count := txs[0].BlockUid
+	count := txs[0].TxUid
 	return txs[1:], count, nil
 }
 
@@ -285,27 +313,21 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 	innerLimit := offset + uint64(limit)
 	args := []any{accountID, accountID, accountID, innerLimit}
 
-	fmt.Fprint(&sql, `
-		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
-			method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
-			tx_type, tx_index, eff_gas_price
+	fmt.Fprintf(&sql, `
+		SELECT %s
 		FROM (
-			SELECT * FROM (SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
-				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
-				tx_type, tx_index, eff_gas_price
+			SELECT * FROM (SELECT %s
 			FROM el_transactions WHERE from_id = $1
 			ORDER BY block_uid DESC NULLS LAST
 			LIMIT $4) AS a
 			UNION ALL
-			SELECT * FROM (SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
-				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
-				tx_type, tx_index, eff_gas_price
+			SELECT * FROM (SELECT %s
 			FROM el_transactions WHERE to_id = $2 AND from_id != $3
 			ORDER BY block_uid DESC NULLS LAST
 			LIMIT $4) AS b
 		) combined
 		ORDER BY block_uid DESC, tx_index DESC
-		LIMIT $5`)
+		LIMIT $5`, elTransactionColumns, elTransactionColumns, elTransactionColumns)
 	args = append(args, limit)
 
 	if offset > 0 {

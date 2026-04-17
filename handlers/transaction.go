@@ -404,13 +404,13 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// Load tab badge counts using lightweight COUNT queries instead of
 	// loading all rows. This avoids multi-second sequential scans for
 	// transactions with many events or internal calls.
-	eventCount, _ := db.GetElEventIndexCountByTxHash(ctx, pageData.TxHash)
+	eventCount, _ := db.GetElEventIndexCountByTxUid(ctx, tx.TxUid)
 	pageData.EventCount = eventCount
 
-	transferCount, _ := db.GetElTokenTransferCountByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+	transferCount, _ := db.GetElTokenTransferCountByTxUid(ctx, tx.TxUid)
 	pageData.TokenTransferCount = transferCount
 
-	internalTxCount, _ := db.GetElTransactionsInternalCountByTxHash(ctx, pageData.TxHash)
+	internalTxCount, _ := db.GetElTransactionsInternalCountByTxUid(ctx, tx.TxUid)
 	pageData.InternalTxCount = internalTxCount
 
 	// Load tab-specific detailed data. Full row data is only loaded for
@@ -418,12 +418,12 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// are loaded from blockdb when available, falling back to DB.
 	switch tabView {
 	case "events":
-		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid)
+		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid, tx.TxUid)
 	case "transfers":
-		transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+		transfers, _ := db.GetElTokenTransfersByTxUid(ctx, tx.TxUid)
 		loadTransactionTransfersFromData(ctx, pageData, transfers)
 	case "internaltxs":
-		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid)
+		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid, tx.TxUid)
 		computeInternalTxIndent(pageData)
 	case "statechanges":
 		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
@@ -724,7 +724,7 @@ func loadTransactionEventsFromIndex(ctx context.Context, pageData *models.Transa
 // loadTransactionEventsFromBlockdb populates the events tab with full event
 // data from blockdb (all topics + data blob). Falls back to loading from
 // the DB event index if blockdb data is unavailable (pruned or not stored).
-func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64, txUid uint64) {
 	if pageData.EventCount == 0 {
 		return
 	}
@@ -773,7 +773,7 @@ func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.Tran
 	}
 
 	// Fallback: load from DB event index (only when blockdb is unavailable)
-	eventIndices, _ := db.GetElEventIndicesByTxHash(ctx, pageData.TxHash)
+	eventIndices, _ := db.GetElEventIndicesByTxUid(ctx, txUid)
 	loadTransactionEventsFromIndex(ctx, pageData, eventIndices)
 }
 
@@ -956,7 +956,7 @@ var callTypeNames = map[uint8]string{
 // loadTransactionInternalTxsFromBlockdb populates the internal transactions tab
 // with rich call trace data from blockdb (depth, input, output, gas, status).
 // Falls back to loading from the DB index if blockdb data is unavailable.
-func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64, txUid uint64) {
 	if pageData.InternalTxCount == 0 {
 		return
 	}
@@ -1004,7 +1004,7 @@ func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models
 	}
 
 	// Fallback: load from DB index (only when blockdb is unavailable)
-	entries, _ := db.GetElTransactionsInternalByTxHash(ctx, pageData.TxHash)
+	entries, _ := db.GetElTransactionsInternalByTxUid(ctx, txUid)
 	loadTransactionInternalTxsFromDB(ctx, pageData, entries)
 }
 

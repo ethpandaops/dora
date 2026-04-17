@@ -434,21 +434,28 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 		tokenTypes = []uint8{tokenTypeERC721, tokenTypeERC1155}
 	}
 
-	// Get token transfers using combined query (sorted by block_uid DESC, tx_pos DESC, tx_idx DESC)
+	// Get token transfers using combined query (sorted by tx_uid DESC, tx_idx DESC)
 	dbTransfers, totalCount, countCapped, _ := db.GetElTokenTransfersByAccountIDCombined(ctx, account.ID, tokenTypes, offset, limit)
 
 	// Collect IDs for batch lookup
 	accountIDs := make(map[uint64]bool, len(dbTransfers)*2)
 	tokenIDs := make(map[uint64]bool, len(dbTransfers))
-	blockUids := make([]uint64, 0, len(dbTransfers))
 	blockUidSet := make(map[uint64]bool, len(dbTransfers))
+	blockUids := make([]uint64, 0, len(dbTransfers))
+	txUidSet := make(map[uint64]bool, len(dbTransfers))
+	txUids := make([]uint64, 0, len(dbTransfers))
 	for _, t := range dbTransfers {
 		accountIDs[t.FromID] = true
 		accountIDs[t.ToID] = true
 		tokenIDs[t.TokenID] = true
-		if !blockUidSet[t.BlockUid] {
-			blockUidSet[t.BlockUid] = true
-			blockUids = append(blockUids, t.BlockUid)
+		blockUid := t.TxUid >> 16
+		if !blockUidSet[blockUid] {
+			blockUidSet[blockUid] = true
+			blockUids = append(blockUids, blockUid)
+		}
+		if !txUidSet[t.TxUid] {
+			txUidSet[t.TxUid] = true
+			txUids = append(txUids, t.TxUid)
 		}
 	}
 
@@ -495,29 +502,18 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 		}
 	}
 
-	// Collect unique transaction hashes for method signature lookup
-	txHashSet := make(map[string]bool)
-	for _, t := range dbTransfers {
-		txHashKey := string(t.TxHash)
-		txHashSet[txHashKey] = true
-	}
-
-	// Look up transaction method IDs for method signatures
-	txHashList := make([][]byte, 0, len(txHashSet))
-	for txHashKey := range txHashSet {
-		txHashList = append(txHashList, []byte(txHashKey))
-	}
-
-	// Batch fetch transaction data for signature lookup
+	// Batch fetch transaction data by tx_uid for tx_hash and method signature lookup
 	type txInfo struct {
+		TxHash   []byte
 		MethodID []byte
 		ToID     uint64
 	}
-	txInfoMap := make(map[string]*txInfo, len(txHashList))
-	if len(txHashList) > 0 {
-		if txs, err := db.GetElTransactionsByHashes(ctx, txHashList); err == nil {
+	txInfoMap := make(map[uint64]*txInfo, len(txUids))
+	if len(txUids) > 0 {
+		if txs, err := db.GetElTransactionsByTxUids(ctx, txUids); err == nil {
 			for _, tx := range txs {
-				txInfoMap[string(tx.TxHash)] = &txInfo{
+				txInfoMap[tx.TxUid] = &txInfo{
+					TxHash:   tx.TxHash,
 					MethodID: tx.MethodID,
 					ToID:     tx.ToID,
 				}
@@ -543,11 +539,11 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 	// Collect function signatures for batch lookup
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
 	sigLookupBytes := []types.TxSignatureBytes{}
-	sigLookupMap := make(map[types.TxSignatureBytes][]string) // signature -> tx_hashes
-	methodNameMap := make(map[string]string)                  // tx_hash -> method_name
-	for txHashKey, info := range txInfoMap {
+	sigLookupMap := make(map[types.TxSignatureBytes][]uint64) // signature -> tx_uids
+	methodNameMap := make(map[uint64]string)                  // tx_uid -> method_name
+	for txUid, info := range txInfoMap {
 		if len(info.MethodID) < 4 {
-			methodNameMap[txHashKey] = "transfer"
+			methodNameMap[txUid] = "transfer"
 			continue
 		}
 
@@ -560,17 +556,17 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 
 		// Skip fn signature lookup for deployments, precompiles, and system contracts
 		if skip, altName := utils.ShouldSkipSignatureLookup(toAddr, isCreate, sysContracts); skip {
-			methodNameMap[txHashKey] = altName
+			methodNameMap[txUid] = altName
 			continue
 		}
 
 		var sigBytes types.TxSignatureBytes
 		copy(sigBytes[:], info.MethodID[0:4])
 		if sigLookupMap[sigBytes] == nil {
-			sigLookupMap[sigBytes] = []string{txHashKey}
+			sigLookupMap[sigBytes] = []uint64{txUid}
 			sigLookupBytes = append(sigLookupBytes, sigBytes)
 		} else {
-			sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txHashKey)
+			sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txUid)
 		}
 	}
 
@@ -582,8 +578,8 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 			if sigLookup.Status == types.TxSigStatusFound {
 				methodName = sigLookup.Name
 			}
-			for _, txHashKey := range sigLookupMap[sigBytes] {
-				methodNameMap[txHashKey] = methodName
+			for _, txUid := range sigLookupMap[sigBytes] {
+				methodNameMap[txUid] = methodName
 			}
 		}
 	}
@@ -591,12 +587,18 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 	// Build transfer list
 	transfers := make([]*models.AddressPageDataTokenTransfer, 0, len(dbTransfers))
 	for _, t := range dbTransfers {
-		slot := t.BlockUid >> 16
+		blockUid := t.TxUid >> 16
+		slot := t.TxUid >> 32
 		blockTime := chainState.SlotToTime(phase0.Slot(slot))
 
+		var txHash []byte
+		if info, ok := txInfoMap[t.TxUid]; ok {
+			txHash = info.TxHash
+		}
+
 		transfer := &models.AddressPageDataTokenTransfer{
-			TxHash:     t.TxHash,
-			BlockUid:   t.BlockUid,
+			TxHash:     txHash,
+			BlockUid:   blockUid,
 			BlockTime:  blockTime,
 			FromID:     t.FromID,
 			ToID:       t.ToID,
@@ -606,11 +608,11 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 			TokenIndex: t.TokenIndex,
 			Amount:     t.Amount,
 			AmountRaw:  t.AmountRaw,
-			MethodName: methodNameMap[string(t.TxHash)],
+			MethodName: methodNameMap[t.TxUid],
 		}
 
 		// Set block root and orphaned status from block lookup
-		if blockInfo, ok := blockMap[t.BlockUid]; ok && blockInfo.Block != nil {
+		if blockInfo, ok := blockMap[blockUid]; ok && blockInfo.Block != nil {
 			transfer.BlockRoot = blockInfo.Block.Root
 			transfer.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
 			if blockInfo.Block.EthBlockNumber != nil {
@@ -707,16 +709,23 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 	pageData.InternalTxFirstItem = (pageIdx-1)*uint64(limit) + 1
 	pageData.InternalTxLastItem = min(pageIdx*uint64(limit), totalCount)
 
-	// Collect account IDs and block UIDs for batch lookup
+	// Collect account IDs, block UIDs, and tx UIDs for batch lookup
 	accountIDs := make(map[uint64]bool, len(dbEntries)*2)
-	blockUids := make([]uint64, 0, len(dbEntries))
 	blockUidSet := make(map[uint64]bool, len(dbEntries))
+	blockUids := make([]uint64, 0, len(dbEntries))
+	txUidSet := make(map[uint64]bool, len(dbEntries))
+	txUids := make([]uint64, 0, len(dbEntries))
 	for _, e := range dbEntries {
 		accountIDs[e.FromID] = true
 		accountIDs[e.ToID] = true
-		if !blockUidSet[e.BlockUid] {
-			blockUidSet[e.BlockUid] = true
-			blockUids = append(blockUids, e.BlockUid)
+		blockUid := e.TxUid >> 16
+		if !blockUidSet[blockUid] {
+			blockUidSet[blockUid] = true
+			blockUids = append(blockUids, blockUid)
+		}
+		if !txUidSet[e.TxUid] {
+			txUidSet[e.TxUid] = true
+			txUids = append(txUids, e.TxUid)
 		}
 	}
 
@@ -749,6 +758,16 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 		}
 	}
 
+	// Batch lookup tx_hash from el_transactions by tx_uid
+	txHashMap := make(map[uint64][]byte, len(txUids))
+	if len(txUids) > 0 {
+		if txs, err := db.GetElTransactionsByTxUids(ctx, txUids); err == nil {
+			for _, tx := range txs {
+				txHashMap[tx.TxUid] = tx.TxHash
+			}
+		}
+	}
+
 	// Call type names
 	callTypeNames := map[uint8]string{
 		0: "CALL",
@@ -762,12 +781,13 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 	// Build internal transaction list
 	pageData.InternalTxs = make([]*models.AddressPageDataInternalTransaction, 0, len(dbEntries))
 	for _, e := range dbEntries {
-		slot := e.BlockUid >> 16
+		blockUid := e.TxUid >> 16
+		slot := e.TxUid >> 32
 		blockTime := chainState.SlotToTime(phase0.Slot(slot))
 
 		itx := &models.AddressPageDataInternalTransaction{
-			TxHash:     e.TxHash,
-			BlockUid:   e.BlockUid,
+			TxHash:     txHashMap[e.TxUid],
+			BlockUid:   blockUid,
 			BlockTime:  blockTime,
 			CallIndex:  e.TxCallIdx,
 			CallType:   e.CallType,
@@ -785,7 +805,7 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 		}
 
 		// Set block info
-		if blockInfo, ok := blockMap[e.BlockUid]; ok && blockInfo.Block != nil {
+		if blockInfo, ok := blockMap[blockUid]; ok && blockInfo.Block != nil {
 			itx.BlockRoot = blockInfo.Block.Root
 			itx.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
 			if blockInfo.Block.EthBlockNumber != nil {
