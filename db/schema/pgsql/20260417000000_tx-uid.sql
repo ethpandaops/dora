@@ -27,7 +27,7 @@ CREATE TABLE public."el_event_index_new" (
     event_index INT NOT NULL,
     source_id BIGINT NOT NULL DEFAULT 0,
     topic1 bytea,
-    CONSTRAINT el_event_index_pkey PRIMARY KEY (tx_uid, event_index)
+    PRIMARY KEY (tx_uid, event_index)
 );
 
 INSERT INTO public."el_event_index_new" (tx_uid, event_index, source_id, topic1)
@@ -71,7 +71,7 @@ CREATE TABLE public."el_token_transfers_new" (
     to_id BIGINT NOT NULL,
     amount DOUBLE PRECISION NOT NULL DEFAULT 0,
     amount_raw bytea NOT NULL,
-    CONSTRAINT el_token_transfers_pkey PRIMARY KEY (tx_uid, tx_idx)
+    PRIMARY KEY (tx_uid, tx_idx)
 );
 
 INSERT INTO public."el_token_transfers_new"
@@ -120,7 +120,7 @@ CREATE TABLE public."el_transactions_internal_new" (
     to_id BIGINT NOT NULL DEFAULT 0,
     value DOUBLE PRECISION NOT NULL DEFAULT 0,
     value_raw bytea,
-    CONSTRAINT el_transactions_internal_pkey PRIMARY KEY (tx_uid, tx_callidx)
+    PRIMARY KEY (tx_uid, tx_callidx)
 );
 
 INSERT INTO public."el_transactions_internal_new"
