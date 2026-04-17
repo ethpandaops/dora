@@ -103,15 +103,15 @@ func GetElTransactionsInternalByAccount(
 	fmt.Fprint(&sql, `
 		SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw
 		FROM (
-			(SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw
+			SELECT * FROM (SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw
 			FROM el_transactions_internal WHERE from_id = $1
 			ORDER BY tx_uid DESC NULLS LAST
-			LIMIT $4)
+			LIMIT $4) AS a
 			UNION ALL
-			(SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw
+			SELECT * FROM (SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw
 			FROM el_transactions_internal WHERE to_id = $2 AND from_id != $3
 			ORDER BY tx_uid DESC NULLS LAST
-			LIMIT $4)
+			LIMIT $4) AS b
 		) combined
 		ORDER BY tx_uid DESC, tx_callidx ASC
 		LIMIT $5`)
