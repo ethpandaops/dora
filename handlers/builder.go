@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -48,7 +49,7 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 	var superseded bool
 
 	vars := mux.Vars(r)
-	idxOrPubKey := strings.Replace(vars["idxOrPubKey"], "0x", "", -1)
+	idxOrPubKey := strings.TrimPrefix(vars["idxOrPubKey"], "0x")
 	builderPubKey, err := hex.DecodeString(idxOrPubKey)
 	if err != nil || len(builderPubKey) != 48 {
 		// search by index
@@ -384,7 +385,7 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 		copy(parentRoot[:], slot.ParentRoot)
 		bids := indexer.GetBlockBids(parentRoot)
 		for _, bid := range bids {
-			if bid.BuilderIndex == builderIndexInt64 && fmt.Sprintf("%x", bid.BlockHash) == fmt.Sprintf("%x", slot.EthBlockHash) {
+			if bid.BuilderIndex == builderIndexInt64 && bytes.Equal(bid.BlockHash, slot.EthBlockHash) {
 				block.Value = bid.Value
 				block.ElPayment = bid.ElPayment
 				break
@@ -407,7 +408,7 @@ func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState
 	bidBlockHashes := make(map[string]bool, len(bids))
 	var minSlot, maxSlot uint64
 	for i, bid := range bids {
-		bidBlockHashes[fmt.Sprintf("%x", bid.BlockHash)] = true
+		bidBlockHashes[hex.EncodeToString(bid.BlockHash)] = true
 		if i == 0 || bid.Slot > maxSlot {
 			maxSlot = bid.Slot
 		}
@@ -431,7 +432,7 @@ func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState
 		if assignedSlot.Block == nil {
 			continue
 		}
-		hashKey := fmt.Sprintf("%x", assignedSlot.Block.EthBlockHash)
+		hashKey := hex.EncodeToString(assignedSlot.Block.EthBlockHash)
 		if bidBlockHashes[hashKey] && assignedSlot.Block.PayloadStatus == dbtypes.PayloadStatusCanonical {
 			canonicalBlockHashes[hashKey] = true
 		}
@@ -449,7 +450,7 @@ func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState
 			GasLimit:     bid.GasLimit,
 			Value:        bid.Value,
 			ElPayment:    bid.ElPayment,
-			IsWinning:    canonicalBlockHashes[fmt.Sprintf("%x", bid.BlockHash)],
+			IsWinning:    canonicalBlockHashes[hex.EncodeToString(bid.BlockHash)],
 		}
 
 		result = append(result, bidData)

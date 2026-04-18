@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"net/http"
@@ -295,7 +296,7 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 			}
 
 			if pageData.DisplayMevBlock && dbSlot.EthBlockHash != nil {
-				if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbSlot.EthBlockHash)]; exists {
+				if mevBlock, exists := mevBlocksMap[hex.EncodeToString(dbSlot.EthBlockHash)]; exists {
 					slotData.IsMevBlock = true
 
 					var relays []string

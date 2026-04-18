@@ -129,7 +129,7 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 		if filterPubKey != "" {
 			pageData.FilterPubKey = filterPubKey
 			filterArgs.Add("f.pubkey", filterPubKey)
-			filterPubKeyVal, _ := hex.DecodeString(strings.Replace(filterPubKey, "0x", "", -1))
+			filterPubKeyVal, _ := hex.DecodeString(strings.TrimPrefix(filterPubKey, "0x"))
 			validatorFilter.PubKey = filterPubKeyVal
 		}
 		if filterIndex != "" {

@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -35,12 +34,12 @@ func InitRedisCache(ctx context.Context, redisAddress string, keyPrefix string) 
 }
 
 func (cache *RedisCache) SetString(ctx context.Context, key, value string, expiration time.Duration) error {
-	return cache.redisRemoteCache.Set(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key), value, expiration).Err()
+	return cache.redisRemoteCache.Set(ctx, cache.keyPrefix+key, value, expiration).Err()
 }
 
 func (cache *RedisCache) GetString(ctx context.Context, key string) (string, error) {
 
-	value, err := cache.redisRemoteCache.Get(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key)).Result()
+	value, err := cache.redisRemoteCache.Get(ctx, cache.keyPrefix+key).Result()
 	if err != nil {
 		return "", err
 	}
@@ -49,12 +48,12 @@ func (cache *RedisCache) GetString(ctx context.Context, key string) (string, err
 }
 
 func (cache *RedisCache) SetUint64(ctx context.Context, key string, value uint64, expiration time.Duration) error {
-	return cache.redisRemoteCache.Set(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key), fmt.Sprintf("%d", value), expiration).Err()
+	return cache.redisRemoteCache.Set(ctx, cache.keyPrefix+key, strconv.FormatUint(value, 10), expiration).Err()
 }
 
 func (cache *RedisCache) GetUint64(ctx context.Context, key string) (uint64, error) {
 
-	value, err := cache.redisRemoteCache.Get(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key)).Result()
+	value, err := cache.redisRemoteCache.Get(ctx, cache.keyPrefix+key).Result()
 	if err != nil {
 		return 0, err
 	}
@@ -67,12 +66,12 @@ func (cache *RedisCache) GetUint64(ctx context.Context, key string) (uint64, err
 }
 
 func (cache *RedisCache) SetBool(ctx context.Context, key string, value bool, expiration time.Duration) error {
-	return cache.redisRemoteCache.Set(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key), fmt.Sprintf("%t", value), expiration).Err()
+	return cache.redisRemoteCache.Set(ctx, cache.keyPrefix+key, strconv.FormatBool(value), expiration).Err()
 }
 
 func (cache *RedisCache) GetBool(ctx context.Context, key string) (bool, error) {
 
-	value, err := cache.redisRemoteCache.Get(ctx, key).Result()
+	value, err := cache.redisRemoteCache.Get(ctx, cache.keyPrefix+key).Result()
 	if err != nil {
 		return false, err
 	}
@@ -85,11 +84,11 @@ func (cache *RedisCache) GetBool(ctx context.Context, key string) (bool, error) 
 }
 
 func (cache *RedisCache) SetBytes(ctx context.Context, key string, value []byte, expiration time.Duration) error {
-	return cache.redisRemoteCache.Set(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key), value, expiration).Err()
+	return cache.redisRemoteCache.Set(ctx, cache.keyPrefix+key, value, expiration).Err()
 }
 
 func (cache *RedisCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
-	value, err := cache.redisRemoteCache.Get(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key)).Result()
+	value, err := cache.redisRemoteCache.Get(ctx, cache.keyPrefix+key).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -101,18 +100,18 @@ func (cache *RedisCache) Set(ctx context.Context, key string, value interface{},
 	if err != nil {
 		return err
 	}
-	return cache.redisRemoteCache.Set(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key), valueMarshal, expiration).Err()
+	return cache.redisRemoteCache.Set(ctx, cache.keyPrefix+key, valueMarshal, expiration).Err()
 }
 
 func (cache *RedisCache) Get(ctx context.Context, key string, returnValue interface{}) (interface{}, error) {
-	value, err := cache.redisRemoteCache.Get(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key)).Result()
+	value, err := cache.redisRemoteCache.Get(ctx, cache.keyPrefix+key).Result()
 	if err != nil {
 		return nil, err
 	}
 
 	err = json.Unmarshal([]byte(value), returnValue)
 	if err != nil {
-		cache.redisRemoteCache.Del(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key)).Err()
+		cache.redisRemoteCache.Del(ctx, cache.keyPrefix+key).Err()
 		utils.LogError(err, "error unmarshalling data for key", 0, map[string]interface{}{"key": key})
 		return nil, err
 	}

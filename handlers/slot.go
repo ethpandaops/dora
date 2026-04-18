@@ -61,7 +61,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	)
 
 	vars := mux.Vars(r)
-	slotOrHash := strings.Replace(vars["slotOrHash"], "0x", "", -1)
+	slotOrHash := strings.TrimPrefix(vars["slotOrHash"], "0x")
 	blockSlot := int64(-1)
 	blockRootHash, err := hex.DecodeString(slotOrHash)
 	if err != nil || len(slotOrHash) != 64 {
@@ -144,7 +144,7 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	blockRoot, err := hex.DecodeString(strings.Replace(vars["root"], "0x", "", -1))
+	blockRoot, err := hex.DecodeString(strings.TrimPrefix(vars["root"], "0x"))
 	if err != nil || len(blockRoot) != 32 {
 		http.Error(w, "Invalid block root", http.StatusBadRequest)
 		return

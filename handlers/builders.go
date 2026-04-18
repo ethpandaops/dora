@@ -128,7 +128,7 @@ func buildBuildersPageData(ctx context.Context, pageNumber uint64, pageSize uint
 		if filterPubKey != "" {
 			pageData.FilterPubKey = filterPubKey
 			filterArgs.Add("f.pubkey", filterPubKey)
-			filterPubKeyVal, _ := hex.DecodeString(strings.Replace(filterPubKey, "0x", "", -1))
+			filterPubKeyVal, _ := hex.DecodeString(strings.TrimPrefix(filterPubKey, "0x"))
 			builderFilter.PubKey = filterPubKeyVal
 		}
 		if filterIndex != "" {
@@ -141,7 +141,7 @@ func buildBuildersPageData(ctx context.Context, pageNumber uint64, pageSize uint
 		if filterExecutionAddr != "" {
 			pageData.FilterExecutionAddr = filterExecutionAddr
 			filterArgs.Add("f.execution_addr", filterExecutionAddr)
-			filterExecutionAddrVal, _ := hex.DecodeString(strings.Replace(filterExecutionAddr, "0x", "", -1))
+			filterExecutionAddrVal, _ := hex.DecodeString(strings.TrimPrefix(filterExecutionAddr, "0x"))
 			builderFilter.ExecutionAddress = filterExecutionAddrVal
 		}
 		if filterStatus != "" {
