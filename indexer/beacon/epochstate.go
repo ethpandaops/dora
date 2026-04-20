@@ -486,8 +486,15 @@ func (s *epochState) tryReplayFromParentState(
 						client.logger.Warnf("replay: ApplyExecutionPayload failed at slot %v: %v", blk.Slot, err)
 						return nil
 					}
-					// Post-payload state HTR is recorded in the envelope itself.
-					prevStateRoot = payload.Message.StateRoot
+					// Post-payload state HTR: compute from the applied state.
+					// v1.7.0-alpha.5 removed state_root from ExecutionPayloadEnvelope,
+					// so we derive it locally instead of reading it off the envelope.
+					postPayloadRoot, htrErr := parentState.Gloas.HashTreeRoot()
+					if htrErr != nil {
+						client.logger.Warnf("replay: post-payload HTR failed at slot %v: %v", blk.Slot, htrErr)
+						return nil
+					}
+					prevStateRoot = postPayloadRoot
 				}
 				// else: payload was orphaned (next block built on parent payload).
 				// Leave state unchanged; gotStateRoot is the correct hint.
