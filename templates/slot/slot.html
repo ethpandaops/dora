@@ -385,6 +385,26 @@
                       </div>
                     </div>
                   </div>
+
+                  {{ if and .Block.PayloadHeader (ne .Block.PayloadHeader.PayloadStatus 0) }}
+                  <div class="col-md-6">
+                    <div class="card h-100">
+                      <div class="card-header">
+                        <h4 class="h6 mb-0">Signed Execution Payload Envelope</h4>
+                      </div>
+                      <div class="card-body">
+                        <div class="d-grid gap-2">
+                          <a href="?download=payload-ssz" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as SSZ
+                          </a>
+                          <a href="?download=payload-json" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as JSON
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {{ end }}
                 </div>
 
                 {{ if .Block.ExecutionData }}
@@ -414,6 +434,25 @@
                       <div class="card-body">
                         <div class="d-grid gap-2">
                           <a href="?download=receipts-json" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as JSON
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {{ end }}
+                  {{ if .Block.ExecutionData.BlockAccessList }}
+                  <div class="col-md-6">
+                    <div class="card h-100">
+                      <div class="card-header">
+                        <h4 class="h6 mb-0">Block Access List (EIP-7928)</h4>
+                      </div>
+                      <div class="card-body">
+                        <div class="d-grid gap-2">
+                          <a href="?download=bal-rlp" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as RLP
+                          </a>
+                          <a href="?download=bal-json" class="btn btn-outline-primary">
                             <i class="fas fa-file-download me-2"></i>Download as JSON
                           </a>
                         </div>

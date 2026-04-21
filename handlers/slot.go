@@ -940,16 +940,15 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageTransactions(ctx, pageData, transactions, blockUid)
 		}
 
-		// EIP-7928 Block Access List — Gloas stores the RLP-encoded list on
-		// the envelope's payload; other forks don't carry it.
-		if executionPayload.Version >= spec.DataVersionGloas && executionPayload.Gloas != nil {
-			if balBytes := []byte(executionPayload.Gloas.BlockAccessList); len(balBytes) > 0 {
-				accesses, err := utils.DecodeBlockAccessList(balBytes)
-				if err != nil {
-					logrus.Warnf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
-				} else {
-					pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
-				}
+		// EIP-7928 Block Access List — the chainservice sources the bytes
+		// either from the envelope (fresh from the node) or from blockdb
+		// (preserved after the node pruned it).
+		if len(blockData.BlockAccessList) > 0 {
+			accesses, err := utils.DecodeBlockAccessList(blockData.BlockAccessList)
+			if err != nil {
+				logrus.Warnf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
+			} else {
+				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
 			}
 		}
 
