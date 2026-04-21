@@ -22,9 +22,9 @@
     "sass-loader": "^16.0.7",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.7",
-    "typescript": "^6.0.2",
+    "typescript": "^6.0.3",
     "url-loader": "^4.1.1",
-    "webpack": "^5.106.1",
+    "webpack": "^5.106.2",
     "webpack-cli": "^7.0.2",
     "webpack-visualizer-plugin2": "^2.0.0"
   },
@@ -32,14 +32,14 @@
     "@chainsafe/bls": "^8.2.0",
     "@chainsafe/ssz": "^1.3.0",
     "@rainbow-me/rainbowkit": "^2.2.10",
-    "@tanstack/react-query": "^5.99.0",
+    "@tanstack/react-query": "^5.99.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.5",
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.2.5",
     "react-select": "^5.10.2",
-    "viem": "^2.47.16",
+    "viem": "^2.48.1",
     "wagmi": "^2.19.5"
   },
   "scripts": {
