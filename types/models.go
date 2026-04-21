@@ -76,3 +76,8 @@ type NamedValidator struct {
 	Index uint64 `json:"index"`
 	Name  string `json:"name"`
 }
+
+type SystemContract struct {
+	Address string `json:"address"`
+	Name    string `json:"name"`
+}

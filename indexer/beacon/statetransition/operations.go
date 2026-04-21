@@ -40,27 +40,39 @@ func processOperations(s *stateAccessor, block *spec.VersionedSignedBeaconBlock)
 		processBLSToExecutionChange(s, change)
 	}
 
-	// Process execution requests (Electra+): deposits, withdrawals, consolidations.
-	// In Fulu/Gloas, these come from the execution layer via the block body, NOT from
-	// the legacy deposit mechanism.
+	// Process execution requests (Electra+/Fulu): deposits, withdrawals, consolidations.
+	// Gloas moves these out of process_operations — the parent payload's requests
+	// are processed at the start of block processing via processParentExecutionPayload.
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-process_execution_requests
-	requests, err := block.ExecutionRequests()
-	if err == nil && requests != nil {
-		for _, deposit := range requests.Deposits {
-			s.PendingDeposits = append(s.PendingDeposits, &electra.PendingDeposit{
-				Pubkey:                deposit.Pubkey,
-				WithdrawalCredentials: deposit.WithdrawalCredentials,
-				Amount:                deposit.Amount,
-				Signature:             deposit.Signature,
-				Slot:                  s.Slot,
-			})
+	if s.version < spec.DataVersionGloas {
+		requests, err := block.ExecutionRequests()
+		if err == nil {
+			applyExecutionRequests(s, requests)
 		}
-		for _, withdrawal := range requests.Withdrawals {
-			processWithdrawalRequest(s, withdrawal)
-		}
-		for _, consolidation := range requests.Consolidations {
-			processConsolidationRequest(s, consolidation)
-		}
+	}
+}
+
+// applyExecutionRequests processes a block/payload's execution-layer requests
+// (deposits, withdrawal requests, consolidation requests) into the state.
+// Shared by processOperations (pre-Gloas) and processParentExecutionPayload (Gloas+).
+func applyExecutionRequests(s *stateAccessor, requests *electra.ExecutionRequests) {
+	if requests == nil {
+		return
+	}
+	for _, deposit := range requests.Deposits {
+		s.PendingDeposits = append(s.PendingDeposits, &electra.PendingDeposit{
+			Pubkey:                deposit.Pubkey,
+			WithdrawalCredentials: deposit.WithdrawalCredentials,
+			Amount:                deposit.Amount,
+			Signature:             deposit.Signature,
+			Slot:                  s.Slot,
+		})
+	}
+	for _, withdrawal := range requests.Withdrawals {
+		processWithdrawalRequest(s, withdrawal)
+	}
+	for _, consolidation := range requests.Consolidations {
+		processConsolidationRequest(s, consolidation)
 	}
 }
 

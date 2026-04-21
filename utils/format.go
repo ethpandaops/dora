@@ -974,3 +974,54 @@ func formatAlertNumber(displayText string, value float64, yellowThreshold float6
 		return template.HTML(displayText)
 	}
 }
+
+// IsSystemContract checks if an address is a known system contract
+func IsSystemContract(address []byte, systemContracts []*types.SystemContract) bool {
+	addressStr := common.BytesToAddress(address).Hex()
+	for _, sc := range systemContracts {
+		if sc.Address == addressStr {
+			return true
+		}
+	}
+	return false
+}
+
+// GetSystemContractName returns the name of a system contract if it exists
+func GetSystemContractName(address []byte, systemContracts []*types.SystemContract) string {
+	addressStr := common.BytesToAddress(address).Hex()
+	for _, sc := range systemContracts {
+		if sc.Address == addressStr {
+			return sc.Name
+		}
+	}
+	return ""
+}
+
+// CalculateBalanceDiff calculates the difference between two balance byte arrays and returns formatted result
+func CalculateBalanceDiff(current []byte, previous []byte) template.HTML {
+	currentBig := new(big.Int).SetBytes(current)
+	previousBig := new(big.Int).SetBytes(previous)
+
+	diff := new(big.Int).Sub(currentBig, previousBig)
+
+	if diff.Sign() == 0 {
+		return template.HTML("")
+	}
+
+	isPositive := diff.Sign() > 0
+	absDiff := new(big.Int).Abs(diff)
+	formattedDiff := FormatAmount(absDiff, "ETH", 18)
+
+	var class string
+	var sign string
+	if isPositive {
+		class = "positive"
+		sign = "+"
+	} else {
+		class = "negative"
+		sign = "-"
+	}
+
+	return template.HTML(fmt.Sprintf(`<span class="bal-balance-diff %s">(%s%s)</span>`,
+		class, sign, formattedDiff))
+}

@@ -349,13 +349,13 @@ func (s *stateAccessor) clearNextSlotAvailabilityBit() {
 	}
 }
 
-// setAvailabilityBit sets the execution payload availability bit for the current slot.
-func (s *stateAccessor) setAvailabilityBit() {
+// setAvailabilityBit sets the execution payload availability bit for the given slot.
+func (s *stateAccessor) setAvailabilityBit(slot phase0.Slot) {
 	if s.version < spec.DataVersionGloas || len(s.ExecutionPayloadAvailability) == 0 {
 		return
 	}
 	bitfieldLen := uint64(len(s.ExecutionPayloadAvailability)) * 8
-	idx := uint64(s.Slot) % bitfieldLen
+	idx := uint64(slot) % bitfieldLen
 	s.ExecutionPayloadAvailability[idx/8] |= 1 << (idx % 8)
 }
 

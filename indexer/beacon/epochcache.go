@@ -536,9 +536,8 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 
 			for _, entry := range pendingOthers {
 				// Advance the already-loaded state to the next target epoch.
-				// Payload is nil since it was already applied on the first PrepareEpochPreState call.
 				var transitionInfo statetransition.TransitionInfo
-				if err := statetransition.NewStateTransition(specs, cache.indexer.dynSsz).PrepareEpochPreState(state, entry.epochState.targetEpoch, nil, &transitionInfo); err != nil {
+				if err := statetransition.NewStateTransition(specs, cache.indexer.dynSsz).PrepareEpochPreState(state, entry.epochState.targetEpoch, &transitionInfo); err != nil {
 					cache.indexer.logger.Errorf("error advancing state to epoch %v: %v", entry.epochState.targetEpoch, err)
 					continue
 				}
