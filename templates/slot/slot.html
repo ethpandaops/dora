@@ -51,9 +51,6 @@
         <li class="nav-item">
           <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link" id="proofs-tab" data-bs-toggle="tab" href="#proofs" role="tab" aria-controls="proofs" aria-selected="false">Proofs <span class="badge bg-secondary text-white">{{ .Block.ExecutionProofsCount }}</span></a>
-        </li>
         {{ if gt .Block.PtcVotesCount 0 }}
           <li class="nav-item">
             <a class="nav-link" id="ptcVotes-tab" data-bs-toggle="tab" href="#ptcVotes" role="tab" aria-controls="ptcVotes" aria-selected="false">PTC Votes <span class="badge bg-secondary text-white">{{ .Block.PtcVotesCount }}</span></a>
@@ -119,6 +116,11 @@
             <a class="nav-link" id="inclusionLists-tab" data-bs-toggle="tab" href="#inclusionLists" role="tab" aria-controls="inclusionLists" aria-selected="false">Inclusion Lists <span class="badge bg-secondary text-white">{{ .Block.InclusionListsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if gt .Block.ExecutionProofsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="proofs-tab" data-bs-toggle="tab" href="#proofs" role="tab" aria-controls="proofs" aria-selected="false">Proofs <span class="badge bg-secondary text-white">{{ .Block.ExecutionProofsCount }}</span></a>
+          </li>
+        {{ end }}
         {{ if .Block }}
           <li class="nav-item ms-auto">
             <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Download">
@@ -160,16 +162,6 @@
             </div>
           </div>
           {{ template "block_attestations" . }}
-        </div>
-        <div class="tab-pane fade show active" id="proofs" role="tabpanel" aria-labelledby="proofs-tab">
-          <div class="card block-card">
-            <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-              <div class="row p-1 mx-0">
-                <h3 class="h5 col-md-12 text-center"><b>Proofs</b></h3>
-              </div>
-            </div>
-          </div>
-          {{ template "block_proofs" . }}
         </div>
         {{ if gt .Block.DepositsCount 0 }}
           <div class="tab-pane fade show active" id="deposits" role="tabpanel" aria-labelledby="deposits-tab">
@@ -337,6 +329,18 @@
               </div>
               {{ template "block_inclusion_lists" . }}
             </div>
+          </div>
+        {{ end }}
+        {{ if gt .Block.ExecutionProofsCount 0 }}
+          <div class="tab-pane fade show active" id="proofs" role="tabpanel" aria-labelledby="proofs-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Proofs</b></h3>
+                </div>
+              </div>
+            </div>
+            {{ template "block_proofs" . }}
           </div>
         {{ end }}
         {{ if .Block }}
