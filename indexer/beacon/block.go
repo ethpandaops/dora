@@ -598,12 +598,37 @@ func (block *Block) writeToBlockDb(ctx context.Context) error {
 			return nil, fmt.Errorf("error marshalling block %v: %v", block.Root.String(), err)
 		}
 
-		return &btypes.BlockData{
+		data := &btypes.BlockData{
 			HeaderVersion: 1,
 			HeaderData:    headerSSZ,
 			BodyVersion:   version,
 			BodyData:      ssz,
-		}, nil
+		}
+
+		// Gloas+: persist the execution payload envelope and the BAL separately.
+		// The BAL is pruned from nodes after a few days, so we store it with a
+		// dedicated version/data pair — the blockdb write guard then protects a
+		// previously stored BAL from being overwritten when the payload is later
+		// re-delivered with an empty BAL.
+		if block.executionPayload != nil {
+			payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, true)
+			if err != nil {
+				return nil, fmt.Errorf("marshal execution payload ssz failed: %v", err)
+			}
+			data.PayloadVersion = payloadVer
+			data.PayloadData = payloadSSZ
+
+			if msg := block.executionPayload.Message; msg != nil && msg.Payload != nil {
+				balVer, balData, err := MarshalBlockAccessList(msg.Payload.BlockAccessList, true)
+				if err != nil {
+					return nil, fmt.Errorf("marshal block access list failed: %v", err)
+				}
+				data.BalVersion = balVer
+				data.BalData = balData
+			}
+		}
+
+		return data, nil
 	})
 	if err != nil {
 		return fmt.Errorf("error adding block %v to blockdb: %v", block.Root.String(), err)
