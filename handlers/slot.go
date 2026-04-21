@@ -55,6 +55,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/bids.html",
 		"slot/ptc_votes.html",
 		"slot/inclusion_lists.html",
+		"slot/block_access_list.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -85,6 +86,14 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	urlArgs := r.URL.Query()
 	if urlArgs.Has("download") {
 		if err := handleSlotDownload(r.Context(), w, blockSlot, blockRootHash, urlArgs.Get("download")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		return
+	}
+
+	if urlArgs.Get("action") == "parse-access-list" {
+		if err := handleSlotParseAccessList(w, r); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -307,6 +316,11 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		}
 		pageData.Block = getSlotPageBlockData(ctx, blockData, epochStatsValues, blockUid)
 
+		// Expose block transactions to the access-list UI via a stable field.
+		if pageData.Block != nil && pageData.Block.Transactions != nil {
+			pageData.TransactionDetails = pageData.Block.Transactions
+		}
+
 		// check mev block
 		if pageData.Block.ExecutionData != nil {
 			mevBlock := db.GetMevBlockByBlockHash(ctx, pageData.Block.ExecutionData.BlockHash)
@@ -326,6 +340,17 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 					ClassName:   "text-bg-warning",
 				})
 			}
+		}
+	}
+
+	// Collect system contract addresses for the access-list UI to label.
+	if contracts := services.GlobalBeaconService.GetSystemContractAddresses(); len(contracts) > 0 {
+		pageData.SystemContracts = make([]*types.SystemContract, 0, len(contracts))
+		for addr, name := range contracts {
+			pageData.SystemContracts = append(pageData.SystemContracts, &types.SystemContract{
+				Address: addr.Hex(),
+				Name:    name,
+			})
 		}
 	}
 
@@ -913,6 +938,19 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		if transactions, err := executionPayload.Transactions(); err == nil {
 			getSlotPageTransactions(ctx, pageData, transactions, blockUid)
+		}
+
+		// EIP-7928 Block Access List — Gloas stores the RLP-encoded list on
+		// the envelope's payload; other forks don't carry it.
+		if executionPayload.Version >= spec.DataVersionGloas && executionPayload.Gloas != nil {
+			if balBytes := []byte(executionPayload.Gloas.BlockAccessList); len(balBytes) > 0 {
+				accesses, err := utils.DecodeBlockAccessList(balBytes)
+				if err != nil {
+					logrus.Warnf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
+				} else {
+					pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
+				}
+			}
 		}
 
 		// Check if execution data exists in blockdb for receipt downloads
@@ -1676,4 +1714,100 @@ func decodeInclusionListTransactions(il *v1.SignedInclusionList, sysContracts ma
 	}
 
 	return txList
+}
+
+// handleSlotParseAccessList accepts RLP-encoded BAL bytes and returns the
+// decoded, UI-ready representation as JSON. Used by the BAL inspector UI
+// to preview arbitrary access lists pasted by the user.
+func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		return fmt.Errorf("method not allowed")
+	}
+
+	rlpHex := r.PostFormValue("rlp")
+	if rlpHex == "" {
+		return fmt.Errorf("missing rlp parameter")
+	}
+
+	rlpHex = strings.TrimPrefix(rlpHex, "0x")
+
+	rlpBytes, err := hex.DecodeString(rlpHex)
+	if err != nil {
+		return fmt.Errorf("invalid hex: %v", err)
+	}
+
+	accesses, err := utils.DecodeBlockAccessList(rlpBytes)
+	if err != nil {
+		return fmt.Errorf("invalid access list RLP: %v", err)
+	}
+
+	return json.NewEncoder(w).Encode(convertBALToModel(accesses))
+}
+
+// convertBALToModel converts decoded EIP-7928 BAL entries to the UI model.
+func convertBALToModel(accesses []utils.BALAccountAccess) []*models.SlotPageBlockAccessListEntry {
+	result := make([]*models.SlotPageBlockAccessListEntry, len(accesses))
+	for i, entry := range accesses {
+		balEntry := &models.SlotPageBlockAccessListEntry{
+			Address: entry.Address[:],
+		}
+
+		if len(entry.StorageWrites) > 0 {
+			balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageWrites))
+			for j, storageChange := range entry.StorageWrites {
+				changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
+				for k, write := range storageChange.Accesses {
+					changes[k] = &models.SlotPageBlockBALStorageSlotChange{
+						BlockAccessIndex: write.TxIdx,
+						Value:            write.ValueAfter,
+					}
+				}
+				balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
+					Slot:    storageChange.Slot,
+					Changes: changes,
+				}
+			}
+		}
+
+		if len(entry.StorageReads) > 0 {
+			balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
+			copy(balEntry.StorageReads, entry.StorageReads)
+		}
+
+		if len(entry.BalanceChanges) > 0 {
+			balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
+			for j, balanceChange := range entry.BalanceChanges {
+				balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
+					BlockAccessIndex: balanceChange.TxIdx,
+					Balance:          balanceChange.Balance,
+				}
+			}
+		}
+
+		if len(entry.NonceChanges) > 0 {
+			balEntry.NonceChanges = make([]*models.SlotPageBlockBALNonceChange, len(entry.NonceChanges))
+			for j, nonceChange := range entry.NonceChanges {
+				balEntry.NonceChanges[j] = &models.SlotPageBlockBALNonceChange{
+					BlockAccessIndex: nonceChange.TxIdx,
+					Nonce:            nonceChange.Nonce,
+				}
+			}
+		}
+
+		if len(entry.CodeChanges) > 0 {
+			balEntry.CodeChanges = make([]*models.SlotPageBlockBALCodeChange, len(entry.CodeChanges))
+			for j, codeChange := range entry.CodeChanges {
+				balEntry.CodeChanges[j] = &models.SlotPageBlockBALCodeChange{
+					BlockAccessIndex: codeChange.TxIndex,
+					Code:             codeChange.Code,
+				}
+			}
+		}
+
+		result[i] = balEntry
+	}
+
+	return result
 }
