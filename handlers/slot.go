@@ -946,7 +946,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		if len(blockData.BlockAccessList) > 0 {
 			accesses, err := utils.DecodeBlockAccessList(blockData.BlockAccessList)
 			if err != nil {
-				logrus.Warnf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
+				logrus.Errorf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
 			} else {
 				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
 			}

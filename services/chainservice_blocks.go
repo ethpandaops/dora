@@ -396,7 +396,7 @@ func (bs *ChainService) populateBlockAccessList(ctx context.Context, result *Com
 
 	bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData)
 	if err != nil {
-		logrus.WithError(err).Warnf("failed to decode BAL from blockdb for block 0x%x", result.Root[:])
+		logrus.WithError(err).Errorf("failed to decode BAL from blockdb for block 0x%x", result.Root[:])
 		return
 	}
 	result.BlockAccessList = bal
