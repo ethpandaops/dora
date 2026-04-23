@@ -11,6 +11,7 @@ import (
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
@@ -87,6 +88,56 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 
 	case "block-body-json":
 		return handleBlockBodyDownload(w, blockData)
+
+	case "payload-ssz":
+		if blockData.Payload == nil {
+			return fmt.Errorf("block has no execution payload envelope")
+		}
+		dynSsz := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ()
+		ssz, err := dynSsz.MarshalSSZ(blockData.Payload)
+		if err != nil {
+			return fmt.Errorf("error serializing payload envelope: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=payload-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
+		_, _ = w.Write(ssz)
+		return nil
+
+	case "payload-json":
+		if blockData.Payload == nil {
+			return fmt.Errorf("block has no execution payload envelope")
+		}
+		jsonRes, err := blockData.Payload.MarshalJSON()
+		if err != nil {
+			return fmt.Errorf("error serializing payload envelope: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=payload-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
+		_, _ = w.Write(jsonRes)
+		return nil
+
+	case "bal-rlp":
+		if len(blockData.BlockAccessList) == 0 {
+			return fmt.Errorf("block has no block access list")
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=bal-%d-%x.rlp", blockData.Header.Message.Slot, blockData.Root[:]))
+		_, _ = w.Write(blockData.BlockAccessList)
+		return nil
+
+	case "bal-json":
+		if len(blockData.BlockAccessList) == 0 {
+			return fmt.Errorf("block has no block access list")
+		}
+		accesses, err := utils.DecodeBlockAccessList(blockData.BlockAccessList)
+		if err != nil {
+			return fmt.Errorf("error decoding block access list: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=bal-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(balToJSON(accesses))
 
 	default:
 		return fmt.Errorf("unknown download type: %s", downloadType)
@@ -512,4 +563,108 @@ func buildSingleReceipt(
 	}
 
 	return receipt, nil
+}
+
+// balAccountJSON is the download-friendly JSON shape for one EIP-7928 account
+// entry. Uses hex strings for all byte fields so the dump is readable and
+// stable across tooling.
+type balAccountJSON struct {
+	Address        string                 `json:"address"`
+	StorageWrites  []balSlotWritesJSON    `json:"storage_writes,omitempty"`
+	StorageReads   []string               `json:"storage_reads,omitempty"`
+	BalanceChanges []balBalanceChangeJSON `json:"balance_changes,omitempty"`
+	NonceChanges   []balNonceChangeJSON   `json:"nonce_changes,omitempty"`
+	CodeChanges    []balCodeChangeJSON    `json:"code_changes,omitempty"`
+}
+
+type balSlotWritesJSON struct {
+	Slot     string                `json:"slot"`
+	Accesses []balStorageWriteJSON `json:"accesses"`
+}
+
+type balStorageWriteJSON struct {
+	TxIndex    uint16 `json:"tx_index"`
+	ValueAfter string `json:"value_after"`
+}
+
+type balBalanceChangeJSON struct {
+	TxIndex uint16 `json:"tx_index"`
+	Balance string `json:"balance"`
+}
+
+type balNonceChangeJSON struct {
+	TxIndex uint16 `json:"tx_index"`
+	Nonce   uint64 `json:"nonce"`
+}
+
+type balCodeChangeJSON struct {
+	TxIndex uint16 `json:"tx_index"`
+	Code    string `json:"code"`
+}
+
+// balToJSON converts the RLP-decoded BAL structure into the download JSON shape.
+func balToJSON(accesses []utils.BALAccountAccess) []balAccountJSON {
+	result := make([]balAccountJSON, len(accesses))
+	for i, entry := range accesses {
+		out := balAccountJSON{
+			Address: fmt.Sprintf("0x%x", entry.Address[:]),
+		}
+
+		if len(entry.StorageWrites) > 0 {
+			out.StorageWrites = make([]balSlotWritesJSON, len(entry.StorageWrites))
+			for j, sw := range entry.StorageWrites {
+				writes := make([]balStorageWriteJSON, len(sw.Accesses))
+				for k, w := range sw.Accesses {
+					writes[k] = balStorageWriteJSON{
+						TxIndex:    w.TxIdx,
+						ValueAfter: fmt.Sprintf("0x%x", w.ValueAfter),
+					}
+				}
+				out.StorageWrites[j] = balSlotWritesJSON{
+					Slot:     fmt.Sprintf("0x%x", sw.Slot),
+					Accesses: writes,
+				}
+			}
+		}
+
+		if len(entry.StorageReads) > 0 {
+			out.StorageReads = make([]string, len(entry.StorageReads))
+			for j, r := range entry.StorageReads {
+				out.StorageReads[j] = fmt.Sprintf("0x%x", r)
+			}
+		}
+
+		if len(entry.BalanceChanges) > 0 {
+			out.BalanceChanges = make([]balBalanceChangeJSON, len(entry.BalanceChanges))
+			for j, b := range entry.BalanceChanges {
+				out.BalanceChanges[j] = balBalanceChangeJSON{
+					TxIndex: b.TxIdx,
+					Balance: fmt.Sprintf("0x%x", b.Balance),
+				}
+			}
+		}
+
+		if len(entry.NonceChanges) > 0 {
+			out.NonceChanges = make([]balNonceChangeJSON, len(entry.NonceChanges))
+			for j, n := range entry.NonceChanges {
+				out.NonceChanges[j] = balNonceChangeJSON{
+					TxIndex: n.TxIdx,
+					Nonce:   n.Nonce,
+				}
+			}
+		}
+
+		if len(entry.CodeChanges) > 0 {
+			out.CodeChanges = make([]balCodeChangeJSON, len(entry.CodeChanges))
+			for j, c := range entry.CodeChanges {
+				out.CodeChanges[j] = balCodeChangeJSON{
+					TxIndex: c.TxIndex,
+					Code:    fmt.Sprintf("0x%x", c.Code),
+				}
+			}
+		}
+
+		result[i] = out
+	}
+	return result
 }

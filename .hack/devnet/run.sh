@@ -48,6 +48,12 @@ EXECUTION_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
               -f "label=com.kurtosistech.app-id=kurtosis" \
               -f "label=com.kurtosistech.custom.ethereum-package.client-type=execution" | tac)
 
+TRACOOR_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
+              -f "label=com.kurtosistech.app-id=kurtosis" \
+              -f "label=com.kurtosistech.id=tracoor" | tac)
+
+TRACOOR_PORT=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "7007/tcp") 0).HostPort }}' $TRACOOR_NODES)
+
 cat <<EOF > "${__dir}/generated-dora-config.yaml"
 logging:
   outputLevel: "info"
@@ -82,6 +88,8 @@ frontend:
   disableDasGuardianCheck: false
   enableDasGuardianMassScan: true
   showValidatorSummary: true
+  tracoorUrl: "http://127.0.0.1:$TRACOOR_PORT"
+  tracoorNetwork: "kurtosis"
 api:
   enabled: true
   corsOrigins:

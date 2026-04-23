@@ -21,11 +21,12 @@ import (
 )
 
 type CombinedBlockResponse struct {
-	Root     phase0.Root
-	Header   *phase0.SignedBeaconBlockHeader
-	Block    *spec.VersionedSignedBeaconBlock
-	Payload  *gloas.SignedExecutionPayloadEnvelope
-	Orphaned bool
+	Root            phase0.Root
+	Header          *phase0.SignedBeaconBlockHeader
+	Block           *spec.VersionedSignedBeaconBlock
+	Payload         *gloas.SignedExecutionPayloadEnvelope
+	BlockAccessList []byte
+	Orphaned        bool
 }
 
 // GetBlockBlob retrieves the blob data for a given block root and blob index.
@@ -176,7 +177,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 	// try loading from block db
 	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
 		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(header.Message.Slot), blockroot[:],
-			btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload,
+			btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload|btypes.BlockDataFlagBal,
 			func(version uint64, block []byte) (any, error) {
 				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
 			}, func(version uint64, payload []byte) (any, error) {
@@ -192,9 +193,16 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			if blockData.Payload != nil {
 				resp.Payload = blockData.Payload.(*gloas.SignedExecutionPayloadEnvelope)
 			}
+			if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
+				if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {
+					resp.BlockAccessList = bal
+				}
+			}
 			result = resp
 		}
 	}
+
+	bs.populateBlockAccessList(ctx, result)
 
 	return result, nil
 }
@@ -321,7 +329,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 	// try loading from block db
 	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
 		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockRoot[:],
-			btypes.BlockDataFlagHeader|btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload,
+			btypes.BlockDataFlagHeader|btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload|btypes.BlockDataFlagBal,
 			func(version uint64, block []byte) (any, error) {
 				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
 			}, func(version uint64, payload []byte) (any, error) {
@@ -343,11 +351,55 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			if blockData.Payload != nil {
 				resp.Payload = blockData.Payload.(*gloas.SignedExecutionPayloadEnvelope)
 			}
+			if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
+				if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {
+					resp.BlockAccessList = bal
+				}
+			}
 			result = resp
 		}
 	}
 
+	bs.populateBlockAccessList(ctx, result)
+
 	return result, nil
+}
+
+// populateBlockAccessList fills result.BlockAccessList for Gloas+ blocks.
+// Prefers the envelope's in-payload BAL, falling back to the BAL preserved
+// in blockdb when the node has pruned it (BAL is ephemeral on nodes but
+// stored forever in blockdb — see indexer/beacon/block.go writeToBlockDb).
+func (bs *ChainService) populateBlockAccessList(ctx context.Context, result *CombinedBlockResponse) {
+	if result == nil || result.Block == nil || result.Block.Version < spec.DataVersionGloas {
+		return
+	}
+	if len(result.BlockAccessList) > 0 {
+		return
+	}
+
+	if result.Payload != nil && result.Payload.Message != nil && result.Payload.Message.Payload != nil {
+		if bal := []byte(result.Payload.Message.Payload.BlockAccessList); len(bal) > 0 {
+			result.BlockAccessList = bal
+			return
+		}
+	}
+
+	if blockdb.GlobalBlockDb == nil || result.Header == nil {
+		return
+	}
+
+	blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(result.Header.Message.Slot), result.Root[:],
+		btypes.BlockDataFlagBal, nil, nil)
+	if err != nil || blockData == nil || blockData.BalVersion == 0 || len(blockData.BalData) == 0 {
+		return
+	}
+
+	bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData)
+	if err != nil {
+		logrus.WithError(err).Warnf("failed to decode BAL from blockdb for block 0x%x", result.Root[:])
+		return
+	}
+	result.BlockAccessList = bal
 }
 
 // GetBlobSidecarsByBlockRoot retrieves the blob sidecars for a given block root.

@@ -1080,7 +1080,7 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 			isCreate := f.Type == 3 || f.Type == 4
 			precompileInfo := utils.GetPrecompileInfo(f.To[:])
 			sysName, isSysContract := sysContracts[f.To]
-			isNonDepositSys := isSysContract && sysName != "Deposit"
+			isNonDepositSys := isSysContract && sysName != "Deposit Contract"
 
 			if isCreate {
 				itx.MethodName = "deploy"
@@ -1090,9 +1090,9 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 			} else if isNonDepositSys {
 				itx.MethodName = sysName
 				switch sysName {
-				case "Withdrawal Request":
+				case "Withdrawal Request (EIP-7002)":
 					itx.DecodedCalldata = utils.DecodeWithdrawalRequestInput(f.Input)
-				case "Consolidation Request":
+				case "Consolidation Request (EIP-7251)":
 					itx.DecodedCalldata = utils.DecodeConsolidationRequestInput(f.Input)
 				}
 			} else {
