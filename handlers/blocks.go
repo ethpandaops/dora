@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"net/http"
@@ -286,7 +287,7 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 			}
 
 			if pageData.DisplayMevBlock && dbSlot.EthBlockHash != nil {
-				if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbSlot.EthBlockHash)]; exists {
+				if mevBlock, exists := mevBlocksMap[hex.EncodeToString(dbSlot.EthBlockHash)]; exists {
 					slotData.IsMevBlock = true
 
 					var relays []string
@@ -375,11 +376,11 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 }
 
 func getClientTypeName(clientType uint8) string {
-	if clientType > 0 {
-		return execution.ClientType(clientType).String()
+	if clientType == 0 {
+		return "Unknown(0)"
 	}
 
-	return fmt.Sprintf("Unknown(%d)", clientType)
+	return execution.ClientType(clientType).String()
 }
 
 func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageData, slotData *models.BlocksPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {

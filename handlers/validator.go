@@ -48,7 +48,7 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	var validator *v1.Validator
 
 	vars := mux.Vars(r)
-	idxOrPubKey := strings.Replace(vars["idxOrPubKey"], "0x", "", -1)
+	idxOrPubKey := strings.TrimPrefix(vars["idxOrPubKey"], "0x")
 	validatorPubKey, err := hex.DecodeString(idxOrPubKey)
 	if err != nil || len(validatorPubKey) != 48 {
 		// search by index^
