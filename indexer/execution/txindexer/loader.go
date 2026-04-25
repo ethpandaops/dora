@@ -377,7 +377,8 @@ func (t *TxIndexer) calculateTotalPriorityFees(transactions []*types.Transaction
 }
 
 // fetchBlockTraces fetches call traces for a block using debug_traceBlockByHash.
-// Tries the primary client first, then retries with up to 2 other clients on failure.
+// Tries the primary client first (unless Besu), then other clients in priority order.
+// Besu clients are de-prioritized due to high resource usage for trace calls.
 // Returns nil (no error) if traces are not configured or if all clients fail,
 // allowing the block to proceed with events only.
 func (t *TxIndexer) fetchBlockTraces(
@@ -416,7 +417,8 @@ func (t *TxIndexer) fetchBlockTraces(
 
 // fetchBlockStateDiffs fetches per-tx state diffs (storage changes) for a block
 // using debug_traceBlockByHash with prestateTracer in diffMode.
-// Tries the primary client first, then retries with up to 2 other clients on failure.
+// Tries the primary client first (unless Besu), then other clients in priority order.
+// Besu clients are de-prioritized due to high resource usage for trace calls.
 // Returns nil (no error) if traces are not configured or if all clients fail,
 // allowing the block to proceed without state diffs.
 func (t *TxIndexer) fetchBlockStateDiffs(
@@ -453,8 +455,10 @@ func (t *TxIndexer) fetchBlockStateDiffs(
 	return nil, nil
 }
 
-// getTraceClients returns clients to try for trace fetching: the primary client
-// first, then up to 2 additional clients sorted by priority.
+// getTraceClients returns clients to try for trace fetching.
+// The primary client is preferred first (since it already has block data loaded),
+// unless it's a Besu client - in which case it's used as the last option.
+// Besu clients are de-prioritized due to high resource usage for trace calls.
 func (t *TxIndexer) getTraceClients(
 	primaryClient *execution.Client,
 	ref *BlockRef,
@@ -463,21 +467,69 @@ func (t *TxIndexer) getTraceClients(
 
 	allClients := t.getClientsForBlock(ref)
 
-	sort.Slice(allClients, func(i, j int) bool {
-		return t.indexerCtx.SortClients(allClients[i], allClients[j], false)
-	})
-
-	clients := make([]*execution.Client, 0, maxTraceClients)
-	clients = append(clients, primaryClient)
+	// Separate clients into non-Besu and Besu lists (excluding primaryClient).
+	// Besu clients are de-prioritized for trace calls due to high resource usage.
+	nonBesuClients := make([]*execution.Client, 0, len(allClients))
+	besuClients := make([]*execution.Client, 0)
 
 	for _, c := range allClients {
-		if len(clients) >= maxTraceClients {
+		if c == primaryClient {
+			continue
+		}
+
+		if c.GetClientType() == execution.BesuClient {
+			besuClients = append(besuClients, c)
+		} else {
+			nonBesuClients = append(nonBesuClients, c)
+		}
+	}
+
+	// Sort each list by priority.
+	sort.Slice(nonBesuClients, func(i, j int) bool {
+		return t.indexerCtx.SortClients(nonBesuClients[i], nonBesuClients[j], false)
+	})
+	sort.Slice(besuClients, func(i, j int) bool {
+		return t.indexerCtx.SortClients(besuClients[i], besuClients[j], false)
+	})
+
+	// Build result list based on whether primaryClient is Besu or not.
+	// Primary client is always included since it's the only one guaranteed to have the block.
+	clients := make([]*execution.Client, 0, maxTraceClients)
+	primaryIsBesu := primaryClient.GetClientType() == execution.BesuClient
+
+	// If primary is not Besu, use it first.
+	if !primaryIsBesu {
+		clients = append(clients, primaryClient)
+	}
+
+	// Determine how many slots to fill before adding primary (if Besu).
+	// Reserve one slot for primary if it's Besu so it's always included.
+	fillLimit := maxTraceClients
+	if primaryIsBesu {
+		fillLimit = maxTraceClients - 1
+	}
+
+	// Add non-Besu clients.
+	for _, c := range nonBesuClients {
+		if len(clients) >= fillLimit {
 			break
 		}
 
-		if c != primaryClient {
-			clients = append(clients, c)
+		clients = append(clients, c)
+	}
+
+	// Add Besu clients (excluding primary - handled separately).
+	for _, c := range besuClients {
+		if len(clients) >= fillLimit {
+			break
 		}
+
+		clients = append(clients, c)
+	}
+
+	// If primary is Besu, add it as the last option.
+	if primaryIsBesu {
+		clients = append(clients, primaryClient)
 	}
 
 	return clients
