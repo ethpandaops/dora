@@ -38,9 +38,17 @@
         <a class="nav-link active" id="overview-tab" data-bs-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">Overview</a>
       </li>
       {{ if .Block }}
-        {{ if gt .Block.TransactionsCount 0 }}
+        {{ if and .Block.ExecutionData .Block.ExecutionData.BlockAccessList }}
           <li class="nav-item">
-            <a class="nav-link" id="transactions-tab" data-bs-toggle="tab" href="#transactions" role="tab" aria-controls="transactions" aria-selected="false">Transactions <span class="badge bg-secondary text-white">{{ .Block.TransactionsCount }}</span></a>
+            <a class="nav-link" id="accessList-tab" data-bs-toggle="tab" href="#accessList" role="tab" aria-controls="accessList" aria-selected="false">Access List <span class="badge bg-secondary text-white">{{ len .Block.ExecutionData.BlockAccessList }}</span></a>
+          </li>
+        {{ end }}
+        <li class="nav-item">
+          <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
+        </li>
+        {{ if gt .Block.AttesterSlashingsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="attester-slashings-tab" data-bs-toggle="tab" href="#attester-slashings" role="tab" aria-controls="attester-slashings" aria-selected="false">Attester Slashings <span class="badge bg-secondary text-white">{{ .Block.AttesterSlashingsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.BidsCount 0 }}
@@ -48,37 +56,9 @@
             <a class="nav-link" id="bids-tab" data-bs-toggle="tab" href="#bids" role="tab" aria-controls="bids" aria-selected="false">Bids <span class="badge bg-secondary text-white">{{ .Block.BidsCount }}</span></a>
           </li>
         {{ end }}
-        <li class="nav-item">
-          <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
-        </li>
-        {{ if gt .Block.PtcVotesCount 0 }}
+        {{ if gt .Block.BlobsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="ptcVotes-tab" data-bs-toggle="tab" href="#ptcVotes" role="tab" aria-controls="ptcVotes" aria-selected="false">PTC Votes <span class="badge bg-secondary text-white">{{ .Block.PtcVotesCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.DepositsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="deposits-tab" data-bs-toggle="tab" href="#deposits" role="tab" aria-controls="deposits" aria-selected="false">Deposits <span class="badge bg-secondary text-white">{{ .Block.DepositsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.VoluntaryExitsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="voluntary-exits-tab" data-bs-toggle="tab" href="#voluntary-exits" role="tab" aria-controls="voluntary-exits" aria-selected="false">Voluntary Exits <span class="badge bg-secondary text-white">{{ .Block.VoluntaryExitsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.AttesterSlashingsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="attester-slashings-tab" data-bs-toggle="tab" href="#attester-slashings" role="tab" aria-controls="attester-slashings" aria-selected="false">Attester Slashings <span class="badge bg-secondary text-white">{{ .Block.AttesterSlashingsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.ProposerSlashingsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="proposer-slashings-tab" data-bs-toggle="tab" href="#proposer-slashings" role="tab" aria-controls="proposer-slashings" aria-selected="false">Proposer Slashings <span class="badge bg-secondary text-white">{{ .Block.ProposerSlashingsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.WithdrawalsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="withdrawals-tab" data-bs-toggle="tab" href="#withdrawals" role="tab" aria-controls="withdrawal" aria-selected="false">Withdrawals <span class="badge bg-secondary text-white">{{ .Block.WithdrawalsCount }}</span></a>
+            <a class="nav-link" id="blobSidecars-tab" data-bs-toggle="tab" href="#blobSidecars" role="tab" aria-controls="blobSidecars" aria-selected="false">Blob Sidecars <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.BLSChangesCount 0 }}
@@ -86,9 +66,9 @@
             <a class="nav-link" id="blsChange-tab" data-bs-toggle="tab" href="#blsChange" role="tab" aria-controls="blsChange" aria-selected="false">BLS Change <span class="badge bg-secondary text-white">{{ .Block.BLSChangesCount }}</span></a>
           </li>
         {{ end }}
-        {{ if gt .Block.BlobsCount 0 }}
+        {{ if gt .Block.ConsolidationRequestsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="blobSidecars-tab" data-bs-toggle="tab" href="#blobSidecars" role="tab" aria-controls="blobSidecars" aria-selected="false">Blob Sidecars <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
+            <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.DepositRequestsCount 0 }}
@@ -96,19 +76,9 @@
             <a class="nav-link" id="depositRequests-tab" data-bs-toggle="tab" href="#depositRequests" role="tab" aria-controls="depositRequests" aria-selected="false">Deposit Requests <span class="badge bg-secondary text-white">{{ .Block.DepositRequestsCount }}</span></a>
           </li>
         {{ end }}
-        {{ if gt .Block.WithdrawalRequestsCount 0 }}
+        {{ if gt .Block.DepositsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="withdrawalRequests-tab" data-bs-toggle="tab" href="#withdrawalRequests" role="tab" aria-controls="withdrawalRequests" aria-selected="false">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.ConsolidationRequestsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if and .Block.ExecutionData .Block.ExecutionData.BlockAccessList }}
-          <li class="nav-item">
-            <a class="nav-link" id="accessList-tab" data-bs-toggle="tab" href="#accessList" role="tab" aria-controls="accessList" aria-selected="false">Access List <span class="badge bg-secondary text-white">{{ len .Block.ExecutionData.BlockAccessList }}</span></a>
+            <a class="nav-link" id="deposits-tab" data-bs-toggle="tab" href="#deposits" role="tab" aria-controls="deposits" aria-selected="false">Deposits <span class="badge bg-secondary text-white">{{ .Block.DepositsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.InclusionListsCount 0 }}
@@ -119,6 +89,36 @@
         {{ if gt .Block.ExecutionProofsCount 0 }}
           <li class="nav-item">
             <a class="nav-link" id="proofs-tab" data-bs-toggle="tab" href="#proofs" role="tab" aria-controls="proofs" aria-selected="false">Proofs <span class="badge bg-secondary text-white">{{ .Block.ExecutionProofsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.ProposerSlashingsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="proposer-slashings-tab" data-bs-toggle="tab" href="#proposer-slashings" role="tab" aria-controls="proposer-slashings" aria-selected="false">Proposer Slashings <span class="badge bg-secondary text-white">{{ .Block.ProposerSlashingsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.PtcVotesCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="ptcVotes-tab" data-bs-toggle="tab" href="#ptcVotes" role="tab" aria-controls="ptcVotes" aria-selected="false">PTC Votes <span class="badge bg-secondary text-white">{{ .Block.PtcVotesCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.TransactionsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="transactions-tab" data-bs-toggle="tab" href="#transactions" role="tab" aria-controls="transactions" aria-selected="false">Transactions <span class="badge bg-secondary text-white">{{ .Block.TransactionsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.VoluntaryExitsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="voluntary-exits-tab" data-bs-toggle="tab" href="#voluntary-exits" role="tab" aria-controls="voluntary-exits" aria-selected="false">Voluntary Exits <span class="badge bg-secondary text-white">{{ .Block.VoluntaryExitsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.WithdrawalRequestsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="withdrawalRequests-tab" data-bs-toggle="tab" href="#withdrawalRequests" role="tab" aria-controls="withdrawalRequests" aria-selected="false">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.WithdrawalsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="withdrawals-tab" data-bs-toggle="tab" href="#withdrawals" role="tab" aria-controls="withdrawal" aria-selected="false">Withdrawals <span class="badge bg-secondary text-white">{{ .Block.WithdrawalsCount }}</span></a>
           </li>
         {{ end }}
         {{ if .Block }}
