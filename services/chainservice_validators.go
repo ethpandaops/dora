@@ -72,6 +72,92 @@ func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorInde
 	return validatorActivity
 }
 
+// ValidatorProposalStat tracks the number of expected vs actually proposed canonical blocks for a validator.
+type ValidatorProposalStat struct {
+	Expected uint64
+	Proposed uint64
+}
+
+// GetValidatorProposalStats returns expected vs canonical proposals per validator over the
+// last lookbackEpochs epochs. A duty counts as "proposed" only if the canonical block for the
+// duty slot was authored by the assigned proposer.
+func (bs *ChainService) GetValidatorProposalStats(ctx context.Context, lookbackEpochs phase0.Epoch) map[phase0.ValidatorIndex]*ValidatorProposalStat {
+	chainState := bs.consensusPool.GetChainState()
+	if chainState.GetSpecs() == nil {
+		return nil
+	}
+
+	currentEpoch := chainState.CurrentEpoch()
+	currentSlot := chainState.CurrentSlot()
+	startEpoch := phase0.Epoch(0)
+	if currentEpoch > lookbackEpochs {
+		startEpoch = currentEpoch - lookbackEpochs
+	}
+
+	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
+	result := make(map[phase0.ValidatorIndex]*ValidatorProposalStat)
+
+	for epoch := startEpoch; epoch <= currentEpoch; epoch++ {
+		epochStats := bs.beaconIndexer.GetEpochStats(epoch, nil)
+		if epochStats == nil {
+			continue
+		}
+		values := epochStats.GetValues(true)
+		if values == nil || len(values.ProposerDuties) == 0 {
+			continue
+		}
+
+		startSlot := chainState.EpochToSlot(epoch)
+		for slotIdx, proposer := range values.ProposerDuties {
+			slot := startSlot + phase0.Slot(slotIdx)
+			if slot > currentSlot {
+				break
+			}
+
+			stat := result[proposer]
+			if stat == nil {
+				stat = &ValidatorProposalStat{}
+				result[proposer] = stat
+			}
+			stat.Expected++
+
+			for _, block := range bs.beaconIndexer.GetBlocksBySlot(slot) {
+				if !bs.beaconIndexer.IsCanonicalBlockByHead(block, canonicalHead) {
+					continue
+				}
+				header := block.GetHeader()
+				if header == nil {
+					continue
+				}
+				if header.Message.ProposerIndex == proposer {
+					stat.Proposed++
+					break
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+// GetValidatorPtcStats returns expected vs included PTC votes for a validator
+// over the last lookbackEpochs epochs. Values are read directly from the
+// in-memory PTC cache populated when Gloas+ blocks are processed; no database
+// rows are written or read for this stat. PTC is Gloas+ only.
+func (bs *ChainService) GetValidatorPtcStats(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) (expected uint64, included uint64) {
+	return bs.beaconIndexer.GetValidatorPtcStats(validatorIndex, lookbackEpochs)
+}
+
+// IsPtcEnabled reports whether the chain is currently past the Gloas fork and
+// the PTC cache can produce meaningful data.
+func (bs *ChainService) IsPtcEnabled() bool {
+	chainState := bs.consensusPool.GetChainState()
+	if chainState.GetSpecs() == nil {
+		return false
+	}
+	return chainState.IsEip7732Enabled(chainState.CurrentEpoch())
+}
+
 type ValidatorWithIndex struct {
 	Index     phase0.ValidatorIndex
 	Validator *phase0.Validator

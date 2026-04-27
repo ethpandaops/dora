@@ -49,6 +49,7 @@ type Indexer struct {
 	pubkeyCache        *pubkeyCache
 	validatorCache     *validatorCache
 	validatorActivity  *validatorActivityCache
+	validatorPtc       *validatorPtcCache
 	blockBidCache      *blockBidCache
 	builderCache       *builderCache
 	inclusionListCache *inclusionListCache
@@ -124,6 +125,7 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	indexer.pubkeyCache = newPubkeyCache(indexer, utils.Config.Indexer.PubkeyCachePath)
 	indexer.validatorCache = newValidatorCache(indexer)
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
+	indexer.validatorPtc = newValidatorPtcCache(indexer)
 	indexer.blockBidCache = newBlockBidCache(indexer)
 	indexer.builderCache = newBuilderCache(indexer)
 	indexer.inclusionListCache = newInclusionListCache(indexer)

@@ -381,13 +381,22 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
 		}
 
-		votedCount := 0
-		for i := 0; i < assignedCount; i++ {
-			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
-				votedCount++
-			}
+		// Clamp to the bitvector length so a smaller-than-expected sync aggregate
+		// (eg. a devnet running a reduced SYNC_COMMITTEE_SIZE) doesn't panic.
+		bitCount := len(syncAggregate.SyncCommitteeBits) * 8
+		if assignedCount > bitCount {
+			assignedCount = bitCount
 		}
-		dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
+
+		if assignedCount > 0 {
+			votedCount := 0
+			for i := 0; i < assignedCount; i++ {
+				if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+					votedCount++
+				}
+			}
+			dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
+		}
 	}
 
 	if executionBlockNumber > 0 {
@@ -586,8 +595,11 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			dbEpoch.BLSChangeCount += uint64(len(blsToExecChanges))
 
 			if syncAggregate != nil && epochStatsValues != nil {
-				votedCount := 0
 				assignedCount := len(epochStatsValues.SyncCommitteeDuties)
+				if bitCount := len(syncAggregate.SyncCommitteeBits) * 8; assignedCount > bitCount {
+					assignedCount = bitCount
+				}
+				votedCount := 0
 				for i := 0; i < assignedCount; i++ {
 					if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
 						votedCount++

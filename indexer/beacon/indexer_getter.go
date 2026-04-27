@@ -401,6 +401,12 @@ func (indexer *Indexer) GetValidatorInclusionDistance(validatorIndex phase0.Vali
 	return indexer.validatorActivity.getValidatorInclusionDistance(validatorIndex, lookbackEpochs)
 }
 
+// GetValidatorPtcStats returns the expected and included PTC vote count for a
+// validator over the last lookbackEpochs epochs from the in-memory PTC cache.
+func (indexer *Indexer) GetValidatorPtcStats(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) (expected uint64, included uint64) {
+	return indexer.validatorPtc.getValidatorPtcStats(validatorIndex, lookbackEpochs)
+}
+
 // GetRecentValidatorBalances returns the most recent validator balances for the given fork.
 func (indexer *Indexer) GetRecentValidatorBalances(overrideForkId *ForkKey) []phase0.Gwei {
 	chainState := indexer.consensusPool.GetChainState()
