@@ -381,11 +381,9 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
 		}
 
-		// Clamp to the bitvector length so a smaller-than-expected sync aggregate
-		// (eg. a devnet running a reduced SYNC_COMMITTEE_SIZE) doesn't panic.
-		bitCount := len(syncAggregate.SyncCommitteeBits) * 8
-		if assignedCount > bitCount {
-			assignedCount = bitCount
+		// clamp to bits actually present in the block to avoid out-of-range access on mismatch
+		if maxBits := len(syncAggregate.SyncCommitteeBits) * 8; assignedCount > maxBits {
+			assignedCount = maxBits
 		}
 
 		if assignedCount > 0 {
@@ -596,9 +594,10 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 
 			if syncAggregate != nil && epochStatsValues != nil {
 				assignedCount := len(epochStatsValues.SyncCommitteeDuties)
-				if bitCount := len(syncAggregate.SyncCommitteeBits) * 8; assignedCount > bitCount {
-					assignedCount = bitCount
+				if maxBits := len(syncAggregate.SyncCommitteeBits) * 8; assignedCount > maxBits {
+					assignedCount = maxBits
 				}
+
 				votedCount := 0
 				for i := 0; i < assignedCount; i++ {
 					if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
