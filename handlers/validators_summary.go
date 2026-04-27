@@ -84,6 +84,16 @@ type validatorsSummaryInclusionStats struct {
 	totalDelay uint64
 }
 
+type validatorsSummaryProposalStats struct {
+	expected uint64
+	proposed uint64
+}
+
+type validatorsSummaryPtcStats struct {
+	expected uint64
+	included uint64
+}
+
 func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSummaryPageData, time.Duration) {
 	logrus.Debugf("validators summary page called")
 	pageData := &models.ValidatorsSummaryPageData{}
@@ -125,6 +135,24 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	combinationInclStats := make(map[execution.ClientType]map[consensus.ClientType]*validatorsSummaryInclusionStats)
 	totalInclCount := uint64(0)
 	totalInclDelay := uint64(0)
+
+	// Track block proposal stats per client and per combination
+	elProposalStats := make(map[execution.ClientType]*validatorsSummaryProposalStats)
+	clProposalStats := make(map[consensus.ClientType]*validatorsSummaryProposalStats)
+	combinationProposalStats := make(map[execution.ClientType]map[consensus.ClientType]*validatorsSummaryProposalStats)
+	totalProposalExpected := uint64(0)
+	totalProposalProposed := uint64(0)
+
+	// Track PTC inclusion stats per client and per combination
+	elPtcStats := make(map[execution.ClientType]*validatorsSummaryPtcStats)
+	clPtcStats := make(map[consensus.ClientType]*validatorsSummaryPtcStats)
+	combinationPtcStats := make(map[execution.ClientType]map[consensus.ClientType]*validatorsSummaryPtcStats)
+	totalPtcExpected := uint64(0)
+	totalPtcIncluded := uint64(0)
+
+	// Lookback over the same window as the attestation inclusion stats (last 2 epochs)
+	proposalStatsByValidator := services.GlobalBeaconService.GetValidatorProposalStats(ctx, 2)
+	ptcStatsByValidator := services.GlobalBeaconService.GetValidatorPtcStats(ctx, 2)
 
 	onlineEffectiveBalance := uint64(0)
 	activeValidators := uint64(0)
@@ -218,6 +246,60 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 			totalInclDelay += inclTotalDelay
 		}
 
+		// accumulate block proposal stats (last 2 epochs)
+		if propStat := proposalStatsByValidator[validator.Index]; propStat != nil && propStat.Expected > 0 {
+			if elProposalStats[executionClient] == nil {
+				elProposalStats[executionClient] = &validatorsSummaryProposalStats{}
+			}
+			elProposalStats[executionClient].expected += propStat.Expected
+			elProposalStats[executionClient].proposed += propStat.Proposed
+
+			if clProposalStats[consensusClient] == nil {
+				clProposalStats[consensusClient] = &validatorsSummaryProposalStats{}
+			}
+			clProposalStats[consensusClient].expected += propStat.Expected
+			clProposalStats[consensusClient].proposed += propStat.Proposed
+
+			if combinationProposalStats[executionClient] == nil {
+				combinationProposalStats[executionClient] = make(map[consensus.ClientType]*validatorsSummaryProposalStats)
+			}
+			if combinationProposalStats[executionClient][consensusClient] == nil {
+				combinationProposalStats[executionClient][consensusClient] = &validatorsSummaryProposalStats{}
+			}
+			combinationProposalStats[executionClient][consensusClient].expected += propStat.Expected
+			combinationProposalStats[executionClient][consensusClient].proposed += propStat.Proposed
+
+			totalProposalExpected += propStat.Expected
+			totalProposalProposed += propStat.Proposed
+		}
+
+		// accumulate PTC inclusion stats (last 2 epochs, Gloas+ only)
+		if ptcStat := ptcStatsByValidator[validator.Index]; ptcStat != nil && ptcStat.Expected > 0 {
+			if elPtcStats[executionClient] == nil {
+				elPtcStats[executionClient] = &validatorsSummaryPtcStats{}
+			}
+			elPtcStats[executionClient].expected += ptcStat.Expected
+			elPtcStats[executionClient].included += ptcStat.Included
+
+			if clPtcStats[consensusClient] == nil {
+				clPtcStats[consensusClient] = &validatorsSummaryPtcStats{}
+			}
+			clPtcStats[consensusClient].expected += ptcStat.Expected
+			clPtcStats[consensusClient].included += ptcStat.Included
+
+			if combinationPtcStats[executionClient] == nil {
+				combinationPtcStats[executionClient] = make(map[consensus.ClientType]*validatorsSummaryPtcStats)
+			}
+			if combinationPtcStats[executionClient][consensusClient] == nil {
+				combinationPtcStats[executionClient][consensusClient] = &validatorsSummaryPtcStats{}
+			}
+			combinationPtcStats[executionClient][consensusClient].expected += ptcStat.Expected
+			combinationPtcStats[executionClient][consensusClient].included += ptcStat.Included
+
+			totalPtcExpected += ptcStat.Expected
+			totalPtcIncluded += ptcStat.Included
+		}
+
 		activeValidators++
 	}
 
@@ -225,27 +307,39 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	for elClient := range clientCombinations {
 		for clClient := range clientCombinations[elClient] {
 			cell := clientCombinations[elClient][clClient]
-			if cell.ValidatorCount > 0 {
-				cell.BalancePercentage = (float64(cell.EffectiveBalance) / float64(totalEffectiveBalance)) * 100
-				cell.OnlinePercentage = (float64(cell.OnlineEffectiveBalance) / float64(cell.EffectiveBalance)) * 100
-
-				// Determine health status
-				if cell.OnlinePercentage == 100 {
-					cell.HealthStatus = "healthy"
-				} else if cell.OnlinePercentage >= 95 {
-					cell.HealthStatus = "warning"
-				} else {
-					cell.HealthStatus = "critical"
-				}
-
-				if combinationInclStats[elClient] != nil {
-					if stats := combinationInclStats[elClient][clClient]; stats != nil && stats.count > 0 {
-						cell.AvgInclusionDelay = float64(stats.totalDelay) / float64(stats.count)
-					}
-				}
-			} else {
+			if cell.ValidatorCount == 0 {
 				cell.HealthStatus = "empty"
+				continue
 			}
+
+			cell.BalancePercentage = (float64(cell.EffectiveBalance) / float64(totalEffectiveBalance)) * 100
+			cell.OnlinePercentage = (float64(cell.OnlineEffectiveBalance) / float64(cell.EffectiveBalance)) * 100
+
+			if combinationInclStats[elClient] != nil {
+				if stats := combinationInclStats[elClient][clClient]; stats != nil && stats.count > 0 {
+					cell.AvgInclusionDelay = float64(stats.totalDelay) / float64(stats.count)
+				}
+			}
+
+			if combinationProposalStats[elClient] != nil {
+				if stats := combinationProposalStats[elClient][clClient]; stats != nil && stats.expected > 0 {
+					cell.HasProposalData = true
+					cell.ProposalsExpected = stats.expected
+					cell.ProposalsProposed = stats.proposed
+					cell.ProposalRate = (float64(stats.proposed) / float64(stats.expected)) * 100
+				}
+			}
+
+			if combinationPtcStats[elClient] != nil {
+				if stats := combinationPtcStats[elClient][clClient]; stats != nil && stats.expected > 0 {
+					cell.HasPtcData = true
+					cell.PtcVotesExpected = stats.expected
+					cell.PtcVotesIncluded = stats.included
+					cell.PtcInclusionRate = (float64(stats.included) / float64(stats.expected)) * 100
+				}
+			}
+
+			cell.HealthStatus = computeHealthStatus(cell.OnlinePercentage, cell.HasProposalData, cell.ProposalRate, cell.HasPtcData, cell.PtcInclusionRate)
 		}
 	}
 
@@ -284,7 +378,7 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	}
 
 	// Build client breakdown for detailed table
-	clientBreakdown := buildClientBreakdown(clientCombinations, totalEffectiveBalance, elClientList, clClientList, elClientBalances, clClientBalances, elInclStats, clInclStats)
+	clientBreakdown := buildClientBreakdown(clientCombinations, totalEffectiveBalance, elClientList, clClientList, elClientBalances, clClientBalances, elInclStats, clInclStats, elProposalStats, clProposalStats, elPtcStats, clPtcStats)
 
 	elClientListStrings := make([]string, len(elClientList))
 	for i, elClient := range elClientList {
@@ -310,7 +404,55 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 		pageData.HasInclusionData = true
 	}
 
+	if totalProposalExpected > 0 {
+		pageData.HasProposalData = true
+		pageData.ProposalsExpected = totalProposalExpected
+		pageData.ProposalsProposed = totalProposalProposed
+		pageData.ProposalRate = (float64(totalProposalProposed) / float64(totalProposalExpected)) * 100
+	}
+
+	if totalPtcExpected > 0 {
+		pageData.HasPtcData = true
+		pageData.PtcVotesExpected = totalPtcExpected
+		pageData.PtcVotesIncluded = totalPtcIncluded
+		pageData.PtcInclusionRate = (float64(totalPtcIncluded) / float64(totalPtcExpected)) * 100
+	}
+
 	return pageData, cacheTime
+}
+
+// computeHealthStatus returns the health bucket based on every available metric.
+// Green ("healthy") requires 100% on every observed metric. 0/0 (no observed
+// duties) is vacuously 100% and does not block green — only an actual failure
+// (proposed < expected, or included < expected) drops the cell out of healthy.
+func computeHealthStatus(onlinePct float64, hasProposal bool, proposalPct float64, hasPtc bool, ptcPct float64) string {
+	healthy := onlinePct == 100
+	warning := onlinePct >= 95
+	if hasProposal {
+		if proposalPct < 100 {
+			healthy = false
+		}
+		if proposalPct < 95 {
+			warning = false
+		}
+	}
+	if hasPtc {
+		if ptcPct < 100 {
+			healthy = false
+		}
+		if ptcPct < 95 {
+			warning = false
+		}
+	}
+
+	switch {
+	case healthy:
+		return "healthy"
+	case warning:
+		return "warning"
+	default:
+		return "critical"
+	}
 }
 
 func parseClientTypesFromName(validatorName string) (execution.ClientType, consensus.ClientType) {
@@ -366,6 +508,10 @@ func buildClientBreakdown(
 	clClientBalances map[consensus.ClientType]*validatorsSummaryClientBalances,
 	elInclStats map[execution.ClientType]*validatorsSummaryInclusionStats,
 	clInclStats map[consensus.ClientType]*validatorsSummaryInclusionStats,
+	elProposalStats map[execution.ClientType]*validatorsSummaryProposalStats,
+	clProposalStats map[consensus.ClientType]*validatorsSummaryProposalStats,
+	elPtcStats map[execution.ClientType]*validatorsSummaryPtcStats,
+	clPtcStats map[consensus.ClientType]*validatorsSummaryPtcStats,
 ) []models.ValidatorsSummaryClientBreak {
 	breakdown := []models.ValidatorsSummaryClientBreak{}
 
@@ -424,17 +570,25 @@ func buildClientBreakdown(
 			stat.OnlinePercentage = (float64(stat.OnlineEffectiveBalance) / float64(stat.EffectiveBalance)) * 100
 			stat.OfflineValidators = stat.ValidatorCount - stat.OnlineValidators
 
-			if stat.OnlinePercentage == 100 {
-				stat.HealthStatus = "healthy"
-			} else if stat.OnlinePercentage >= 95 {
-				stat.HealthStatus = "warning"
-			} else {
-				stat.HealthStatus = "critical"
-			}
-
 			if inclStats := elInclStats[elClient]; inclStats != nil && inclStats.count > 0 {
 				stat.AvgInclusionDelay = float64(inclStats.totalDelay) / float64(inclStats.count)
 			}
+
+			if propStats := elProposalStats[elClient]; propStats != nil && propStats.expected > 0 {
+				stat.HasProposalData = true
+				stat.ProposalsExpected = propStats.expected
+				stat.ProposalsProposed = propStats.proposed
+				stat.ProposalRate = (float64(propStats.proposed) / float64(propStats.expected)) * 100
+			}
+
+			if ptcStats := elPtcStats[elClient]; ptcStats != nil && ptcStats.expected > 0 {
+				stat.HasPtcData = true
+				stat.PtcVotesExpected = ptcStats.expected
+				stat.PtcVotesIncluded = ptcStats.included
+				stat.PtcInclusionRate = (float64(ptcStats.included) / float64(ptcStats.expected)) * 100
+			}
+
+			stat.HealthStatus = computeHealthStatus(stat.OnlinePercentage, stat.HasProposalData, stat.ProposalRate, stat.HasPtcData, stat.PtcInclusionRate)
 
 			breakdown = append(breakdown, *stat)
 		}
@@ -447,17 +601,25 @@ func buildClientBreakdown(
 			stat.OnlinePercentage = (float64(stat.OnlineEffectiveBalance) / float64(stat.EffectiveBalance)) * 100
 			stat.OfflineValidators = stat.ValidatorCount - stat.OnlineValidators
 
-			if stat.OnlinePercentage == 100 {
-				stat.HealthStatus = "healthy"
-			} else if stat.OnlinePercentage >= 95 {
-				stat.HealthStatus = "warning"
-			} else {
-				stat.HealthStatus = "critical"
-			}
-
 			if inclStats := clInclStats[clClient]; inclStats != nil && inclStats.count > 0 {
 				stat.AvgInclusionDelay = float64(inclStats.totalDelay) / float64(inclStats.count)
 			}
+
+			if propStats := clProposalStats[clClient]; propStats != nil && propStats.expected > 0 {
+				stat.HasProposalData = true
+				stat.ProposalsExpected = propStats.expected
+				stat.ProposalsProposed = propStats.proposed
+				stat.ProposalRate = (float64(propStats.proposed) / float64(propStats.expected)) * 100
+			}
+
+			if ptcStats := clPtcStats[clClient]; ptcStats != nil && ptcStats.expected > 0 {
+				stat.HasPtcData = true
+				stat.PtcVotesExpected = ptcStats.expected
+				stat.PtcVotesIncluded = ptcStats.included
+				stat.PtcInclusionRate = (float64(ptcStats.included) / float64(ptcStats.expected)) * 100
+			}
+
+			stat.HealthStatus = computeHealthStatus(stat.OnlinePercentage, stat.HasProposalData, stat.ProposalRate, stat.HasPtcData, stat.PtcInclusionRate)
 
 			breakdown = append(breakdown, *stat)
 		}
