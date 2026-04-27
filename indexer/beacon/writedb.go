@@ -381,6 +381,12 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
 		}
 
+		// Cap by actual bitvector size to prevent index out of bounds
+		maxBits := len(syncAggregate.SyncCommitteeBits) * 8
+		if assignedCount > maxBits {
+			assignedCount = maxBits
+		}
+
 		votedCount := 0
 		for i := 0; i < assignedCount; i++ {
 			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
@@ -588,6 +594,13 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			if syncAggregate != nil && epochStatsValues != nil {
 				votedCount := 0
 				assignedCount := len(epochStatsValues.SyncCommitteeDuties)
+
+				// Cap by actual bitvector size to prevent index out of bounds
+				maxBits := len(syncAggregate.SyncCommitteeBits) * 8
+				if assignedCount > maxBits {
+					assignedCount = maxBits
+				}
+
 				for i := 0; i < assignedCount; i++ {
 					if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
 						votedCount++
