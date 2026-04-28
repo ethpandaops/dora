@@ -11,6 +11,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
@@ -78,6 +79,12 @@ type ValidatorProposalStat struct {
 	Proposed uint64
 }
 
+// ValidatorPtcStat tracks the number of expected vs actually included PTC votes for a validator.
+type ValidatorPtcStat struct {
+	Expected uint64
+	Included uint64
+}
+
 // GetValidatorProposalStats returns expected vs canonical proposals per validator over the
 // last lookbackEpochs epochs. A duty counts as "proposed" only if the canonical block for the
 // duty slot was authored by the assigned proposer.
@@ -140,28 +147,19 @@ func (bs *ChainService) GetValidatorProposalStats(ctx context.Context, lookbackE
 	return result
 }
 
-// ValidatorPtcStat tracks expected vs included PTC votes for a validator.
-type ValidatorPtcStat struct {
-	Expected uint64
-	Included uint64
-}
-
-// GetValidatorPtcStats returns expected vs included PTC votes per validator over
-// the last lookbackEpochs epochs. PTC duties and votes are computed on-demand by
-// iterating through canonical blocks for slots where the next block contains
-// payload attestations. PTC is Gloas+ only (EIP-7732).
+// GetValidatorPtcStats returns expected vs included PTC votes per validator
+// over the last lookbackEpochs epochs, computed on demand from in-memory state:
+// PTC duties from EpochStats.PtcDuties + payload attestations from cached
+// canonical block bodies. Slots whose voting block is not in the in-memory
+// block cache are skipped entirely (no expected, no included). PTC is Gloas+
+// only; nil is returned for pre-Gloas epochs.
 func (bs *ChainService) GetValidatorPtcStats(ctx context.Context, lookbackEpochs phase0.Epoch) map[phase0.ValidatorIndex]*ValidatorPtcStat {
 	chainState := bs.consensusPool.GetChainState()
-	specs := chainState.GetSpecs()
-	if specs == nil || specs.PtcSize == 0 {
+	if chainState.GetSpecs() == nil || !chainState.IsEip7732Enabled(chainState.CurrentEpoch()) {
 		return nil
 	}
 
 	currentEpoch := chainState.CurrentEpoch()
-	if !chainState.IsEip7732Enabled(currentEpoch) {
-		return nil
-	}
-
 	currentSlot := chainState.CurrentSlot()
 	startEpoch := phase0.Epoch(0)
 	if currentEpoch > lookbackEpochs {
@@ -169,30 +167,14 @@ func (bs *ChainService) GetValidatorPtcStats(ctx context.Context, lookbackEpochs
 	}
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
-	if canonicalHead == nil {
-		return nil
-	}
-
 	result := make(map[phase0.ValidatorIndex]*ValidatorPtcStat)
 
-	// Iterate through slots looking for blocks with payload attestations.
-	// Payload attestations in block at slot S vote on the block at slot S-1,
-	// so we check blocks and attribute duties to the voted slot's epoch.
-	startSlot := chainState.EpochToSlot(startEpoch)
-	if startSlot == 0 {
-		startSlot = 1 // slot 0 has no previous slot to vote on
-	}
-
-	for slot := startSlot; slot <= currentSlot; slot++ {
-		// The block at `slot` contains payload attestations that vote on slot-1
-		votedSlot := slot - 1
-		votedEpoch := chainState.EpochOfSlot(votedSlot)
-		if votedEpoch < startEpoch {
+	for epoch := startEpoch; epoch <= currentEpoch; epoch++ {
+		if !chainState.IsEip7732Enabled(epoch) {
 			continue
 		}
 
-		// Get epoch stats for the voted slot to find PTC duties
-		epochStats := bs.beaconIndexer.GetEpochStats(votedEpoch, nil)
+		epochStats := bs.beaconIndexer.GetEpochStats(epoch, nil)
 		if epochStats == nil {
 			continue
 		}
@@ -201,99 +183,87 @@ func (bs *ChainService) GetValidatorPtcStats(ctx context.Context, lookbackEpochs
 			continue
 		}
 
-		slotInEpoch := uint64(votedSlot) % specs.SlotsPerEpoch
-		if int(slotInEpoch) >= len(values.PtcDuties) {
-			continue
-		}
-		slotDuties := values.PtcDuties[slotInEpoch]
-		if len(slotDuties) == 0 {
-			continue
-		}
-
-		// Build expected duties map (unique validators)
-		expectedValidators := make(map[phase0.ValidatorIndex]bool, len(slotDuties))
-		positionToValidator := make([]phase0.ValidatorIndex, len(slotDuties))
-		for pos, activeIdx := range slotDuties {
-			if int(activeIdx) >= len(values.ActiveIndices) {
+		startSlot := chainState.EpochToSlot(epoch)
+		for slotIdx, slotDuties := range values.PtcDuties {
+			if len(slotDuties) == 0 {
 				continue
 			}
-			vidx := values.ActiveIndices[activeIdx]
-			expectedValidators[vidx] = true
-			positionToValidator[pos] = vidx
-		}
-
-		// Record expected duties for all validators with PTC duty this slot
-		for vidx := range expectedValidators {
-			stat := result[vidx]
-			if stat == nil {
-				stat = &ValidatorPtcStat{}
-				result[vidx] = stat
+			dutySlot := startSlot + phase0.Slot(slotIdx)
+			voteSlot := dutySlot + 1
+			if voteSlot > currentSlot {
+				break
 			}
-			stat.Expected++
-		}
 
-		// Find canonical block at `slot` and check its payload attestations
-		blocks := bs.beaconIndexer.GetBlocksBySlot(slot)
-		for _, block := range blocks {
-			if !bs.beaconIndexer.IsCanonicalBlockByHead(block, canonicalHead) {
+			// find the canonical block at voteSlot in the in-memory block cache
+			var canonicalBlock *beacon.Block
+			for _, b := range bs.beaconIndexer.GetBlocksBySlot(voteSlot) {
+				if bs.beaconIndexer.IsCanonicalBlockByHead(b, canonicalHead) {
+					canonicalBlock = b
+					break
+				}
+			}
+			if canonicalBlock == nil {
+				continue
+			}
+			body := canonicalBlock.GetCachedBlock()
+			if body == nil {
 				continue
 			}
 
-			blockBody := block.GetBlock(ctx)
-			if blockBody == nil {
-				continue
-			}
-
-			// Extract payload attestations based on fork version
-			var aggregationBitsList [][]byte
+			var payloadAttestations []*gloas.PayloadAttestation
 			switch {
-			case blockBody.Gloas != nil:
-				for _, pa := range blockBody.Gloas.Message.Body.PayloadAttestations {
-					if pa != nil {
-						aggregationBitsList = append(aggregationBitsList, pa.AggregationBits)
-					}
-				}
-			case blockBody.Heze != nil:
-				for _, pa := range blockBody.Heze.Message.Body.PayloadAttestations {
-					if pa != nil {
-						aggregationBitsList = append(aggregationBitsList, pa.AggregationBits)
-					}
-				}
+			case body.Gloas != nil:
+				payloadAttestations = body.Gloas.Message.Body.PayloadAttestations
+			case body.Heze != nil:
+				payloadAttestations = body.Heze.Message.Body.PayloadAttestations
+			default:
+				continue
 			}
 
-			if len(aggregationBitsList) == 0 {
-				break // canonical block found but no attestations
-			}
-
-			// Determine which positions voted
 			voted := make([]bool, len(slotDuties))
-			for _, bits := range aggregationBitsList {
-				bitCount := len(bits) * 8
+			for _, pa := range payloadAttestations {
+				if pa == nil {
+					continue
+				}
+				bitCount := len(pa.AggregationBits) * 8
 				if bitCount > len(slotDuties) {
 					bitCount = len(slotDuties)
 				}
 				for i := 0; i < bitCount; i++ {
-					if (bits[i/8]>>(i%8))&1 == 1 {
+					if (pa.AggregationBits[i/8]>>(i%8))&1 == 1 {
 						voted[i] = true
 					}
 				}
 			}
 
-			// Credit included votes to validators (one per unique validator)
-			includedValidators := make(map[phase0.ValidatorIndex]bool, len(slotDuties))
-			for pos, didVote := range voted {
-				if didVote && positionToValidator[pos] != 0 {
-					includedValidators[positionToValidator[pos]] = true
+			// Unique-validator semantics: on small validator sets a validator may
+			// occupy multiple PTC positions via balance-weighted selection. Mirror
+			// the slot page — one expected vote per unique validator, included if
+			// any of their positions voted.
+			expected := make(map[phase0.ValidatorIndex]bool, len(slotDuties))
+			included := make(map[phase0.ValidatorIndex]bool, len(slotDuties))
+			for pos, activeIdx := range slotDuties {
+				if int(activeIdx) >= len(values.ActiveIndices) {
+					continue
+				}
+				vidx := values.ActiveIndices[activeIdx]
+				expected[vidx] = true
+				if voted[pos] {
+					included[vidx] = true
 				}
 			}
 
-			for vidx := range includedValidators {
-				if stat := result[vidx]; stat != nil {
+			for vidx := range expected {
+				stat := result[vidx]
+				if stat == nil {
+					stat = &ValidatorPtcStat{}
+					result[vidx] = stat
+				}
+				stat.Expected++
+				if included[vidx] {
 					stat.Included++
 				}
 			}
-
-			break // only process canonical block
 		}
 	}
 

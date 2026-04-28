@@ -153,7 +153,6 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	// Lookback over the same window as the attestation inclusion stats (last 2 epochs)
 	proposalStatsByValidator := services.GlobalBeaconService.GetValidatorProposalStats(ctx, 2)
 	ptcStatsByValidator := services.GlobalBeaconService.GetValidatorPtcStats(ctx, 2)
-	ptcEnabled := ptcStatsByValidator != nil
 
 	onlineEffectiveBalance := uint64(0)
 	activeValidators := uint64(0)
@@ -275,32 +274,30 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 		}
 
 		// accumulate PTC inclusion stats (last 2 epochs, Gloas+ only)
-		if ptcEnabled {
-			if ptcStat := ptcStatsByValidator[validator.Index]; ptcStat != nil && ptcStat.Expected > 0 {
-				if elPtcStats[executionClient] == nil {
-					elPtcStats[executionClient] = &validatorsSummaryPtcStats{}
-				}
-				elPtcStats[executionClient].expected += ptcStat.Expected
-				elPtcStats[executionClient].included += ptcStat.Included
-
-				if clPtcStats[consensusClient] == nil {
-					clPtcStats[consensusClient] = &validatorsSummaryPtcStats{}
-				}
-				clPtcStats[consensusClient].expected += ptcStat.Expected
-				clPtcStats[consensusClient].included += ptcStat.Included
-
-				if combinationPtcStats[executionClient] == nil {
-					combinationPtcStats[executionClient] = make(map[consensus.ClientType]*validatorsSummaryPtcStats)
-				}
-				if combinationPtcStats[executionClient][consensusClient] == nil {
-					combinationPtcStats[executionClient][consensusClient] = &validatorsSummaryPtcStats{}
-				}
-				combinationPtcStats[executionClient][consensusClient].expected += ptcStat.Expected
-				combinationPtcStats[executionClient][consensusClient].included += ptcStat.Included
-
-				totalPtcExpected += ptcStat.Expected
-				totalPtcIncluded += ptcStat.Included
+		if ptcStat := ptcStatsByValidator[validator.Index]; ptcStat != nil && ptcStat.Expected > 0 {
+			if elPtcStats[executionClient] == nil {
+				elPtcStats[executionClient] = &validatorsSummaryPtcStats{}
 			}
+			elPtcStats[executionClient].expected += ptcStat.Expected
+			elPtcStats[executionClient].included += ptcStat.Included
+
+			if clPtcStats[consensusClient] == nil {
+				clPtcStats[consensusClient] = &validatorsSummaryPtcStats{}
+			}
+			clPtcStats[consensusClient].expected += ptcStat.Expected
+			clPtcStats[consensusClient].included += ptcStat.Included
+
+			if combinationPtcStats[executionClient] == nil {
+				combinationPtcStats[executionClient] = make(map[consensus.ClientType]*validatorsSummaryPtcStats)
+			}
+			if combinationPtcStats[executionClient][consensusClient] == nil {
+				combinationPtcStats[executionClient][consensusClient] = &validatorsSummaryPtcStats{}
+			}
+			combinationPtcStats[executionClient][consensusClient].expected += ptcStat.Expected
+			combinationPtcStats[executionClient][consensusClient].included += ptcStat.Included
+
+			totalPtcExpected += ptcStat.Expected
+			totalPtcIncluded += ptcStat.Included
 		}
 
 		activeValidators++
