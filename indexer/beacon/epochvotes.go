@@ -134,18 +134,6 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 			block.processedActivity |= processedFlag
 		}
 
-		// Populate the PTC cache from the same block body, but only when the body
-		// is actually in the in-memory block cache — never from a unfinalized-DB
-		// fallback load. Once the body is gone from cache the block can no longer
-		// contribute new PTC stats (existing entries stay until they age out).
-		if block.processedActivity&processedActivityPtcBit == 0 {
-			if cachedBody := block.GetCachedBlock(); cachedBody != nil {
-				if indexer.validatorPtc.processBlock(block, cachedBody) {
-					block.processedActivity |= processedActivityPtcBit
-				}
-			}
-		}
-
 		for attIdx, attVersioned := range attestations {
 			attData, err := attVersioned.Data()
 			if err != nil {

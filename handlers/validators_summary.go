@@ -152,7 +152,8 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 
 	// Lookback over the same window as the attestation inclusion stats (last 2 epochs)
 	proposalStatsByValidator := services.GlobalBeaconService.GetValidatorProposalStats(ctx, 2)
-	ptcEnabled := services.GlobalBeaconService.IsPtcEnabled()
+	ptcStatsByValidator := services.GlobalBeaconService.GetValidatorPtcStats(ctx, 2)
+	ptcEnabled := ptcStatsByValidator != nil
 
 	onlineEffectiveBalance := uint64(0)
 	activeValidators := uint64(0)
@@ -273,21 +274,20 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 			totalProposalProposed += propStat.Proposed
 		}
 
-		// accumulate PTC inclusion stats from the in-memory cache (last 2 epochs, Gloas+ only)
+		// accumulate PTC inclusion stats (last 2 epochs, Gloas+ only)
 		if ptcEnabled {
-			ptcExpected, ptcIncluded := services.GlobalBeaconService.GetValidatorPtcStats(validator.Index, 2)
-			if ptcExpected > 0 {
+			if ptcStat := ptcStatsByValidator[validator.Index]; ptcStat != nil && ptcStat.Expected > 0 {
 				if elPtcStats[executionClient] == nil {
 					elPtcStats[executionClient] = &validatorsSummaryPtcStats{}
 				}
-				elPtcStats[executionClient].expected += ptcExpected
-				elPtcStats[executionClient].included += ptcIncluded
+				elPtcStats[executionClient].expected += ptcStat.Expected
+				elPtcStats[executionClient].included += ptcStat.Included
 
 				if clPtcStats[consensusClient] == nil {
 					clPtcStats[consensusClient] = &validatorsSummaryPtcStats{}
 				}
-				clPtcStats[consensusClient].expected += ptcExpected
-				clPtcStats[consensusClient].included += ptcIncluded
+				clPtcStats[consensusClient].expected += ptcStat.Expected
+				clPtcStats[consensusClient].included += ptcStat.Included
 
 				if combinationPtcStats[executionClient] == nil {
 					combinationPtcStats[executionClient] = make(map[consensus.ClientType]*validatorsSummaryPtcStats)
@@ -295,11 +295,11 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 				if combinationPtcStats[executionClient][consensusClient] == nil {
 					combinationPtcStats[executionClient][consensusClient] = &validatorsSummaryPtcStats{}
 				}
-				combinationPtcStats[executionClient][consensusClient].expected += ptcExpected
-				combinationPtcStats[executionClient][consensusClient].included += ptcIncluded
+				combinationPtcStats[executionClient][consensusClient].expected += ptcStat.Expected
+				combinationPtcStats[executionClient][consensusClient].included += ptcStat.Included
 
-				totalPtcExpected += ptcExpected
-				totalPtcIncluded += ptcIncluded
+				totalPtcExpected += ptcStat.Expected
+				totalPtcIncluded += ptcStat.Included
 			}
 		}
 
