@@ -1381,7 +1381,7 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 
 func getSlotPageBids(pageData *models.SlotPageBlockData, blockSlot phase0.Slot) {
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
-	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot))
+	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot), blockSlot)
 
 	pageData.Bids = make([]*models.SlotPageBid, 0, len(bids))
 
@@ -1392,12 +1392,6 @@ func getSlotPageBids(pageData *models.SlotPageBlockData, blockSlot phase0.Slot) 
 	}
 
 	for _, bid := range bids {
-		// Filter out bids targeting other slots that share this slot's parent root
-		// (bids for orphaned slots between this block and its parent).
-		if bid.Slot != uint64(blockSlot) {
-			continue
-		}
-
 		bidData := &models.SlotPageBid{
 			ParentRoot:   bid.ParentRoot,
 			ParentHash:   bid.ParentHash,
