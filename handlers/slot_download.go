@@ -12,6 +12,7 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
@@ -177,13 +178,42 @@ type withdrawalJSON struct {
 	Amount         string `json:"amount"`
 }
 
+// resolveExecutionPayload returns the block's execution payload, transparently
+// reconstructing it from the Gloas+ signed execution payload envelope when the
+// versioned beacon block no longer carries the payload inline (EIP-7732).
+func resolveExecutionPayload(blockData *services.CombinedBlockResponse) (*spec.VersionedExecutionPayload, error) {
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		if blockData.Payload == nil || blockData.Payload.Message == nil || blockData.Payload.Message.Payload == nil {
+			return nil, fmt.Errorf("block has no execution payload")
+		}
+		executionPayload := &spec.VersionedExecutionPayload{
+			Version: blockData.Block.Version,
+		}
+		switch blockData.Block.Version {
+		case spec.DataVersionGloas:
+			executionPayload.Gloas = blockData.Payload.Message.Payload
+		case spec.DataVersionHeze:
+			executionPayload.Heze = blockData.Payload.Message.Payload
+		default:
+			return nil, fmt.Errorf("unsupported block version: %v", blockData.Block.Version)
+		}
+		return executionPayload, nil
+	}
+
+	executionPayload, err := blockData.Block.ExecutionPayload()
+	if err != nil || executionPayload == nil {
+		return nil, fmt.Errorf("block has no execution payload")
+	}
+	return executionPayload, nil
+}
+
 // handleBlockBodyDownload builds and returns the execution block in
 // eth_getBlockByHash JSON format, reconstructed from the beacon block's
 // execution payload.
 func handleBlockBodyDownload(w http.ResponseWriter, blockData *services.CombinedBlockResponse) error {
-	executionPayload, err := blockData.Block.ExecutionPayload()
-	if err != nil || executionPayload == nil {
-		return fmt.Errorf("block has no execution payload")
+	executionPayload, err := resolveExecutionPayload(blockData)
+	if err != nil {
+		return err
 	}
 
 	blockHash, _ := executionPayload.BlockHash()
@@ -344,9 +374,9 @@ func handleReceiptsDownload(ctx context.Context, w http.ResponseWriter, blockDat
 	slot := uint64(blockData.Header.Message.Slot)
 	blockRoot := blockData.Root[:]
 
-	executionPayload, err := blockData.Block.ExecutionPayload()
-	if err != nil || executionPayload == nil {
-		return fmt.Errorf("block has no execution payload")
+	executionPayload, err := resolveExecutionPayload(blockData)
+	if err != nil {
+		return err
 	}
 
 	blockHash, _ := executionPayload.BlockHash()
