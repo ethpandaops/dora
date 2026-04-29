@@ -521,17 +521,19 @@ func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedIn
 	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
 }
 
-// GetBlockBids returns the execution payload bids for a given parent block root.
+// GetBlockBids returns the execution payload bids for a given parent block root and slot.
 // It first checks the in-memory cache, then falls back to the database.
-func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root) []*dbtypes.BlockBid {
+// Filtering by slot is required because orphaned/skipped predecessor slots share
+// the same parent root as the canonical block that ends up replacing them.
+func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root, slot phase0.Slot) []*dbtypes.BlockBid {
 	// First check the in-memory cache
-	bids := indexer.blockBidCache.GetBidsForBlockRoot(parentBlockRoot)
+	bids := indexer.blockBidCache.GetBidsForBlockRoot(parentBlockRoot, slot)
 	if len(bids) > 0 {
 		return bids
 	}
 
 	// Fall back to database
-	return db.GetBidsForBlockRoot(indexer.ctx, parentBlockRoot[:])
+	return db.GetBidsForBlockRoot(indexer.ctx, parentBlockRoot[:], uint64(slot))
 }
 
 // StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.
