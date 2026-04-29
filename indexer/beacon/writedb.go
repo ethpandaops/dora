@@ -381,13 +381,20 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
 		}
 
-		votedCount := 0
-		for i := 0; i < assignedCount; i++ {
-			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
-				votedCount++
-			}
+		// clamp to bits actually present in the block to avoid out-of-range access on mismatch
+		if maxBits := len(syncAggregate.SyncCommitteeBits) * 8; assignedCount > maxBits {
+			assignedCount = maxBits
 		}
-		dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
+
+		if assignedCount > 0 {
+			votedCount := 0
+			for i := 0; i < assignedCount; i++ {
+				if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+					votedCount++
+				}
+			}
+			dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
+		}
 	}
 
 	if executionBlockNumber > 0 {
@@ -586,8 +593,12 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			dbEpoch.BLSChangeCount += uint64(len(blsToExecChanges))
 
 			if syncAggregate != nil && epochStatsValues != nil {
-				votedCount := 0
 				assignedCount := len(epochStatsValues.SyncCommitteeDuties)
+				if maxBits := len(syncAggregate.SyncCommitteeBits) * 8; assignedCount > maxBits {
+					assignedCount = maxBits
+				}
+
+				votedCount := 0
 				for i := 0; i < assignedCount; i++ {
 					if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
 						votedCount++
