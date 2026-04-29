@@ -1086,7 +1086,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	// Load execution payload bids for ePBS (gloas+) blocks
 	if blockData.Block.Version >= spec.DataVersionGloas {
-		getSlotPageBids(pageData)
+		getSlotPageBids(pageData, blockData.Header.Message.Slot)
 		getSlotPagePtcVotes(pageData, blockData, blockData.Header.Message.Slot)
 	}
 
@@ -1379,7 +1379,7 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 	pageData.ExecutionProofsCount = uint64(len(pageData.ExecutionProofs))
 }
 
-func getSlotPageBids(pageData *models.SlotPageBlockData) {
+func getSlotPageBids(pageData *models.SlotPageBlockData, blockSlot phase0.Slot) {
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot))
 
@@ -1392,6 +1392,12 @@ func getSlotPageBids(pageData *models.SlotPageBlockData) {
 	}
 
 	for _, bid := range bids {
+		// Filter out bids targeting other slots that share this slot's parent root
+		// (bids for orphaned slots between this block and its parent).
+		if bid.Slot != uint64(blockSlot) {
+			continue
+		}
+
 		bidData := &models.SlotPageBid{
 			ParentRoot:   bid.ParentRoot,
 			ParentHash:   bid.ParentHash,
