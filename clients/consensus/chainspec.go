@@ -119,7 +119,10 @@ type ChainSpecConfig struct {
 	BlobSchedule                     []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                                 check-if-fork:"FuluForkEpoch"`
 
 	// Gloas
-	MinBuilderWithdrawabilityDelay uint64 `yaml:"MIN_BUILDER_WITHDRAWABILITY_DELAY" check-if-fork:"GloasForkEpoch"`
+	MinBuilderWithdrawabilityDelay       uint64 `yaml:"MIN_BUILDER_WITHDRAWABILITY_DELAY"          check-if-fork:"GloasForkEpoch"`
+	ChurnLimitQuotientGloas              uint64 `yaml:"CHURN_LIMIT_QUOTIENT_GLOAS"                 check-if-fork:"GloasForkEpoch"`
+	ConsolidationChurnLimitQuotient      uint64 `yaml:"CONSOLIDATION_CHURN_LIMIT_QUOTIENT"         check-if-fork:"GloasForkEpoch"`
+	MaxPerEpochActivationChurnLimitGloas uint64 `yaml:"MAX_PER_EPOCH_ACTIVATION_CHURN_LIMIT_GLOAS" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpecPreset struct {
