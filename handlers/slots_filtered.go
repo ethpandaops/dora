@@ -63,8 +63,8 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var minBlobCount string
 	var maxBlobCount string
 	var forkIds string
-	var minEpoch string
-	var maxEpoch string
+	var minSlot string
+	var maxSlot string
 	var builder string
 
 	if urlArgs.Has("f") {
@@ -122,11 +122,11 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.fork") {
 			forkIds = urlArgs.Get("f.fork")
 		}
-		if urlArgs.Has("f.minepoch") {
-			minEpoch = urlArgs.Get("f.minepoch")
+		if urlArgs.Has("f.minslot") {
+			minSlot = urlArgs.Get("f.minslot")
 		}
-		if urlArgs.Has("f.maxepoch") {
-			maxEpoch = urlArgs.Get("f.maxepoch")
+		if urlArgs.Has("f.maxslot") {
+			maxSlot = urlArgs.Get("f.maxslot")
 		}
 		if urlArgs.Has("f.builder") {
 			builder = urlArgs.Get("f.builder")
@@ -135,7 +135,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(statusMask), uint8(payloadMask), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minEpoch, maxEpoch, builder, displayColumns)
+		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(statusMask), uint8(payloadMask), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -147,11 +147,11 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, statusMask uint8, payloadMask uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minEpoch string, maxEpoch string, builder string, displayColumns uint64) (*models.SlotsFilteredPageData, error) {
+func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, statusMask uint8, payloadMask uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minSlot string, maxSlot string, builder string, displayColumns uint64) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
-	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, statusMask, payloadMask, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minEpoch, maxEpoch, builder, displayColumns)
+	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, statusMask, payloadMask, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlotsPageData(pageCall.CallCtx, pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, statusMask, payloadMask, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minEpoch, maxEpoch, builder, displayColumns)
+		return buildFilteredSlotsPageData(pageCall.CallCtx, pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, statusMask, payloadMask, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotsFilteredPageData)
@@ -163,7 +163,7 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 	return pageData, pageErr
 }
 
-func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, statusMask uint8, payloadMask uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minEpoch string, maxEpoch string, builder string, displayColumns uint64) *models.SlotsFilteredPageData {
+func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, statusMask uint8, payloadMask uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minSlot string, maxSlot string, builder string, displayColumns uint64) *models.SlotsFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 	if graffiti != "" {
@@ -220,11 +220,11 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 	if forkIds != "" {
 		filterArgs.Add("f.fork", forkIds)
 	}
-	if minEpoch != "" {
-		filterArgs.Add("f.minepoch", minEpoch)
+	if minSlot != "" {
+		filterArgs.Add("f.minslot", minSlot)
 	}
-	if maxEpoch != "" {
-		filterArgs.Add("f.maxepoch", maxEpoch)
+	if maxSlot != "" {
+		filterArgs.Add("f.maxslot", maxSlot)
 	}
 	if builder != "" {
 		filterArgs.Add("f.builder", builder)
@@ -320,8 +320,8 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 		FilterMinBlobCount:     minBlobCount,
 		FilterMaxBlobCount:     maxBlobCount,
 		FilterForkIds:          forkIds,
-		FilterMinEpoch:         minEpoch,
-		FilterMaxEpoch:         maxEpoch,
+		FilterMinSlot:          minSlot,
+		FilterMaxSlot:          maxSlot,
 		FilterBuilder:          builder,
 
 		DisplayEpoch:        displayMap[1],
@@ -457,16 +457,16 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 			blockFilter.ForkIds = parsedForkIds
 		}
 	}
-	if minEpoch != "" {
-		minEp, err := strconv.ParseUint(minEpoch, 10, 64)
+	if minSlot != "" {
+		minSl, err := strconv.ParseUint(minSlot, 10, 64)
 		if err == nil {
-			blockFilter.MinEpoch = &minEp
+			blockFilter.MinSlot = &minSl
 		}
 	}
-	if maxEpoch != "" {
-		maxEp, err := strconv.ParseUint(maxEpoch, 10, 64)
+	if maxSlot != "" {
+		maxSl, err := strconv.ParseUint(maxSlot, 10, 64)
 		if err == nil {
-			blockFilter.MaxEpoch = &maxEp
+			blockFilter.MaxSlot = &maxSl
 		}
 	}
 	if builder != "" {

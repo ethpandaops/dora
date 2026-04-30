@@ -61,9 +61,19 @@ func BitAtVectorReversed(b []byte, i int) bool {
 }
 
 func SyncCommitteeParticipation(bits []byte, syncCommitteeSize uint64) float64 {
+	if syncCommitteeSize == 0 {
+		return 0
+	}
+	// Clamp to the bitvector length so a smaller-than-expected aggregate (eg. a
+	// devnet running a reduced SYNC_COMMITTEE_SIZE) doesn't panic.
+	maxBits := uint64(len(bits)) * 8
+	limit := syncCommitteeSize
+	if limit > maxBits {
+		limit = maxBits
+	}
 	participating := 0
-	for i := 0; i < int(syncCommitteeSize); i++ {
-		if BitAtVector(bits, i) {
+	for i := uint64(0); i < limit; i++ {
+		if BitAtVector(bits, int(i)) {
 			participating++
 		}
 	}

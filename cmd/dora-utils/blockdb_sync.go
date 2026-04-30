@@ -284,6 +284,8 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 
 		var payloadVersion uint64
 		var payloadBytes []byte
+		var balVersion uint64
+		var balBytes []byte
 
 		chainState := pool.GetChainState()
 		if chainState.IsEip7732Enabled(chainState.EpochOfSlot(phase0.Slot(slot))) {
@@ -296,6 +298,13 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal block execution payload for slot %d: %v", slot, err)
 			}
+
+			if msg := blockPayload.Message; msg != nil && msg.Payload != nil {
+				balVersion, balBytes, err = beacon.MarshalBlockAccessList(msg.Payload.BlockAccessList, true)
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal block access list for slot %d: %v", slot, err)
+				}
+			}
 		}
 
 		return &btypes.BlockData{
@@ -305,6 +314,8 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 			BodyData:       bodyBytes,
 			PayloadVersion: payloadVersion,
 			PayloadData:    payloadBytes,
+			BalVersion:     balVersion,
+			BalData:        balBytes,
 		}, nil
 	})
 	if err != nil {

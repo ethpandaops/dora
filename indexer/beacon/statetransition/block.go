@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/pk910/dynamic-ssz/sszutils"
 )
@@ -83,6 +84,15 @@ func (st *StateTransition) applyBlock(state *spec.VersionedBeaconState, block *s
 	bodyRoot, err := getBlockBodyRoot(block)
 	if err != nil {
 		return fmt.Errorf("failed to get body root: %w", err)
+	}
+
+	// process_parent_execution_payload (Gloas+): processes the parent payload's
+	// execution requests and settles its builder payment. Must run before
+	// process_block_header and process_withdrawals, since it updates
+	// state.latest_block_hash which process_withdrawals consults.
+	// New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_parent_execution_payload
+	if state.Version >= spec.DataVersionGloas {
+		processParentExecutionPayload(s, block)
 	}
 
 	// process_block_header
@@ -287,4 +297,83 @@ func getBlockBodyRoot(block *spec.VersionedSignedBeaconBlock) (phase0.Root, erro
 		}
 	}
 	return phase0.Root{}, fmt.Errorf("unsupported block version: %v", block.Version)
+}
+
+// processParentExecutionPayload applies the parent block's execution requests and
+// settles its builder payment when the current block builds on a full parent payload.
+// Spec: new first step of process_block in Gloas — payload envelopes no longer trigger
+// state transitions; instead each block processes its parent's delivered payload via
+// block.body.parent_execution_requests.
+//
+// New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_parent_execution_payload
+func processParentExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
+	if s.version < spec.DataVersionGloas {
+		return
+	}
+	if block.Gloas == nil || block.Gloas.Message == nil || block.Gloas.Message.Body == nil {
+		return
+	}
+	body := block.Gloas.Message.Body
+
+	parentBid := s.LatestExecutionPayloadBid
+	// Genesis: no prior committed payload bid — nothing to apply.
+	if parentBid == nil || parentBid.BlockHash == (phase0.Hash32{}) {
+		return
+	}
+
+	signedBid := body.SignedExecutionPayloadBid
+	if signedBid == nil || signedBid.Message == nil {
+		return
+	}
+	// Parent block was EMPTY (payload not delivered): the current bid's
+	// parent_block_hash references the grand-parent payload, not the parent.
+	// No requests to apply; no bid to settle.
+	if signedBid.Message.ParentBlockHash != parentBid.BlockHash {
+		return
+	}
+
+	// Parent was FULL — apply the parent's execution requests.
+	applyExecutionRequests(s, body.ParentExecutionRequests)
+
+	// Epoch-aware settle_builder_payment: the payment sits in the queue at a
+	// position determined by the parent's epoch relative to the current state's
+	// epoch. Spec handles 3 cases explicitly.
+	// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-apply_parent_execution_payload
+	slotsPerEpoch := s.specs.SlotsPerEpoch
+	parentSlot := parentBid.Slot
+	parentEpoch := uint64(parentSlot) / slotsPerEpoch
+	currentEpoch := uint64(s.currentEpoch())
+
+	switch {
+	case parentEpoch == currentEpoch:
+		settleBuilderPayment(s, slotsPerEpoch+uint64(parentSlot)%slotsPerEpoch)
+	case parentEpoch+1 == currentEpoch:
+		settleBuilderPayment(s, uint64(parentSlot)%slotsPerEpoch)
+	case parentBid.Value > 0:
+		// Multi-epoch skip — payment has already rotated out of the queue;
+		// append directly to pending withdrawals.
+		s.BuilderPendingWithdrawals = append(s.BuilderPendingWithdrawals, &gloas.BuilderPendingWithdrawal{
+			FeeRecipient: parentBid.FeeRecipient,
+			Amount:       parentBid.Value,
+			BuilderIndex: parentBid.BuilderIndex,
+		})
+	}
+
+	// Mark parent slot's payload as available and record its block hash.
+	s.setAvailabilityBit(parentSlot)
+	s.LatestBlockHash = parentBid.BlockHash
+}
+
+// settleBuilderPayment promotes a queued builder pending payment to a pending
+// withdrawal (if non-zero) and clears the queue slot.
+// New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-settle_builder_payment
+func settleBuilderPayment(s *stateAccessor, paymentIdx uint64) {
+	if paymentIdx >= uint64(len(s.BuilderPendingPayments)) {
+		return
+	}
+	payment := s.BuilderPendingPayments[paymentIdx]
+	if payment != nil && payment.Withdrawal != nil && payment.Withdrawal.Amount > 0 {
+		s.BuilderPendingWithdrawals = append(s.BuilderPendingWithdrawals, payment.Withdrawal)
+	}
+	s.BuilderPendingPayments[paymentIdx] = &gloas.BuilderPendingPayment{}
 }

@@ -11,6 +11,8 @@ const (
 	DepositContract              = "DEPOSIT_CONTRACT_ADDRESS"
 	ConsolidationRequestContract = "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS"
 	WithdrawalRequestContract    = "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS"
+	BeaconRootsContract          = "BEACON_ROOTS_ADDRESS"
+	HistoryStorageContract       = "HISTORY_STORAGE_ADDRESS"
 )
 
 type EthConfigFork struct {

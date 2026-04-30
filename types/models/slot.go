@@ -8,21 +8,23 @@ import (
 
 // SlotPageData is a struct to hold info for the slot details page
 type SlotPageData struct {
-	Slot                   uint64                `json:"slot"`
-	Epoch                  uint64                `json:"epoch"`
-	EpochFinalized         bool                  `json:"epoch_finalized"`
-	EpochParticipationRate float64               `json:"epoch_participation_rate"`
-	Ts                     time.Time             `json:"time"`
-	NextSlot               uint64                `json:"next_slot"`
-	PreviousSlot           uint64                `json:"prev_slot"`
-	Status                 uint16                `json:"status"`
-	Future                 bool                  `json:"future"`
-	Proposer               uint64                `json:"proposer"`
-	ProposerName           string                `json:"proposer_name"`
-	Block                  *SlotPageBlockData    `json:"block" ssz-type:"optional"`
-	Badges                 []*SlotPageBlockBadge `json:"badges"`
-	SlotBlocks             []*SlotPageSlotBlock  `json:"slot_blocks"`
-	TracoorUrl             string                `json:"tracoor_url"`
+	Slot                   uint64                  `json:"slot"`
+	Epoch                  uint64                  `json:"epoch"`
+	EpochFinalized         bool                    `json:"epoch_finalized"`
+	EpochParticipationRate float64                 `json:"epoch_participation_rate"`
+	Ts                     time.Time               `json:"time"`
+	NextSlot               uint64                  `json:"next_slot"`
+	PreviousSlot           uint64                  `json:"prev_slot"`
+	Status                 uint16                  `json:"status"`
+	Future                 bool                    `json:"future"`
+	Proposer               uint64                  `json:"proposer"`
+	ProposerName           string                  `json:"proposer_name"`
+	Block                  *SlotPageBlockData      `json:"block" ssz-type:"optional"`
+	Badges                 []*SlotPageBlockBadge   `json:"badges"`
+	SlotBlocks             []*SlotPageSlotBlock    `json:"slot_blocks"`
+	TracoorUrl             string                  `json:"tracoor_url"`
+	SystemContracts        []*types.SystemContract `json:"system_contracts"`
+	TransactionDetails     []*SlotPageTransaction  `json:"transaction_details"`
 }
 
 // SlotPageSlotBlock represents a block entry for the slot (for multi-block display)
@@ -129,6 +131,10 @@ type SlotPageExecutionData struct {
 	BlobBaseFeeEIP7918 *uint64   `json:"blob_base_fee_eip7918,omitempty" ssz-type:"optional"`
 	IsEIP7918Active    bool      `json:"is_eip7918_active"`
 	HasExecData        bool      `json:"has_exec_data"`
+
+	// EIP-7928
+	BlockAccessListHash []byte                          `json:"block_access_list_hash,omitempty"`
+	BlockAccessList     []*SlotPageBlockAccessListEntry `json:"block_access_list,omitempty"`
 }
 
 type SlotPageValidatorName struct {
@@ -379,4 +385,39 @@ type SlotPageExecutionProof struct {
 	BlockHash []byte `json:"block_hash"`
 	BlockRoot []byte `json:"block_root"`
 	ProofData []byte `json:"proof_data"`
+}
+
+type SlotPageBlockAccessListEntry struct {
+	Address        []byte                           `json:"address"`
+	StorageChanges []*SlotPageBlockBALStorageChange `json:"storage_changes,omitempty"`
+	StorageReads   [][]byte                         `json:"storage_reads,omitempty"`
+	BalanceChanges []*SlotPageBlockBALBalanceChange `json:"balance_changes,omitempty"`
+	NonceChanges   []*SlotPageBlockBALNonceChange   `json:"nonce_changes,omitempty"`
+	CodeChanges    []*SlotPageBlockBALCodeChange    `json:"code_changes,omitempty"`
+}
+
+type SlotPageBlockBALStorageChange struct {
+	Slot    []byte                               `json:"slot"`
+	Changes []*SlotPageBlockBALStorageSlotChange `json:"changes"`
+}
+
+type SlotPageBlockBALStorageSlotChange struct {
+	BlockAccessIndex uint16 `json:"block_access_index"`
+	Value            []byte `json:"value"`
+}
+
+type SlotPageBlockBALBalanceChange struct {
+	BlockAccessIndex uint16 `json:"block_access_index"`
+	Balance          []byte `json:"balance"` // uint256 as bytes
+}
+
+type SlotPageBlockBALNonceChange struct {
+	BlockAccessIndex uint16 `json:"block_access_index"`
+	Nonce            uint64 `json:"nonce"`
+}
+
+type SlotPageBlockBALCodeChange struct {
+	BlockAccessIndex uint16 `json:"block_access_index"`
+	Code             []byte `json:"code"`
+	CodeHash         []byte `json:"code_hash,omitempty"`
 }

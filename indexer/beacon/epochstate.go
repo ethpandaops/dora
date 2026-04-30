@@ -181,23 +181,9 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		// Skip for genesis (epoch 0) — the genesis state is already the correct pre-state.
 		var epochTransitionDur time.Duration
 		if resState.Version >= spec.DataVersionFulu && s.targetEpoch > 0 {
-			var payloadEnvelope *gloas.ExecutionPayloadEnvelope
-			if resState.Version >= spec.DataVersionGloas {
-				var executionPayload *gloas.SignedExecutionPayloadEnvelope
-				if block != nil {
-					executionPayload = block.GetExecutionPayload(ctx)
-				}
-				if executionPayload == nil {
-					executionPayload, _ = LoadExecutionPayload(ctx, client, s.slotRoot)
-				}
-				if executionPayload != nil {
-					payloadEnvelope = executionPayload.Message
-				}
-			}
-
 			epochStart := time.Now()
 			var transitionInfo statetransition.TransitionInfo
-			if err := statetransition.NewStateTransition(specs, client.indexer.dynSsz).PrepareEpochPreState(resState, s.targetEpoch, payloadEnvelope, &transitionInfo); err != nil {
+			if err := statetransition.NewStateTransition(specs, client.indexer.dynSsz).PrepareEpochPreState(resState, s.targetEpoch, &transitionInfo); err != nil {
 				return nil, fmt.Errorf("error applying epoch transition for epoch %v: %w", s.targetEpoch, err)
 			}
 			epochTransitionDur = time.Since(epochStart)
@@ -421,7 +407,7 @@ func (s *epochState) tryReplayFromParentState(
 
 	replayStart := time.Now()
 	var blockApplyTotal time.Duration
-	for i, blk := range epochBlocks {
+	for _, blk := range epochBlocks {
 		beaconBlock := blk.GetBlock(ctx)
 		if beaconBlock == nil {
 			return nil
@@ -433,8 +419,10 @@ func (s *epochState) tryReplayFromParentState(
 			return nil
 		}
 
-		// Verify post-block state root matches the block header (post-block,
-		// pre-payload for Gloas). Catches state transition implementation bugs.
+		// Verify post-block state root matches the block header. In Gloas, block
+		// processing now includes processing the parent payload's requests via
+		// block.body.parent_execution_requests, so the post-block HTR already
+		// reflects everything — no separate payload application step.
 		expectedStateRoot, _ := beaconBlock.StateRoot()
 		var gotStateRoot phase0.Root
 		var htrErr error
@@ -453,46 +441,8 @@ func (s *epochState) tryReplayFromParentState(
 				blk.Slot, gotStateRoot.String(), expectedStateRoot.String())
 			return nil
 		}
-		// Default: post-block HTR is the correct pre-state HTR for the next block
-		// (correct for Fulu and for Gloas when no payload is applied).
 		prevStateRoot = gotStateRoot
 		blockApplyTotal += time.Since(blockStart)
-
-		// For Gloas: apply execution payload if delivered AND accepted.
-		// A payload is "accepted" iff the next block in the canonical chain
-		// references it via bid.parent_block_hash; otherwise it was orphaned
-		// (the next block built on the parent payload instead) and must NOT
-		// be applied to the state.
-		// Skip the LAST block's payload — its acceptance is determined by the
-		// first block of the target epoch, which we don't have here. The
-		// PrepareEpochPreState call below handles it via the dep block payload.
-		isLastBlock := (i == len(epochBlocks)-1)
-		if parentState.Version >= spec.DataVersionGloas && !isLastBlock {
-			payload := blk.GetExecutionPayload(ctx)
-			if payload != nil && payload.Message != nil && payload.Message.Payload != nil {
-				nextBeaconBlock := epochBlocks[i+1].GetBlock(ctx)
-				if nextBeaconBlock == nil {
-					return nil
-				}
-				nextParentBlockHash, err := getBlockExecutionParentHash(nextBeaconBlock)
-				if err != nil {
-					client.logger.Warnf("replay: failed to read next bid parent hash at slot %v: %v", epochBlocks[i+1].Slot, err)
-					return nil
-				}
-
-				if payload.Message.Payload.BlockHash == nextParentBlockHash {
-					// Payload accepted by the next block — apply it.
-					if err := st.ApplyExecutionPayload(parentState, payload); err != nil {
-						client.logger.Warnf("replay: ApplyExecutionPayload failed at slot %v: %v", blk.Slot, err)
-						return nil
-					}
-					// Post-payload state HTR is recorded in the envelope itself.
-					prevStateRoot = payload.Message.StateRoot
-				}
-				// else: payload was orphaned (next block built on parent payload).
-				// Leave state unchanged; gotStateRoot is the correct hint.
-			}
-		}
 	}
 	blockReplayDur := time.Since(replayStart)
 
@@ -500,17 +450,9 @@ func (s *epochState) tryReplayFromParentState(
 	// the parent epoch's last block to the pre-state of the target epoch.
 	var epochTransitionDur time.Duration
 	if parentState.Version >= spec.DataVersionFulu {
-		var payloadEnvelope *gloas.ExecutionPayloadEnvelope
-		if parentState.Version >= spec.DataVersionGloas {
-			payload := depBlock.GetExecutionPayload(ctx)
-			if payload != nil {
-				payloadEnvelope = payload.Message
-			}
-		}
-
 		epochStart := time.Now()
 		var transitionInfo statetransition.TransitionInfo
-		if err := st.PrepareEpochPreState(parentState, s.targetEpoch, payloadEnvelope, &transitionInfo); err != nil {
+		if err := st.PrepareEpochPreState(parentState, s.targetEpoch, &transitionInfo); err != nil {
 			client.logger.Warnf("replay: epoch transition failed for epoch %v: %v", s.targetEpoch, err)
 			return nil
 		}

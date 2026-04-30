@@ -317,6 +317,50 @@ func unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version uint64, ssz []
 	return payload, nil
 }
 
+// blockAccessListFormatV1 is the version marker for a BAL stored as the raw
+// EIP-7928 RLP bytes (optionally compressed via the shared compressionFlag).
+// The BAL is persisted independently of the payload so that a re-delivered
+// payload with a pruned (empty) BAL cannot overwrite a previously stored one —
+// the blockdb write guard checks `BalVersion != 0 && len(BalData) > 0`.
+const blockAccessListFormatV1 = uint64(1)
+
+// MarshalBlockAccessList wraps raw EIP-7928 RLP BAL bytes for blockdb storage.
+// Returns (0, nil, nil) for empty input so callers can hand the result straight
+// to BlockData{BalVersion, BalData} and have the "BAL absent" case map to flags
+// not setting BlockDataFlagBal.
+func MarshalBlockAccessList(bal []byte, compress bool) (version uint64, data []byte, err error) {
+	if len(bal) == 0 {
+		return 0, nil, nil
+	}
+
+	version = blockAccessListFormatV1
+	data = bal
+	if compress {
+		data = compressBytes(data)
+		version |= compressionFlag
+	}
+	return
+}
+
+// UnmarshalBlockAccessList decodes a BAL byte slice previously produced by
+// MarshalBlockAccessList, returning the raw RLP bytes.
+func UnmarshalBlockAccessList(version uint64, data []byte) ([]byte, error) {
+	if (version & compressionFlag) != 0 {
+		decompressed, err := decompressBytes(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decompress BAL: %v", err)
+		}
+		data = decompressed
+		version &= ^compressionFlag
+	}
+
+	if version != blockAccessListFormatV1 {
+		return nil, fmt.Errorf("unknown BAL version: %d", version)
+	}
+
+	return data, nil
+}
+
 // getBlockExecutionExtraData returns the extra data from the execution payload of a versioned signed beacon block.
 func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
 	switch v.Version {

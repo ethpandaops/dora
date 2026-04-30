@@ -1,0 +1,1981 @@
+{{ define "block_access_list" }}
+  <style>
+    .bal-section {
+      margin-bottom: 2rem;
+    }
+    .bal-section-header {
+      background-color: rgba(108, 117, 125, 0.1);
+      padding: 0.75rem 1rem;
+      border-radius: 0.375rem 0.375rem 0 0;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .bal-section-content {
+      border: 1px solid rgba(108, 117, 125, 0.2);
+      border-top: none;
+      border-radius: 0 0 0.375rem 0.375rem;
+      padding: 1rem;
+    }
+    .bal-address-card {
+      border: 1px solid rgba(108, 117, 125, 0.2);
+      border-radius: 0.375rem;
+      margin: 0 0.5rem 0.5rem 0.5rem;
+      overflow: hidden;
+    }
+    .bal-address-header {
+      background-color: rgba(108, 117, 125, 0.05);
+      padding: 0.25rem 0.5rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .bal-address-header:hover {
+      background-color: rgba(108, 117, 125, 0.1);
+    }
+    .bal-address-header .chevron {
+      transition: transform 0.3s;
+    }
+    .bal-address-header.collapsed .chevron {
+      transform: rotate(-90deg);
+    }
+    .bal-address-summary {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .bal-summary-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      gap: 0.25rem;
+    }
+    .bal-summary-badge.storage-write {
+      background-color: rgba(13, 110, 253, 0.15);
+      color: #0d6efd;
+    }
+    .bal-summary-badge.storage-read {
+      background-color: rgba(108, 117, 125, 0.15);
+      color: #6c757d;
+    }
+    .bal-summary-badge.balance-change {
+      background-color: rgba(255, 193, 7, 0.15);
+      color: #cc9a06;
+    }
+    .bal-summary-badge.nonce-change {
+      background-color: rgba(13, 202, 240, 0.15);
+      color: #0a97b9;
+    }
+    .bal-summary-badge.code-change {
+      background-color: rgba(25, 135, 84, 0.15);
+      color: #157347;
+    }
+    .bal-address-content {
+      padding: 0;
+    }
+    .bal-change-item {
+      background-color: rgba(108, 117, 125, 0.05);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      margin-bottom: 0.25rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+    }
+    .bal-tx-index {
+      display: inline-block;
+      background-color: rgba(13, 110, 253, 0.2);
+      color: #0d6efd;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-right: 0.5rem;
+    }
+    .bal-value-text {
+      word-break: break-all;
+    }
+    .bal-empty {
+      color: #6c757d;
+      font-style: italic;
+    }
+    .bal-tab-content {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .bal-balance-value {
+      font-family: monospace;
+    }
+    .bal-balance-unit {
+      font-size: 0.875rem;
+      color: #6c757d;
+      margin-left: 0.25rem;
+    }
+    .bal-system-badge {
+      background-color: #6c757d;
+      color: #fff;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-left: 0.5rem;
+    }
+    .bal-address-tab-header {
+      padding: 0.25rem 0.75rem;
+    }
+    .bal-balance-diff {
+      font-size: 0.75rem;
+      margin-left: 0.5rem;
+    }
+    .bal-balance-diff.positive {
+      color: #198754;
+    }
+    .bal-balance-diff.negative {
+      color: #dc3545;
+    }
+    .bal-tx-index:hover {
+      cursor: pointer;
+      background-color: rgba(13, 110, 253, 0.3);
+    }
+    .tx-callout {
+      position: absolute;
+      background: var(--bs-body-bg, white);
+      color: var(--bs-body-color, #212529);
+      border: 1px solid var(--bs-border-color, #dee2e6);
+      border-radius: 0.375rem;
+      padding: 1rem;
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+      z-index: 1050;
+      min-width: 400px;
+      display: none;
+    }
+    .tx-callout-header {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    }
+    .tx-callout-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.25rem 0;
+      font-size: 0.875rem;
+    }
+    .tx-callout-label {
+      color: var(--bs-secondary, #6c757d);
+      margin-right: 1rem;
+    }
+    .tx-callout-value {
+      font-family: monospace;
+      word-break: break-all;
+      flex: 1;
+      text-align: right;
+    }
+    .tx-callout-copy {
+      margin-left: 0.5rem;
+      cursor: pointer;
+      color: var(--bs-secondary, #6c757d);
+    }
+    .tx-callout-copy:hover {
+      color: var(--bs-body-color, #495057);
+    }
+  </style>
+
+  <div class="bal-content">
+    {{ if .Block.ExecutionData.BlockAccessList }}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="h6 mb-0">Block Access List Entries</h4>
+        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#compareAccessListModal">
+          <i class="fas fa-exchange-alt me-2"></i>Compare Access List
+        </button>
+      </div>
+      {{ range $i, $entry := .Block.ExecutionData.BlockAccessList }}
+        <div class="bal-address-card">
+          <div class="bal-address-header" data-bs-toggle="collapse" data-bs-target="#bal-collapse-{{ $i }}" aria-expanded="false" aria-controls="bal-collapse-{{ $i }}">
+            <div>
+              <i class="fas fa-chevron-down chevron me-2"></i>
+              <i class="fas fa-wallet me-2"></i>
+              {{ ethAddressLink $entry.Address }}
+              {{ if isSystemContract $entry.Address $.SystemContracts }}
+                <span class="bal-system-badge">
+                  <i class="fas fa-cog me-1"></i>{{ getSystemContractName $entry.Address $.SystemContracts }}
+                </span>
+              {{ end }}
+            </div>
+            <div class="bal-address-summary">
+              {{ if $entry.StorageChanges }}
+                <span class="bal-summary-badge storage-write">
+                  <i class="fas fa-database"></i>
+                  {{ len $entry.StorageChanges }} writes
+                </span>
+              {{ end }}
+              {{ if $entry.StorageReads }}
+                <span class="bal-summary-badge storage-read">
+                  <i class="fas fa-eye"></i>
+                  {{ len $entry.StorageReads }} reads
+                </span>
+              {{ end }}
+              {{ if $entry.BalanceChanges }}
+                <span class="bal-summary-badge balance-change">
+                  <i class="fas fa-coins"></i>
+                  {{ len $entry.BalanceChanges }} balance
+                </span>
+              {{ end }}
+              {{ if $entry.NonceChanges }}
+                <span class="bal-summary-badge nonce-change">
+                  <i class="fas fa-hashtag"></i>
+                  {{ len $entry.NonceChanges }} nonce
+                </span>
+              {{ end }}
+              {{ if $entry.CodeChanges }}
+                <span class="bal-summary-badge code-change">
+                  <i class="fas fa-code"></i>
+                  {{ len $entry.CodeChanges }} code
+                </span>
+              {{ end }}
+              {{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) (not $entry.CodeChanges) }}
+                <span class="bal-summary-badge text-muted">
+                  <i class="fas fa-ghost"></i>
+                  no changes
+                </span>
+              {{ end }}
+            </div>
+          </div>
+          <div class="collapse" id="bal-collapse-{{ $i }}" data-address-index="{{ $i }}">
+            <div class="bal-address-content" data-rendered="false">
+              <!-- Content will be rendered on demand -->
+            </div>
+          </div>
+        </div>
+      {{ end }}
+    {{ else }}
+      <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        No block access list data available for this slot.
+      </div>
+    {{ end }}
+  </div>
+
+  <!-- Access List Comparison Modal -->
+  <div class="modal fade" id="compareAccessListModal" tabindex="-1" aria-labelledby="compareAccessListModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen-lg-down" style="max-width: 1600px;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="compareAccessListModalLabel">
+            <i class="fas fa-exchange-alt me-2"></i>Compare Access Lists
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="compareAccessListForm">
+            <!-- Tab navigation -->
+            <ul class="nav nav-tabs mb-3" id="accessListInputTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="json-tab" data-bs-toggle="tab" data-bs-target="#json-input" type="button" role="tab" aria-controls="json-input" aria-selected="true">
+                  <i class="fas fa-code me-2"></i>JSON Format
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="rlp-tab" data-bs-toggle="tab" data-bs-target="#rlp-input" type="button" role="tab" aria-controls="rlp-input" aria-selected="false">
+                  <i class="fas fa-file-code me-2"></i>RLP Format
+                </button>
+              </li>
+            </ul>
+
+            <!-- Tab content -->
+            <div class="tab-content" id="accessListInputTabContent">
+              <!-- JSON input tab -->
+              <div class="tab-pane fade show active" id="json-input" role="tabpanel" aria-labelledby="json-tab">
+                <div class="mb-3">
+                  <label for="jsonInput" class="form-label">JSON Encoded Access List</label>
+                  <textarea class="form-control font-monospace" id="jsonInput" rows="6" placeholder='[{"address":"0x...", "storage_changes":[...], ...}]' style="resize: vertical;"></textarea>
+                  <div class="form-text">Paste the access list as a JSON array of entries</div>
+                </div>
+              </div>
+
+              <!-- RLP input tab -->
+              <div class="tab-pane fade" id="rlp-input" role="tabpanel" aria-labelledby="rlp-tab">
+                <div class="mb-3">
+                  <label for="rlpInput" class="form-label">RLP Encoded Access List (Hex)</label>
+                  <div class="input-group">
+                    <span class="input-group-text">0x</span>
+                    <textarea class="form-control font-monospace" id="rlpInput" rows="6" placeholder="Enter RLP encoded access list in hex format..." style="resize: vertical;"></textarea>
+                  </div>
+                  <div class="form-text">Paste the RLP encoded access list data as hex (with or without 0x prefix)</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-2 mb-3">
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-search me-2"></i>Compare
+              </button>
+              <button type="button" class="btn btn-secondary" id="clearComparisonBtn">
+                <i class="fas fa-trash me-2"></i>Clear
+              </button>
+            </div>
+          </form>
+          
+          <!-- Loading spinner -->
+          <div id="comparisonLoading" class="text-center py-4" style="display: none;">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="mt-2" id="loadingText">Processing access list...</div>
+          </div>
+          
+          <!-- Error display -->
+          <div id="comparisonError" class="alert alert-danger" style="display: none;">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <span id="comparisonErrorText"></span>
+          </div>
+          
+          <!-- Comparison results -->
+          <div id="comparisonResults" style="display: none;">
+            <h6 class="mb-3">
+              <i class="fas fa-chart-bar me-2"></i>Comparison Results
+            </h6>
+            <div class="row">
+              <div class="col-md-6">
+                <div class="card">
+                  <div class="card-header">
+                    <h6 class="card-title mb-0">Block Access List</h6>
+                  </div>
+                  <div class="card-body">
+                    <div id="blockAccessListSummary"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="card">
+                  <div class="card-header">
+                    <h6 class="card-title mb-0">Provided Access List</h6>
+                  </div>
+                  <div class="card-body">
+                    <div id="providedAccessListSummary"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mt-4">
+              <h6 class="mb-3">
+                <i class="fas fa-list me-2"></i>Detailed Differences
+              </h6>
+              <div id="differencesList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // On-demand rendering system
+    const accessListRenderer = {
+      openAddresses: new Set(),
+      renderedContent: new Map(),
+      
+      renderAddressContent(addressIndex) {
+        const collapseEl = document.getElementById(`bal-collapse-${addressIndex}`);
+        const contentEl = collapseEl.querySelector('.bal-address-content');
+        
+        // Skip if already rendered
+        if (contentEl.dataset.rendered === 'true') {
+          return;
+        }
+        
+        const entry = window.currentBlockAccessList[addressIndex];
+        if (!entry) return;
+        
+        // Check if this is a no-changes entry
+        const hasChanges = entry.storage_changes || entry.storage_reads || 
+                          entry.balance_changes || entry.nonce_changes || entry.code_changes;
+        
+        if (!hasChanges) {
+          contentEl.innerHTML = `
+            <div class="p-3 text-center text-muted">
+              <i class="fas fa-info-circle fa-2x mb-3"></i>
+              <p class="mb-0">
+                This address was accessed during block execution but did not result in any state changes.
+              </p>
+              <p class="mt-2 mb-0 small">
+                Common reasons: contract calls that only read state, zero-value transfers, or calls to pure functions.
+              </p>
+            </div>
+          `;
+        } else {
+          // Create nav tabs
+          let navHtml = '<ul class="nav nav-tabs mb-0" role="tablist">';
+          let contentHtml = '<div class="tab-content bal-tab-content">';
+          let hasActiveTab = false;
+          
+          // Storage Changes tab
+          if (entry.storage_changes && entry.storage_changes.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-storage-${addressIndex}" type="button" data-tab-type="storage">
+                  <i class="fas fa-database me-1"></i>
+                  Storage Changes 
+                  <span class="badge bg-primary ms-1">${entry.storage_changes.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-storage-${addressIndex}" role="tabpanel" data-tab-type="storage"></div>`;
+            hasActiveTab = true;
+          }
+          
+          // Storage Reads tab
+          if (entry.storage_reads && entry.storage_reads.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-storage-reads-${addressIndex}" type="button" data-tab-type="storage-reads">
+                  <i class="fas fa-eye me-1"></i>
+                  Storage Reads
+                  <span class="badge bg-secondary ms-1">${entry.storage_reads.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-storage-reads-${addressIndex}" role="tabpanel" data-tab-type="storage-reads"></div>`;
+            hasActiveTab = true;
+          }
+          
+          // Balance Changes tab
+          if (entry.balance_changes && entry.balance_changes.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-balance-${addressIndex}" type="button" data-tab-type="balance">
+                  <i class="fas fa-coins me-1"></i>
+                  Balance Changes
+                  <span class="badge bg-warning text-dark ms-1">${entry.balance_changes.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-balance-${addressIndex}" role="tabpanel" data-tab-type="balance"></div>`;
+            hasActiveTab = true;
+          }
+          
+          // Nonce Changes tab
+          if (entry.nonce_changes && entry.nonce_changes.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-nonce-${addressIndex}" type="button" data-tab-type="nonce">
+                  <i class="fas fa-hashtag me-1"></i>
+                  Nonce Changes
+                  <span class="badge bg-info text-dark ms-1">${entry.nonce_changes.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-nonce-${addressIndex}" role="tabpanel" data-tab-type="nonce"></div>`;
+            hasActiveTab = true;
+          }
+          
+          // Code Changes tab
+          if (entry.code_changes && entry.code_changes.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-code-${addressIndex}" type="button" data-tab-type="code">
+                  <i class="fas fa-code me-1"></i>
+                  Code Changes
+                  <span class="badge bg-success ms-1">${entry.code_changes.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-code-${addressIndex}" role="tabpanel" data-tab-type="code"></div>`;
+            hasActiveTab = true;
+          }
+          
+          navHtml += '</ul>';
+          contentHtml += '</div>';
+          
+          contentEl.innerHTML = navHtml + contentHtml;
+          
+          // Set up tab event listeners for on-demand rendering
+          contentEl.querySelectorAll('.nav-link').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', (e) => {
+              const tabType = e.target.dataset.tabType;
+              const tabPane = contentEl.querySelector(`.tab-pane[data-tab-type="${tabType}"]`);
+              if (tabPane && !tabPane.dataset.rendered) {
+                this.renderTabContent(addressIndex, tabType, tabPane);
+              }
+            });
+          });
+          
+          // Render the initially active tab
+          const activeTab = contentEl.querySelector('.tab-pane.active');
+          if (activeTab && activeTab.dataset.tabType) {
+            this.renderTabContent(addressIndex, activeTab.dataset.tabType, activeTab);
+          }
+        }
+        
+        contentEl.dataset.rendered = 'true';
+        this.openAddresses.add(addressIndex);
+      },
+      
+      renderTabContent(addressIndex, tabType, tabPane) {
+        const entry = window.currentBlockAccessList[addressIndex];
+        if (!entry) return;
+        
+        let html = '';
+        
+        switch(tabType) {
+          case 'storage':
+            html = this.renderStorageChanges(entry.storage_changes);
+            break;
+          case 'storage-reads':
+            html = this.renderStorageReads(entry.storage_reads);
+            break;
+          case 'balance':
+            html = this.renderBalanceChanges(entry.balance_changes);
+            break;
+          case 'nonce':
+            html = this.renderNonceChanges(entry.nonce_changes);
+            break;
+          case 'code':
+            html = this.renderCodeChanges(entry.code_changes);
+            break;
+        }
+        
+        tabPane.innerHTML = html;
+        tabPane.dataset.rendered = 'true';
+        
+        // Re-attach transaction callout handlers
+        tabPane.querySelectorAll('.bal-tx-index').forEach(badge => {
+          badge.addEventListener('click', function(event) {
+            event.stopPropagation();
+            const match = this.textContent.match(/Tx (\d+)/);
+            if (match) {
+              const txIndex = parseInt(match[1]);
+              showTransactionCallout(txIndex, event);
+            }
+          });
+        });
+      },
+      
+      renderStorageChanges(storageChanges) {
+        if (!storageChanges || storageChanges.length === 0) return '';
+        
+        let html = `
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Storage Slot</th>
+                  <th>Changes</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        
+        storageChanges.forEach(storage => {
+          const slot = arrayToHex(storage.slot);
+          html += `
+            <tr>
+              <td class="text-monospace">${slot}</td>
+              <td>
+          `;
+          
+          if (storage.changes) {
+            storage.changes.forEach(change => {
+              const value = arrayToHex(change.value);
+              html += `
+                <div class="bal-change-item">
+                  <span class="bal-tx-index">Tx ${change.block_access_index}</span>
+                  <span class="bal-value-text">${value}</span>
+                </div>
+              `;
+            });
+          }
+          
+          html += `</td></tr>`;
+        });
+        
+        html += `</tbody></table></div>`;
+        return html;
+      },
+      
+      renderStorageReads(storageReads) {
+        if (!storageReads || storageReads.length === 0) return '';
+        
+        let html = '<div class="text-monospace" style="max-height: 300px; overflow-y: auto;">';
+        storageReads.forEach(slot => {
+          html += `<div class="bal-change-item">${arrayToHex(slot)}</div>`;
+        });
+        html += '</div>';
+        return html;
+      },
+      
+      renderBalanceChanges(balanceChanges) {
+        if (!balanceChanges || balanceChanges.length === 0) return '';
+        
+        let html = '<div>';
+        balanceChanges.forEach((change, index) => {
+          const txLabel = change.block_access_index === 0 ? 'Pre-execution' : 
+                          change.block_access_index === 65535 ? 'Post-execution' : 
+                          `Tx ${change.block_access_index}`;
+          
+          html += `
+            <div class="bal-change-item">
+              <span class="bal-tx-index">${txLabel}</span>
+              <span class="bal-balance-value">${formatBalance(change.balance)}</span>
+          `;
+          
+          if (index > 0) {
+            const prevBalance = balanceChanges[index - 1].balance;
+            html += renderBalanceDiff(change.balance, prevBalance);
+          }
+          
+          html += '</div>';
+        });
+        html += '</div>';
+        return html;
+      },
+      
+      renderNonceChanges(nonceChanges) {
+        if (!nonceChanges || nonceChanges.length === 0) return '';
+        
+        let html = '<div>';
+        nonceChanges.forEach(change => {
+          const txLabel = change.block_access_index === 0 ? 'Pre-execution' : 
+                          change.block_access_index === 65535 ? 'Post-execution' : 
+                          `Tx ${change.block_access_index}`;
+          
+          html += `
+            <div class="bal-change-item">
+              <span class="bal-tx-index">${txLabel}</span>
+              <span class="bal-value-text">Nonce: ${change.nonce}</span>
+            </div>
+          `;
+        });
+        html += '</div>';
+        return html;
+      },
+      
+      renderCodeChanges(codeChanges) {
+        if (!codeChanges || codeChanges.length === 0) return '';
+        
+        let html = '<div>';
+        codeChanges.forEach(change => {
+          const txLabel = change.block_access_index === 0 ? 'Pre-execution' : 
+                          change.block_access_index === 65535 ? 'Post-execution' : 
+                          `Tx ${change.block_access_index}`;
+          const codeHex = change.code ? arrayToHex(change.code) : '';
+          const codeLength = change.code ? change.code.length : 0;
+          
+          html += `
+            <div class="mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="bal-tx-index">${txLabel}</span>
+                <span class="text-muted">${codeLength} bytes</span>
+              </div>
+              <div class="bal-change-item text-break" style="max-height: 200px; overflow-y: auto;">
+                ${codeHex ? codeHex : '<span class="bal-empty">Empty code (self-destruct)</span>'}
+              </div>
+            </div>
+          `;
+        });
+        html += '</div>';
+        return html;
+      },
+      
+      clearAddressContent(addressIndex) {
+        // Clear rendered content to free memory
+        const collapseEl = document.getElementById(`bal-collapse-${addressIndex}`);
+        if (collapseEl) {
+          const contentEl = collapseEl.querySelector('.bal-address-content');
+          if (contentEl) {
+            contentEl.innerHTML = '';
+            contentEl.dataset.rendered = 'false';
+          }
+        }
+        this.openAddresses.delete(addressIndex);
+      },
+      
+      getMemoryUsage() {
+        return {
+          openAddresses: this.openAddresses.size,
+          totalAddresses: window.currentBlockAccessList.length
+        };
+      }
+    };
+    
+    // Helper functions
+    function formatBalance(balanceData) {
+      // Convert balance to ETH (assuming balanceData is in wei)
+      if (!balanceData) return '0 ETH';
+      
+      const weiValue = BigInt(arrayToHex(balanceData));
+      const ethValue = Number(weiValue) / 1e18;
+      
+      if (ethValue === 0) {
+        return '0 ETH';
+      } else if (ethValue >= 1) {
+        return ethValue.toFixed(6).replace(/\.?0+$/, '') + ' ETH';
+      } else {
+        return ethValue.toFixed(18).replace(/\.?0+$/, '') + ' ETH';
+      }
+    }
+    
+    function renderBalanceDiff(currentBalance, previousBalance) {
+      // Calculate actual balance difference
+      const current = BigInt(arrayToHex(currentBalance));
+      const previous = BigInt(arrayToHex(previousBalance));
+      const diff = current - previous;
+      
+      if (diff === 0n) return '';
+      
+      const ethDiff = Number(diff) / 1e18;
+      const absEthDiff = Math.abs(ethDiff);
+      const formattedDiff = absEthDiff >= 1 ? 
+        absEthDiff.toFixed(6).replace(/\.?0+$/, '') : 
+        absEthDiff.toFixed(18).replace(/\.?0+$/, '');
+      
+      const cssClass = diff > 0n ? 'positive' : 'negative';
+      const sign = diff > 0n ? '+' : '-';
+      
+      return `<span class="bal-balance-diff ${cssClass}"> ${sign}${formattedDiff} ETH</span>`;
+    }
+    
+    function arrayToHex(input) {
+      if (!input) return '0x';
+      
+      if (typeof input === 'string') {
+        if (input.startsWith('0x') || input.startsWith('0X')) {
+          return input.toLowerCase();
+        }
+        return '0x' + input.toLowerCase();
+      }
+      
+      if (Array.isArray(input) && input.length === 0) return '0x';
+      if (Array.isArray(input)) {
+        return '0x' + Array.from(input, byte => ('0' + (byte & 0xFF).toString(16)).slice(-2)).join('');
+      }
+      
+      return '0x' + input.toString(16);
+    }
+    
+    // Helper function to convert base64 to hex
+    function base64ToHex(base64) {
+      if (!base64) return null;
+      try {
+        // Decode base64 to binary string
+        const binaryString = atob(base64);
+        // Convert to hex
+        let hex = '';
+        for (let i = 0; i < binaryString.length; i++) {
+          const byte = binaryString.charCodeAt(i);
+          hex += ('0' + (byte & 0xFF).toString(16)).slice(-2);
+        }
+        return "0x" + hex;
+      } catch (e) {
+        return base64; // Return original if not valid base64
+      }
+    }
+    
+    // Function to recursively convert base64 fields to hex in an object
+    function convertBase64ToHex(obj) {
+      if (obj === null || obj === undefined) return obj;
+      
+      if (Array.isArray(obj)) {
+        // For arrays, check if it's a byte array (all numbers 0-255) or process recursively
+        if (obj.length > 0 && typeof obj[0] === 'number') {
+          // It's already a byte array, leave as is
+          return obj;
+        }
+        return obj.map(item => convertBase64ToHex(item));
+      }
+      
+      if (typeof obj === 'string') {
+        // Convert any string field from base64 to hex
+        return base64ToHex(obj);
+      }
+      
+      if (typeof obj === 'object') {
+        const converted = {};
+        for (const key in obj) {
+          if (obj.hasOwnProperty(key)) {
+            converted[key] = convertBase64ToHex(obj[key]);
+          }
+        }
+        return converted;
+      }
+      
+      return obj;
+    }
+    
+    // Store current block access list data with base64 to hex conversion
+    window.currentBlockAccessList = {{ if .Block.ExecutionData.BlockAccessList }}convertBase64ToHex(JSON.parse({{ includeJSON .Block.ExecutionData.BlockAccessList false }})){{ else }}[]{{ end }};
+    window.currentSlot = {{ .Slot }};
+  </script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize tooltips if needed
+      var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+      var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+      });
+      
+      // Handle chevron rotation and on-demand rendering
+      document.querySelectorAll('.bal-address-header').forEach(function(header) {
+        const target = header.getAttribute('data-bs-target');
+        const collapse = document.querySelector(target);
+        
+        if (collapse) {
+          const addressIndex = parseInt(collapse.dataset.addressIndex);
+          
+          collapse.addEventListener('show.bs.collapse', function() {
+            header.classList.remove('collapsed');
+            // Render content on demand when expanding
+            accessListRenderer.renderAddressContent(addressIndex);
+          });
+          
+          collapse.addEventListener('hide.bs.collapse', function() {
+            header.classList.add('collapsed');
+          });
+          
+          collapse.addEventListener('hidden.bs.collapse', function() {
+            // Clear content after collapse animation completes to free memory
+            // Only clear if we have many addresses open to maintain good UX
+            if (accessListRenderer.openAddresses.size > 10) {
+              accessListRenderer.clearAddressContent(addressIndex);
+            }
+          });
+          
+          // Set initial state
+          if (!collapse.classList.contains('show')) {
+            header.classList.add('collapsed');
+          }
+        }
+      });
+      
+      // Access list comparison functionality
+      const compareForm = document.getElementById('compareAccessListForm');
+      const jsonInput = document.getElementById('jsonInput');
+      const rlpInput = document.getElementById('rlpInput');
+      const clearBtn = document.getElementById('clearComparisonBtn');
+      const loadingDiv = document.getElementById('comparisonLoading');
+      const errorDiv = document.getElementById('comparisonError');
+      const errorText = document.getElementById('comparisonErrorText');
+      const resultsDiv = document.getElementById('comparisonResults');
+      const loadingText = document.getElementById('loadingText');
+      
+      compareForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Determine which tab is active
+        const activeTab = document.querySelector('#accessListInputTabs .nav-link.active');
+        const isJsonTab = activeTab.id === 'json-tab';
+        
+        let providedAccessList;
+        
+        // Show loading, hide error and results
+        loadingDiv.style.display = 'block';
+        errorDiv.style.display = 'none';
+        resultsDiv.style.display = 'none';
+        
+        try {
+          if (isJsonTab) {
+            // Handle JSON input
+            loadingText.textContent = 'Processing JSON access list...';
+            const jsonValue = jsonInput.value.trim();
+            if (!jsonValue) {
+              showError('Please enter a JSON encoded access list');
+              return;
+            }
+            
+            try {
+              providedAccessList = JSON.parse(jsonValue);
+              if (!Array.isArray(providedAccessList)) {
+                throw new Error('Access list must be an array');
+              }
+            } catch (parseError) {
+              throw new Error('Invalid JSON: ' + parseError.message);
+            }
+          } else {
+            // Handle RLP input
+            loadingText.textContent = 'Parsing RLP access list...';
+            const rlpValue = rlpInput.value.trim();
+            if (!rlpValue) {
+              showError('Please enter an RLP encoded access list');
+              return;
+            }
+            
+            // Parse the RLP access list via the server endpoint
+            const formData = new FormData();
+            formData.append('rlp', rlpValue);
+            
+            const response = await fetch(`/slot/${window.currentSlot}?action=parse-access-list`, {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(errorText || 'Failed to parse RLP access list');
+            }
+            
+            providedAccessList = await response.json();
+          }
+          
+          // Compare the access lists
+          compareAccessLists(window.currentBlockAccessList, providedAccessList);
+          
+        } catch (error) {
+          showError('Error processing access list: ' + error.message);
+        } finally {
+          loadingDiv.style.display = 'none';
+        }
+      });
+      
+      clearBtn.addEventListener('click', function() {
+        jsonInput.value = '';
+        rlpInput.value = '';
+        errorDiv.style.display = 'none';
+        resultsDiv.style.display = 'none';
+      });
+      
+      function showError(message) {
+        errorText.textContent = message;
+        errorDiv.style.display = 'block';
+        resultsDiv.style.display = 'none';
+      }
+      
+      function compareAccessLists(blockAccessList, providedAccessList) {
+        // Generate summaries
+        const blockSummary = generateAccessListSummary(blockAccessList, 'Block');
+        const providedSummary = generateAccessListSummary(providedAccessList, 'Provided');
+        
+        document.getElementById('blockAccessListSummary').innerHTML = blockSummary;
+        document.getElementById('providedAccessListSummary').innerHTML = providedSummary;
+        
+        // Check for non-standard field names and generate warning
+        const nonStandardWarning = checkForNonStandardFieldNames(providedAccessList);
+        
+        // Generate detailed differences
+        const differences = generateDetailedDifferences(blockAccessList, providedAccessList);
+        document.getElementById('differencesList').innerHTML = nonStandardWarning + differences;
+        
+        // Show results
+        resultsDiv.style.display = 'block';
+        errorDiv.style.display = 'none';
+      }
+      
+      // Convert snake_case to camelCase
+      function snakeToCamel(str) {
+        return str.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
+      }
+      
+      // Convert camelCase to snake_case
+      function camelToSnake(str) {
+        return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      }
+      
+      // Key normalization map for non-standard field names
+      const keyNormalizationMap = {
+        // Map various forms to our standard snake_case
+        'txIndex': 'block_access_index',
+        'tx_index': 'block_access_index',
+        'newValue': 'value',
+        'new_value': 'value',
+        'valueAfter': 'value',
+        'value_after': 'value',
+        'postBalance': 'balance',
+        'post_balance': 'balance',
+        'newNonce': 'nonce',
+        'new_nonce': 'nonce',
+        // Add more mappings as needed
+      };
+      
+      // Normalize a key to our standard format
+      function normalizeKey(key) {
+        // First check if it's in our special mapping
+        if (keyNormalizationMap[key]) {
+          return keyNormalizationMap[key];
+        }
+        // Otherwise, convert to snake_case if needed
+        return key.includes('_') ? key : camelToSnake(key);
+      }
+      
+      // Helper function to get field value with multiple possible key names
+      function getField(obj, standardKey) {
+        // Try the standard key first
+        if (obj[standardKey] !== undefined) {
+          return obj[standardKey];
+        }
+        
+        // Try camelCase version
+        const camelKey = snakeToCamel(standardKey);
+        if (obj[camelKey] !== undefined) {
+          return obj[camelKey];
+        }
+        
+        // Check all keys in the object for possible matches
+        for (const key in obj) {
+          if (normalizeKey(key) === standardKey) {
+            return obj[key];
+          }
+        }
+        
+        return null;
+      }
+      
+      // Check for non-standard field names according to EIP-7928
+      function checkForNonStandardFieldNames(accessList) {
+        const nonStandardFields = new Set();
+        
+        // Standard field names according to EIP-7928
+        const standardFields = new Set([
+          'address', 'storage_changes', 'storage_reads', 'balance_changes', 
+          'nonce_changes', 'code_changes', 'slot', 'changes', 'block_access_index', 
+          'value', 'balance', 'nonce', 'code'
+        ]);
+        
+        function checkObject(obj) {
+          if (!obj || typeof obj !== 'object') return;
+          
+          Object.keys(obj).forEach(key => {
+            // Check if this key would be normalized (meaning it's non-standard)
+            const normalizedKey = normalizeKey(key);
+            if (key !== normalizedKey && keyNormalizationMap[key]) {
+              nonStandardFields.add(key);
+            }
+            
+            // Also check if it's camelCase of a standard field
+            if (!standardFields.has(key) && standardFields.has(camelToSnake(key))) {
+              nonStandardFields.add(key);
+            }
+            
+            // Recursively check nested objects/arrays
+            if (Array.isArray(obj[key])) {
+              obj[key].forEach(item => checkObject(item));
+            } else if (typeof obj[key] === 'object') {
+              checkObject(obj[key]);
+            }
+          });
+        }
+        
+        accessList.forEach(entry => checkObject(entry));
+        
+        if (nonStandardFields.size > 0) {
+          const fieldList = Array.from(nonStandardFields).join(', ');
+          return `
+            <div class="alert alert-warning mb-3">
+              <div class="d-flex align-items-start">
+                <i class="fas fa-exclamation-triangle me-2 mt-1"></i>
+                <div>
+                  <strong>Non-standard field names detected:</strong> <code>${fieldList}</code>
+                  <br><small class="text-muted">
+                    The provided access list uses non-standard field names that differ from 
+                    <a href="https://eips.ethereum.org/EIPS/eip-7928" target="_blank" class="text-decoration-none">EIP-7928</a> 
+                    specification. The comparison will still work, but consider using standard field names for better compatibility.
+                  </small>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+        
+        return '';
+      }
+      
+      function generateAccessListSummary(accessList, label) {
+        const totalAddresses = accessList.length;
+        let totalStorageChanges = 0;
+        let totalStorageReads = 0;
+        let totalBalanceChanges = 0;
+        let totalNonceChanges = 0;
+        let totalCodeChanges = 0;
+        
+        accessList.forEach(entry => {
+          totalStorageChanges += (getField(entry, 'storage_changes') || []).length;
+          totalStorageReads += (getField(entry, 'storage_reads') || []).length;
+          totalBalanceChanges += (getField(entry, 'balance_changes') || []).length;
+          totalNonceChanges += (getField(entry, 'nonce_changes') || []).length;
+          totalCodeChanges += (getField(entry, 'code_changes') || []).length;
+        });
+        
+        return `
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="text-center">
+                <div class="h5 mb-0">${totalAddresses}</div>
+                <small class="text-muted">Addresses</small>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="text-center">
+                <div class="h5 mb-0">${totalStorageChanges}</div>
+                <small class="text-muted">Storage Changes</small>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="text-center">
+                <div class="h5 mb-0">${totalStorageReads}</div>
+                <small class="text-muted">Storage Reads</small>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="text-center">
+                <div class="h5 mb-0">${totalBalanceChanges}</div>
+                <small class="text-muted">Balance Changes</small>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="text-center">
+                <div class="h5 mb-0">${totalNonceChanges}</div>
+                <small class="text-muted">Nonce Changes</small>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="text-center">
+                <div class="h5 mb-0">${totalCodeChanges}</div>
+                <small class="text-muted">Code Changes</small>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      function generateDetailedDifferences(blockAccessList, providedAccessList) {
+        const differences = [];
+        
+        // Create maps for easy lookup
+        const blockMap = new Map();
+        const providedMap = new Map();
+        
+        blockAccessList.forEach(entry => {
+          const addrField = getField(entry, 'address');
+          const addr = arrayToHex(addrField);
+          blockMap.set(addr, entry);
+        });
+        
+        providedAccessList.forEach(entry => {
+          const addrField = getField(entry, 'address');
+          const addr = arrayToHex(addrField);
+          providedMap.set(addr, entry);
+        });
+        
+        // Find addresses only in block access list
+        blockMap.forEach((entry, address) => {
+          if (!providedMap.has(address)) {
+            differences.push({
+              type: 'missing-in-provided',
+              address: address,
+              description: 'Address present in block access list but missing in provided access list'
+            });
+          }
+        });
+        
+        // Find addresses only in provided access list
+        providedMap.forEach((entry, address) => {
+          if (!blockMap.has(address)) {
+            differences.push({
+              type: 'extra-in-provided',
+              address: address,
+              description: 'Address present in provided access list but missing in block access list'
+            });
+          }
+        });
+        
+        // Compare entries that exist in both
+        blockMap.forEach((blockEntry, address) => {
+          const providedEntry = providedMap.get(address);
+          if (providedEntry) {
+            const entryDiffs = compareAccessListEntries(address, blockEntry, providedEntry);
+            differences.push(...entryDiffs);
+          }
+        });
+        
+        if (differences.length === 0) {
+          return '<div class="alert alert-success"><i class="fas fa-check me-2"></i>Access lists are identical!</div>';
+        }
+        
+        let html = '';
+        differences.forEach(diff => {
+          let badgeClass = '';
+          let icon = '';
+          
+          switch (diff.type) {
+            case 'missing-in-provided':
+              badgeClass = 'bg-warning text-dark';
+              icon = 'fas fa-minus';
+              break;
+            case 'extra-in-provided':
+              badgeClass = 'bg-info text-dark';
+              icon = 'fas fa-plus';
+              break;
+            case 'data-mismatch':
+              badgeClass = 'bg-danger';
+              icon = 'fas fa-exclamation-triangle';
+              break;
+            default:
+              badgeClass = 'bg-secondary';
+              icon = 'fas fa-question';
+          }
+          
+          html += `
+            <div class="alert alert-light border-start border-3" style="border-color: var(--bs-primary) !important;">
+              <div class="d-flex align-items-start">
+                <div class="me-3">
+                  <span class="badge ${badgeClass}">
+                    <i class="${icon} me-1"></i>${diff.type.replace('-', ' ').toUpperCase()}
+                  </span>
+                </div>
+                <div class="flex-grow-1">
+                  <div class="fw-bold font-monospace">${diff.address}</div>
+                  ${diff.addressDiffs ? generateConsolidatedDiffDetails(diff.addressDiffs) : (diff.details || '')}
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        
+        return html;
+      }
+      
+      function compareAccessListEntries(address, blockEntry, providedEntry) {
+        const differences = [];
+        
+        // Get fields from both entries with format compatibility
+        const blockStorageChanges = getField(blockEntry, 'storage_changes') || [];
+        const providedStorageChanges = getField(providedEntry, 'storage_changes') || [];
+        
+        const blockStorageReads = getField(blockEntry, 'storage_reads') || [];
+        const providedStorageReads = getField(providedEntry, 'storage_reads') || [];
+        
+        const blockBalanceChanges = getField(blockEntry, 'balance_changes') || [];
+        const providedBalanceChanges = getField(providedEntry, 'balance_changes') || [];
+        
+        const blockNonceChanges = getField(blockEntry, 'nonce_changes') || [];
+        const providedNonceChanges = getField(providedEntry, 'nonce_changes') || [];
+        
+        const blockCodeChanges = getField(blockEntry, 'code_changes') || [];
+        const providedCodeChanges = getField(providedEntry, 'code_changes') || [];
+        
+        // Collect all differences for this address
+        const addressDiffs = [];
+        
+        // Check storage changes
+        if (!compareArraysDeep(blockStorageChanges, providedStorageChanges)) {
+          addressDiffs.push({
+            type: 'storage-changes',
+            blockData: blockStorageChanges,
+            providedData: providedStorageChanges
+          });
+        }
+        
+        // Check storage reads
+        if (!compareArraysDeep(blockStorageReads, providedStorageReads)) {
+          addressDiffs.push({
+            type: 'storage-reads',
+            blockData: blockStorageReads,
+            providedData: providedStorageReads
+          });
+        }
+        
+        // Check balance changes
+        if (!compareArraysDeep(blockBalanceChanges, providedBalanceChanges)) {
+          addressDiffs.push({
+            type: 'balance-changes',
+            blockData: blockBalanceChanges,
+            providedData: providedBalanceChanges
+          });
+        }
+        
+        // Check nonce changes
+        if (!compareArraysDeep(blockNonceChanges, providedNonceChanges)) {
+          addressDiffs.push({
+            type: 'nonce-changes',
+            blockData: blockNonceChanges,
+            providedData: providedNonceChanges
+          });
+        }
+        
+        // Check code changes
+        if (!compareArraysDeep(blockCodeChanges, providedCodeChanges)) {
+          addressDiffs.push({
+            type: 'code-changes',
+            blockData: blockCodeChanges,
+            providedData: providedCodeChanges
+          });
+        }
+        
+        // If there are any differences, create a single consolidated entry
+        if (addressDiffs.length > 0) {
+          differences.push({
+            type: 'data-mismatch',
+            address: address,
+            addressDiffs: addressDiffs
+          });
+        }
+        
+        return differences;
+      }
+      
+      // Generate consolidated diff details for all changes of an address
+      function generateConsolidatedDiffDetails(addressDiffs) {
+        let html = '';
+        
+        addressDiffs.forEach(diff => {
+          switch (diff.type) {
+            case 'storage-changes':
+              html += generateStorageChangesDetails(diff.blockData, diff.providedData);
+              break;
+            case 'storage-reads':
+              html += generateStorageReadsDetails(diff.blockData, diff.providedData);
+              break;
+            case 'balance-changes':
+              html += generateBalanceChangesDetails(diff.blockData, diff.providedData);
+              break;
+            case 'nonce-changes':
+              html += generateNonceChangesDetails(diff.blockData, diff.providedData);
+              break;
+            case 'code-changes':
+              html += generateCodeChangesDetails(diff.blockData, diff.providedData);
+              break;
+          }
+        });
+        
+        return html;
+      }
+      
+      // Generate detailed diff for storage changes
+      function generateStorageChangesDetails(blockChanges, providedChanges) {
+        let html = '<div class="mt-2"><small class="fw-bold">Storage Changes:</small>';
+        html += '<div class="row"><div class="col-6"><strong>Block Access List:</strong></div><div class="col-6"><strong>Provided Access List:</strong></div></div>';
+        
+        const maxLen = Math.max(blockChanges.length, providedChanges.length);
+        for (let i = 0; i < maxLen; i++) {
+          const blockChange = blockChanges[i];
+          const providedChange = providedChanges[i];
+          
+          // Check if slots match
+          const blockSlot = blockChange ? normalizeHex(arrayToHex(getField(blockChange, 'slot') || '')) : null;
+          const providedSlot = providedChange ? normalizeHex(arrayToHex(getField(providedChange, 'slot') || '')) : null;
+          const slotsMatch = blockSlot && providedSlot && blockSlot === providedSlot;
+          
+          html += '<div class="row small font-monospace">';
+          html += '<div class="col-6">';
+          if (blockChange) {
+            const slot = getField(blockChange, 'slot') || 'N/A';
+            const changes = getField(blockChange, 'changes') || [];
+            const slotClass = slotsMatch ? 'text-success' : (providedChange ? 'text-danger' : '');
+            html += `<div class="fw-bold ${slotClass}">Slot: ${arrayToHex(slot)}</div>`;
+            
+            changes.forEach((change, changeIdx) => {
+              const txIdx = getField(change, 'block_access_index') || 'N/A';
+              const value = getField(change, 'value') || 'N/A';
+              const valueHex = arrayToHex(value);
+              
+              // Find matching change in provided list
+              let valueMatches = false;
+              if (providedChange) {
+                const providedChanges = getField(providedChange, 'changes') || [];
+                const matchingChange = providedChanges.find(pc => 
+                  getField(pc, 'block_access_index') === txIdx
+                );
+                if (matchingChange) {
+                  const providedValue = arrayToHex(getField(matchingChange, 'value') || '');
+                  valueMatches = normalizeHex(valueHex) === normalizeHex(providedValue);
+                }
+              }
+              
+              const valueClass = valueMatches ? 'text-success' : 'text-danger';
+              html += `<div class="ms-3 ${valueClass}">Tx ${txIdx}: ${valueHex}</div>`;
+            });
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div>';
+          
+          html += '<div class="col-6">';
+          if (providedChange) {
+            const slot = getField(providedChange, 'slot') || 'N/A';
+            const changes = getField(providedChange, 'changes') || [];
+            const slotClass = slotsMatch ? 'text-success' : (blockChange ? 'text-danger' : '');
+            html += `<div class="fw-bold ${slotClass}">Slot: ${arrayToHex(slot)}</div>`;
+            
+            changes.forEach((change, changeIdx) => {
+              const txIdx = getField(change, 'block_access_index') || 'N/A';
+              const value = getField(change, 'value') || 'N/A';
+              const valueHex = arrayToHex(value);
+              
+              // Find matching change in block list
+              let valueMatches = false;
+              if (blockChange) {
+                const blockChanges = getField(blockChange, 'changes') || [];
+                const matchingChange = blockChanges.find(bc => 
+                  getField(bc, 'block_access_index') === txIdx
+                );
+                if (matchingChange) {
+                  const blockValue = arrayToHex(getField(matchingChange, 'value') || '');
+                  valueMatches = normalizeHex(valueHex) === normalizeHex(blockValue);
+                }
+              }
+              
+              const valueClass = valueMatches ? 'text-success' : 'text-danger';
+              html += `<div class="ms-3 ${valueClass}">Tx ${txIdx}: ${valueHex}</div>`;
+            });
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div></div>';
+          
+          if (i < maxLen - 1) html += '<hr class="my-1">';
+        }
+        
+        html += '</div>';
+        return html;
+      }
+      
+      // Generate detailed diff for storage reads
+      function generateStorageReadsDetails(blockReads, providedReads) {
+        let html = '<div class="mt-2"><small class="fw-bold">Storage Reads:</small>';
+        html += '<div class="row"><div class="col-6"><strong>Block Access List:</strong></div><div class="col-6"><strong>Provided Access List:</strong></div></div>';
+        
+        const maxLen = Math.max(blockReads.length, providedReads.length);
+        for (let i = 0; i < maxLen; i++) {
+          const blockRead = i < blockReads.length ? blockReads[i] : null;
+          const providedRead = i < providedReads.length ? providedReads[i] : null;
+          
+          // Check if the storage read values match
+          let valuesMatch = false;
+          if (blockRead && providedRead) {
+            const blockHex = normalizeHex(arrayToHex(blockRead));
+            const providedHex = normalizeHex(arrayToHex(providedRead));
+            valuesMatch = blockHex === providedHex;
+          }
+          
+          html += '<div class="row small font-monospace">';
+          html += '<div class="col-6">';
+          if (blockRead) {
+            const valueClass = valuesMatch ? 'text-success' : (providedRead ? 'text-danger' : '');
+            html += `<span class="${valueClass}">${arrayToHex(blockRead)}</span>`;
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div>';
+          
+          html += '<div class="col-6">';
+          if (providedRead) {
+            const valueClass = valuesMatch ? 'text-success' : (blockRead ? 'text-danger' : '');
+            html += `<span class="${valueClass}">${arrayToHex(providedRead)}</span>`;
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div></div>';
+        }
+        
+        html += '</div>';
+        return html;
+      }
+      
+      // Generate detailed diff for balance changes
+      function generateBalanceChangesDetails(blockChanges, providedChanges) {
+        let html = '<div class="mt-2"><small class="fw-bold">Balance Changes:</small>';
+        html += '<div class="row"><div class="col-6"><strong>Block Access List:</strong></div><div class="col-6"><strong>Provided Access List:</strong></div></div>';
+        
+        const maxLen = Math.max(blockChanges.length, providedChanges.length);
+        for (let i = 0; i < maxLen; i++) {
+          const blockChange = i < blockChanges.length ? blockChanges[i] : null;
+          const providedChange = i < providedChanges.length ? providedChanges[i] : null;
+          
+          // Check if balance changes match
+          let changesMatch = false;
+          if (blockChange && providedChange) {
+            const blockTxIdx = getField(blockChange, 'block_access_index');
+            const providedTxIdx = getField(providedChange, 'block_access_index');
+            const blockBalance = normalizeHex(arrayToHex(getField(blockChange, 'balance') || ''));
+            const providedBalance = normalizeHex(arrayToHex(getField(providedChange, 'balance') || ''));
+            changesMatch = blockTxIdx === providedTxIdx && blockBalance === providedBalance;
+          }
+          
+          html += '<div class="row small font-monospace">';
+          html += '<div class="col-6">';
+          if (blockChange) {
+            const txIdx = getField(blockChange, 'block_access_index') || 'N/A';
+            const balance = getField(blockChange, 'balance') || 'N/A';
+            const valueClass = changesMatch ? 'text-success' : (providedChange ? 'text-danger' : '');
+            html += `<span class="${valueClass}">Tx ${txIdx}: ${arrayToHex(balance)}</span>`;
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div>';
+          
+          html += '<div class="col-6">';
+          if (providedChange) {
+            const txIdx = getField(providedChange, 'block_access_index') || 'N/A';
+            const balance = getField(providedChange, 'balance') || 'N/A';
+            const valueClass = changesMatch ? 'text-success' : (blockChange ? 'text-danger' : '');
+            html += `<span class="${valueClass}">Tx ${txIdx}: ${arrayToHex(balance)}</span>`;
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div></div>';
+        }
+        
+        html += '</div>';
+        return html;
+      }
+      
+      // Generate detailed diff for nonce changes
+      function generateNonceChangesDetails(blockChanges, providedChanges) {
+        let html = '<div class="mt-2"><small class="fw-bold">Nonce Changes:</small>';
+        html += '<div class="row"><div class="col-6"><strong>Block Access List:</strong></div><div class="col-6"><strong>Provided Access List:</strong></div></div>';
+        
+        const maxLen = Math.max(blockChanges.length, providedChanges.length);
+        for (let i = 0; i < maxLen; i++) {
+          const blockChange = i < blockChanges.length ? blockChanges[i] : null;
+          const providedChange = i < providedChanges.length ? providedChanges[i] : null;
+          
+          // Check if nonce changes match
+          let changesMatch = false;
+          if (blockChange && providedChange) {
+            const blockTxIdx = getField(blockChange, 'block_access_index');
+            const providedTxIdx = getField(providedChange, 'block_access_index');
+            const blockNonce = getField(blockChange, 'nonce');
+            const providedNonce = getField(providedChange, 'nonce');
+            changesMatch = blockTxIdx === providedTxIdx && blockNonce === providedNonce;
+          }
+          
+          html += '<div class="row small font-monospace">';
+          html += '<div class="col-6">';
+          if (blockChange) {
+            const txIdx = getField(blockChange, 'block_access_index') || 'N/A';
+            const nonce = getField(blockChange, 'nonce') || 'N/A';
+            const valueClass = changesMatch ? 'text-success' : (providedChange ? 'text-danger' : '');
+            html += `<span class="${valueClass}">Tx ${txIdx}: ${nonce}</span>`;
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div>';
+          
+          html += '<div class="col-6">';
+          if (providedChange) {
+            const txIdx = getField(providedChange, 'block_access_index') || 'N/A';
+            const nonce = getField(providedChange, 'nonce') || 'N/A';
+            const valueClass = changesMatch ? 'text-success' : (blockChange ? 'text-danger' : '');
+            html += `<span class="${valueClass}">Tx ${txIdx}: ${nonce}</span>`;
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div></div>';
+        }
+        
+        html += '</div>';
+        return html;
+      }
+      
+      // Generate detailed diff for code changes
+      function generateCodeChangesDetails(blockChanges, providedChanges) {
+        let html = '<div class="mt-2"><small class="fw-bold">Code Changes:</small>';
+        html += '<div class="row"><div class="col-6"><strong>Block Access List:</strong></div><div class="col-6"><strong>Provided Access List:</strong></div></div>';
+        
+        const maxLen = Math.max(blockChanges.length, providedChanges.length);
+        for (let i = 0; i < maxLen; i++) {
+          const blockChange = i < blockChanges.length ? blockChanges[i] : null;
+          const providedChange = i < providedChanges.length ? providedChanges[i] : null;
+          
+          // Check if code changes match
+          let changesMatch = false;
+          if (blockChange && providedChange) {
+            const blockTxIdx = getField(blockChange, 'block_access_index');
+            const providedTxIdx = getField(providedChange, 'block_access_index');
+            const blockCode = normalizeHex(arrayToHex(getField(blockChange, 'code') || ''));
+            const providedCode = normalizeHex(arrayToHex(getField(providedChange, 'code') || ''));
+            changesMatch = blockTxIdx === providedTxIdx && blockCode === providedCode;
+          }
+          
+          html += '<div class="row small">';
+          html += '<div class="col-6">';
+          if (blockChange) {
+            const txIdx = getField(blockChange, 'block_access_index') || 'N/A';
+            const code = getField(blockChange, 'code') || '';
+            const codeHex = arrayToHex(code);
+            const codePreview = codeHex.length > 50 ? codeHex.substring(0, 50) + '...' : codeHex;
+            const valueClass = changesMatch ? 'text-success' : (providedChange ? 'text-danger' : '');
+            html += `<div class="${valueClass}">Tx ${txIdx}:</div><div class="font-monospace text-break ${valueClass}" style="word-break: break-all;">${codePreview}</div>`;
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div>';
+          
+          html += '<div class="col-6">';
+          if (providedChange) {
+            const txIdx = getField(providedChange, 'block_access_index') || 'N/A';
+            const code = getField(providedChange, 'code') || '';
+            const codeHex = arrayToHex(code);
+            const codePreview = codeHex.length > 50 ? codeHex.substring(0, 50) + '...' : codeHex;
+            const valueClass = changesMatch ? 'text-success' : (blockChange ? 'text-danger' : '');
+            html += `<div class="${valueClass}">Tx ${txIdx}:</div><div class="font-monospace text-break ${valueClass}" style="word-break: break-all;">${codePreview}</div>`;
+          } else {
+            html += '<em class="text-muted">Missing</em>';
+          }
+          html += '</div></div>';
+          
+          if (i < maxLen - 1) html += '<hr class="my-1">';
+        }
+        
+        html += '</div>';
+        return html;
+      }
+      
+      // Normalize hex values for comparison (removes padding differences)
+      function normalizeHex(value) {
+        if (!value) return '0x0';
+        
+        let hex = value;
+        if (typeof value === 'string') {
+          // Remove 0x prefix if present
+          hex = value.replace(/^0x/i, '');
+          // Remove leading zeros but keep at least one digit
+          hex = hex.replace(/^0+/, '') || '0';
+          // Return with lowercase 0x prefix
+          return '0x' + hex.toLowerCase();
+        }
+        
+        // For non-strings, convert first then normalize
+        return normalizeHex(arrayToHex(value));
+      }
+      
+      function arrayToHex(input) {
+        if (!input) return '0x';
+        
+        // If it's already a hex string, return it normalized
+        if (typeof input === 'string') {
+          if (input.startsWith('0x') || input.startsWith('0X')) {
+            return input.toLowerCase();
+          }
+          // Assume it's hex without prefix
+          return '0x' + input.toLowerCase();
+        }
+        
+        // If it's an array, convert to hex
+        if (Array.isArray(input) && input.length === 0) return '0x';
+        if (Array.isArray(input)) {
+          return '0x' + Array.from(input, byte => ('0' + (byte & 0xFF).toString(16)).slice(-2)).join('');
+        }
+        
+        // For other types, try to convert to string
+        return '0x' + input.toString(16);
+      }
+      
+      function arraysEqual(a, b) {
+        if (a.length !== b.length) return false;
+        return JSON.stringify(a) === JSON.stringify(b);
+      }
+      
+      // Deep comparison function that handles both snake_case and camelCase formats
+      function compareArraysDeep(arr1, arr2) {
+        if (arr1.length !== arr2.length) return false;
+        
+        // For simple arrays (like storage reads which are just byte arrays)
+        if (arr1.length === 0) return true;
+        if (typeof arr1[0] !== 'object') {
+          // Check if it's an array of hex strings that need normalization
+          if (arr1.length > 0 && typeof arr1[0] === 'string' && arr1[0].match(/^0x[0-9a-fA-F]*$/)) {
+            return arr1.every((val1, index) => {
+              const val2 = arr2[index];
+              return normalizeHex(val1) === normalizeHex(val2);
+            });
+          }
+          return JSON.stringify(arr1) === JSON.stringify(arr2);
+        }
+        
+        // For arrays of objects, compare each object considering field name variations
+        return arr1.every((item1, index) => {
+          const item2 = arr2[index];
+          return compareObjects(item1, item2);
+        });
+      }
+      
+      function compareObjects(obj1, obj2) {
+        // Get all unique field names from both objects
+        const allKeys = new Set([...Object.keys(obj1), ...Object.keys(obj2)]);
+        
+        // Normalize keys for comparison
+        const normalizedKeyMap = new Map();
+        allKeys.forEach(key => {
+          const normalizedKey = normalizeKey(key);
+          if (!normalizedKeyMap.has(normalizedKey)) {
+            normalizedKeyMap.set(normalizedKey, []);
+          }
+          normalizedKeyMap.get(normalizedKey).push(key);
+        });
+        
+        // Compare values for each normalized key
+        for (const [normalizedKey, keys] of normalizedKeyMap) {
+          // Get values from both objects using any available key format
+          let val1, val2;
+          for (const key of keys) {
+            if (obj1[key] !== undefined) val1 = obj1[key];
+            if (obj2[key] !== undefined) val2 = obj2[key];
+          }
+          
+          // If both values exist, compare them
+          if (val1 !== undefined || val2 !== undefined) {
+            if (Array.isArray(val1) && Array.isArray(val2)) {
+              if (!compareArraysDeep(val1, val2)) return false;
+            } else if (val1 && typeof val1 === 'object' && val2 && typeof val2 === 'object') {
+              if (!compareObjects(val1, val2)) return false;
+            } else {
+              // For primitive values, check if they're hex values that need normalization
+              if (typeof val1 === 'string' && typeof val2 === 'string' && 
+                  (val1.match(/^0x[0-9a-fA-F]*$/) || val2.match(/^0x[0-9a-fA-F]*$/))) {
+                // Compare normalized hex values
+                if (normalizeHex(val1) !== normalizeHex(val2)) return false;
+              } else {
+                // For other primitive values or null
+                if (JSON.stringify(val1) !== JSON.stringify(val2)) return false;
+              }
+            }
+          }
+        }
+        
+        return true;
+      }
+    });
+
+    // Transaction details for callouts
+    const transactionDetails = JSON.parse({{ includeJSON .TransactionDetails false }});
+    
+    // Transaction callout functionality
+    let currentCallout = null;
+    
+    function showTransactionCallout(txIndex, event) {
+      // Close existing callout
+      if (currentCallout) {
+        currentCallout.remove();
+      }
+      
+      // Get transaction count from the transaction details
+      const txCount = Object.keys(transactionDetails).length;
+      
+      // TX 0 is pre-execution system transaction
+      // TX 1 to txCount are actual transactions (0-based in array)
+      // TX txCount+1 is post-execution system transaction
+      let tx = null;
+      let isPreSystemTx = false;
+      let isPostSystemTx = false;
+      
+      if (txIndex === 0) {
+        isPreSystemTx = true;
+      } else if (txIndex === txCount + 1) {
+        isPostSystemTx = true;
+      } else {
+        tx = transactionDetails[txIndex - 1];
+      }
+      
+      // Create callout element
+      const callout = document.createElement('div');
+      callout.className = 'tx-callout';
+      
+      if (isPreSystemTx) {
+        // Pre-execution system transaction
+        callout.innerHTML = `
+          <div class="tx-callout-header">
+            <i class="fas fa-cog me-2"></i>Transaction ${txIndex} Details
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Type:</span>
+            <span class="tx-callout-value">Pre-execution System Transaction</span>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Description:</span>
+            <span class="tx-callout-value">State before block execution</span>
+          </div>
+        `;
+      } else if (isPostSystemTx) {
+        // Post-execution system transaction
+        callout.innerHTML = `
+          <div class="tx-callout-header">
+            <i class="fas fa-cogs me-2"></i>Transaction ${txIndex} Details
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Type:</span>
+            <span class="tx-callout-value">Post-execution System Transaction</span>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Description:</span>
+            <span class="tx-callout-value">System operations (e.g., withdrawals)</span>
+          </div>
+        `;
+      } else if (!tx) {
+        // Transaction not found
+        callout.innerHTML = `
+          <div class="tx-callout-header">
+            <i class="fas fa-exclamation-triangle me-2"></i>Transaction ${txIndex} Details
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Status:</span>
+            <span class="tx-callout-value">Transaction not found</span>
+          </div>
+        `;
+      } else {
+        // Regular transaction
+        callout.innerHTML = `
+          <div class="tx-callout-header">
+            <i class="fas fa-receipt me-2"></i>Transaction ${txIndex} Details
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Hash:</span>
+            <span class="tx-callout-value">0x${bytesToHex(tx.hash)}</span>
+            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('0x${bytesToHex(tx.hash)}')" title="Copy to clipboard"></i>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">From:</span>
+            <span class="tx-callout-value">${tx.from}</span>
+            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('${tx.from}')" title="Copy to clipboard"></i>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">To:</span>
+            <span class="tx-callout-value">${tx.to}</span>
+            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('${tx.to}')" title="Copy to clipboard"></i>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Value:</span>
+            <span class="tx-callout-value">${formatEthValue(tx.value)} ETH</span>
+          </div>
+          ${tx.func_name ? `
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Method:</span>
+            <span class="tx-callout-value">${tx.func_name}${tx.func_sig ? ` (${tx.func_sig})` : ''}</span>
+          </div>
+          ` : ''}
+          ${tx.datalen > 0 ? `
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Data:</span>
+            <span class="tx-callout-value">${tx.datalen} bytes</span>
+          </div>
+          ` : ''}
+        `;
+      }
+      
+      document.body.appendChild(callout);
+      currentCallout = callout;
+      
+      // Position callout near the clicked element
+      const rect = event.target.getBoundingClientRect();
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      
+      // Initial position to the right of the badge
+      callout.style.display = 'block';
+      const calloutRect = callout.getBoundingClientRect();
+      
+      let left = rect.right + scrollLeft + 5;
+      let top = rect.top + scrollTop - (calloutRect.height / 2) + (rect.height / 2);
+      
+      // Adjust if callout goes off right edge
+      if (left + calloutRect.width > window.innerWidth + scrollLeft) {
+        // Position to the left of the badge instead
+        left = rect.left + scrollLeft - calloutRect.width - 5;
+      }
+      
+      // Adjust if callout goes off bottom edge
+      if (top + calloutRect.height > window.innerHeight + scrollTop) {
+        top = window.innerHeight + scrollTop - calloutRect.height - 10;
+      }
+      
+      // Adjust if callout goes off top edge
+      if (top < scrollTop) {
+        top = scrollTop + 10;
+      }
+      
+      callout.style.left = left + 'px';
+      callout.style.top = top + 'px';
+      
+      // Close callout when clicking outside
+      setTimeout(() => {
+        document.addEventListener('click', closeCallout);
+      }, 100);
+    }
+    
+    function closeCallout(event) {
+      if (currentCallout && !currentCallout.contains(event.target) && !event.target.classList.contains('bal-tx-index')) {
+        currentCallout.remove();
+        currentCallout = null;
+        document.removeEventListener('click', closeCallout);
+      }
+    }
+    
+    function bytesToHex(bytes) {
+      if (typeof bytes === 'string') {
+        // Check if it's a base64 string
+        if (bytes.match(/^[A-Za-z0-9+/]+=*$/)) {
+          // Decode base64 to bytes
+          const decoded = atob(bytes);
+          let hex = '';
+          for (let i = 0; i < decoded.length; i++) {
+            hex += decoded.charCodeAt(i).toString(16).padStart(2, '0');
+          }
+          return hex;
+        } else {
+          // Already a hex string, remove 0x prefix if present
+          return bytes.replace(/^0x/i, '');
+        }
+      } else if (Array.isArray(bytes)) {
+        return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      return '';
+    }
+    
+    function formatEthValue(value) {
+      if (typeof value === 'number') {
+        if (value === 0) {
+          return '0';
+        } else if (value >= 1) {
+          return value.toFixed(6).replace(/\.?0+$/, '');
+        } else {
+          // For small values, use more decimal places
+          return value.toFixed(18).replace(/\.?0+$/, '');
+        }
+      }
+      return value.toString();
+    }
+    
+    function copyToClipboard(text) {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      // Show tooltip
+      const tooltip = document.createElement('div');
+      tooltip.textContent = 'Copied!';
+      tooltip.style.cssText = 'position: absolute; background: #333; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; z-index: 9999;';
+      document.body.appendChild(tooltip);
+      
+      const rect = event.target.getBoundingClientRect();
+      tooltip.style.left = rect.left + 'px';
+      tooltip.style.top = (rect.top - 25) + 'px';
+      
+      setTimeout(() => tooltip.remove(), 1000);
+    }
+    
+    // Add click handlers to all TX badges
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.bal-tx-index').forEach(badge => {
+        badge.addEventListener('click', function(event) {
+          event.stopPropagation();
+          const match = this.textContent.match(/Tx (\d+)/);
+          if (match) {
+            const txIndex = parseInt(match[1]);
+            showTransactionCallout(txIndex, event);
+          }
+        });
+      });
+    });
+  </script>
+{{ end }}

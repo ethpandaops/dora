@@ -380,10 +380,10 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 			GasLimit:     slot.EthGasLimit,
 		}
 
-		// Look up bid by parent root, then match by block hash and builder index
+		// Look up bid by parent root and slot, then match by block hash and builder index
 		var parentRoot phase0.Root
 		copy(parentRoot[:], slot.ParentRoot)
-		bids := indexer.GetBlockBids(parentRoot)
+		bids := indexer.GetBlockBids(parentRoot, phase0.Slot(slot.Slot))
 		for _, bid := range bids {
 			if bid.BuilderIndex == builderIndexInt64 && bytes.Equal(bid.BlockHash, slot.EthBlockHash) {
 				block.Value = bid.Value

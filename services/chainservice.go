@@ -424,24 +424,30 @@ func (bs *ChainService) GetSystemContractAddress(systemContract string) common.A
 }
 
 // GetSystemContractAddresses returns a map of all known system contract
-// addresses to their human-readable names. Includes deposit, withdrawal
-// request, and consolidation request contracts.
+// addresses to their human-readable labels (with EIP tags). Includes
+// deposit, withdrawal request, consolidation request, beacon roots, and
+// block hash history contracts.
 func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
-	result := make(map[common.Address]string, 4)
+	result := make(map[common.Address]string, 5)
+
+	labels := map[string]string{
+		exerpc.WithdrawalRequestContract:    "Withdrawal Request (EIP-7002)",
+		exerpc.ConsolidationRequestContract: "Consolidation Request (EIP-7251)",
+		exerpc.BeaconRootsContract:          "Beacon Roots (EIP-4788)",
+		exerpc.HistoryStorageContract:       "Block Hash History (EIP-2935)",
+	}
 
 	execChainState := bs.GetExecutionChainState()
 	if execChainState != nil {
-		withdrawalAddr := execChainState.GetSystemContractAddress(exerpc.WithdrawalRequestContract)
-		consolidationAddr := execChainState.GetSystemContractAddress(exerpc.ConsolidationRequestContract)
-		result[withdrawalAddr] = "Withdrawal Request"
-		result[consolidationAddr] = "Consolidation Request"
+		for name, label := range labels {
+			if addr := execChainState.GetSystemContractAddress(name); addr != (common.Address{}) {
+				result[addr] = label
+			}
+		}
 	} else {
 		for name, addr := range execution.DefaultSystemContractAddresses {
-			switch name {
-			case exerpc.WithdrawalRequestContract:
-				result[addr] = "Withdrawal Request"
-			case exerpc.ConsolidationRequestContract:
-				result[addr] = "Consolidation Request"
+			if label, ok := labels[name]; ok {
+				result[addr] = label
 			}
 		}
 	}
@@ -453,7 +459,7 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 		if specs != nil && len(specs.DepositContractAddress) == 20 {
 			var depositAddr common.Address
 			copy(depositAddr[:], specs.DepositContractAddress)
-			result[depositAddr] = "Deposit"
+			result[depositAddr] = "Deposit Contract"
 		}
 	}
 

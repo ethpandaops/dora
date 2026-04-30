@@ -46,9 +46,9 @@ func ReadConfig(cfg *types.Config, path string) error {
 		}
 	}
 
-	// ClientIndex selects a specific endpoint by index (0-based)
-	if cfg.BeaconApi.ClientIndex >= 0 && cfg.BeaconApi.ClientIndex < len(cfg.BeaconApi.Endpoints) {
-		selectedEndpoint := cfg.BeaconApi.Endpoints[cfg.BeaconApi.ClientIndex]
+	// ClientIndex selects a specific endpoint by index (0-based), when explicitly set
+	if cfg.BeaconApi.ClientIndex != nil && *cfg.BeaconApi.ClientIndex >= 0 && *cfg.BeaconApi.ClientIndex < len(cfg.BeaconApi.Endpoints) {
+		selectedEndpoint := cfg.BeaconApi.Endpoints[*cfg.BeaconApi.ClientIndex]
 		cfg.BeaconApi.Endpoints = []types.EndpointConfig{selectedEndpoint}
 	}
 
