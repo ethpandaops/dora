@@ -123,6 +123,9 @@ type ChainSpecConfig struct {
 	ChurnLimitQuotientGloas              uint64 `yaml:"CHURN_LIMIT_QUOTIENT_GLOAS"                 check-if-fork:"GloasForkEpoch"`
 	ConsolidationChurnLimitQuotient      uint64 `yaml:"CONSOLIDATION_CHURN_LIMIT_QUOTIENT"         check-if-fork:"GloasForkEpoch"`
 	MaxPerEpochActivationChurnLimitGloas uint64 `yaml:"MAX_PER_EPOCH_ACTIVATION_CHURN_LIMIT_GLOAS" check-if-fork:"GloasForkEpoch"`
+
+	// Heze
+	InclusionListDueBPS uint64 `yaml:"INCLUSION_LIST_DUE_BPS" check-if-fork:"HezeForkEpoch"`
 }
 
 type ChainSpecPreset struct {
