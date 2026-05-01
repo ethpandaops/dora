@@ -308,10 +308,7 @@ func getBlockBodyRoot(block *spec.VersionedSignedBeaconBlock) (phase0.Root, erro
 // settles its builder payment when the current block builds on a full parent payload.
 // Spec: new first step of process_block in Gloas — payload envelopes no longer trigger
 // state transitions; instead each block processes its parent's delivered payload via
-// block.body.parent_execution_requests.
-//
-// In Heze (EIP-7805) the body no longer carries parent_execution_requests, so the
-// requests-application step is skipped. Builder payment settlement still applies.
+// block.body.parent_execution_requests. Heze (EIP-7805) keeps the same body field.
 //
 // New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_parent_execution_payload
 func processParentExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
@@ -326,7 +323,7 @@ func processParentExecutionPayload(s *stateAccessor, block *spec.VersionedSigned
 		parentValue      phase0.Gwei
 		parentBuilderIdx gloas.BuilderIndex
 		parentFeeRecip   bellatrix.ExecutionAddress
-		parentRequests   *electra.ExecutionRequests // Gloas only; nil for Heze
+		parentRequests   *electra.ExecutionRequests
 	)
 
 	switch s.version {
@@ -365,6 +362,7 @@ func processParentExecutionPayload(s *stateAccessor, block *spec.VersionedSigned
 		parentValue = s.LatestExecutionPayloadBidHeze.Value
 		parentBuilderIdx = s.LatestExecutionPayloadBidHeze.BuilderIndex
 		parentFeeRecip = s.LatestExecutionPayloadBidHeze.FeeRecipient
+		parentRequests = body.ParentExecutionRequests
 	default:
 		return
 	}
@@ -380,10 +378,8 @@ func processParentExecutionPayload(s *stateAccessor, block *spec.VersionedSigned
 		return
 	}
 
-	// Parent was FULL — apply the parent's execution requests (Gloas only).
-	if parentRequests != nil {
-		applyExecutionRequests(s, parentRequests)
-	}
+	// Parent was FULL — apply the parent's execution requests.
+	applyExecutionRequests(s, parentRequests)
 
 	// Epoch-aware settle_builder_payment: the payment sits in the queue at a
 	// position determined by the parent's epoch relative to the current state's
