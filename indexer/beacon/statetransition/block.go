@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/pk910/dynamic-ssz/sszutils"
@@ -295,6 +296,10 @@ func getBlockBodyRoot(block *spec.VersionedSignedBeaconBlock) (phase0.Root, erro
 		if block.Gloas != nil && block.Gloas.Message != nil && block.Gloas.Message.Body != nil {
 			return block.Gloas.Message.Body.HashTreeRoot()
 		}
+	case spec.DataVersionHeze:
+		if block.Heze != nil && block.Heze.Message != nil && block.Heze.Message.Body != nil {
+			return block.Heze.Message.Body.HashTreeRoot()
+		}
 	}
 	return phase0.Root{}, fmt.Errorf("unsupported block version: %v", block.Version)
 }
@@ -305,42 +310,86 @@ func getBlockBodyRoot(block *spec.VersionedSignedBeaconBlock) (phase0.Root, erro
 // state transitions; instead each block processes its parent's delivered payload via
 // block.body.parent_execution_requests.
 //
+// In Heze (EIP-7805) the body no longer carries parent_execution_requests, so the
+// requests-application step is skipped. Builder payment settlement still applies.
+//
 // New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_parent_execution_payload
 func processParentExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
 	if s.version < spec.DataVersionGloas {
 		return
 	}
-	if block.Gloas == nil || block.Gloas.Message == nil || block.Gloas.Message.Body == nil {
+
+	var (
+		bidParentHash    phase0.Hash32
+		parentBlockHash  phase0.Hash32
+		parentSlot       phase0.Slot
+		parentValue      phase0.Gwei
+		parentBuilderIdx gloas.BuilderIndex
+		parentFeeRecip   bellatrix.ExecutionAddress
+		parentRequests   *electra.ExecutionRequests // Gloas only; nil for Heze
+	)
+
+	switch s.version {
+	case spec.DataVersionGloas:
+		if block.Gloas == nil || block.Gloas.Message == nil || block.Gloas.Message.Body == nil {
+			return
+		}
+		body := block.Gloas.Message.Body
+		if body.SignedExecutionPayloadBid == nil || body.SignedExecutionPayloadBid.Message == nil {
+			return
+		}
+		if s.LatestExecutionPayloadBid == nil {
+			return
+		}
+		bidParentHash = body.SignedExecutionPayloadBid.Message.ParentBlockHash
+		parentBlockHash = s.LatestExecutionPayloadBid.BlockHash
+		parentSlot = s.LatestExecutionPayloadBid.Slot
+		parentValue = s.LatestExecutionPayloadBid.Value
+		parentBuilderIdx = s.LatestExecutionPayloadBid.BuilderIndex
+		parentFeeRecip = s.LatestExecutionPayloadBid.FeeRecipient
+		parentRequests = body.ParentExecutionRequests
+	case spec.DataVersionHeze:
+		if block.Heze == nil || block.Heze.Message == nil || block.Heze.Message.Body == nil {
+			return
+		}
+		body := block.Heze.Message.Body
+		if body.SignedExecutionPayloadBid == nil || body.SignedExecutionPayloadBid.Message == nil {
+			return
+		}
+		if s.LatestExecutionPayloadBidHeze == nil {
+			return
+		}
+		bidParentHash = body.SignedExecutionPayloadBid.Message.ParentBlockHash
+		parentBlockHash = s.LatestExecutionPayloadBidHeze.BlockHash
+		parentSlot = s.LatestExecutionPayloadBidHeze.Slot
+		parentValue = s.LatestExecutionPayloadBidHeze.Value
+		parentBuilderIdx = s.LatestExecutionPayloadBidHeze.BuilderIndex
+		parentFeeRecip = s.LatestExecutionPayloadBidHeze.FeeRecipient
+	default:
 		return
 	}
-	body := block.Gloas.Message.Body
 
-	parentBid := s.LatestExecutionPayloadBid
 	// Genesis: no prior committed payload bid — nothing to apply.
-	if parentBid == nil || parentBid.BlockHash == (phase0.Hash32{}) {
-		return
-	}
-
-	signedBid := body.SignedExecutionPayloadBid
-	if signedBid == nil || signedBid.Message == nil {
+	if parentBlockHash == (phase0.Hash32{}) {
 		return
 	}
 	// Parent block was EMPTY (payload not delivered): the current bid's
 	// parent_block_hash references the grand-parent payload, not the parent.
 	// No requests to apply; no bid to settle.
-	if signedBid.Message.ParentBlockHash != parentBid.BlockHash {
+	if bidParentHash != parentBlockHash {
 		return
 	}
 
-	// Parent was FULL — apply the parent's execution requests.
-	applyExecutionRequests(s, body.ParentExecutionRequests)
+	// Parent was FULL — apply the parent's execution requests (Gloas only).
+	if parentRequests != nil {
+		applyExecutionRequests(s, parentRequests)
+	}
 
 	// Epoch-aware settle_builder_payment: the payment sits in the queue at a
 	// position determined by the parent's epoch relative to the current state's
 	// epoch. Spec handles 3 cases explicitly.
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-apply_parent_execution_payload
 	slotsPerEpoch := s.specs.SlotsPerEpoch
-	parentSlot := parentBid.Slot
 	parentEpoch := uint64(parentSlot) / slotsPerEpoch
 	currentEpoch := uint64(s.currentEpoch())
 
@@ -349,19 +398,19 @@ func processParentExecutionPayload(s *stateAccessor, block *spec.VersionedSigned
 		settleBuilderPayment(s, slotsPerEpoch+uint64(parentSlot)%slotsPerEpoch)
 	case parentEpoch+1 == currentEpoch:
 		settleBuilderPayment(s, uint64(parentSlot)%slotsPerEpoch)
-	case parentBid.Value > 0:
+	case parentValue > 0:
 		// Multi-epoch skip — payment has already rotated out of the queue;
 		// append directly to pending withdrawals.
 		s.BuilderPendingWithdrawals = append(s.BuilderPendingWithdrawals, &gloas.BuilderPendingWithdrawal{
-			FeeRecipient: parentBid.FeeRecipient,
-			Amount:       parentBid.Value,
-			BuilderIndex: parentBid.BuilderIndex,
+			FeeRecipient: parentFeeRecip,
+			Amount:       parentValue,
+			BuilderIndex: parentBuilderIdx,
 		})
 	}
 
 	// Mark parent slot's payload as available and record its block hash.
 	s.setAvailabilityBit(parentSlot)
-	s.LatestBlockHash = parentBid.BlockHash
+	s.LatestBlockHash = parentBlockHash
 }
 
 // settleBuilderPayment promotes a queued builder pending payment to a pending

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/altair"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
@@ -128,6 +129,10 @@ func processAttestations(s *stateAccessor, block *spec.VersionedSignedBeaconBloc
 	case spec.DataVersionGloas:
 		if block.Gloas != nil && block.Gloas.Message != nil && block.Gloas.Message.Body != nil {
 			attestations = block.Gloas.Message.Body.Attestations
+		}
+	case spec.DataVersionHeze:
+		if block.Heze != nil && block.Heze.Message != nil && block.Heze.Message.Body != nil {
+			attestations = block.Heze.Message.Body.Attestations
 		}
 	}
 
@@ -505,17 +510,44 @@ func processExecutionPayloadBid(s *stateAccessor, block *spec.VersionedSignedBea
 	if s.version < spec.DataVersionGloas {
 		return
 	}
-	if block.Gloas == nil || block.Gloas.Message == nil || block.Gloas.Message.Body == nil {
+
+	var (
+		amount       phase0.Gwei
+		feeRecipient bellatrix.ExecutionAddress
+		builderIdx   gloas.BuilderIndex
+	)
+
+	switch s.version {
+	case spec.DataVersionGloas:
+		if block.Gloas == nil || block.Gloas.Message == nil || block.Gloas.Message.Body == nil {
+			return
+		}
+		signedBid := block.Gloas.Message.Body.SignedExecutionPayloadBid
+		if signedBid == nil || signedBid.Message == nil {
+			return
+		}
+		bid := signedBid.Message
+		amount = bid.Value
+		feeRecipient = bid.FeeRecipient
+		builderIdx = bid.BuilderIndex
+		// Cache the signed execution payload bid (always, regardless of amount)
+		s.LatestExecutionPayloadBid = bid
+	case spec.DataVersionHeze:
+		if block.Heze == nil || block.Heze.Message == nil || block.Heze.Message.Body == nil {
+			return
+		}
+		signedBid := block.Heze.Message.Body.SignedExecutionPayloadBid
+		if signedBid == nil || signedBid.Message == nil {
+			return
+		}
+		bid := signedBid.Message
+		amount = bid.Value
+		feeRecipient = bid.FeeRecipient
+		builderIdx = bid.BuilderIndex
+		s.LatestExecutionPayloadBidHeze = bid
+	default:
 		return
 	}
-
-	signedBid := block.Gloas.Message.Body.SignedExecutionPayloadBid
-	if signedBid == nil || signedBid.Message == nil {
-		return
-	}
-
-	bid := signedBid.Message
-	amount := bid.Value
 
 	// Record the pending payment if there is some payment
 	if amount > 0 {
@@ -525,16 +557,13 @@ func processExecutionPayloadBid(s *stateAccessor, block *spec.VersionedSignedBea
 			s.BuilderPendingPayments[paymentIdx] = &gloas.BuilderPendingPayment{
 				Weight: 0,
 				Withdrawal: &gloas.BuilderPendingWithdrawal{
-					FeeRecipient: bid.FeeRecipient,
+					FeeRecipient: feeRecipient,
 					Amount:       amount,
-					BuilderIndex: bid.BuilderIndex,
+					BuilderIndex: builderIdx,
 				},
 			}
 		}
 	}
-
-	// Cache the signed execution payload bid (always, regardless of amount)
-	s.LatestExecutionPayloadBid = bid
 }
 
 // processSyncAggregate processes the sync committee aggregate.

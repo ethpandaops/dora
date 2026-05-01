@@ -296,9 +296,9 @@ func isParentBlockFull(s *stateAccessor) bool {
 		return true // Pre-Gloas: always full
 	}
 
-	if s.LatestExecutionPayloadBid == nil {
+	if !s.hasLatestPayloadBid() {
 		return false
 	}
 
-	return s.LatestExecutionPayloadBid.BlockHash == s.LatestBlockHash
+	return s.latestPayloadBlockHash() == s.LatestBlockHash
 }
