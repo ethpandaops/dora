@@ -20,6 +20,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/heze"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
@@ -38,6 +39,12 @@ type BeaconClient struct {
 	clientSvc  eth2client.Service
 	logger     logrus.FieldLogger
 }
+
+const (
+	hezeSignedBlockContentsDecodeError = "failed to decode heze signed block contents"
+	hezeProposerSlashingsFieldMarker   = "ProposerSlashings"
+	hezeIncorrectOffsetError           = "incorrect offset"
+)
 
 // NewBeaconClient is used to create a new beacon client
 func NewBeaconClient(name, endpoint string, headers map[string]string, sshcfg *sshtunnel.SshConfig, disableSSZ bool, logger logrus.FieldLogger) (*BeaconClient, error) {
@@ -384,6 +391,75 @@ func (bc *BeaconClient) GetBlockHeaderBySlot(ctx context.Context, slot phase0.Sl
 	return result.Data, nil
 }
 
+type directSignedBeaconBlockResponse struct {
+	Version string          `json:"version"`
+	Data    json.RawMessage `json:"data"`
+}
+
+func isHezeSignedBlockContentsDecodeError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	return strings.Contains(errStr, hezeSignedBlockContentsDecodeError) &&
+		strings.Contains(errStr, hezeProposerSlashingsFieldMarker) &&
+		strings.Contains(errStr, hezeIncorrectOffsetError)
+}
+
+func (bc *BeaconClient) getBlockBodyByBlockrootJSON(ctx context.Context, blockroot phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
+	requrl := fmt.Sprintf("%s/eth/v2/beacon/blocks/0x%x", bc.endpoint, blockroot)
+	logurl := getRedactedURL(requrl)
+
+	req, err := nethttp.NewRequestWithContext(ctx, "GET", requrl, nethttp.NoBody)
+	if err != nil {
+		return nil, err
+	}
+
+	for headerKey, headerVal := range bc.headers {
+		req.Header.Set(headerKey, headerVal)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	client := &nethttp.Client{Timeout: time.Second * 300}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		if resp.StatusCode == nethttp.StatusNotFound {
+			return nil, nil
+		}
+
+		data, _ := io.ReadAll(resp.Body)
+		bc.logger.Debugf("RPC Error %v: %v", resp.StatusCode, data)
+
+		return nil, fmt.Errorf("url: %v, error-response: %s", logurl, data)
+	}
+
+	var response directSignedBeaconBlockResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("error parsing json response: %v", err)
+	}
+
+	if !strings.EqualFold(response.Version, "heze") {
+		return nil, fmt.Errorf("unsupported direct JSON block version %q", response.Version)
+	}
+
+	block := &spec.VersionedSignedBeaconBlock{
+		Version: spec.DataVersionHeze,
+		Heze:    &heze.SignedBeaconBlock{},
+	}
+	if err := block.Heze.UnmarshalJSON(response.Data); err != nil {
+		return nil, fmt.Errorf("failed to decode heze signed beacon block: %v", err)
+	}
+
+	return block, nil
+}
+
 func (bc *BeaconClient) GetBlockBodyByBlockroot(ctx context.Context, blockroot phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
 	provider, isProvider := bc.clientSvc.(eth2client.SignedBeaconBlockProvider)
 	if !isProvider {
@@ -399,6 +475,10 @@ func (bc *BeaconClient) GetBlockBodyByBlockroot(ctx context.Context, blockroot p
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
 			return nil, nil
+		}
+
+		if isHezeSignedBlockContentsDecodeError(err) {
+			return bc.getBlockBodyByBlockrootJSON(ctx, blockroot)
 		}
 
 		return nil, err

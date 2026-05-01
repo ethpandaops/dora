@@ -66,7 +66,8 @@ type Client struct {
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
 	logger := pool.logger.WithField("client", endpoint.Name)
 
-	rpcClient, err := rpc.NewBeaconClient(endpoint.Name, endpoint.URL, endpoint.Headers, endpoint.SshConfig, endpoint.DisableSSZ, logger)
+	// Temporary: force JSON beacon API requests until go-eth2-client gains Heze/Gloas SSZ contents/state support.
+	rpcClient, err := rpc.NewBeaconClient(endpoint.Name, endpoint.URL, endpoint.Headers, endpoint.SshConfig, true, logger)
 	if err != nil {
 		return nil, err
 	}
