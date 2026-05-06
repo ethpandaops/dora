@@ -11,7 +11,6 @@ require (
 	github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c
 	github.com/ethpandaops/ethwallclock v0.4.0
 	github.com/ethpandaops/go-eth2-client v0.1.2-0.20260501104109-c9d30c8a0e31
-	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
@@ -21,6 +20,7 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/libp2p/go-libp2p v0.43.0
 	github.com/mashingan/smapping v0.1.19
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v1.3.1
@@ -78,7 +78,6 @@ require (
 	github.com/gofrs/flock v0.12.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
-	github.com/google/pprof v0.0.0-20250923004556-9e5a51aed1e8 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -220,14 +219,12 @@ require (
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
-	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/r3labs/sse/v2 v2.10.0 // indirect
-	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
@@ -249,8 +246,4 @@ require (
 	gopkg.in/Knetic/govaluate.v3 v3.0.0
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0
-	modernc.org/libc v1.68.0 // indirect
-	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.46.1 // indirect
 )
