@@ -750,14 +750,19 @@ func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.Pendin
 
 // getStateBuilderPendingWithdrawals returns the builder pending withdrawals from a versioned beacon state.
 func getStateBuilderPendingWithdrawals(v *spec.VersionedBeaconState) ([]*gloas.BuilderPendingWithdrawal, error) {
-	if v.Version < spec.DataVersionGloas {
-		return nil, nil // no builder pending withdrawals before gloas
+	switch v.Version {
+	case spec.DataVersionGloas:
+		if v.Gloas == nil {
+			return nil, errors.New("no gloas state")
+		}
+		return v.Gloas.BuilderPendingWithdrawals, nil
+	case spec.DataVersionHeze:
+		if v.Heze == nil {
+			return nil, errors.New("no heze state")
+		}
+		return v.Heze.BuilderPendingWithdrawals, nil
 	}
-	if v.Gloas == nil {
-		return nil, errors.New("no gloas state")
-	}
-
-	return v.Gloas.BuilderPendingWithdrawals, nil
+	return nil, nil // no builder pending withdrawals before gloas
 }
 
 // getStatePendingConsolidations returns the pending consolidations from a versioned beacon state.

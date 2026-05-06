@@ -24,7 +24,10 @@
           {{ html "<!-- ko if: payload_status === 1 -->" }}
           <span class="badge bg-success" data-bs-toggle="tooltip" data-bs-placement="top" title="The attesting validators have received the execution payload">FULL</span>
           {{ html "<!-- /ko -->" }}
-          {{ html "<!-- ko if: payload_status === 0 -->" }}
+          {{ html "<!-- ko if: payload_status === 0 && beacon_block_slot === slot -->" }}
+          <span class="badge bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="Attestation made before the execution payload was observed for the head slot">PENDING</span>
+          {{ html "<!-- /ko -->" }}
+          {{ html "<!-- ko if: payload_status === 0 && beacon_block_slot !== slot -->" }}
           <span class="badge bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="The attesting validators have not received the execution payload">EMPTY</span>
           {{ html "<!-- /ko -->" }}
           {{ html "<!-- ko if: payload_status !== null && payload_status !== 0 && payload_status !== 1 -->" }}

@@ -11,9 +11,13 @@
             <div class="col-md-10">
               {{ $proof.ProofId }}
               <span class="text-muted ms-2">
-                {{ if eq $proof.ProofId 0 }}(SP1+Reth)
-                {{ else if eq $proof.ProofId 1 }}(Risc0+Geth)
-                {{ else if eq $proof.ProofId 2 }}(SP1+Geth)
+                {{ if eq $proof.ProofId 0 }}(Risc0+Ethrex)
+                {{ else if eq $proof.ProofId 1 }}(SP1+Ethrex)
+                {{ else if eq $proof.ProofId 2 }}(Zisk+Ethrex)
+                {{ else if eq $proof.ProofId 3 }}(OpenVM+Reth)
+                {{ else if eq $proof.ProofId 4 }}(Risc0+Reth)
+                {{ else if eq $proof.ProofId 5 }}(SP1+Reth)
+                {{ else if eq $proof.ProofId 6 }}(Zisk+Reth)
                 {{ else }}(zkVM+EL #{{ $proof.ProofId }})
                 {{ end }}
               </span>

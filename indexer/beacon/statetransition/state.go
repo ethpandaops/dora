@@ -11,6 +11,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/heze"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -63,16 +64,18 @@ type stateAccessor struct {
 	// Fulu-only fields (nil for Gloas)
 	LatestExecutionPayloadHeader *deneb.ExecutionPayloadHeader
 
-	// Gloas-only fields (nil/zero for Fulu)
-	BuilderPendingPayments       []*gloas.BuilderPendingPayment
-	BuilderPendingWithdrawals    []*gloas.BuilderPendingWithdrawal
-	Builders                     []*gloas.Builder
-	NextWithdrawalBuilderIndex   gloas.BuilderIndex
-	LatestExecutionPayloadBid    *gloas.ExecutionPayloadBid
-	LatestBlockHash              phase0.Hash32
-	ExecutionPayloadAvailability []byte
-	PayloadExpectedWithdrawals   []*capella.Withdrawal
-	PTCWindow                    [][]phase0.ValidatorIndex
+	// Gloas/Heze fields (nil/zero for Fulu)
+	BuilderPendingPayments        []*gloas.BuilderPendingPayment
+	BuilderPendingWithdrawals     []*gloas.BuilderPendingWithdrawal
+	Builders                      []*gloas.Builder
+	NextWithdrawalBuilderIndex    gloas.BuilderIndex
+	LatestExecutionPayloadBid     *gloas.ExecutionPayloadBid // Gloas (nil for Heze)
+	LatestExecutionPayloadBidHeze *heze.ExecutionPayloadBid  // Heze (nil for Gloas)
+	LatestBlockHash               phase0.Hash32
+	ExecutionPayloadAvailability  []byte
+	PayloadExpectedWithdrawals    []*capella.Withdrawal
+	// PTCWindow exists only on Gloas state (removed in Heze).
+	PTCWindow [][]phase0.ValidatorIndex
 
 	// Caches (lazily populated, not written back).
 	// Shared via StateTransition to persist across multiple ApplyBlock calls.
@@ -216,6 +219,52 @@ func (st *StateTransition) newAccessor(state *spec.VersionedBeaconState) (*state
 		s.ExecutionPayloadAvailability = g.ExecutionPayloadAvailability
 		s.PayloadExpectedWithdrawals = g.PayloadExpectedWithdrawals
 		s.PTCWindow = g.PTCWindow
+	case spec.DataVersionHeze:
+		if state.Heze == nil {
+			return nil, fmt.Errorf("nil heze state")
+		}
+		h := state.Heze
+		s.Slot = h.Slot
+		s.Validators = h.Validators
+		s.Balances = h.Balances
+		s.RANDAOMixes = h.RANDAOMixes
+		s.Slashings = h.Slashings
+		s.PreviousEpochParticipation = h.PreviousEpochParticipation
+		s.CurrentEpochParticipation = h.CurrentEpochParticipation
+		s.JustificationBits = h.JustificationBits
+		s.PreviousJustifiedCheckpoint = h.PreviousJustifiedCheckpoint
+		s.CurrentJustifiedCheckpoint = h.CurrentJustifiedCheckpoint
+		s.FinalizedCheckpoint = h.FinalizedCheckpoint
+		s.InactivityScores = h.InactivityScores
+		s.CurrentSyncCommittee = h.CurrentSyncCommittee
+		s.NextSyncCommittee = h.NextSyncCommittee
+		s.ETH1DataVotes = h.ETH1DataVotes
+		s.BlockRoots = h.BlockRoots
+		s.StateRoots = h.StateRoots
+		s.HistoricalSummaries = h.HistoricalSummaries
+		s.Eth1DepositIndex = h.ETH1DepositIndex
+		s.DepositRequestsStartIndex = h.DepositRequestsStartIndex
+		s.DepositBalanceToConsume = h.DepositBalanceToConsume
+		s.ExitBalanceToConsume = h.ExitBalanceToConsume
+		s.EarliestExitEpoch = h.EarliestExitEpoch
+		s.ConsolidationBalanceToConsume = h.ConsolidationBalanceToConsume
+		s.EarliestConsolidationEpoch = h.EarliestConsolidationEpoch
+		s.PendingDeposits = h.PendingDeposits
+		s.PendingPartialWithdrawals = h.PendingPartialWithdrawals
+		s.PendingConsolidations = h.PendingConsolidations
+		s.ProposerLookahead = h.ProposerLookahead
+		s.BuilderPendingPayments = h.BuilderPendingPayments
+		s.BuilderPendingWithdrawals = h.BuilderPendingWithdrawals
+		s.LatestBlockHeader = h.LatestBlockHeader
+		s.ETH1Data = h.ETH1Data
+		s.NextWithdrawalIndex = h.NextWithdrawalIndex
+		s.NextWithdrawalValidatorIndex = h.NextWithdrawalValidatorIndex
+		s.Builders = h.Builders
+		s.NextWithdrawalBuilderIndex = h.NextWithdrawalBuilderIndex
+		s.LatestExecutionPayloadBidHeze = h.LatestExecutionPayloadBid
+		s.LatestBlockHash = h.LatestBlockHash
+		s.ExecutionPayloadAvailability = h.ExecutionPayloadAvailability
+		s.PayloadExpectedWithdrawals = h.PayloadExpectedWithdrawals
 	default:
 		return nil, fmt.Errorf("unsupported state version: %v", state.Version)
 	}
@@ -309,7 +358,68 @@ func (s *stateAccessor) writeBack() {
 		g.ExecutionPayloadAvailability = s.ExecutionPayloadAvailability
 		g.PayloadExpectedWithdrawals = s.PayloadExpectedWithdrawals
 		g.PTCWindow = s.PTCWindow
+	case spec.DataVersionHeze:
+		h := s.rawState.Heze
+		h.Slot = s.Slot
+		h.Validators = s.Validators
+		h.Balances = s.Balances
+		h.RANDAOMixes = s.RANDAOMixes
+		h.Slashings = s.Slashings
+		h.PreviousEpochParticipation = s.PreviousEpochParticipation
+		h.CurrentEpochParticipation = s.CurrentEpochParticipation
+		h.JustificationBits = s.JustificationBits
+		h.PreviousJustifiedCheckpoint = s.PreviousJustifiedCheckpoint
+		h.CurrentJustifiedCheckpoint = s.CurrentJustifiedCheckpoint
+		h.FinalizedCheckpoint = s.FinalizedCheckpoint
+		h.InactivityScores = s.InactivityScores
+		h.CurrentSyncCommittee = s.CurrentSyncCommittee
+		h.NextSyncCommittee = s.NextSyncCommittee
+		h.ETH1DataVotes = s.ETH1DataVotes
+		h.BlockRoots = s.BlockRoots
+		h.StateRoots = s.StateRoots
+		h.HistoricalSummaries = s.HistoricalSummaries
+		h.ETH1DepositIndex = s.Eth1DepositIndex
+		h.DepositRequestsStartIndex = s.DepositRequestsStartIndex
+		h.DepositBalanceToConsume = s.DepositBalanceToConsume
+		h.ExitBalanceToConsume = s.ExitBalanceToConsume
+		h.EarliestExitEpoch = s.EarliestExitEpoch
+		h.ConsolidationBalanceToConsume = s.ConsolidationBalanceToConsume
+		h.EarliestConsolidationEpoch = s.EarliestConsolidationEpoch
+		h.PendingDeposits = s.PendingDeposits
+		h.PendingPartialWithdrawals = s.PendingPartialWithdrawals
+		h.PendingConsolidations = s.PendingConsolidations
+		h.ProposerLookahead = s.ProposerLookahead
+		h.BuilderPendingPayments = s.BuilderPendingPayments
+		h.BuilderPendingWithdrawals = s.BuilderPendingWithdrawals
+		h.LatestBlockHeader = s.LatestBlockHeader
+		h.ETH1Data = s.ETH1Data
+		h.NextWithdrawalIndex = s.NextWithdrawalIndex
+		h.NextWithdrawalValidatorIndex = s.NextWithdrawalValidatorIndex
+		h.Builders = s.Builders
+		h.NextWithdrawalBuilderIndex = s.NextWithdrawalBuilderIndex
+		h.LatestExecutionPayloadBid = s.LatestExecutionPayloadBidHeze
+		h.LatestBlockHash = s.LatestBlockHash
+		h.ExecutionPayloadAvailability = s.ExecutionPayloadAvailability
+		h.PayloadExpectedWithdrawals = s.PayloadExpectedWithdrawals
 	}
+}
+
+// latestPayloadBlockHash returns the block hash from the latest execution payload
+// bid, regardless of whether the underlying state is Gloas or Heze. Returns the
+// zero hash if no bid is set.
+func (s *stateAccessor) latestPayloadBlockHash() phase0.Hash32 {
+	if s.LatestExecutionPayloadBid != nil {
+		return s.LatestExecutionPayloadBid.BlockHash
+	}
+	if s.LatestExecutionPayloadBidHeze != nil {
+		return s.LatestExecutionPayloadBidHeze.BlockHash
+	}
+	return phase0.Hash32{}
+}
+
+// hasLatestPayloadBid reports whether a latest execution payload bid is present.
+func (s *stateAccessor) hasLatestPayloadBid() bool {
+	return s.LatestExecutionPayloadBid != nil || s.LatestExecutionPayloadBidHeze != nil
 }
 
 // computeStateHTR computes the hash tree root of the underlying state.
@@ -322,6 +432,8 @@ func (s *stateAccessor) computeStateHTR() (phase0.Root, error) {
 		return s.dynSsz.HashTreeRoot(s.rawState.Fulu)
 	case spec.DataVersionGloas:
 		return s.dynSsz.HashTreeRoot(s.rawState.Gloas)
+	case spec.DataVersionHeze:
+		return s.dynSsz.HashTreeRoot(s.rawState.Heze)
 	default:
 		return phase0.Root{}, fmt.Errorf("unsupported version: %v", s.version)
 	}

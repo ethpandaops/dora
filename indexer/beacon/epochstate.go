@@ -431,6 +431,8 @@ func (s *epochState) tryReplayFromParentState(
 			gotStateRoot, htrErr = parentState.Fulu.HashTreeRoot()
 		case spec.DataVersionGloas:
 			gotStateRoot, htrErr = parentState.Gloas.HashTreeRoot()
+		case spec.DataVersionHeze:
+			gotStateRoot, htrErr = parentState.Heze.HashTreeRoot()
 		}
 		if htrErr != nil {
 			client.logger.Warnf("replay: HTR failed at slot %v: %v", blk.Slot, htrErr)

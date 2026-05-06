@@ -163,6 +163,17 @@ func (block *Block) AwaitHeader(ctx context.Context, timeout time.Duration) *pha
 	return block.header
 }
 
+// GetCachedBlock returns the in-memory beacon block body if it is currently
+// held in the block cache. Returns nil if the body would only be available
+// via a database lookup. Use this when a caller wants to operate purely on
+// cached state without triggering disk I/O.
+func (block *Block) GetCachedBlock() *spec.VersionedSignedBeaconBlock {
+	if block.isDisposed {
+		return nil
+	}
+	return block.block
+}
+
 // GetBlock returns the versioned signed beacon block of this block.
 func (block *Block) GetBlock(ctx context.Context) *spec.VersionedSignedBeaconBlock {
 	if block.isDisposed {

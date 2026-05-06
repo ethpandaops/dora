@@ -946,7 +946,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		if len(blockData.BlockAccessList) > 0 {
 			accesses, err := utils.DecodeBlockAccessList(blockData.BlockAccessList)
 			if err != nil {
-				logrus.Warnf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
+				logrus.Errorf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
 			} else {
 				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
 			}
@@ -1086,7 +1086,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	// Load execution payload bids for ePBS (gloas+) blocks
 	if blockData.Block.Version >= spec.DataVersionGloas {
-		getSlotPageBids(pageData)
+		getSlotPageBids(pageData, blockData.Header.Message.Slot)
 		getSlotPagePtcVotes(pageData, blockData, blockData.Header.Message.Slot)
 	}
 
@@ -1379,9 +1379,9 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 	pageData.ExecutionProofsCount = uint64(len(pageData.ExecutionProofs))
 }
 
-func getSlotPageBids(pageData *models.SlotPageBlockData) {
+func getSlotPageBids(pageData *models.SlotPageBlockData, blockSlot phase0.Slot) {
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
-	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot))
+	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot), blockSlot)
 
 	pageData.Bids = make([]*models.SlotPageBid, 0, len(bids))
 
@@ -1517,29 +1517,33 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 			Validators:        make([]types.NamedValidator, 0),
 		}
 
-		// Count votes from aggregation bits and map to unique validators
-		bitCount := uint64(len(pa.AggregationBits)) * 8
-		if bitCount > ptcSize {
-			bitCount = ptcSize
-		}
+		// Count votes from raw aggregation bits, then enrich with validator
+		// names when PTC duties are available. Vote count must not depend on
+		// duty availability — duties may be missing for pruned/unloaded epochs.
+		bitCount := min(uint64(len(pa.AggregationBits))*8, ptcSize)
 		aggValidatorSet := make(map[uint64]bool)
+		bitVoteCount := uint64(0)
 		for i := uint64(0); i < bitCount; i++ {
-			if (pa.AggregationBits[i/8]>>(i%8))&1 == 1 {
-				votedPositions[i] = true
-				if int(i) < len(ptcDuties) {
-					vidx := uint64(ptcDuties[i])
-					if !aggValidatorSet[vidx] {
-						aggValidatorSet[vidx] = true
-						aggregate.Validators = append(aggregate.Validators, types.NamedValidator{
-							Index: vidx,
-							Name:  services.GlobalBeaconService.GetValidatorName(vidx),
-						})
-					}
-				}
+			if (pa.AggregationBits[i/8]>>(i%8))&1 != 1 {
+				continue
 			}
+			votedPositions[i] = true
+			bitVoteCount++
+			if int(i) >= len(ptcDuties) {
+				continue
+			}
+			vidx := uint64(ptcDuties[i])
+			if aggValidatorSet[vidx] {
+				continue
+			}
+			aggValidatorSet[vidx] = true
+			aggregate.Validators = append(aggregate.Validators, types.NamedValidator{
+				Index: vidx,
+				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+			})
 		}
 
-		aggregate.VoteCount = uint64(len(aggregate.Validators))
+		aggregate.VoteCount = bitVoteCount
 		totalVotes += aggregate.VoteCount
 
 		ptcVotes.Aggregates = append(ptcVotes.Aggregates, aggregate)
