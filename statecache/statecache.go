@@ -19,6 +19,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/fulu"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/heze"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -257,6 +258,14 @@ func marshalState(dynSsz *dynssz.DynSsz, state *spec.VersionedBeaconState) ([]by
 			return dynSsz.MarshalSSZ(state.Gloas)
 		}
 		return state.Gloas.MarshalSSZ()
+	case spec.DataVersionHeze:
+		if state.Heze == nil {
+			return nil, fmt.Errorf("nil heze state")
+		}
+		if dynSsz != nil {
+			return dynSsz.MarshalSSZ(state.Heze)
+		}
+		return state.Heze.MarshalSSZ()
 	default:
 		return nil, fmt.Errorf("unsupported state version: %v", state.Version)
 	}
@@ -288,6 +297,17 @@ func unmarshalState(dynSsz *dynssz.DynSsz, version spec.DataVersion, data []byte
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal gloas state: %w", err)
+		}
+	case spec.DataVersionHeze:
+		state.Heze = new(heze.BeaconState)
+		var err error
+		if dynSsz != nil {
+			err = dynSsz.UnmarshalSSZ(state.Heze, data)
+		} else {
+			err = state.Heze.UnmarshalSSZ(data)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal heze state: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported state version: %v", version)

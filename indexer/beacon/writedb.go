@@ -24,6 +24,51 @@ func clampInt64(v uint64) uint64 {
 	return v
 }
 
+// getBlockBid extracts the execution payload bid from a Gloas/Heze signed beacon
+// block and converts it to a dbtypes.BlockBid. Returns nil for pre-Gloas blocks
+// or blocks without a bid.
+func getBlockBid(v *spec.VersionedSignedBeaconBlock) *dbtypes.BlockBid {
+	switch v.Version {
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.Message == nil || v.Gloas.Message.Body == nil ||
+			v.Gloas.Message.Body.SignedExecutionPayloadBid == nil ||
+			v.Gloas.Message.Body.SignedExecutionPayloadBid.Message == nil {
+			return nil
+		}
+		bid := v.Gloas.Message.Body.SignedExecutionPayloadBid.Message
+		return &dbtypes.BlockBid{
+			ParentRoot:   bid.ParentBlockRoot[:],
+			ParentHash:   bid.ParentBlockHash[:],
+			BlockHash:    bid.BlockHash[:],
+			FeeRecipient: bid.FeeRecipient[:],
+			GasLimit:     bid.GasLimit,
+			BuilderIndex: int64(bid.BuilderIndex),
+			Slot:         uint64(bid.Slot),
+			Value:        uint64(bid.Value),
+			ElPayment:    uint64(bid.ExecutionPayment),
+		}
+	case spec.DataVersionHeze:
+		if v.Heze == nil || v.Heze.Message == nil || v.Heze.Message.Body == nil ||
+			v.Heze.Message.Body.SignedExecutionPayloadBid == nil ||
+			v.Heze.Message.Body.SignedExecutionPayloadBid.Message == nil {
+			return nil
+		}
+		bid := v.Heze.Message.Body.SignedExecutionPayloadBid.Message
+		return &dbtypes.BlockBid{
+			ParentRoot:   bid.ParentBlockRoot[:],
+			ParentHash:   bid.ParentBlockHash[:],
+			BlockHash:    bid.BlockHash[:],
+			FeeRecipient: bid.FeeRecipient[:],
+			GasLimit:     bid.GasLimit,
+			BuilderIndex: int64(bid.BuilderIndex),
+			Slot:         uint64(bid.Slot),
+			Value:        uint64(bid.Value),
+			ElPayment:    uint64(bid.ExecutionPayment),
+		}
+	}
+	return nil
+}
+
 type dbWriter struct {
 	indexer *Indexer
 }
@@ -318,24 +363,10 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	}
 
-	// Extract execution payload bid from Gloas blocks and add to bid cache.
+	// Extract execution payload bid from Gloas/Heze blocks and add to bid cache.
 	// This ensures bids are persisted even when syncing from blocks (not just SSE events).
-	if blockBody.Version >= spec.DataVersionGloas && blockBody.Gloas != nil &&
-		blockBody.Gloas.Message != nil && blockBody.Gloas.Message.Body != nil &&
-		blockBody.Gloas.Message.Body.SignedExecutionPayloadBid != nil &&
-		blockBody.Gloas.Message.Body.SignedExecutionPayloadBid.Message != nil {
-		bidMsg := blockBody.Gloas.Message.Body.SignedExecutionPayloadBid.Message
-		dbw.indexer.blockBidCache.AddBid(&dbtypes.BlockBid{
-			ParentRoot:   bidMsg.ParentBlockRoot[:],
-			ParentHash:   bidMsg.ParentBlockHash[:],
-			BlockHash:    bidMsg.BlockHash[:],
-			FeeRecipient: bidMsg.FeeRecipient[:],
-			GasLimit:     uint64(bidMsg.GasLimit),
-			BuilderIndex: int64(bidMsg.BuilderIndex),
-			Slot:         uint64(bidMsg.Slot),
-			Value:        uint64(bidMsg.Value),
-			ElPayment:    uint64(bidMsg.ExecutionPayment),
-		})
+	if bid := getBlockBid(blockBody); bid != nil {
+		dbw.indexer.blockBidCache.AddBid(bid)
 	}
 
 	dbBlock := dbtypes.Slot{
