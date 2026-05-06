@@ -74,7 +74,20 @@ func mustInitSqlite(config *types.SqliteDatabaseConfig) (*sqlx.DB, *sqlx.DB) {
 	dbConn.SetMaxOpenConns(config.MaxOpenConns)
 	dbConn.SetMaxIdleConns(config.MaxIdleConns)
 
+	// WAL journaling allows readers to run during writes.
 	dbConn.MustExec("PRAGMA journal_mode = WAL")
+	// synchronous=NORMAL is durable in WAL mode (only the last committed
+	// transaction is at risk on power loss; DB stays consistent) and is
+	// substantially faster than the default FULL because it skips an fsync
+	// per commit.
+	dbConn.MustExec("PRAGMA synchronous = NORMAL")
+	// 256 MB page cache. Default is ~2 MB, which causes heavy churn on
+	// blocks with many log/tx rows (e.g. high-deposit blocks).
+	dbConn.MustExec("PRAGMA cache_size = -262144")
+	// Keep transient tables/indexes used by query planners in memory.
+	dbConn.MustExec("PRAGMA temp_store = MEMORY")
+	// Wait up to 5s for a competing writer instead of failing immediately.
+	dbConn.MustExec("PRAGMA busy_timeout = 5000")
 
 	return dbConn, dbConn
 }

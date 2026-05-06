@@ -100,24 +100,40 @@ func GetDepositTxsByIndexes(ctx context.Context, indexes []uint64) []*dbtypes.De
 		return depositTxs
 	}
 
-	var sql strings.Builder
-	args := make([]any, len(indexes))
+	// SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999 (32766 in newer
+	// builds). Chunk to stay well below that on every supported build,
+	// otherwise high-deposit-volume queries fail with
+	// "too many SQL variables".
+	const maxParams = 900
 
-	fmt.Fprint(&sql, `SELECT deposit_txs.*
-		FROM deposit_txs
-		WHERE deposit_index IN (
-	`)
+	for start := 0; start < len(indexes); start += maxParams {
+		end := start + maxParams
+		if end > len(indexes) {
+			end = len(indexes)
+		}
+		chunk := indexes[start:end]
 
-	for idx, index := range indexes {
-		args[idx] = index
-	}
-	appendDollarPlaceholders(&sql, 1, len(indexes), ", ")
-	fmt.Fprintf(&sql, ")")
+		var sql strings.Builder
+		args := make([]any, len(chunk))
 
-	err := ReaderDb.SelectContext(ctx, &depositTxs, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching deposit txs by indexes: %v", err)
-		return nil
+		fmt.Fprint(&sql, `SELECT deposit_txs.*
+			FROM deposit_txs
+			WHERE deposit_index IN (
+		`)
+
+		for idx, index := range chunk {
+			args[idx] = index
+		}
+		appendDollarPlaceholders(&sql, 1, len(chunk), ", ")
+		fmt.Fprintf(&sql, ")")
+
+		var chunkResult []*dbtypes.DepositTx
+		err := ReaderDb.SelectContext(ctx, &chunkResult, sql.String(), args...)
+		if err != nil {
+			logger.Errorf("Error while fetching deposit txs by indexes: %v", err)
+			return nil
+		}
+		depositTxs = append(depositTxs, chunkResult...)
 	}
 
 	return depositTxs
