@@ -1,88 +1,31 @@
 package statetransition
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/altair"
-	"github.com/ethpandaops/go-eth2-client/spec/capella"
-	"github.com/ethpandaops/go-eth2-client/spec/deneb"
-	"github.com/ethpandaops/go-eth2-client/spec/electra"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
-	"github.com/ethpandaops/go-eth2-client/spec/heze"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
-// stateAccessor provides a unified interface to access and mutate beacon state fields
-// across Fulu and Gloas versions. All fields are pointers/slices into the underlying
-// VersionedBeaconState, so mutations are applied in-place.
+// stateAccessor wraps a fork-agnostic *all.BeaconState with ChainSpec, dynSsz,
+// and the per-StateTransition lazy caches. The agnostic state already provides
+// flat field access for the union of all fork-specific BeaconState fields, so
+// the accessor just embeds it and exposes those fields (and Version) directly.
+// Fork-conditional logic in this package checks s.Version against the
+// spec.DataVersion* constants.
 type stateAccessor struct {
-	version spec.DataVersion
-	specs   *consensus.ChainSpec
-	dynSsz  *dynssz.DynSsz
+	*all.BeaconState
 
-	// Common fields shared by Fulu and Gloas (pointers into the underlying state).
-	Slot                          phase0.Slot
-	Validators                    []*phase0.Validator
-	Balances                      []phase0.Gwei
-	RANDAOMixes                   []phase0.Root
-	Slashings                     []phase0.Gwei
-	PreviousEpochParticipation    []altair.ParticipationFlags
-	CurrentEpochParticipation     []altair.ParticipationFlags
-	JustificationBits             []byte // bitfield.Bitvector4 is []byte
-	PreviousJustifiedCheckpoint   *phase0.Checkpoint
-	CurrentJustifiedCheckpoint    *phase0.Checkpoint
-	FinalizedCheckpoint           *phase0.Checkpoint
-	InactivityScores              []uint64
-	CurrentSyncCommittee          *altair.SyncCommittee
-	NextSyncCommittee             *altair.SyncCommittee
-	ETH1DataVotes                 []*phase0.ETH1Data
-	BlockRoots                    []phase0.Root
-	StateRoots                    []phase0.Root
-	HistoricalSummaries           []*capella.HistoricalSummary
-	Eth1DepositIndex              uint64
-	DepositRequestsStartIndex     uint64
-	DepositBalanceToConsume       phase0.Gwei
-	ExitBalanceToConsume          phase0.Gwei
-	EarliestExitEpoch             phase0.Epoch
-	ConsolidationBalanceToConsume phase0.Gwei
-	EarliestConsolidationEpoch    phase0.Epoch
-	PendingDeposits               []*electra.PendingDeposit
-	PendingPartialWithdrawals     []*electra.PendingPartialWithdrawal
-	PendingConsolidations         []*electra.PendingConsolidation
-	ProposerLookahead             []phase0.ValidatorIndex
-
-	// Fields accessed via rawState that should be unified in the accessor
-	LatestBlockHeader            *phase0.BeaconBlockHeader
-	ETH1Data                     *phase0.ETH1Data
-	NextWithdrawalIndex          capella.WithdrawalIndex
-	NextWithdrawalValidatorIndex phase0.ValidatorIndex
-
-	// Fulu-only fields (nil for Gloas)
-	LatestExecutionPayloadHeader *deneb.ExecutionPayloadHeader
-
-	// Gloas/Heze fields (nil/zero for Fulu)
-	BuilderPendingPayments        []*gloas.BuilderPendingPayment
-	BuilderPendingWithdrawals     []*gloas.BuilderPendingWithdrawal
-	Builders                      []*gloas.Builder
-	NextWithdrawalBuilderIndex    gloas.BuilderIndex
-	LatestExecutionPayloadBid     *gloas.ExecutionPayloadBid // Gloas (nil for Heze)
-	LatestExecutionPayloadBidHeze *heze.ExecutionPayloadBid  // Heze (nil for Gloas)
-	LatestBlockHash               phase0.Hash32
-	ExecutionPayloadAvailability  []byte
-	PayloadExpectedWithdrawals    []*capella.Withdrawal
-	// PTCWindow exists only on Gloas state (removed in Heze).
-	PTCWindow [][]phase0.ValidatorIndex
+	specs  *consensus.ChainSpec
+	dynSsz *dynssz.DynSsz
 
 	// Caches (lazily populated, not written back).
 	// Shared via StateTransition to persist across multiple ApplyBlock calls.
 	caches *stateTransitionCaches
-
-	// Back-references for writing mutated slices/values back to the underlying state.
-	rawState *spec.VersionedBeaconState
 }
 
 // stateTransitionCaches holds lazily-populated caches that persist across
@@ -121,322 +64,36 @@ func (c *stateTransitionCaches) invalidateBalanceCaches() {
 	c.committeeCache = newCommitteeCache()
 }
 
-// newAccessor creates a stateAccessor from the given state, pulling specs,
-// dynSsz, and caches from the StateTransition instance.
-func (st *StateTransition) newAccessor(state *spec.VersionedBeaconState) (*stateAccessor, error) {
-	s := &stateAccessor{
-		version:  state.Version,
-		specs:    st.specs,
-		dynSsz:   st.dynSsz,
-		rawState: state,
-		caches:   st.caches,
-	}
-
-	switch state.Version {
-	case spec.DataVersionFulu:
-		if state.Fulu == nil {
-			return nil, fmt.Errorf("nil fulu state")
-		}
-		f := state.Fulu
-		s.Slot = f.Slot
-		s.Validators = f.Validators
-		s.Balances = f.Balances
-		s.RANDAOMixes = f.RANDAOMixes
-		s.Slashings = f.Slashings
-		s.PreviousEpochParticipation = f.PreviousEpochParticipation
-		s.CurrentEpochParticipation = f.CurrentEpochParticipation
-		s.JustificationBits = f.JustificationBits
-		s.PreviousJustifiedCheckpoint = f.PreviousJustifiedCheckpoint
-		s.CurrentJustifiedCheckpoint = f.CurrentJustifiedCheckpoint
-		s.FinalizedCheckpoint = f.FinalizedCheckpoint
-		s.InactivityScores = f.InactivityScores
-		s.CurrentSyncCommittee = f.CurrentSyncCommittee
-		s.NextSyncCommittee = f.NextSyncCommittee
-		s.ETH1DataVotes = f.ETH1DataVotes
-		s.BlockRoots = f.BlockRoots
-		s.StateRoots = f.StateRoots
-		s.HistoricalSummaries = f.HistoricalSummaries
-		s.Eth1DepositIndex = f.ETH1DepositIndex
-		s.DepositRequestsStartIndex = f.DepositRequestsStartIndex
-		s.DepositBalanceToConsume = f.DepositBalanceToConsume
-		s.ExitBalanceToConsume = f.ExitBalanceToConsume
-		s.EarliestExitEpoch = f.EarliestExitEpoch
-		s.ConsolidationBalanceToConsume = f.ConsolidationBalanceToConsume
-		s.EarliestConsolidationEpoch = f.EarliestConsolidationEpoch
-		s.PendingDeposits = f.PendingDeposits
-		s.PendingPartialWithdrawals = f.PendingPartialWithdrawals
-		s.PendingConsolidations = f.PendingConsolidations
-		s.ProposerLookahead = f.ProposerLookahead
-		s.LatestBlockHeader = f.LatestBlockHeader
-		s.ETH1Data = f.ETH1Data
-		s.NextWithdrawalIndex = f.NextWithdrawalIndex
-		s.NextWithdrawalValidatorIndex = f.NextWithdrawalValidatorIndex
-		s.LatestExecutionPayloadHeader = f.LatestExecutionPayloadHeader
-	case spec.DataVersionGloas:
-		if state.Gloas == nil {
-			return nil, fmt.Errorf("nil gloas state")
-		}
-		g := state.Gloas
-		s.Slot = g.Slot
-		s.Validators = g.Validators
-		s.Balances = g.Balances
-		s.RANDAOMixes = g.RANDAOMixes
-		s.Slashings = g.Slashings
-		s.PreviousEpochParticipation = g.PreviousEpochParticipation
-		s.CurrentEpochParticipation = g.CurrentEpochParticipation
-		s.JustificationBits = g.JustificationBits
-		s.PreviousJustifiedCheckpoint = g.PreviousJustifiedCheckpoint
-		s.CurrentJustifiedCheckpoint = g.CurrentJustifiedCheckpoint
-		s.FinalizedCheckpoint = g.FinalizedCheckpoint
-		s.InactivityScores = g.InactivityScores
-		s.CurrentSyncCommittee = g.CurrentSyncCommittee
-		s.NextSyncCommittee = g.NextSyncCommittee
-		s.ETH1DataVotes = g.ETH1DataVotes
-		s.BlockRoots = g.BlockRoots
-		s.StateRoots = g.StateRoots
-		s.HistoricalSummaries = g.HistoricalSummaries
-		s.Eth1DepositIndex = g.ETH1DepositIndex
-		s.DepositRequestsStartIndex = g.DepositRequestsStartIndex
-		s.DepositBalanceToConsume = g.DepositBalanceToConsume
-		s.ExitBalanceToConsume = g.ExitBalanceToConsume
-		s.EarliestExitEpoch = g.EarliestExitEpoch
-		s.ConsolidationBalanceToConsume = g.ConsolidationBalanceToConsume
-		s.EarliestConsolidationEpoch = g.EarliestConsolidationEpoch
-		s.PendingDeposits = g.PendingDeposits
-		s.PendingPartialWithdrawals = g.PendingPartialWithdrawals
-		s.PendingConsolidations = g.PendingConsolidations
-		s.ProposerLookahead = g.ProposerLookahead
-		s.BuilderPendingPayments = g.BuilderPendingPayments
-		s.BuilderPendingWithdrawals = g.BuilderPendingWithdrawals
-		s.LatestBlockHeader = g.LatestBlockHeader
-		s.ETH1Data = g.ETH1Data
-		s.NextWithdrawalIndex = g.NextWithdrawalIndex
-		s.NextWithdrawalValidatorIndex = g.NextWithdrawalValidatorIndex
-		s.Builders = g.Builders
-		s.NextWithdrawalBuilderIndex = g.NextWithdrawalBuilderIndex
-		s.LatestExecutionPayloadBid = g.LatestExecutionPayloadBid
-		s.LatestBlockHash = g.LatestBlockHash
-		s.ExecutionPayloadAvailability = g.ExecutionPayloadAvailability
-		s.PayloadExpectedWithdrawals = g.PayloadExpectedWithdrawals
-		s.PTCWindow = g.PTCWindow
-	case spec.DataVersionHeze:
-		if state.Heze == nil {
-			return nil, fmt.Errorf("nil heze state")
-		}
-		h := state.Heze
-		s.Slot = h.Slot
-		s.Validators = h.Validators
-		s.Balances = h.Balances
-		s.RANDAOMixes = h.RANDAOMixes
-		s.Slashings = h.Slashings
-		s.PreviousEpochParticipation = h.PreviousEpochParticipation
-		s.CurrentEpochParticipation = h.CurrentEpochParticipation
-		s.JustificationBits = h.JustificationBits
-		s.PreviousJustifiedCheckpoint = h.PreviousJustifiedCheckpoint
-		s.CurrentJustifiedCheckpoint = h.CurrentJustifiedCheckpoint
-		s.FinalizedCheckpoint = h.FinalizedCheckpoint
-		s.InactivityScores = h.InactivityScores
-		s.CurrentSyncCommittee = h.CurrentSyncCommittee
-		s.NextSyncCommittee = h.NextSyncCommittee
-		s.ETH1DataVotes = h.ETH1DataVotes
-		s.BlockRoots = h.BlockRoots
-		s.StateRoots = h.StateRoots
-		s.HistoricalSummaries = h.HistoricalSummaries
-		s.Eth1DepositIndex = h.ETH1DepositIndex
-		s.DepositRequestsStartIndex = h.DepositRequestsStartIndex
-		s.DepositBalanceToConsume = h.DepositBalanceToConsume
-		s.ExitBalanceToConsume = h.ExitBalanceToConsume
-		s.EarliestExitEpoch = h.EarliestExitEpoch
-		s.ConsolidationBalanceToConsume = h.ConsolidationBalanceToConsume
-		s.EarliestConsolidationEpoch = h.EarliestConsolidationEpoch
-		s.PendingDeposits = h.PendingDeposits
-		s.PendingPartialWithdrawals = h.PendingPartialWithdrawals
-		s.PendingConsolidations = h.PendingConsolidations
-		s.ProposerLookahead = h.ProposerLookahead
-		s.BuilderPendingPayments = h.BuilderPendingPayments
-		s.BuilderPendingWithdrawals = h.BuilderPendingWithdrawals
-		s.LatestBlockHeader = h.LatestBlockHeader
-		s.ETH1Data = h.ETH1Data
-		s.NextWithdrawalIndex = h.NextWithdrawalIndex
-		s.NextWithdrawalValidatorIndex = h.NextWithdrawalValidatorIndex
-		s.Builders = h.Builders
-		s.NextWithdrawalBuilderIndex = h.NextWithdrawalBuilderIndex
-		s.LatestExecutionPayloadBidHeze = h.LatestExecutionPayloadBid
-		s.LatestBlockHash = h.LatestBlockHash
-		s.ExecutionPayloadAvailability = h.ExecutionPayloadAvailability
-		s.PayloadExpectedWithdrawals = h.PayloadExpectedWithdrawals
-	default:
-		return nil, fmt.Errorf("unsupported state version: %v", state.Version)
-	}
-
-	return s, nil
+// newAccessor creates a stateAccessor wrapping the given fork-agnostic state
+// with the StateTransition's specs, dynSsz, and lazy caches.
+func (st *StateTransition) newAccessor(state *all.BeaconState) (*stateAccessor, error) {
+	return &stateAccessor{
+		BeaconState: state,
+		specs:       st.specs,
+		dynSsz:      st.dynSsz,
+		caches:      st.caches,
+	}, nil
 }
 
-// writeBack writes mutated slice headers and scalar fields back to the underlying
-// VersionedBeaconState. This is needed because Go slice reassignment (e.g.
-// s.Balances = newSlice) doesn't update the original struct field.
-// Call this after all epoch processing is complete.
-func (s *stateAccessor) writeBack() {
-	switch s.version {
-	case spec.DataVersionFulu:
-		f := s.rawState.Fulu
-		f.Slot = s.Slot
-		f.Validators = s.Validators
-		f.Balances = s.Balances
-		f.RANDAOMixes = s.RANDAOMixes
-		f.Slashings = s.Slashings
-		f.PreviousEpochParticipation = s.PreviousEpochParticipation
-		f.CurrentEpochParticipation = s.CurrentEpochParticipation
-		f.JustificationBits = s.JustificationBits
-		f.PreviousJustifiedCheckpoint = s.PreviousJustifiedCheckpoint
-		f.CurrentJustifiedCheckpoint = s.CurrentJustifiedCheckpoint
-		f.FinalizedCheckpoint = s.FinalizedCheckpoint
-		f.InactivityScores = s.InactivityScores
-		f.CurrentSyncCommittee = s.CurrentSyncCommittee
-		f.NextSyncCommittee = s.NextSyncCommittee
-		f.ETH1DataVotes = s.ETH1DataVotes
-		f.BlockRoots = s.BlockRoots
-		f.StateRoots = s.StateRoots
-		f.HistoricalSummaries = s.HistoricalSummaries
-		f.ETH1DepositIndex = s.Eth1DepositIndex
-		f.DepositRequestsStartIndex = s.DepositRequestsStartIndex
-		f.DepositBalanceToConsume = s.DepositBalanceToConsume
-		f.ExitBalanceToConsume = s.ExitBalanceToConsume
-		f.EarliestExitEpoch = s.EarliestExitEpoch
-		f.ConsolidationBalanceToConsume = s.ConsolidationBalanceToConsume
-		f.EarliestConsolidationEpoch = s.EarliestConsolidationEpoch
-		f.PendingDeposits = s.PendingDeposits
-		f.PendingPartialWithdrawals = s.PendingPartialWithdrawals
-		f.PendingConsolidations = s.PendingConsolidations
-		f.ProposerLookahead = s.ProposerLookahead
-		f.LatestBlockHeader = s.LatestBlockHeader
-		f.ETH1Data = s.ETH1Data
-		f.NextWithdrawalIndex = s.NextWithdrawalIndex
-		f.NextWithdrawalValidatorIndex = s.NextWithdrawalValidatorIndex
-		f.LatestExecutionPayloadHeader = s.LatestExecutionPayloadHeader
-	case spec.DataVersionGloas:
-		g := s.rawState.Gloas
-		g.Slot = s.Slot
-		g.Validators = s.Validators
-		g.Balances = s.Balances
-		g.RANDAOMixes = s.RANDAOMixes
-		g.Slashings = s.Slashings
-		g.PreviousEpochParticipation = s.PreviousEpochParticipation
-		g.CurrentEpochParticipation = s.CurrentEpochParticipation
-		g.JustificationBits = s.JustificationBits
-		g.PreviousJustifiedCheckpoint = s.PreviousJustifiedCheckpoint
-		g.CurrentJustifiedCheckpoint = s.CurrentJustifiedCheckpoint
-		g.FinalizedCheckpoint = s.FinalizedCheckpoint
-		g.InactivityScores = s.InactivityScores
-		g.CurrentSyncCommittee = s.CurrentSyncCommittee
-		g.NextSyncCommittee = s.NextSyncCommittee
-		g.ETH1DataVotes = s.ETH1DataVotes
-		g.BlockRoots = s.BlockRoots
-		g.StateRoots = s.StateRoots
-		g.HistoricalSummaries = s.HistoricalSummaries
-		g.ETH1DepositIndex = s.Eth1DepositIndex
-		g.DepositRequestsStartIndex = s.DepositRequestsStartIndex
-		g.DepositBalanceToConsume = s.DepositBalanceToConsume
-		g.ExitBalanceToConsume = s.ExitBalanceToConsume
-		g.EarliestExitEpoch = s.EarliestExitEpoch
-		g.ConsolidationBalanceToConsume = s.ConsolidationBalanceToConsume
-		g.EarliestConsolidationEpoch = s.EarliestConsolidationEpoch
-		g.PendingDeposits = s.PendingDeposits
-		g.PendingPartialWithdrawals = s.PendingPartialWithdrawals
-		g.PendingConsolidations = s.PendingConsolidations
-		g.ProposerLookahead = s.ProposerLookahead
-		g.BuilderPendingPayments = s.BuilderPendingPayments
-		g.BuilderPendingWithdrawals = s.BuilderPendingWithdrawals
-		g.LatestBlockHeader = s.LatestBlockHeader
-		g.ETH1Data = s.ETH1Data
-		g.NextWithdrawalIndex = s.NextWithdrawalIndex
-		g.NextWithdrawalValidatorIndex = s.NextWithdrawalValidatorIndex
-		g.Builders = s.Builders
-		g.NextWithdrawalBuilderIndex = s.NextWithdrawalBuilderIndex
-		g.LatestExecutionPayloadBid = s.LatestExecutionPayloadBid
-		g.LatestBlockHash = s.LatestBlockHash
-		g.ExecutionPayloadAvailability = s.ExecutionPayloadAvailability
-		g.PayloadExpectedWithdrawals = s.PayloadExpectedWithdrawals
-		g.PTCWindow = s.PTCWindow
-	case spec.DataVersionHeze:
-		h := s.rawState.Heze
-		h.Slot = s.Slot
-		h.Validators = s.Validators
-		h.Balances = s.Balances
-		h.RANDAOMixes = s.RANDAOMixes
-		h.Slashings = s.Slashings
-		h.PreviousEpochParticipation = s.PreviousEpochParticipation
-		h.CurrentEpochParticipation = s.CurrentEpochParticipation
-		h.JustificationBits = s.JustificationBits
-		h.PreviousJustifiedCheckpoint = s.PreviousJustifiedCheckpoint
-		h.CurrentJustifiedCheckpoint = s.CurrentJustifiedCheckpoint
-		h.FinalizedCheckpoint = s.FinalizedCheckpoint
-		h.InactivityScores = s.InactivityScores
-		h.CurrentSyncCommittee = s.CurrentSyncCommittee
-		h.NextSyncCommittee = s.NextSyncCommittee
-		h.ETH1DataVotes = s.ETH1DataVotes
-		h.BlockRoots = s.BlockRoots
-		h.StateRoots = s.StateRoots
-		h.HistoricalSummaries = s.HistoricalSummaries
-		h.ETH1DepositIndex = s.Eth1DepositIndex
-		h.DepositRequestsStartIndex = s.DepositRequestsStartIndex
-		h.DepositBalanceToConsume = s.DepositBalanceToConsume
-		h.ExitBalanceToConsume = s.ExitBalanceToConsume
-		h.EarliestExitEpoch = s.EarliestExitEpoch
-		h.ConsolidationBalanceToConsume = s.ConsolidationBalanceToConsume
-		h.EarliestConsolidationEpoch = s.EarliestConsolidationEpoch
-		h.PendingDeposits = s.PendingDeposits
-		h.PendingPartialWithdrawals = s.PendingPartialWithdrawals
-		h.PendingConsolidations = s.PendingConsolidations
-		h.ProposerLookahead = s.ProposerLookahead
-		h.BuilderPendingPayments = s.BuilderPendingPayments
-		h.BuilderPendingWithdrawals = s.BuilderPendingWithdrawals
-		h.LatestBlockHeader = s.LatestBlockHeader
-		h.ETH1Data = s.ETH1Data
-		h.NextWithdrawalIndex = s.NextWithdrawalIndex
-		h.NextWithdrawalValidatorIndex = s.NextWithdrawalValidatorIndex
-		h.Builders = s.Builders
-		h.NextWithdrawalBuilderIndex = s.NextWithdrawalBuilderIndex
-		h.LatestExecutionPayloadBid = s.LatestExecutionPayloadBidHeze
-		h.LatestBlockHash = s.LatestBlockHash
-		h.ExecutionPayloadAvailability = s.ExecutionPayloadAvailability
-		h.PayloadExpectedWithdrawals = s.PayloadExpectedWithdrawals
-	}
-}
-
-// latestPayloadBlockHash returns the block hash from the latest execution payload
-// bid, regardless of whether the underlying state is Gloas or Heze. Returns the
-// zero hash if no bid is set.
-func (s *stateAccessor) latestPayloadBlockHash() phase0.Hash32 {
-	if s.LatestExecutionPayloadBid != nil {
-		return s.LatestExecutionPayloadBid.BlockHash
-	}
-	if s.LatestExecutionPayloadBidHeze != nil {
-		return s.LatestExecutionPayloadBidHeze.BlockHash
-	}
-	return phase0.Hash32{}
-}
-
-// hasLatestPayloadBid reports whether a latest execution payload bid is present.
+// hasLatestPayloadBid reports whether a latest execution payload bid is set
+// on the underlying state. Only Gloas+ states carry one.
 func (s *stateAccessor) hasLatestPayloadBid() bool {
-	return s.LatestExecutionPayloadBid != nil || s.LatestExecutionPayloadBidHeze != nil
+	return s.LatestExecutionPayloadBid != nil
+}
+
+// latestPayloadBlockHash returns the block hash from the latest execution
+// payload bid, or the zero hash if no bid is set.
+func (s *stateAccessor) latestPayloadBlockHash() phase0.Hash32 {
+	if s.LatestExecutionPayloadBid == nil {
+		return phase0.Hash32{}
+	}
+
+	return s.LatestExecutionPayloadBid.BlockHash
 }
 
 // computeStateHTR computes the hash tree root of the underlying state.
-// Uses dynamic-ssz when available (roughly 2x faster than fastssz).
-// Must call writeBack() first to ensure all accessor fields are synced.
 func (s *stateAccessor) computeStateHTR() (phase0.Root, error) {
-	s.writeBack()
-	switch s.version {
-	case spec.DataVersionFulu:
-		return s.dynSsz.HashTreeRoot(s.rawState.Fulu)
-	case spec.DataVersionGloas:
-		return s.dynSsz.HashTreeRoot(s.rawState.Gloas)
-	case spec.DataVersionHeze:
-		return s.dynSsz.HashTreeRoot(s.rawState.Heze)
-	default:
-		return phase0.Root{}, fmt.Errorf("unsupported version: %v", s.version)
-	}
+	return s.dynSsz.HashTreeRoot(s.BeaconState)
 }
 
 // computeLatestBlockHeaderHTR computes hash_tree_root(state.latest_block_header).
@@ -450,7 +107,7 @@ func (s *stateAccessor) computeLatestBlockHeaderHTR() (phase0.Root, error) {
 // clearNextSlotAvailabilityBit clears the execution payload availability bit
 // for the next slot (Gloas-specific process_slot step).
 func (s *stateAccessor) clearNextSlotAvailabilityBit() {
-	if s.version < spec.DataVersionGloas || len(s.ExecutionPayloadAvailability) == 0 {
+	if s.Version < spec.DataVersionGloas || len(s.ExecutionPayloadAvailability) == 0 {
 		return
 	}
 	nextIdx := (uint64(s.Slot) + 1) % s.specs.SlotsPerHistoricalRoot
@@ -463,7 +120,7 @@ func (s *stateAccessor) clearNextSlotAvailabilityBit() {
 
 // setAvailabilityBit sets the execution payload availability bit for the given slot.
 func (s *stateAccessor) setAvailabilityBit(slot phase0.Slot) {
-	if s.version < spec.DataVersionGloas || len(s.ExecutionPayloadAvailability) == 0 {
+	if s.Version < spec.DataVersionGloas || len(s.ExecutionPayloadAvailability) == 0 {
 		return
 	}
 	bitfieldLen := uint64(len(s.ExecutionPayloadAvailability)) * 8
@@ -473,7 +130,7 @@ func (s *stateAccessor) setAvailabilityBit(slot phase0.Slot) {
 
 // getAvailabilityBit returns the execution payload availability bit for a given slot.
 func (s *stateAccessor) getAvailabilityBit(slot phase0.Slot) bool {
-	if s.version < spec.DataVersionGloas || len(s.ExecutionPayloadAvailability) == 0 {
+	if s.Version < spec.DataVersionGloas || len(s.ExecutionPayloadAvailability) == 0 {
 		return false
 	}
 	idx := uint64(slot) % s.specs.SlotsPerHistoricalRoot

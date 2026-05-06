@@ -292,7 +292,7 @@ func getWithdrawalAddress(v *phase0.Validator) [20]byte {
 // Spec: return state.latest_execution_payload_bid.block_hash == state.latest_block_hash
 // https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-is_parent_block_full
 func isParentBlockFull(s *stateAccessor) bool {
-	if s.version < spec.DataVersionGloas {
+	if s.Version < spec.DataVersionGloas {
 		return true // Pre-Gloas: always full
 	}
 

@@ -17,9 +17,7 @@ import (
 
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/go-eth2-client/spec"
-	"github.com/ethpandaops/go-eth2-client/spec/fulu"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
-	"github.com/ethpandaops/go-eth2-client/spec/heze"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -105,7 +103,7 @@ func (sc *StateCache) Check(dependentRoot phase0.Root, targetEpoch phase0.Epoch)
 }
 
 // Load reads a cached state from disk. Returns nil if not found.
-func (sc *StateCache) Load(dependentRoot phase0.Root, targetEpoch phase0.Epoch) *spec.VersionedBeaconState {
+func (sc *StateCache) Load(dependentRoot phase0.Root, targetEpoch phase0.Epoch) *all.BeaconState {
 	if sc == nil {
 		return nil
 	}
@@ -146,7 +144,7 @@ func (sc *StateCache) Load(dependentRoot phase0.Root, targetEpoch phase0.Epoch) 
 }
 
 // Store writes a state to disk and enforces the max states limit.
-func (sc *StateCache) Store(dependentRoot phase0.Root, targetEpoch phase0.Epoch, state *spec.VersionedBeaconState) error {
+func (sc *StateCache) Store(dependentRoot phase0.Root, targetEpoch phase0.Epoch, state *all.BeaconState) error {
 	if sc == nil {
 		return nil
 	}
@@ -239,78 +237,31 @@ func (sc *StateCache) evict() {
 	}
 }
 
-// marshalState serializes a VersionedBeaconState to SSZ bytes.
-func marshalState(dynSsz *dynssz.DynSsz, state *spec.VersionedBeaconState) ([]byte, error) {
-	switch state.Version {
-	case spec.DataVersionFulu:
-		if state.Fulu == nil {
-			return nil, fmt.Errorf("nil fulu state")
-		}
-		if dynSsz != nil {
-			return dynSsz.MarshalSSZ(state.Fulu)
-		}
-		return state.Fulu.MarshalSSZ()
-	case spec.DataVersionGloas:
-		if state.Gloas == nil {
-			return nil, fmt.Errorf("nil gloas state")
-		}
-		if dynSsz != nil {
-			return dynSsz.MarshalSSZ(state.Gloas)
-		}
-		return state.Gloas.MarshalSSZ()
-	case spec.DataVersionHeze:
-		if state.Heze == nil {
-			return nil, fmt.Errorf("nil heze state")
-		}
-		if dynSsz != nil {
-			return dynSsz.MarshalSSZ(state.Heze)
-		}
-		return state.Heze.MarshalSSZ()
-	default:
-		return nil, fmt.Errorf("unsupported state version: %v", state.Version)
+// marshalState serializes a fork-agnostic BeaconState to SSZ bytes.
+func marshalState(dynSsz *dynssz.DynSsz, state *all.BeaconState) ([]byte, error) {
+	if state == nil {
+		return nil, fmt.Errorf("nil state")
 	}
+
+	if dynSsz != nil {
+		return dynSsz.MarshalSSZ(state)
+	}
+
+	return state.MarshalSSZ()
 }
 
-// unmarshalState deserializes SSZ bytes into a VersionedBeaconState.
-func unmarshalState(dynSsz *dynssz.DynSsz, version spec.DataVersion, data []byte) (*spec.VersionedBeaconState, error) {
-	state := &spec.VersionedBeaconState{Version: version}
+// unmarshalState deserializes SSZ bytes into a fork-agnostic BeaconState.
+func unmarshalState(dynSsz *dynssz.DynSsz, version spec.DataVersion, data []byte) (*all.BeaconState, error) {
+	state := &all.BeaconState{Version: version}
 
-	switch version {
-	case spec.DataVersionFulu:
-		state.Fulu = new(fulu.BeaconState)
-		var err error
-		if dynSsz != nil {
-			err = dynSsz.UnmarshalSSZ(state.Fulu, data)
-		} else {
-			err = state.Fulu.UnmarshalSSZ(data)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal fulu state: %w", err)
-		}
-	case spec.DataVersionGloas:
-		state.Gloas = new(gloas.BeaconState)
-		var err error
-		if dynSsz != nil {
-			err = dynSsz.UnmarshalSSZ(state.Gloas, data)
-		} else {
-			err = state.Gloas.UnmarshalSSZ(data)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal gloas state: %w", err)
-		}
-	case spec.DataVersionHeze:
-		state.Heze = new(heze.BeaconState)
-		var err error
-		if dynSsz != nil {
-			err = dynSsz.UnmarshalSSZ(state.Heze, data)
-		} else {
-			err = state.Heze.UnmarshalSSZ(data)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal heze state: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported state version: %v", version)
+	var err error
+	if dynSsz != nil {
+		err = dynSsz.UnmarshalSSZ(state, data)
+	} else {
+		err = state.UnmarshalSSZ(data)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal state (version %v): %w", version, err)
 	}
 
 	return state, nil

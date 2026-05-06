@@ -395,10 +395,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	if state == nil {
 		s.logger.Warnf("state for epoch %v not found", syncEpoch)
 	} else {
-		validatorSet, err = state.Validators()
-		if err != nil {
-			s.logger.Warnf("error getting validator set from state %v: %v", dependentRoot.String(), err)
-		}
+		validatorSet = state.Validators
 	}
 
 	var epochStats *EpochStats

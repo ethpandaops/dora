@@ -10,7 +10,7 @@ require (
 	github.com/ethpandaops/eth-das-guardian v0.1.0
 	github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c
 	github.com/ethpandaops/ethwallclock v0.4.0
-	github.com/ethpandaops/go-eth2-client v0.1.2-0.20260506154804-c8bfda7d2f35
+	github.com/ethpandaops/go-eth2-client v0.1.2-0.20260506162923-774b78c34a5b
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
@@ -250,5 +250,3 @@ require (
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0
 )
-
-replace github.com/ethpandaops/go-eth2-client => /home/pk910/github/pk910/go-eth2-client
