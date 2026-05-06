@@ -216,7 +216,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	// They must be committed even if the current block's resolution failed.
 	var balanceCommitCallback dbCommitCallback
 	if t.balanceLookup != nil && t.balanceLookup.HasPendingLookups() {
-		balanceCtx, balanceCancel := context.WithTimeout(t.ctx, 30*time.Second)
+		balanceCtx, balanceCancel := context.WithTimeout(t.ctx, 45*time.Second)
 		callback, balanceErr := t.balanceLookup.ProcessPendingLookups(balanceCtx)
 		balanceCancel()
 
@@ -232,7 +232,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	// If block resolution failed, still commit pending balance lookups, then return error
 	if blockErr != nil {
 		if balanceCommitCallback != nil {
-			balCommitCtx, balCommitCancel := context.WithTimeout(t.ctx, 30*time.Second)
+			balCommitCtx, balCommitCancel := context.WithTimeout(t.ctx, 45*time.Second)
 			commitErr := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 				return balanceCommitCallback(balCommitCtx, tx)
 			})
@@ -246,7 +246,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	}
 
 	// Phase 5: Commit to database (fresh context, independent of earlier phases)
-	commitCtx, commitCancel := context.WithTimeout(t.ctx, 30*time.Second)
+	commitCtx, commitCancel := context.WithTimeout(t.ctx, 45*time.Second)
 	defer commitCancel()
 
 	// Update procCtx to use commit context for getBalanceUpdates (reads from DB)
