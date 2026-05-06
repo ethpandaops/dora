@@ -15,7 +15,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
-	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
@@ -425,18 +425,13 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		return
 	}
 
-	isNew, err = block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
+	isNew, err = block.EnsureBlock(func() (*all.SignedBeaconBlock, error) {
 		t1 := time.Now()
 		defer func() {
 			processingTimes[0] += time.Since(t1)
 		}()
 
-		body, err := LoadBeaconBlock(c.getContext(), c, root)
-		if err != nil {
-			return nil, err
-		}
-
-		return AgnosticToVersionedSignedBeaconBlock(body)
+		return LoadBeaconBlock(c.getContext(), c, root)
 	})
 	if err != nil {
 		return

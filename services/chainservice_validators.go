@@ -11,7 +11,6 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
@@ -206,17 +205,12 @@ func (bs *ChainService) GetValidatorPtcStats(ctx context.Context, lookbackEpochs
 				continue
 			}
 			body := canonicalBlock.GetCachedBlock()
-			if body == nil {
+			if body == nil || body.Message == nil || body.Message.Body == nil {
 				continue
 			}
 
-			var payloadAttestations []*gloas.PayloadAttestation
-			switch {
-			case body.Gloas != nil:
-				payloadAttestations = body.Gloas.Message.Body.PayloadAttestations
-			case body.Heze != nil:
-				payloadAttestations = body.Heze.Message.Body.PayloadAttestations
-			default:
+			payloadAttestations := body.Message.Body.PayloadAttestations
+			if len(payloadAttestations) == 0 {
 				continue
 			}
 

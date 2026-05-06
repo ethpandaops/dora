@@ -388,7 +388,7 @@ func (indexer *Indexer) StartIndexer() {
 		block.SetHeader(header)
 		indexer.blockCache.addBlockToParentMap(block)
 
-		blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+		blockBody, err := UnmarshalSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 		if err != nil {
 			indexer.logger.Warnf("could not restore unfinalized block body %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
 		} else if block.processingStatus == 0 {

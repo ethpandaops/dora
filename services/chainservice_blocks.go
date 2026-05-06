@@ -103,10 +103,15 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		blockHeader := blockInfo.GetHeader()
 		blockBody := blockInfo.GetBlock(ctx)
 		if blockHeader != nil && blockBody != nil {
+			versionedBlock, err := beacon.AgnosticToVersionedSignedBeaconBlock(blockBody)
+			if err != nil {
+				return nil, fmt.Errorf("convert beacon block %v: %w", blockroot.String(), err)
+			}
+
 			result = &CombinedBlockResponse{
 				Root:     blockInfo.Root,
-				Header:   blockInfo.GetHeader(),
-				Block:    blockInfo.GetBlock(ctx),
+				Header:   blockHeader,
+				Block:    versionedBlock,
 				Payload:  blockInfo.GetExecutionPayload(ctx),
 				Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
 			}
@@ -116,10 +121,17 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		if err != nil {
 			return nil, err
 		}
+
+		orphanedBody := blockInfo.GetBlock(ctx)
+		versionedBlock, err := beacon.AgnosticToVersionedSignedBeaconBlock(orphanedBody)
+		if err != nil {
+			return nil, fmt.Errorf("convert orphaned beacon block %v: %w", blockroot.String(), err)
+		}
+
 		result = &CombinedBlockResponse{
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
-			Block:    blockInfo.GetBlock(ctx),
+			Block:    versionedBlock,
 			Payload:  blockInfo.GetExecutionPayload(ctx),
 			Orphaned: true,
 		}
@@ -277,10 +289,15 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		blockHeader := cachedBlock.GetHeader()
 		blockBody := cachedBlock.GetBlock(ctx)
 		if blockHeader != nil && blockBody != nil {
+			versionedBlock, err := beacon.AgnosticToVersionedSignedBeaconBlock(blockBody)
+			if err != nil {
+				return nil, fmt.Errorf("convert cached beacon block at slot %v: %w", slot, err)
+			}
+
 			result = &CombinedBlockResponse{
 				Root:     cachedBlock.Root,
 				Header:   blockHeader,
-				Block:    blockBody,
+				Block:    versionedBlock,
 				Payload:  cachedBlock.GetExecutionPayload(ctx),
 				Orphaned: isOrphaned,
 			}

@@ -195,13 +195,11 @@ func (cache *blockCache) getBlocksByExecutionBlockNumber(blockNumber uint64) []*
 			}
 		}
 
-		if block.block == nil {
+		if block.block == nil || block.block.Message == nil || block.block.Message.Body == nil {
 			continue
 		}
-		blockBody := block.block
 
-		executionNumber, err := blockBody.ExecutionBlockNumber()
-		if err == nil && executionNumber == blockNumber {
+		if ep := block.block.Message.Body.ExecutionPayload; ep != nil && ep.BlockNumber == blockNumber {
 			resBlocks = append(resBlocks, block)
 		}
 	}

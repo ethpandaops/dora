@@ -150,32 +150,17 @@ func (t *TxIndexer) getClientsForBlock(ref *BlockRef) []*execution.Client {
 // Returns nil if the block has no execution payload (pre-merge) or transactions cannot be extracted.
 func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*types.Transaction, uint64, common.Hash) {
 	beaconBlock := block.GetBlock(t.ctx)
-	if beaconBlock == nil {
+	if beaconBlock == nil || beaconBlock.Message == nil || beaconBlock.Message.Body == nil {
 		return nil, 0, common.Hash{}
 	}
 
-	payload, err := beaconBlock.ExecutionPayload()
-	if err != nil || payload == nil {
+	payload := beaconBlock.Message.Body.ExecutionPayload
+	if payload == nil {
 		return nil, 0, common.Hash{}
 	}
 
-	blockNumber, err := payload.BlockNumber()
-	if err != nil {
-		return nil, 0, common.Hash{}
-	}
-
-	blockHash, err := payload.BlockHash()
-	if err != nil {
-		return nil, 0, common.Hash{}
-	}
-
-	payloadTxs, err := payload.Transactions()
-	if err != nil {
-		return nil, 0, common.Hash{}
-	}
-
-	transactions := make([]*types.Transaction, 0, len(payloadTxs))
-	for _, txBytes := range payloadTxs {
+	transactions := make([]*types.Transaction, 0, len(payload.Transactions))
+	for _, txBytes := range payload.Transactions {
 		tx := &types.Transaction{}
 		if err := tx.UnmarshalBinary(txBytes); err != nil {
 			t.logger.WithError(err).Debug("failed to unmarshal transaction from beacon block")
@@ -184,7 +169,7 @@ func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*
 		transactions = append(transactions, tx)
 	}
 
-	return transactions, blockNumber, common.Hash(blockHash)
+	return transactions, payload.BlockNumber, common.Hash(payload.BlockHash)
 }
 
 // fetchBlockTransactions fetches transactions from an EL client using raw JSON parsing
@@ -308,7 +293,7 @@ func (t *TxIndexer) extractBeaconBlockData(block *beacon.Block) (common.Address,
 	}
 
 	beaconBlock := block.GetBlock(t.ctx)
-	if beaconBlock == nil {
+	if beaconBlock == nil || beaconBlock.Message == nil || beaconBlock.Message.Body == nil {
 		return common.Address{}, nil
 	}
 
@@ -316,16 +301,12 @@ func (t *TxIndexer) extractBeaconBlockData(block *beacon.Block) (common.Address,
 	var withdrawals []WithdrawalData
 
 	// Extract fee recipient from execution payload
-	payload, err := beaconBlock.ExecutionPayload()
-	if err == nil && payload != nil {
-		if recipient, err := payload.FeeRecipient(); err == nil {
-			feeRecipient = common.Address(recipient)
-		}
+	if payload := beaconBlock.Message.Body.ExecutionPayload; payload != nil {
+		feeRecipient = common.Address(payload.FeeRecipient)
 
-		// Extract withdrawals
-		if beaconWithdrawals, err := payload.Withdrawals(); err == nil && beaconWithdrawals != nil {
-			withdrawals = make([]WithdrawalData, 0, len(beaconWithdrawals))
-			for _, w := range beaconWithdrawals {
+		if len(payload.Withdrawals) > 0 {
+			withdrawals = make([]WithdrawalData, 0, len(payload.Withdrawals))
+			for _, w := range payload.Withdrawals {
 				withdrawals = append(withdrawals, WithdrawalData{
 					Index:     uint64(w.Index),
 					Validator: uint64(w.ValidatorIndex),

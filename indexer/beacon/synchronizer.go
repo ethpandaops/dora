@@ -14,7 +14,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
-	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
@@ -264,16 +264,11 @@ func (s *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase
 	return header, root, err
 }
 
-func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
+func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*all.SignedBeaconBlock, error) {
 	ctx, cancel := context.WithTimeout(s.syncCtx, beaconBodyRequestTimeout)
 	defer cancel()
 
-	body, err := LoadBeaconBlock(ctx, client, root)
-	if err != nil {
-		return nil, err
-	}
-
-	return AgnosticToVersionedSignedBeaconBlock(body)
+	return LoadBeaconBlock(ctx, client, root)
 }
 
 func (s *synchronizer) loadBlockPayload(client *Client, root phase0.Root) (*gloas.SignedExecutionPayloadEnvelope, error) {

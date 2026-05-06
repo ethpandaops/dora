@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/altair"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
@@ -19,6 +20,73 @@ import (
 
 var jsonVersionFlag uint64 = 0x40000000
 var compressionFlag uint64 = 0x20000000
+
+// MarshalSignedBeaconBlockSSZ marshals a fork-agnostic signed beacon block
+// to SSZ (or JSON when SSZ encoding is disabled at runtime). The returned
+// version word stores the fork in the lower bits, with optional
+// compression and JSON-format flags OR-ed in.
+func MarshalSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *all.SignedBeaconBlock, compress, forceSSZ bool) (uint64, []byte, error) {
+	if block == nil {
+		return 0, nil, errors.New("nil signed beacon block")
+	}
+
+	versionWord := uint64(block.Version)
+
+	var (
+		ssz []byte
+		err error
+	)
+
+	if utils.Config.KillSwitch.DisableSSZEncoding && !forceSSZ {
+		ssz, err = block.MarshalJSON()
+		versionWord |= jsonVersionFlag
+	} else {
+		ssz, err = dynSsz.MarshalSSZ(block)
+	}
+
+	if err != nil {
+		return 0, nil, err
+	}
+
+	if compress {
+		ssz = compressBytes(ssz)
+		versionWord |= compressionFlag
+	}
+
+	return versionWord, ssz, nil
+}
+
+// UnmarshalSignedBeaconBlockSSZ inverts MarshalSignedBeaconBlockSSZ.
+func UnmarshalSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, versionWord uint64, ssz []byte) (*all.SignedBeaconBlock, error) {
+	if versionWord&compressionFlag != 0 {
+		decompressed, err := decompressBytes(ssz)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decompress: %v", err)
+		}
+		ssz = decompressed
+		versionWord &= ^compressionFlag
+	}
+
+	isJSON := versionWord&jsonVersionFlag != 0
+	if isJSON {
+		versionWord &= ^jsonVersionFlag
+	}
+
+	block := &all.SignedBeaconBlock{Version: spec.DataVersion(versionWord)}
+
+	var err error
+	if isJSON {
+		err = block.UnmarshalJSON(ssz)
+	} else {
+		err = dynSsz.UnmarshalSSZ(block, ssz)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode signed beacon block (version %d): %v", block.Version, err)
+	}
+
+	return block, nil
+}
 
 // MarshalVersionedSignedBeaconBlockSSZ marshals a versioned signed beacon block using SSZ encoding.
 func MarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock, compress bool, forceSSZ bool) (version uint64, ssz []byte, err error) {
@@ -361,119 +429,72 @@ func UnmarshalBlockAccessList(version uint64, data []byte) ([]byte, error) {
 	return data, nil
 }
 
-// getBlockExecutionExtraData returns the extra data from the execution payload of a versioned signed beacon block.
-func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
-	switch v.Version {
-	case spec.DataVersionBellatrix:
-		if v.Bellatrix == nil || v.Bellatrix.Message == nil || v.Bellatrix.Message.Body == nil || v.Bellatrix.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no bellatrix block")
-		}
-
-		return v.Bellatrix.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionCapella:
-		if v.Capella == nil || v.Capella.Message == nil || v.Capella.Message.Body == nil || v.Capella.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no capella block")
-		}
-
-		return v.Capella.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionDeneb:
-		if v.Deneb == nil || v.Deneb.Message == nil || v.Deneb.Message.Body == nil || v.Deneb.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no deneb block")
-		}
-
-		return v.Deneb.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no electra block")
-		}
-
-		return v.Electra.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionGloas:
-		return nil, nil
-	case spec.DataVersionHeze:
-		return nil, nil
-	default:
-		return nil, errors.New("unknown version")
+// getBlockExecutionExtraData returns the extra data from the in-block
+// execution payload (pre-EIP-7732). Returns (nil, nil) when the block has
+// no in-block execution payload (Gloas+ moved this into a separate envelope).
+func getBlockExecutionExtraData(b *all.SignedBeaconBlock) ([]byte, error) {
+	if b == nil || b.Message == nil || b.Message.Body == nil {
+		return nil, errors.New("nil block body")
 	}
+
+	switch b.Version {
+	case spec.DataVersionPhase0, spec.DataVersionAltair:
+		return nil, errors.New("no execution payload in pre-bellatrix block")
+	case spec.DataVersionGloas, spec.DataVersionHeze:
+		// Execution payload is delivered in a separate envelope.
+		return nil, nil
+	}
+
+	if b.Message.Body.ExecutionPayload == nil {
+		return nil, errors.New("no execution payload")
+	}
+
+	return b.Message.Body.ExecutionPayload.ExtraData, nil
 }
 
-// getBlockPayloadBuilderIndex returns the builder index from the execution payload of a versioned signed beacon block.
-func getBlockPayloadBuilderIndex(v *spec.VersionedSignedBeaconBlock) (gloas.BuilderIndex, error) {
-	switch v.Version {
-	case spec.DataVersionPhase0:
-		return 0, errors.New("no builder index in phase0 block")
-	case spec.DataVersionAltair:
-		return 0, errors.New("no builder index in altair block")
-	case spec.DataVersionBellatrix:
-		return 0, errors.New("no builder index in bellatrix block")
-	case spec.DataVersionCapella:
-		return 0, errors.New("no builder index in capella block")
-	case spec.DataVersionDeneb:
-		return 0, errors.New("no builder index in deneb block")
-	case spec.DataVersionElectra:
-		return 0, errors.New("no builder index in electra block")
-	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.Message == nil || v.Gloas.Message.Body == nil || v.Gloas.Message.Body.SignedExecutionPayloadBid == nil || v.Gloas.Message.Body.SignedExecutionPayloadBid.Message == nil {
-			return 0, errors.New("no gloas block")
-		}
-
-		return v.Gloas.Message.Body.SignedExecutionPayloadBid.Message.BuilderIndex, nil
-	case spec.DataVersionHeze:
-		if v.Heze == nil || v.Heze.Message == nil || v.Heze.Message.Body == nil || v.Heze.Message.Body.SignedExecutionPayloadBid == nil || v.Heze.Message.Body.SignedExecutionPayloadBid.Message == nil {
-			return 0, errors.New("no heze block")
-		}
-
-		return v.Heze.Message.Body.SignedExecutionPayloadBid.Message.BuilderIndex, nil
-	default:
-		return 0, errors.New("unknown version")
+// getBlockPayloadBuilderIndex returns the builder index from the in-block
+// execution payload bid. Only Gloas+ blocks carry one.
+func getBlockPayloadBuilderIndex(b *all.SignedBeaconBlock) (gloas.BuilderIndex, error) {
+	if b == nil || b.Message == nil || b.Message.Body == nil {
+		return 0, errors.New("nil block body")
 	}
+
+	if b.Version < spec.DataVersionGloas {
+		return 0, errors.New("no builder index in pre-gloas block")
+	}
+
+	bid := b.Message.Body.SignedExecutionPayloadBid
+	if bid == nil || bid.Message == nil {
+		return 0, errors.New("no payload bid")
+	}
+
+	return bid.Message.BuilderIndex, nil
 }
 
-// getBlockExecutionParentHash returns the parent hash from the execution payload of a versioned signed beacon block.
-func getBlockExecutionParentHash(v *spec.VersionedSignedBeaconBlock) (phase0.Hash32, error) {
-	switch v.Version {
-	case spec.DataVersionPhase0:
-		return phase0.Hash32{}, errors.New("no parent hash in phase0 block")
-	case spec.DataVersionAltair:
-		return phase0.Hash32{}, errors.New("no parent hash in altair block")
-	case spec.DataVersionBellatrix:
-		if v.Bellatrix == nil || v.Bellatrix.Message == nil || v.Bellatrix.Message.Body == nil || v.Bellatrix.Message.Body.ExecutionPayload == nil {
-			return phase0.Hash32{}, errors.New("no bellatrix block")
+// getBlockExecutionParentHash returns the parent block hash for the
+// execution payload referenced by this block. For Bellatrix..Electra blocks
+// the payload is in-block; for Gloas+ it is referenced via the payload bid.
+func getBlockExecutionParentHash(b *all.SignedBeaconBlock) (phase0.Hash32, error) {
+	if b == nil || b.Message == nil || b.Message.Body == nil {
+		return phase0.Hash32{}, errors.New("nil block body")
+	}
+
+	switch {
+	case b.Version < spec.DataVersionBellatrix:
+		return phase0.Hash32{}, errors.New("no execution parent hash in pre-bellatrix block")
+	case b.Version >= spec.DataVersionGloas:
+		bid := b.Message.Body.SignedExecutionPayloadBid
+		if bid == nil || bid.Message == nil {
+			return phase0.Hash32{}, errors.New("no payload bid")
 		}
 
-		return v.Bellatrix.Message.Body.ExecutionPayload.ParentHash, nil
-	case spec.DataVersionCapella:
-		if v.Capella == nil || v.Capella.Message == nil || v.Capella.Message.Body == nil || v.Capella.Message.Body.ExecutionPayload == nil {
-			return phase0.Hash32{}, errors.New("no capella block")
-		}
-
-		return v.Capella.Message.Body.ExecutionPayload.ParentHash, nil
-	case spec.DataVersionDeneb:
-		if v.Deneb == nil || v.Deneb.Message == nil || v.Deneb.Message.Body == nil || v.Deneb.Message.Body.ExecutionPayload == nil {
-			return phase0.Hash32{}, errors.New("no deneb block")
-		}
-
-		return v.Deneb.Message.Body.ExecutionPayload.ParentHash, nil
-	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
-			return phase0.Hash32{}, errors.New("no electra block")
-		}
-
-		return v.Electra.Message.Body.ExecutionPayload.ParentHash, nil
-	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.Message == nil || v.Gloas.Message.Body == nil || v.Gloas.Message.Body.SignedExecutionPayloadBid == nil || v.Gloas.Message.Body.SignedExecutionPayloadBid.Message == nil {
-			return phase0.Hash32{}, errors.New("no gloas block")
-		}
-
-		return v.Gloas.Message.Body.SignedExecutionPayloadBid.Message.ParentBlockHash, nil
-	case spec.DataVersionHeze:
-		if v.Heze == nil || v.Heze.Message == nil || v.Heze.Message.Body == nil || v.Heze.Message.Body.SignedExecutionPayloadBid == nil || v.Heze.Message.Body.SignedExecutionPayloadBid.Message == nil {
-			return phase0.Hash32{}, errors.New("no heze block")
-		}
-
-		return v.Heze.Message.Body.SignedExecutionPayloadBid.Message.ParentBlockHash, nil
+		return bid.Message.ParentBlockHash, nil
 	default:
-		return phase0.Hash32{}, errors.New("unknown version")
+		if b.Message.Body.ExecutionPayload == nil {
+			return phase0.Hash32{}, errors.New("no execution payload")
+		}
+
+		return b.Message.Body.ExecutionPayload.ParentHash, nil
 	}
 }
 
@@ -845,28 +866,12 @@ func getStateProposerLookahead(v *spec.VersionedBeaconState) ([]phase0.Validator
 	}
 }
 
-// getBlockSize returns the block size from a versioned beacon block.
-func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock) (int, error) {
-	switch block.Version {
-	case spec.DataVersionPhase0:
-		return dynSsz.SizeSSZ(block.Phase0)
-	case spec.DataVersionAltair:
-		return dynSsz.SizeSSZ(block.Altair)
-	case spec.DataVersionBellatrix:
-		return dynSsz.SizeSSZ(block.Bellatrix)
-	case spec.DataVersionCapella:
-		return dynSsz.SizeSSZ(block.Capella)
-	case spec.DataVersionDeneb:
-		return dynSsz.SizeSSZ(block.Deneb)
-	case spec.DataVersionElectra:
-		return dynSsz.SizeSSZ(block.Electra)
-	case spec.DataVersionFulu:
-		return dynSsz.SizeSSZ(block.Fulu)
-	case spec.DataVersionGloas:
-		return dynSsz.SizeSSZ(block.Gloas)
-	case spec.DataVersionHeze:
-		return dynSsz.SizeSSZ(block.Heze)
-	default:
-		return 0, errors.New("unknown version")
+// getBlockSize returns the SSZ-encoded byte size of a fork-agnostic signed
+// beacon block.
+func getBlockSize(dynSsz *dynssz.DynSsz, block *all.SignedBeaconBlock) (int, error) {
+	if block == nil {
+		return 0, errors.New("nil block")
 	}
+
+	return dynSsz.SizeSSZ(block)
 }

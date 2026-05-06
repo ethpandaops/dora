@@ -11,7 +11,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
-	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
@@ -141,13 +141,8 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		block.unpruneBlockBody(indexer.ctx)
 
 		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
-			if _, err := block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-				body, err := LoadBeaconBlock(client.getContext(), client, block.Root)
-				if err != nil {
-					return nil, err
-				}
-
-				return AgnosticToVersionedSignedBeaconBlock(body)
+			if _, err := block.EnsureBlock(func() (*all.SignedBeaconBlock, error) {
+				return LoadBeaconBlock(client.getContext(), client, block.Root)
 			}); err != nil {
 				client.logger.Warnf("failed loading finalized block body %v (%v): %v", block.Slot, block.Root.String(), err)
 			}

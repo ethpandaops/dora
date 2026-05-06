@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
 	"github.com/ethpandaops/dora/statecache"
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -113,23 +114,28 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		}
 	}()
 
-	var beaconBlock *spec.VersionedSignedBeaconBlock
+	var agnosticBeaconBlock *all.SignedBeaconBlock
 
 	block := client.indexer.blockCache.getBlockByRoot(s.slotRoot)
 	if block != nil {
-		beaconBlock = block.AwaitBlock(ctx, beaconHeaderRequestTimeout)
+		agnosticBeaconBlock = block.AwaitBlock(ctx, beaconHeaderRequestTimeout)
 	}
 
-	if beaconBlock == nil {
-		agnosticBlock, err := LoadBeaconBlock(ctx, client, s.slotRoot)
+	if agnosticBeaconBlock == nil {
+		loaded, err := LoadBeaconBlock(ctx, client, s.slotRoot)
 		if err != nil {
 			return nil, err
 		}
 
-		beaconBlock, err = AgnosticToVersionedSignedBeaconBlock(agnosticBlock)
-		if err != nil {
-			return nil, fmt.Errorf("convert beacon block %v: %w", s.slotRoot.String(), err)
-		}
+		agnosticBeaconBlock = loaded
+	}
+
+	// Convert to the legacy *spec.VersionedSignedBeaconBlock for the
+	// statetransition path which still operates on the wrapper type. This
+	// shim is dropped in the state-transition migration phase.
+	beaconBlock, err := AgnosticToVersionedSignedBeaconBlock(agnosticBeaconBlock)
+	if err != nil {
+		return nil, fmt.Errorf("convert beacon block %v: %w", s.slotRoot.String(), err)
 	}
 
 	if beaconBlock != nil {
@@ -416,8 +422,17 @@ func (s *epochState) tryReplayFromParentState(
 	replayStart := time.Now()
 	var blockApplyTotal time.Duration
 	for _, blk := range epochBlocks {
-		beaconBlock := blk.GetBlock(ctx)
-		if beaconBlock == nil {
+		agnosticBeaconBlock := blk.GetBlock(ctx)
+		if agnosticBeaconBlock == nil {
+			return nil
+		}
+
+		// Convert to the legacy *spec.VersionedSignedBeaconBlock for the
+		// statetransition path which still operates on the wrapper type. This
+		// shim is dropped in the state-transition migration phase.
+		beaconBlock, err := AgnosticToVersionedSignedBeaconBlock(agnosticBeaconBlock)
+		if err != nil {
+			client.logger.Warnf("replay: convert beacon block at slot %v failed: %v", blk.Slot, err)
 			return nil
 		}
 
@@ -431,7 +446,7 @@ func (s *epochState) tryReplayFromParentState(
 		// processing now includes processing the parent payload's requests via
 		// block.body.parent_execution_requests, so the post-block HTR already
 		// reflects everything — no separate payload application step.
-		expectedStateRoot, _ := beaconBlock.StateRoot()
+		expectedStateRoot := agnosticBeaconBlock.Message.StateRoot
 		var gotStateRoot phase0.Root
 		var htrErr error
 		switch parentState.Version {

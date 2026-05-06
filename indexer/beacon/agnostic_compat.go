@@ -14,42 +14,28 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/heze"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
-	"github.com/ethpandaops/go-eth2-client/spec/version"
 )
 
 // Transitional shims that bridge the new fork-agnostic types
-// (*all.SignedBeaconBlock, *all.BeaconState) returned by the new
-// AgnosticSignedBeaconBlock / AgnosticBeaconState API surface back to the
-// legacy *spec.VersionedSignedBeaconBlock / *spec.VersionedBeaconState
-// wrappers that the rest of dora still operates on.
+// (*all.SignedBeaconBlock, *all.BeaconState) to the legacy
+// *spec.VersionedSignedBeaconBlock / *spec.VersionedBeaconState wrappers
+// used by code paths that have not yet been migrated (statetransition,
+// blockdb body cast, etc.).
 //
-// These helpers are used during the in-progress migration of dora to the
-// fork-agnostic types. They will be removed in a later phase once every
-// consumer reads directly from *all.* values.
+// These helpers will be removed in a later phase once every consumer reads
+// directly from *all.* values.
 
 // AgnosticToVersionedSignedBeaconBlock builds a *spec.VersionedSignedBeaconBlock
 // from a fork-agnostic *all.SignedBeaconBlock. The conversion goes through
 // (*all.SignedBeaconBlock).ToView() so the per-fork view machinery in the
 // upstream library is the single source of truth for fork-specific types.
 //
-// Fulu shares its block schema with Electra and is not enumerated in the
-// agnostic block view-type switch, so callers receive an *electra.SignedBeaconBlock
-// after a temporary version flip and the result is stored in versioned.Fulu.
+// Fulu shares its block schema with Electra, so an agnostic block with
+// Version Fulu (or Electra) yields an *electra.SignedBeaconBlock view; both
+// land in the appropriate field of the legacy wrapper.
 func AgnosticToVersionedSignedBeaconBlock(block *all.SignedBeaconBlock) (*spec.VersionedSignedBeaconBlock, error) {
 	if block == nil {
 		return nil, nil
-	}
-
-	if block.Version == spec.DataVersionFulu {
-		eb, err := agnosticToElectraSignedBlockView(block)
-		if err != nil {
-			return nil, err
-		}
-
-		return &spec.VersionedSignedBeaconBlock{
-			Version: spec.DataVersionFulu,
-			Fulu:    eb,
-		}, nil
 	}
 
 	view, err := block.ToView()
@@ -73,7 +59,13 @@ func AgnosticToVersionedSignedBeaconBlock(block *all.SignedBeaconBlock) (*spec.V
 	case *deneb.SignedBeaconBlock:
 		versioned.Deneb = v
 	case *electra.SignedBeaconBlock:
-		versioned.Electra = v
+		// Electra schema is shared with Fulu — the legacy wrapper exposes
+		// distinct fields for both, picked by the recorded version.
+		if block.Version == spec.DataVersionFulu {
+			versioned.Fulu = v
+		} else {
+			versioned.Electra = v
+		}
 	case *gloas.SignedBeaconBlock:
 		versioned.Gloas = v
 	case *heze.SignedBeaconBlock:
@@ -85,56 +77,48 @@ func AgnosticToVersionedSignedBeaconBlock(block *all.SignedBeaconBlock) (*spec.V
 	return versioned, nil
 }
 
-// agnosticToElectraSignedBlockView extracts an *electra.SignedBeaconBlock view
-// from an agnostic block whose Version is Fulu. It temporarily flips the
-// Version on the agnostic block and its Versioned children so the upstream
-// ToView() dispatch reaches the Electra arms, then restores the Fulu version
-// on return.
-func agnosticToElectraSignedBlockView(block *all.SignedBeaconBlock) (*electra.SignedBeaconBlock, error) {
-	type versioned struct {
-		set  func(version.DataVersion)
-		orig version.DataVersion
+// VersionedToAgnosticSignedBeaconBlock builds a *all.SignedBeaconBlock from
+// a legacy *spec.VersionedSignedBeaconBlock by delegating to FromView with
+// the populated fork-specific block.
+func VersionedToAgnosticSignedBeaconBlock(versioned *spec.VersionedSignedBeaconBlock) (*all.SignedBeaconBlock, error) {
+	if versioned == nil {
+		return nil, nil
 	}
 
-	flips := []versioned{
-		{set: func(v version.DataVersion) { block.Version = v }, orig: block.Version},
+	var view any
+	switch versioned.Version {
+	case spec.DataVersionPhase0:
+		view = versioned.Phase0
+	case spec.DataVersionAltair:
+		view = versioned.Altair
+	case spec.DataVersionBellatrix:
+		view = versioned.Bellatrix
+	case spec.DataVersionCapella:
+		view = versioned.Capella
+	case spec.DataVersionDeneb:
+		view = versioned.Deneb
+	case spec.DataVersionElectra:
+		view = versioned.Electra
+	case spec.DataVersionFulu:
+		view = versioned.Fulu
+	case spec.DataVersionGloas:
+		view = versioned.Gloas
+	case spec.DataVersionHeze:
+		view = versioned.Heze
+	default:
+		return nil, fmt.Errorf("unsupported versioned signed beacon block version %d", versioned.Version)
 	}
 
-	if block.Message != nil {
-		flips = append(flips, versioned{set: func(v version.DataVersion) { block.Message.Version = v }, orig: block.Message.Version})
-
-		if block.Message.Body != nil {
-			body := block.Message.Body
-			flips = append(flips, versioned{set: func(v version.DataVersion) { body.Version = v }, orig: body.Version})
-
-			if body.ExecutionPayload != nil {
-				ep := body.ExecutionPayload
-				flips = append(flips, versioned{set: func(v version.DataVersion) { ep.Version = v }, orig: ep.Version})
-			}
-		}
+	if view == nil {
+		return nil, fmt.Errorf("versioned signed beacon block has no body for version %d", versioned.Version)
 	}
 
-	for _, f := range flips {
-		f.set(version.DataVersionElectra)
+	block := &all.SignedBeaconBlock{Version: versioned.Version}
+	if err := block.FromView(view); err != nil {
+		return nil, fmt.Errorf("populate agnostic signed beacon block from view: %w", err)
 	}
 
-	defer func() {
-		for _, f := range flips {
-			f.set(f.orig)
-		}
-	}()
-
-	view, err := block.ToView()
-	if err != nil {
-		return nil, fmt.Errorf("convert agnostic fulu signed beacon block to electra view: %w", err)
-	}
-
-	eb, ok := view.(*electra.SignedBeaconBlock)
-	if !ok {
-		return nil, fmt.Errorf("unexpected fulu signed beacon block view type %T", view)
-	}
-
-	return eb, nil
+	return block, nil
 }
 
 // AgnosticToVersionedBeaconState builds a *spec.VersionedBeaconState from a

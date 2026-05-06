@@ -9,6 +9,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
@@ -24,49 +25,31 @@ func clampInt64(v uint64) uint64 {
 	return v
 }
 
-// getBlockBid extracts the execution payload bid from a Gloas/Heze signed beacon
-// block and converts it to a dbtypes.BlockBid. Returns nil for pre-Gloas blocks
-// or blocks without a bid.
-func getBlockBid(v *spec.VersionedSignedBeaconBlock) *dbtypes.BlockBid {
-	switch v.Version {
-	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.Message == nil || v.Gloas.Message.Body == nil ||
-			v.Gloas.Message.Body.SignedExecutionPayloadBid == nil ||
-			v.Gloas.Message.Body.SignedExecutionPayloadBid.Message == nil {
-			return nil
-		}
-		bid := v.Gloas.Message.Body.SignedExecutionPayloadBid.Message
-		return &dbtypes.BlockBid{
-			ParentRoot:   bid.ParentBlockRoot[:],
-			ParentHash:   bid.ParentBlockHash[:],
-			BlockHash:    bid.BlockHash[:],
-			FeeRecipient: bid.FeeRecipient[:],
-			GasLimit:     bid.GasLimit,
-			BuilderIndex: int64(bid.BuilderIndex),
-			Slot:         uint64(bid.Slot),
-			Value:        uint64(bid.Value),
-			ElPayment:    uint64(bid.ExecutionPayment),
-		}
-	case spec.DataVersionHeze:
-		if v.Heze == nil || v.Heze.Message == nil || v.Heze.Message.Body == nil ||
-			v.Heze.Message.Body.SignedExecutionPayloadBid == nil ||
-			v.Heze.Message.Body.SignedExecutionPayloadBid.Message == nil {
-			return nil
-		}
-		bid := v.Heze.Message.Body.SignedExecutionPayloadBid.Message
-		return &dbtypes.BlockBid{
-			ParentRoot:   bid.ParentBlockRoot[:],
-			ParentHash:   bid.ParentBlockHash[:],
-			BlockHash:    bid.BlockHash[:],
-			FeeRecipient: bid.FeeRecipient[:],
-			GasLimit:     bid.GasLimit,
-			BuilderIndex: int64(bid.BuilderIndex),
-			Slot:         uint64(bid.Slot),
-			Value:        uint64(bid.Value),
-			ElPayment:    uint64(bid.ExecutionPayment),
-		}
+// getBlockBid extracts the execution payload bid from a Gloas/Heze signed
+// beacon block and converts it to a dbtypes.BlockBid. Returns nil for
+// pre-Gloas blocks or blocks without a bid.
+func getBlockBid(v *all.SignedBeaconBlock) *dbtypes.BlockBid {
+	if v == nil || v.Version < spec.DataVersionGloas || v.Message == nil || v.Message.Body == nil {
+		return nil
 	}
-	return nil
+
+	signedBid := v.Message.Body.SignedExecutionPayloadBid
+	if signedBid == nil || signedBid.Message == nil {
+		return nil
+	}
+
+	bid := signedBid.Message
+	return &dbtypes.BlockBid{
+		ParentRoot:   bid.ParentBlockRoot[:],
+		ParentHash:   bid.ParentBlockHash[:],
+		BlockHash:    bid.BlockHash[:],
+		FeeRecipient: bid.FeeRecipient[:],
+		GasLimit:     bid.GasLimit,
+		BuilderIndex: int64(bid.BuilderIndex),
+		Slot:         uint64(bid.Slot),
+		Value:        uint64(bid.Value),
+		ElPayment:    uint64(bid.ExecutionPayment),
+	}
 }
 
 type dbWriter struct {
@@ -291,7 +274,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	}
 
 	blockBody := block.GetBlock(dbw.indexer.ctx)
-	if blockBody == nil {
+	if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 		dbw.indexer.logger.Warnf("error while building db blocks: block body not found: %v", block.Slot)
 		return nil
 	}
@@ -303,16 +286,17 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	chainState := dbw.indexer.consensusPool.GetChainState()
 
-	graffiti, _ := blockBody.Graffiti()
-	attestations, _ := blockBody.Attestations()
-	deposits, _ := blockBody.Deposits()
-	voluntaryExits, _ := blockBody.VoluntaryExits()
-	attesterSlashings, _ := blockBody.AttesterSlashings()
-	proposerSlashings, _ := blockBody.ProposerSlashings()
-	blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
-	syncAggregate, _ := blockBody.SyncAggregate()
-	executionBlockHash, _ := blockBody.ExecutionBlockHash()
-	blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
+	body := blockBody.Message.Body
+	graffiti := body.Graffiti
+	attestations := body.Attestations
+	deposits := body.Deposits
+	voluntaryExits := body.VoluntaryExits
+	attesterSlashings := body.AttesterSlashings
+	proposerSlashings := body.ProposerSlashings
+	blsToExecChanges := body.BLSToExecutionChanges
+	syncAggregate := body.SyncAggregate
+	blobKzgCommitments := body.BlobKZGCommitments
+	var executionBlockHash phase0.Hash32
 
 	var executionBlockNumber uint64
 	var executionBlockParentHash []byte
@@ -325,6 +309,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 		blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 		if blockPayload != nil {
+			executionBlockHash = blockPayload.Message.Payload.BlockHash
 			executionBlockNumber = blockPayload.Message.Payload.BlockNumber
 			executionBlockParentHash = blockPayload.Message.Payload.ParentHash[:]
 			executionExtraData = blockPayload.Message.Payload.ExtraData
@@ -337,19 +322,17 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	} else {
 		payloadStatus = dbtypes.PayloadStatusCanonical
-		executionBlockNumber, _ = blockBody.ExecutionBlockNumber()
-		executionPayload, _ := blockBody.ExecutionPayload()
-		if executionPayload != nil {
-			executionExtraData, _ = executionPayload.ExtraData()
-			executionTransactions, _ = executionPayload.Transactions()
-			executionWithdrawals, _ = executionPayload.Withdrawals()
-			if parentHash, err := executionPayload.ParentHash(); err == nil {
-				executionBlockParentHash = parentHash[:]
-			}
+		if body.ExecutionPayload != nil {
+			ep := body.ExecutionPayload
+			executionBlockHash = ep.BlockHash
+			executionBlockNumber = ep.BlockNumber
+			executionExtraData = ep.ExtraData
+			executionTransactions = ep.Transactions
+			executionWithdrawals = ep.Withdrawals
+			executionBlockParentHash = ep.ParentHash[:]
 		}
-		executionRequests, _ := blockBody.ExecutionRequests()
-		if executionRequests != nil {
-			depositRequests = executionRequests.Deposits
+		if body.ExecutionRequests != nil {
+			depositRequests = body.ExecutionRequests.Deposits
 		}
 	}
 
@@ -465,53 +448,20 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			dbBlock.WithdrawAmount = math.MaxInt64
 		}
 
-		switch blockBody.Version {
-		case spec.DataVersionBellatrix:
-			if blockBody.Bellatrix != nil && blockBody.Bellatrix.Message != nil &&
-				blockBody.Bellatrix.Message.Body != nil && blockBody.Bellatrix.Message.Body.ExecutionPayload != nil {
-				payload := blockBody.Bellatrix.Message.Body.ExecutionPayload
+		switch {
+		case blockBody.Version >= spec.DataVersionBellatrix && blockBody.Version < spec.DataVersionGloas:
+			if body.ExecutionPayload != nil {
+				payload := body.ExecutionPayload
 				dbBlock.EthGasUsed = payload.GasUsed
 				dbBlock.EthGasLimit = payload.GasLimit
-				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGasLE)
+				if payload.BaseFeePerGas != nil {
+					dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				} else {
+					dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGasLE)
+				}
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
-		case spec.DataVersionCapella:
-			if blockBody.Capella != nil && blockBody.Capella.Message != nil &&
-				blockBody.Capella.Message.Body != nil && blockBody.Capella.Message.Body.ExecutionPayload != nil {
-				payload := blockBody.Capella.Message.Body.ExecutionPayload
-				dbBlock.EthGasUsed = payload.GasUsed
-				dbBlock.EthGasLimit = payload.GasLimit
-				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGasLE)
-				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
-			}
-		case spec.DataVersionDeneb:
-			if blockBody.Deneb != nil && blockBody.Deneb.Message != nil &&
-				blockBody.Deneb.Message.Body != nil && blockBody.Deneb.Message.Body.ExecutionPayload != nil {
-				payload := blockBody.Deneb.Message.Body.ExecutionPayload
-				dbBlock.EthGasUsed = payload.GasUsed
-				dbBlock.EthGasLimit = payload.GasLimit
-				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
-				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
-			}
-		case spec.DataVersionElectra:
-			if blockBody.Electra != nil && blockBody.Electra.Message != nil &&
-				blockBody.Electra.Message.Body != nil && blockBody.Electra.Message.Body.ExecutionPayload != nil {
-				payload := blockBody.Electra.Message.Body.ExecutionPayload
-				dbBlock.EthGasUsed = payload.GasUsed
-				dbBlock.EthGasLimit = payload.GasLimit
-				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
-				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
-			}
-		case spec.DataVersionFulu:
-			if blockBody.Fulu != nil && blockBody.Fulu.Message != nil &&
-				blockBody.Fulu.Message.Body != nil && blockBody.Fulu.Message.Body.ExecutionPayload != nil {
-				payload := blockBody.Fulu.Message.Body.ExecutionPayload
-				dbBlock.EthGasUsed = payload.GasUsed
-				dbBlock.EthGasLimit = payload.GasLimit
-				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
-				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
-			}
-		case spec.DataVersionGloas, spec.DataVersionHeze:
+		case blockBody.Version >= spec.DataVersionGloas:
 			blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 			if blockPayload != nil {
 				payload := blockPayload.Message.Payload
@@ -578,7 +528,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			}
 
 			blockBody := block.GetBlock(dbw.indexer.ctx)
-			if blockBody == nil {
+			if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 				dbw.indexer.logger.Warnf("error while building db epoch: block body not found for aggregation: %v", block.Slot)
 				continue
 			}
@@ -586,14 +536,15 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 				blockFn(block, depositIndex)
 			}
 
-			attestations, _ := blockBody.Attestations()
-			deposits, _ := blockBody.Deposits()
-			voluntaryExits, _ := blockBody.VoluntaryExits()
-			attesterSlashings, _ := blockBody.AttesterSlashings()
-			proposerSlashings, _ := blockBody.ProposerSlashings()
-			blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
-			syncAggregate, _ := blockBody.SyncAggregate()
-			blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
+			body := blockBody.Message.Body
+			attestations := body.Attestations
+			deposits := body.Deposits
+			voluntaryExits := body.VoluntaryExits
+			attesterSlashings := body.AttesterSlashings
+			proposerSlashings := body.ProposerSlashings
+			blsToExecChanges := body.BLSToExecutionChanges
+			syncAggregate := body.SyncAggregate
+			blobKzgCommitments := body.BlobKZGCommitments
 
 			var executionTransactions []bellatrix.Transaction
 			var executionWithdrawals []*capella.Withdrawal
@@ -608,11 +559,12 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 					depositRequests = blockPayload.Message.ExecutionRequests.Deposits
 				}
 			} else {
-				executionTransactions, _ = blockBody.ExecutionTransactions()
-				executionWithdrawals, _ = blockBody.Withdrawals()
-				executionRequests, _ := blockBody.ExecutionRequests()
-				if executionRequests != nil {
-					depositRequests = executionRequests.Deposits
+				if body.ExecutionPayload != nil {
+					executionTransactions = body.ExecutionPayload.Transactions
+					executionWithdrawals = body.ExecutionPayload.Withdrawals
+				}
+				if body.ExecutionRequests != nil {
+					depositRequests = body.ExecutionRequests.Deposits
 				}
 			}
 
@@ -655,43 +607,13 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			}
 
 			// Aggregate gas used and gas limit
-			switch blockBody.Version {
-			case spec.DataVersionBellatrix:
-				if blockBody.Bellatrix != nil && blockBody.Bellatrix.Message != nil &&
-					blockBody.Bellatrix.Message.Body != nil && blockBody.Bellatrix.Message.Body.ExecutionPayload != nil {
-					payload := blockBody.Bellatrix.Message.Body.ExecutionPayload
-					dbEpoch.EthGasUsed += payload.GasUsed
-					dbEpoch.EthGasLimit += payload.GasLimit
+			switch {
+			case blockBody.Version >= spec.DataVersionBellatrix && blockBody.Version < spec.DataVersionGloas:
+				if body.ExecutionPayload != nil {
+					dbEpoch.EthGasUsed += body.ExecutionPayload.GasUsed
+					dbEpoch.EthGasLimit += body.ExecutionPayload.GasLimit
 				}
-			case spec.DataVersionCapella:
-				if blockBody.Capella != nil && blockBody.Capella.Message != nil &&
-					blockBody.Capella.Message.Body != nil && blockBody.Capella.Message.Body.ExecutionPayload != nil {
-					payload := blockBody.Capella.Message.Body.ExecutionPayload
-					dbEpoch.EthGasUsed += payload.GasUsed
-					dbEpoch.EthGasLimit += payload.GasLimit
-				}
-			case spec.DataVersionDeneb:
-				if blockBody.Deneb != nil && blockBody.Deneb.Message != nil &&
-					blockBody.Deneb.Message.Body != nil && blockBody.Deneb.Message.Body.ExecutionPayload != nil {
-					payload := blockBody.Deneb.Message.Body.ExecutionPayload
-					dbEpoch.EthGasUsed += payload.GasUsed
-					dbEpoch.EthGasLimit += payload.GasLimit
-				}
-			case spec.DataVersionElectra:
-				if blockBody.Electra != nil && blockBody.Electra.Message != nil &&
-					blockBody.Electra.Message.Body != nil && blockBody.Electra.Message.Body.ExecutionPayload != nil {
-					payload := blockBody.Electra.Message.Body.ExecutionPayload
-					dbEpoch.EthGasUsed += payload.GasUsed
-					dbEpoch.EthGasLimit += payload.GasLimit
-				}
-			case spec.DataVersionFulu:
-				if blockBody.Fulu != nil && blockBody.Fulu.Message != nil &&
-					blockBody.Fulu.Message.Body != nil && blockBody.Fulu.Message.Body.ExecutionPayload != nil {
-					payload := blockBody.Fulu.Message.Body.ExecutionPayload
-					dbEpoch.EthGasUsed += payload.GasUsed
-					dbEpoch.EthGasLimit += payload.GasLimit
-				}
-			case spec.DataVersionGloas, spec.DataVersionHeze:
+			case blockBody.Version >= spec.DataVersionGloas:
 				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 				if blockPayload != nil {
 					payload := blockPayload.Message.Payload
@@ -730,14 +652,11 @@ func (dbw *dbWriter) persistBlockDeposits(tx *sqlx.Tx, block *Block, depositInde
 
 func (dbw *dbWriter) buildDbDeposits(block *Block, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Deposit {
 	blockBody := block.GetBlock(dbw.indexer.ctx)
-	if blockBody == nil {
+	if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 		return nil
 	}
 
-	deposits, err := blockBody.Deposits()
-	if err != nil {
-		return nil
-	}
+	deposits := blockBody.Message.Body.Deposits
 
 	dbDeposits := make([]*dbtypes.Deposit, len(deposits))
 	for idx, deposit := range deposits {
@@ -797,11 +716,11 @@ func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrid
 		}
 	} else {
 		blockBody := block.GetBlock(dbw.indexer.ctx)
-		if blockBody == nil {
+		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 			return nil
 		}
 
-		requests, _ = blockBody.ExecutionRequests()
+		requests = blockBody.Message.Body.ExecutionRequests
 	}
 
 	if requests == nil {
@@ -848,14 +767,11 @@ func (dbw *dbWriter) persistBlockVoluntaryExits(tx *sqlx.Tx, block *Block, orpha
 
 func (dbw *dbWriter) buildDbVoluntaryExits(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.VoluntaryExit {
 	blockBody := block.GetBlock(dbw.indexer.ctx)
-	if blockBody == nil {
+	if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 		return nil
 	}
 
-	voluntaryExits, err := blockBody.VoluntaryExits()
-	if err != nil {
-		return nil
-	}
+	voluntaryExits := blockBody.Message.Body.VoluntaryExits
 
 	dbVoluntaryExits := make([]*dbtypes.VoluntaryExit, len(voluntaryExits))
 	for idx, voluntaryExit := range voluntaryExits {
@@ -915,21 +831,16 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 		}
 	} else {
 		blockBody := block.GetBlock(dbw.indexer.ctx)
-		if blockBody == nil {
+		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 			return nil
 		}
 
-		executionPayload, err := blockBody.ExecutionPayload()
-		if err != nil || executionPayload == nil {
+		executionPayload := blockBody.Message.Body.ExecutionPayload
+		if executionPayload == nil || len(executionPayload.Withdrawals) == 0 {
 			return nil
 		}
 
-		withdrawals, err := executionPayload.Withdrawals()
-		if err != nil || len(withdrawals) == 0 {
-			return nil
-		}
-
-		executionWithdrawals = withdrawals
+		executionWithdrawals = executionPayload.Withdrawals
 	}
 
 	forkId := uint64(block.forkId)
@@ -1096,24 +1007,13 @@ func (dbw *dbWriter) persistBlockSlashings(tx *sqlx.Tx, block *Block, orphaned b
 
 func (dbw *dbWriter) buildDbSlashings(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Slashing {
 	blockBody := block.GetBlock(dbw.indexer.ctx)
-	if blockBody == nil {
+	if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 		return nil
 	}
 
-	proposerSlashings, err := blockBody.ProposerSlashings()
-	if err != nil {
-		return nil
-	}
-
-	attesterSlashings, err := blockBody.AttesterSlashings()
-	if err != nil {
-		return nil
-	}
-
-	proposerIndex, err := blockBody.ProposerIndex()
-	if err != nil {
-		return nil
-	}
+	proposerSlashings := blockBody.Message.Body.ProposerSlashings
+	attesterSlashings := blockBody.Message.Body.AttesterSlashings
+	proposerIndex := blockBody.Message.ProposerIndex
 
 	dbSlashings := []*dbtypes.Slashing{}
 	slashingIndex := 0
@@ -1138,14 +1038,12 @@ func (dbw *dbWriter) buildDbSlashings(block *Block, orphaned bool, overrideForkI
 	}
 
 	for _, attesterSlashing := range attesterSlashings {
-		att1, _ := attesterSlashing.Attestation1()
-		att2, _ := attesterSlashing.Attestation2()
-		if att1 == nil || att2 == nil {
+		if attesterSlashing == nil || attesterSlashing.Attestation1 == nil || attesterSlashing.Attestation2 == nil {
 			continue
 		}
 
-		att1AttestingIndices, _ := att1.AttestingIndices()
-		att2AttestingIndices, _ := att2.AttestingIndices()
+		att1AttestingIndices := attesterSlashing.Attestation1.AttestingIndices
+		att2AttestingIndices := attesterSlashing.Attestation2.AttestingIndices
 		if att1AttestingIndices == nil || att2AttestingIndices == nil {
 			continue
 		}
@@ -1202,12 +1100,14 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 		}
 	} else {
 		blockBody := block.GetBlock(dbw.indexer.ctx)
-		if blockBody == nil {
+		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 			return nil
 		}
 
-		requests, _ = blockBody.ExecutionRequests()
-		blockNumber, _ = blockBody.ExecutionBlockNumber()
+		requests = blockBody.Message.Body.ExecutionRequests
+		if blockBody.Message.Body.ExecutionPayload != nil {
+			blockNumber = blockBody.Message.Body.ExecutionPayload.BlockNumber
+		}
 	}
 
 	if requests == nil {
@@ -1296,12 +1196,14 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 		}
 	} else {
 		blockBody := block.GetBlock(dbw.indexer.ctx)
-		if blockBody == nil {
+		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 			return nil
 		}
 
-		requests, _ = blockBody.ExecutionRequests()
-		blockNumber, _ = blockBody.ExecutionBlockNumber()
+		requests = blockBody.Message.Body.ExecutionRequests
+		if blockBody.Message.Body.ExecutionPayload != nil {
+			blockNumber = blockBody.Message.Body.ExecutionPayload.BlockNumber
+		}
 	}
 
 	if requests == nil {
