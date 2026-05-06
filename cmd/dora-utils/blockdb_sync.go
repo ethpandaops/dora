@@ -272,17 +272,12 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 	}
 
 	added, _, err := blockdb.GlobalBlockDb.AddBlockWithCallback(ctx, slot, blockHeader.Root[:], func() (*btypes.BlockData, error) {
-		agnosticBlock, err := client.GetRPCClient().GetBlockBodyByBlockroot(ctx, blockHeader.Root)
+		blockBody, err := client.GetRPCClient().GetBlockBodyByBlockroot(ctx, blockHeader.Root)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get block body for slot %d: %v", slot, err)
 		}
 
-		blockBody, err := beacon.AgnosticToVersionedSignedBeaconBlock(agnosticBlock)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert block body for slot %d: %v", slot, err)
-		}
-
-		version, bodyBytes, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockBody, true, false)
+		version, bodyBytes, err := beacon.MarshalSignedBeaconBlockSSZ(dynSsz, blockBody, true, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal block body for slot %d: %v", slot, err)
 		}

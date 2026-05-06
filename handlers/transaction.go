@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
@@ -1295,15 +1296,19 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	defer cancel()
 
 	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(ctx, blockRoot)
-	if err != nil || blockData == nil || blockData.Block == nil {
+	if err != nil || blockData == nil || blockData.Block == nil || blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
 		logrus.WithError(err).Debug("failed to load beacon block for transaction details")
 		return
 	}
 
-	// Get execution transactions from the block
-	execTxs, err := blockData.Block.ExecutionTransactions()
-	if err != nil {
-		logrus.WithError(err).Debug("failed to get execution transactions")
+	// Get execution transactions from the block (or envelope for Gloas+)
+	var execTxs []bellatrix.Transaction
+	if blockData.Payload != nil && blockData.Payload.Message != nil && blockData.Payload.Message.Payload != nil {
+		execTxs = blockData.Payload.Message.Payload.Transactions
+	} else if ep := blockData.Block.Message.Body.ExecutionPayload; ep != nil {
+		execTxs = ep.Transactions
+	} else {
+		logrus.Debug("block has no execution payload")
 		return
 	}
 
@@ -1353,13 +1358,11 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 
 	// Get KZG commitments from beacon block
 	var kzgCommitments [][]byte
-	if blockData != nil && blockData.Block != nil {
-		commitments, err := blockData.Block.BlobKZGCommitments()
-		if err == nil {
-			// Find the commitments that correspond to this transaction's blobs
-			// by matching versioned hashes
-			kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
-		}
+	if blockData != nil && blockData.Block != nil && blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
+		commitments := blockData.Block.Message.Body.BlobKZGCommitments
+		// Find the commitments that correspond to this transaction's blobs
+		// by matching versioned hashes
+		kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
 	}
 
 	// Build blob list
@@ -1392,32 +1395,28 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 	}
 
 	// Calculate actual blob gas price from block's excess_blob_gas
-	if blockData != nil && blockData.Block != nil {
-		executionPayload, err := blockData.Block.ExecutionPayload()
-		if err == nil && executionPayload != nil {
-			excessBlobGas, err := executionPayload.ExcessBlobGas()
-			if err == nil {
-				timestamp, _ := executionPayload.Timestamp()
-				executionChainState := services.GlobalBeaconService.GetExecutionChainState()
-				blobSchedule := executionChainState.GetBlobScheduleForTimestamp(time.Unix(int64(timestamp), 0))
+	if blockData != nil && blockData.Block != nil && blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
+		executionPayload := blockData.Block.Message.Body.ExecutionPayload
+		if executionPayload != nil {
+			executionChainState := services.GlobalBeaconService.GetExecutionChainState()
+			blobSchedule := executionChainState.GetBlobScheduleForTimestamp(time.Unix(int64(executionPayload.Timestamp), 0))
 
-				if blobSchedule != nil {
-					blobBaseFee := executionChainState.CalcBaseFeePerBlobGas(excessBlobGas, blobSchedule.BaseFeeUpdateFraction)
+			if blobSchedule != nil {
+				blobBaseFee := executionChainState.CalcBaseFeePerBlobGas(executionPayload.ExcessBlobGas, blobSchedule.BaseFeeUpdateFraction)
 
-					// Convert to Gwei for display
-					blobBaseFeeFloat, _ := new(big.Float).SetInt(blobBaseFee).Float64()
-					pageData.BlobGasPrice = blobBaseFeeFloat / 1e9
+				// Convert to Gwei for display
+				blobBaseFeeFloat, _ := new(big.Float).SetInt(blobBaseFee).Float64()
+				pageData.BlobGasPrice = blobBaseFeeFloat / 1e9
 
-					// Calculate total blob fee in ETH
-					blobFeeWei := new(big.Int).Mul(blobBaseFee, big.NewInt(int64(pageData.BlobGasUsed)))
-					blobFeeFloat, _ := new(big.Float).SetInt(blobFeeWei).Float64()
-					pageData.BlobFee = blobFeeFloat / 1e18
-					pageData.BlobFeeRaw = blobFeeWei.Bytes()
+				// Calculate total blob fee in ETH
+				blobFeeWei := new(big.Int).Mul(blobBaseFee, big.NewInt(int64(pageData.BlobGasUsed)))
+				blobFeeFloat, _ := new(big.Float).SetInt(blobFeeWei).Float64()
+				pageData.BlobFee = blobFeeFloat / 1e18
+				pageData.BlobFeeRaw = blobFeeWei.Bytes()
 
-					// Calculate savings percentage
-					if pageData.BlobGasFeeCap > 0 && pageData.BlobGasPrice > 0 && pageData.BlobGasFeeCap > pageData.BlobGasPrice {
-						pageData.BlobFeeSavings = (pageData.BlobGasFeeCap - pageData.BlobGasPrice) / pageData.BlobGasFeeCap * 100
-					}
+				// Calculate savings percentage
+				if pageData.BlobGasFeeCap > 0 && pageData.BlobGasPrice > 0 && pageData.BlobGasFeeCap > pageData.BlobGasPrice {
+					pageData.BlobFeeSavings = (pageData.BlobGasFeeCap - pageData.BlobGasPrice) / pageData.BlobGasFeeCap * 100
 				}
 			}
 		}

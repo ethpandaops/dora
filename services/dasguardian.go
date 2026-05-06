@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	dasguardian "github.com/ethpandaops/eth-das-guardian"
 	"github.com/ethpandaops/eth-das-guardian/api"
 	"github.com/ethpandaops/go-eth2-client/spec"
@@ -106,9 +107,14 @@ func (d *DasGuardian) ScanNodeWithCallback(ctx context.Context, nodeEnr string, 
 				continue
 			}
 
+			versionedBlock, err := beacon.AgnosticToVersionedSignedBeaconBlock(beaconBlock.Block)
+			if err != nil {
+				return nil, fmt.Errorf("convert beacon block at slot %d: %w", slot, err)
+			}
+
 			sampleableSlots = append(sampleableSlots, dasguardian.SampleableSlot{
 				Slot:        slot,
-				BeaconBlock: beaconBlock.Block,
+				BeaconBlock: versionedBlock,
 			})
 		}
 
@@ -268,7 +274,7 @@ func (d *dasGuardianAPI) GetBeaconBlock(ctx context.Context, slot any) (*spec.Ve
 		return nil, fmt.Errorf("block not found for slot %d", slotNum)
 	}
 
-	return block.Block, nil
+	return beacon.AgnosticToVersionedSignedBeaconBlock(block.Block)
 }
 
 func (d *dasGuardianAPI) ReadSpecParameter(key string) (any, bool) {
