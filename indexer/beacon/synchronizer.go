@@ -267,7 +267,13 @@ func (s *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase
 func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
 	ctx, cancel := context.WithTimeout(s.syncCtx, beaconBodyRequestTimeout)
 	defer cancel()
-	return LoadBeaconBlock(ctx, client, root)
+
+	body, err := LoadBeaconBlock(ctx, client, root)
+	if err != nil {
+		return nil, err
+	}
+
+	return AgnosticToVersionedSignedBeaconBlock(body)
 }
 
 func (s *synchronizer) loadBlockPayload(client *Client, root phase0.Root) (*gloas.SignedExecutionPayloadEnvelope, error) {

@@ -142,7 +142,12 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
 			if _, err := block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-				return LoadBeaconBlock(client.getContext(), client, block.Root)
+				body, err := LoadBeaconBlock(client.getContext(), client, block.Root)
+				if err != nil {
+					return nil, err
+				}
+
+				return AgnosticToVersionedSignedBeaconBlock(body)
 			}); err != nil {
 				client.logger.Warnf("failed loading finalized block body %v (%v): %v", block.Slot, block.Root.String(), err)
 			}

@@ -121,10 +121,14 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	}
 
 	if beaconBlock == nil {
-		var err error
-		beaconBlock, err = LoadBeaconBlock(ctx, client, s.slotRoot)
+		agnosticBlock, err := LoadBeaconBlock(ctx, client, s.slotRoot)
 		if err != nil {
 			return nil, err
+		}
+
+		beaconBlock, err = AgnosticToVersionedSignedBeaconBlock(agnosticBlock)
+		if err != nil {
+			return nil, fmt.Errorf("convert beacon block %v: %w", s.slotRoot.String(), err)
 		}
 	}
 
@@ -169,10 +173,14 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	if resState == nil {
 		// Fall back to loading the full state from the beacon API.
 		apiStart := time.Now()
-		var err error
-		resState, err = LoadBeaconState(ctx, client, s.stateRoot)
+		agnosticState, err := LoadBeaconState(ctx, client, s.stateRoot)
 		if err != nil {
 			return nil, err
+		}
+
+		resState, err = AgnosticToVersionedBeaconState(agnosticState)
+		if err != nil {
+			return nil, fmt.Errorf("convert beacon state %v: %w", s.stateRoot.String(), err)
 		}
 		apiLoadDur := time.Since(apiStart)
 

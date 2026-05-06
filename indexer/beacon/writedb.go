@@ -472,7 +472,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 				payload := blockBody.Bellatrix.Message.Body.ExecutionPayload
 				dbBlock.EthGasUsed = payload.GasUsed
 				dbBlock.EthGasLimit = payload.GasLimit
-				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGasLE)
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
 		case spec.DataVersionCapella:
@@ -481,7 +481,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 				payload := blockBody.Capella.Message.Body.ExecutionPayload
 				dbBlock.EthGasUsed = payload.GasUsed
 				dbBlock.EthGasLimit = payload.GasLimit
-				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGasLE)
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
 		case spec.DataVersionDeneb:

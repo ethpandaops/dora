@@ -16,7 +16,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/api"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/http"
-	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
@@ -384,13 +384,13 @@ func (bc *BeaconClient) GetBlockHeaderBySlot(ctx context.Context, slot phase0.Sl
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetBlockBodyByBlockroot(ctx context.Context, blockroot phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
+func (bc *BeaconClient) GetBlockBodyByBlockroot(ctx context.Context, blockroot phase0.Root) (*all.SignedBeaconBlock, error) {
 	provider, isProvider := bc.clientSvc.(eth2client.SignedBeaconBlockProvider)
 	if !isProvider {
 		return nil, fmt.Errorf("get signed beacon block not supported")
 	}
 
-	result, err := provider.SignedBeaconBlock(ctx, &api.SignedBeaconBlockOpts{
+	result, err := provider.AgnosticSignedBeaconBlock(ctx, &api.SignedBeaconBlockOpts{
 		Block: fmt.Sprintf("0x%x", blockroot),
 		Common: api.CommonOpts{
 			Timeout: 0,
@@ -423,13 +423,13 @@ func (bc *BeaconClient) GetExecutionPayloadByBlockroot(ctx context.Context, bloc
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetState(ctx context.Context, stateRef string) (*spec.VersionedBeaconState, error) {
+func (bc *BeaconClient) GetState(ctx context.Context, stateRef string) (*all.BeaconState, error) {
 	provider, isProvider := bc.clientSvc.(eth2client.BeaconStateProvider)
 	if !isProvider {
 		return nil, fmt.Errorf("get beacon state not supported")
 	}
 
-	result, err := provider.BeaconState(ctx, &api.BeaconStateOpts{
+	result, err := provider.AgnosticBeaconState(ctx, &api.BeaconStateOpts{
 		State: stateRef,
 		Common: api.CommonOpts{
 			Timeout: 0,

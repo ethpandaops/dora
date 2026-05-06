@@ -138,17 +138,28 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
 			if block == nil {
-				block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
-				if err != nil {
+				agnosticBlock, loadErr := beacon.LoadBeaconBlock(ctx, client, blockroot)
+				if loadErr != nil {
+					err = loadErr
 					log := logrus.WithError(err)
 					if client != nil {
 						log = log.WithField("client", client.GetClient().GetName())
 					}
 					log.Warnf("Error loading block body for root 0x%x", blockroot)
+				} else {
+					block, err = beacon.AgnosticToVersionedSignedBeaconBlock(agnosticBlock)
+					if err != nil {
+						log := logrus.WithError(err)
+						if client != nil {
+							log = log.WithField("client", client.GetClient().GetName())
+						}
+						log.Warnf("Error converting block body for root 0x%x", blockroot)
+						block = nil
+					}
 				}
 			}
 
-			if block.Version >= spec.DataVersionGloas {
+			if block != nil && block.Version >= spec.DataVersionGloas {
 				payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
 				if payload != nil {
 					break
@@ -291,13 +302,24 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
-			block, err = beacon.LoadBeaconBlock(ctx, client, blockRoot)
-			if err != nil {
+			agnosticBlock, loadErr := beacon.LoadBeaconBlock(ctx, client, blockRoot)
+			if loadErr != nil {
+				err = loadErr
 				log := logrus.WithError(err)
 				if client != nil {
 					log = log.WithField("client", client.GetClient().GetName())
 				}
 				log.Warnf("Error loading block body for slot %v", slot)
+			} else {
+				block, err = beacon.AgnosticToVersionedSignedBeaconBlock(agnosticBlock)
+				if err != nil {
+					log := logrus.WithError(err)
+					if client != nil {
+						log = log.WithField("client", client.GetClient().GetName())
+					}
+					log.Warnf("Error converting block body for slot %v", slot)
+					block = nil
+				}
 			}
 
 			if block != nil && block.Version >= spec.DataVersionGloas {

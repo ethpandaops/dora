@@ -431,7 +431,12 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 			processingTimes[0] += time.Since(t1)
 		}()
 
-		return LoadBeaconBlock(c.getContext(), c, root)
+		body, err := LoadBeaconBlock(c.getContext(), c, root)
+		if err != nil {
+			return nil, err
+		}
+
+		return AgnosticToVersionedSignedBeaconBlock(body)
 	})
 	if err != nil {
 		return
