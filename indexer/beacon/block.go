@@ -454,9 +454,10 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *gloas.Si
 		blockIndex.GasLimit = ep.GasLimit
 	}
 
-	// EIP-7732+: payload arrives separately and overrides the in-block
-	// hash + execution accounting fields once available.
+	// EIP-7732+: when the payload envelope is delivered separately,
+	// populate the execution accounting fields from it.
 	if payload != nil && payload.Message != nil && payload.Message.Payload != nil {
+		blockIndex.ExecutionHash = payload.Message.Payload.BlockHash
 		blockIndex.ExecutionNumber = payload.Message.Payload.BlockNumber
 		blockIndex.ExecutionParentHash = payload.Message.Payload.ParentHash
 		blockIndex.EthTransactionCount = uint64(len(payload.Message.Payload.Transactions))
