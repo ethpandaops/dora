@@ -423,9 +423,11 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 	}
 
 	blockBody := block.GetBlock(sim.indexer.ctx)
-	if blockBody == nil {
+	if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 		return nil
 	}
+
+	body := blockBody.Message.Body
 
 	// process builder pending withdrawals (come first in the spec)
 	chainState := sim.indexer.consensusPool.GetChainState()
@@ -492,11 +494,7 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 	}
 
 	// apply bls changes
-	blsChanges, err := blockBody.BLSToExecutionChanges()
-	if err != nil {
-		return nil
-	}
-	for _, blsChange := range blsChanges {
+	for _, blsChange := range body.BLSToExecutionChanges {
 		validatorIndex := blsChange.Message.ValidatorIndex
 
 		validator := sim.getValidator(validatorIndex)
@@ -509,11 +507,7 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 	}
 
 	// apply slashings
-	proposerSlashing, err := blockBody.ProposerSlashings()
-	if err != nil {
-		return nil
-	}
-	for _, proposerSlashing := range proposerSlashing {
+	for _, proposerSlashing := range body.ProposerSlashings {
 		proposerIndex := proposerSlashing.SignedHeader1.Message.ProposerIndex
 		validator := sim.getValidator(proposerIndex)
 		if validator == nil {
@@ -524,24 +518,18 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 		validator.ExitEpoch = FarFutureEpoch - 1 // dummy value to indicate the validator is exiting, but we don't know when exactly
 	}
 
-	attesterSlashing, err := blockBody.AttesterSlashings()
-	if err != nil {
-		return nil
-	}
-	for _, attesterSlashing := range attesterSlashing {
-		att1, _ := attesterSlashing.Attestation1()
-		att2, _ := attesterSlashing.Attestation2()
-		if att1 == nil || att2 == nil {
+	for _, attesterSlashing := range body.AttesterSlashings {
+		if attesterSlashing == nil || attesterSlashing.Attestation1 == nil || attesterSlashing.Attestation2 == nil {
 			continue
 		}
 
-		att1AttestingIndices, _ := att1.AttestingIndices()
-		att2AttestingIndices, _ := att2.AttestingIndices()
-		if att1AttestingIndices == nil || att2AttestingIndices == nil {
+		att1Indices := attesterSlashing.Attestation1.AttestingIndices
+		att2Indices := attesterSlashing.Attestation2.AttestingIndices
+		if att1Indices == nil || att2Indices == nil {
 			continue
 		}
 
-		for _, valIdx := range utils.FindMatchingIndices(att1AttestingIndices, att2AttestingIndices) {
+		for _, valIdx := range utils.FindMatchingIndices(att1Indices, att2Indices) {
 			validator := sim.getValidator(phase0.ValidatorIndex(valIdx))
 			if validator == nil {
 				return nil
@@ -553,11 +541,7 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 	}
 
 	// apply voluntary exits
-	voluntaryExits, err := blockBody.VoluntaryExits()
-	if err != nil {
-		return nil
-	}
-	for _, voluntaryExit := range voluntaryExits {
+	for _, voluntaryExit := range body.VoluntaryExits {
 		validator := sim.getValidator(voluntaryExit.Message.ValidatorIndex)
 		if validator == nil {
 			return nil
@@ -567,8 +551,8 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 	}
 
 	// get execution requests
-	requests, err := blockBody.ExecutionRequests()
-	if err != nil {
+	requests := body.ExecutionRequests
+	if requests == nil {
 		return nil
 	}
 

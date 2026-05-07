@@ -1,6 +1,7 @@
 package statetransition
 
 import (
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
@@ -76,6 +77,57 @@ func computeExitEpochAndUpdateChurn(s *stateAccessor, exitBalance phase0.Gwei) p
 	s.ExitBalanceToConsume = exitBalanceToConsume - exitBalance
 	s.EarliestExitEpoch = earliestExitEpoch
 	return s.EarliestExitEpoch
+}
+
+// computeConsolidationEpochAndUpdateChurn returns the earliest epoch at which a
+// consolidation of the given balance can be processed, while updating
+// state.earliest_consolidation_epoch and state.consolidation_balance_to_consume
+// in place. Mirrors computeExitEpochAndUpdateChurn but uses the consolidation
+// churn limit (separate from activation/exit churn).
+//
+// New in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-compute_consolidation_epoch_and_update_churn
+func computeConsolidationEpochAndUpdateChurn(s *stateAccessor, consolidationBalance phase0.Gwei) phase0.Epoch {
+	earliestConsolidationEpoch := computeActivationExitEpoch(s.currentEpoch(), s.specs)
+	if s.EarliestConsolidationEpoch > earliestConsolidationEpoch {
+		earliestConsolidationEpoch = s.EarliestConsolidationEpoch
+	}
+	perEpochChurn := s.getConsolidationChurnLimit()
+
+	var balanceToConsume phase0.Gwei
+	if s.EarliestConsolidationEpoch < earliestConsolidationEpoch {
+		// New epoch for consolidations — refill the budget.
+		balanceToConsume = perEpochChurn
+	} else {
+		balanceToConsume = s.ConsolidationBalanceToConsume
+	}
+
+	// If the consolidation doesn't fit, push it forward by enough epochs.
+	if consolidationBalance > balanceToConsume {
+		balanceToProcess := consolidationBalance - balanceToConsume
+		additionalEpochs := (balanceToProcess-1)/perEpochChurn + 1
+		earliestConsolidationEpoch += phase0.Epoch(additionalEpochs)
+		balanceToConsume += phase0.Gwei(additionalEpochs) * perEpochChurn
+	}
+
+	s.ConsolidationBalanceToConsume = balanceToConsume - consolidationBalance
+	s.EarliestConsolidationEpoch = earliestConsolidationEpoch
+	return s.EarliestConsolidationEpoch
+}
+
+// getConsolidationChurnLimit returns the per-epoch consolidation churn limit.
+//
+// In Gloas (EIP-7521), the consolidation churn has its own dedicated quotient
+// (CONSOLIDATION_CHURN_LIMIT_QUOTIENT = 32 in mainnet/minimal); pre-Gloas it
+// was derived as balance_churn - activation_exit_churn.
+//
+// Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-get_consolidation_churn_limit
+// Original Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-get_consolidation_churn_limit
+func (s *stateAccessor) getConsolidationChurnLimit() phase0.Gwei {
+	if s.Version >= spec.DataVersionGloas && s.specs.ConsolidationChurnLimitQuotient > 0 {
+		churn := uint64(s.getTotalActiveBalance()) / s.specs.ConsolidationChurnLimitQuotient
+		return phase0.Gwei(churn - churn%s.specs.EffectiveBalanceIncrement)
+	}
+	return s.getBalanceChurnLimit() - s.getActivationExitChurnLimit()
 }
 
 // getPendingBalanceToWithdraw returns the sum of pending partial withdrawal

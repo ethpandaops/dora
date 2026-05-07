@@ -215,7 +215,7 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 		return nil, fmt.Errorf("failed unmarshal orphaned block header [%x] from db: %v", orphanedBlock.Root, err)
 	}
 
-	blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
+	blockBody, err := UnmarshalSignedBeaconBlockSSZ(indexer.dynSsz, orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
 	if err != nil {
 		return nil, fmt.Errorf("could not restore orphaned block body %v [%x] from db: %v", header.Message.Slot, orphanedBlock.Root, err)
 	}
@@ -659,31 +659,31 @@ func (indexer *Indexer) applyBuilderBalanceChanges(block *Block, balances []phas
 		}
 	} else {
 		blockBody := block.GetBlock(indexer.ctx)
-		if blockBody == nil {
+		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 			return
 		}
 
-		if execPayload, err := blockBody.ExecutionPayload(); err == nil && execPayload != nil {
-			if withdrawals, err := execPayload.Withdrawals(); err == nil {
-				for _, w := range withdrawals {
-					if uint64(w.ValidatorIndex)&BuilderIndexFlag == 0 {
-						continue
-					}
-					builderIdx := uint64(w.ValidatorIndex) &^ BuilderIndexFlag
-					if builderIdx < uint64(len(balances)) {
-						if balances[builderIdx] >= w.Amount {
-							balances[builderIdx] -= w.Amount
-						} else {
-							balances[builderIdx] = 0
-						}
+		body := blockBody.Message.Body
+
+		if body.ExecutionPayload != nil {
+			for _, w := range body.ExecutionPayload.Withdrawals {
+				if uint64(w.ValidatorIndex)&BuilderIndexFlag == 0 {
+					continue
+				}
+				builderIdx := uint64(w.ValidatorIndex) &^ BuilderIndexFlag
+				if builderIdx < uint64(len(balances)) {
+					if balances[builderIdx] >= w.Amount {
+						balances[builderIdx] -= w.Amount
+					} else {
+						balances[builderIdx] = 0
 					}
 				}
 			}
 		}
 
 		// Apply deposit requests (increase builder balances).
-		if requests, err := blockBody.ExecutionRequests(); err == nil && requests != nil {
-			for _, deposit := range requests.Deposits {
+		if body.ExecutionRequests != nil {
+			for _, deposit := range body.ExecutionRequests.Deposits {
 				if validatorIdx, found := indexer.pubkeyCache.Get(deposit.Pubkey); found {
 					idx := uint64(validatorIdx)
 					if idx&BuilderIndexFlag != 0 {

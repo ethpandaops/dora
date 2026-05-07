@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
 	"github.com/ethpandaops/dora/statecache"
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -94,7 +95,7 @@ func (s *epochState) awaitStateLoaded(ctx context.Context, timeout time.Duration
 }
 
 // loadState loads the state for the epoch from the client.
-func (s *epochState) loadState(ctx context.Context, client *Client, cache *epochCache) (*spec.VersionedBeaconState, error) {
+func (s *epochState) loadState(ctx context.Context, client *Client, cache *epochCache) (*all.BeaconState, error) {
 	if s.loadingStatus > 0 {
 		return nil, fmt.Errorf("already loading")
 	}
@@ -113,7 +114,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		}
 	}()
 
-	var beaconBlock *spec.VersionedSignedBeaconBlock
+	var beaconBlock *all.SignedBeaconBlock
 
 	block := client.indexer.blockCache.getBlockByRoot(s.slotRoot)
 	if block != nil {
@@ -121,19 +122,16 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	}
 
 	if beaconBlock == nil {
-		var err error
-		beaconBlock, err = LoadBeaconBlock(ctx, client, s.slotRoot)
+		loaded, err := LoadBeaconBlock(ctx, client, s.slotRoot)
 		if err != nil {
 			return nil, err
 		}
+
+		beaconBlock = loaded
 	}
 
-	if beaconBlock != nil {
-		var err error
-		s.stateRoot, err = beaconBlock.StateRoot()
-		if err != nil {
-			return nil, fmt.Errorf("error getting state root from beacon block %v: %v", s.slotRoot.String(), err)
-		}
+	if beaconBlock != nil && beaconBlock.Message != nil {
+		s.stateRoot = beaconBlock.Message.StateRoot
 	}
 
 	specs := client.indexer.consensusPool.GetChainState().GetSpecs()
@@ -142,13 +140,12 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	// direct builder payments from the parent epoch's last block).
 	if block != nil {
 		s.sourceBlockUid = block.BlockUID
-	} else if beaconBlock != nil {
-		slot, _ := beaconBlock.Slot()
-		s.sourceBlockUid = uint64(slot) << 16
+	} else if beaconBlock != nil && beaconBlock.Message != nil {
+		s.sourceBlockUid = uint64(beaconBlock.Message.Slot) << 16
 	}
 
 	// Try loading from state cache first (post-epoch-transition state).
-	var resState *spec.VersionedBeaconState
+	var resState *all.BeaconState
 	sc := client.indexer.stateCache
 	if sc != nil && sc.Check(s.slotRoot, s.targetEpoch) {
 		resState = sc.Load(s.slotRoot, s.targetEpoch)
@@ -169,11 +166,11 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	if resState == nil {
 		// Fall back to loading the full state from the beacon API.
 		apiStart := time.Now()
-		var err error
-		resState, err = LoadBeaconState(ctx, client, s.stateRoot)
+		loaded, err := LoadBeaconState(ctx, client, s.stateRoot)
 		if err != nil {
 			return nil, err
 		}
+		resState = loaded
 		apiLoadDur := time.Since(apiStart)
 
 		// For Fulu+: apply epoch transition to advance the state from the post-block state
@@ -201,7 +198,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		}
 	}
 
-	if err := s.processState(resState, cache, specs); err != nil {
+	if err := s.processState(resState, cache); err != nil {
 		return nil, err
 	}
 
@@ -218,68 +215,48 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 // processState processes the state and updates the epochState instance.
 // the function extracts and unifies all relevant information from the beacon state, so the full beacon state can be dropped from memory afterwards.
-func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epochCache, specs *consensus.ChainSpec) error {
-	slot, err := state.Slot()
-	if err != nil {
-		return fmt.Errorf("error getting slot from state %v: %v", s.slotRoot.String(), err)
+func (s *epochState) processState(state *all.BeaconState, cache *epochCache) error {
+	if state == nil {
+		return fmt.Errorf("nil state for %v", s.slotRoot.String())
 	}
 
-	s.stateSlot = slot
+	s.stateSlot = state.Slot
 	dependentRoot := s.slotRoot
 
-	validatorList, err := state.Validators()
-	if err != nil {
-		return fmt.Errorf("error getting validators from state %v: %v", s.slotRoot.String(), err)
-	}
-
 	if cache != nil {
-		cache.indexer.validatorCache.updateValidatorSet(slot, dependentRoot, validatorList)
+		cache.indexer.validatorCache.updateValidatorSet(state.Slot, dependentRoot, state.Validators)
 	}
 
-	// Process builder set for Gloas/Heze
+	// Process builder set for Gloas+
 	if state.Version >= spec.DataVersionGloas {
-		builders, _ := state.Builders()
-
 		if cache != nil {
-			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, builders)
+			cache.indexer.builderCache.updateBuilderSet(state.Slot, dependentRoot, state.Builders)
 		}
 
-		// Extract builder balances
-		builderBalances := make([]phase0.Gwei, len(builders))
-		for i, builder := range builders {
+		builderBalances := make([]phase0.Gwei, len(state.Builders))
+		for i, builder := range state.Builders {
 			builderBalances[i] = builder.Balance
 		}
 		s.builderBalances = builderBalances
 	}
 
-	validatorPubkeyMap := make(map[phase0.BLSPubKey]phase0.ValidatorIndex)
-	for i, v := range validatorList {
+	validatorPubkeyMap := make(map[phase0.BLSPubKey]phase0.ValidatorIndex, len(state.Validators))
+	for i, v := range state.Validators {
 		validatorPubkeyMap[v.PublicKey] = phase0.ValidatorIndex(i)
 	}
 
-	validatorBalances, err := state.ValidatorBalances()
-	if err != nil {
-		return fmt.Errorf("error getting validator balances from state %v: %v", s.slotRoot.String(), err)
-	}
-
-	s.validatorBalances = validatorBalances
-
-	randaoMixes, err := getStateRandaoMixes(state)
-	if err != nil {
-		return fmt.Errorf("error getting randao mixes from state %v: %v", s.slotRoot.String(), err)
-	}
-
-	s.randaoMixes = randaoMixes
-	s.depositIndex = getStateDepositIndex(state)
+	s.validatorBalances = state.Balances
+	s.randaoMixes = state.RANDAOMixes
+	s.depositIndex = state.ETH1DepositIndex
 
 	if state.Version >= spec.DataVersionAltair {
-		currentSyncCommittee, err := getStateCurrentSyncCommittee(state)
-		if err != nil {
-			return fmt.Errorf("error getting current sync committee from state %v: %v", s.slotRoot.String(), err)
+		var pubkeys []phase0.BLSPubKey
+		if state.CurrentSyncCommittee != nil {
+			pubkeys = state.CurrentSyncCommittee.Pubkeys
 		}
 
-		syncCommittee := make([]phase0.ValidatorIndex, len(currentSyncCommittee))
-		for i, v := range currentSyncCommittee {
+		syncCommittee := make([]phase0.ValidatorIndex, len(pubkeys))
+		for i, v := range pubkeys {
 			syncCommittee[i] = validatorPubkeyMap[v]
 		}
 		if cache != nil {
@@ -291,38 +268,17 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	}
 
 	if state.Version >= spec.DataVersionElectra {
-		depositBalanceToConsume, err := getStateDepositBalanceToConsume(state)
-		if err != nil {
-			return fmt.Errorf("error getting deposit balance to consume from state %v: %v", s.slotRoot.String(), err)
-		}
-		s.depositBalanceToConsume = depositBalanceToConsume
-
-		pendingDeposits, err := getStatePendingDeposits(state)
-		if err != nil {
-			return fmt.Errorf("error getting pending deposit indices from state %v: %v", s.slotRoot.String(), err)
-		}
-		s.pendingDeposits = pendingDeposits
-
-		pendingPartialWithdrawals, err := getStatePendingWithdrawals(state)
-		if err != nil {
-			return fmt.Errorf("error getting pending withdrawal indices from state %v: %v", s.slotRoot.String(), err)
-		}
-		s.pendingPartialWithdrawals = pendingPartialWithdrawals
-
-		builderPendingWithdrawals, err := getStateBuilderPendingWithdrawals(state)
-		if err == nil {
-			s.builderPendingWithdrawals = builderPendingWithdrawals
-		}
-
-		pendingConsolidations, err := getStatePendingConsolidations(state)
-		if err != nil {
-			return fmt.Errorf("error getting pending consolidation indices from state %v: %v", s.slotRoot.String(), err)
-		}
-		s.pendingConsolidations = pendingConsolidations
+		s.depositBalanceToConsume = state.DepositBalanceToConsume
+		s.pendingDeposits = state.PendingDeposits
+		s.pendingPartialWithdrawals = state.PendingPartialWithdrawals
+		s.pendingConsolidations = state.PendingConsolidations
 	}
 
-	proposerLookahead, _ := getStateProposerLookahead(state)
-	s.proposerLookahead = proposerLookahead
+	if state.Version >= spec.DataVersionGloas {
+		s.builderPendingWithdrawals = state.BuilderPendingWithdrawals
+	}
+
+	s.proposerLookahead = state.ProposerLookahead
 
 	return nil
 }
@@ -338,10 +294,10 @@ func (s *epochState) tryReplayFromParentState(
 	ctx context.Context,
 	client *Client,
 	depBlock *Block,
-	depBeaconBlock *spec.VersionedSignedBeaconBlock,
+	depBeaconBlock *all.SignedBeaconBlock,
 	specs *consensus.ChainSpec,
 	sc *statecache.StateCache,
-) *spec.VersionedBeaconState {
+) *all.BeaconState {
 	if depBlock == nil || depBeaconBlock == nil {
 		return nil
 	}
@@ -409,7 +365,7 @@ func (s *epochState) tryReplayFromParentState(
 	var blockApplyTotal time.Duration
 	for _, blk := range epochBlocks {
 		beaconBlock := blk.GetBlock(ctx)
-		if beaconBlock == nil {
+		if beaconBlock == nil || beaconBlock.Message == nil {
 			return nil
 		}
 
@@ -423,17 +379,9 @@ func (s *epochState) tryReplayFromParentState(
 		// processing now includes processing the parent payload's requests via
 		// block.body.parent_execution_requests, so the post-block HTR already
 		// reflects everything — no separate payload application step.
-		expectedStateRoot, _ := beaconBlock.StateRoot()
-		var gotStateRoot phase0.Root
-		var htrErr error
-		switch parentState.Version {
-		case spec.DataVersionFulu:
-			gotStateRoot, htrErr = parentState.Fulu.HashTreeRoot()
-		case spec.DataVersionGloas:
-			gotStateRoot, htrErr = parentState.Gloas.HashTreeRoot()
-		case spec.DataVersionHeze:
-			gotStateRoot, htrErr = parentState.Heze.HashTreeRoot()
-		}
+		expectedStateRoot := beaconBlock.Message.StateRoot
+		gotRootBytes, htrErr := client.indexer.dynSsz.HashTreeRoot(parentState)
+		gotStateRoot := phase0.Root(gotRootBytes)
 		if htrErr != nil {
 			client.logger.Warnf("replay: HTR failed at slot %v: %v", blk.Slot, htrErr)
 			return nil
