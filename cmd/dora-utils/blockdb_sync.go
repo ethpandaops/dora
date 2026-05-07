@@ -150,6 +150,7 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 	if err == nil {
 		yaml.Unmarshal(specYaml, &staticSpec)
 	}
+	dynssz.SetGlobalSpecs(staticSpec)
 	dynSsz := dynssz.NewDynSsz(staticSpec)
 
 	slotsPerEpoch := chainState.GetSpecs().SlotsPerEpoch
@@ -277,7 +278,7 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 			return nil, fmt.Errorf("failed to get block body for slot %d: %v", slot, err)
 		}
 
-		version, bodyBytes, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockBody, true, false)
+		version, bodyBytes, err := beacon.MarshalSignedBeaconBlockSSZ(dynSsz, blockBody, true, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal block body for slot %d: %v", slot, err)
 		}

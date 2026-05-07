@@ -65,6 +65,8 @@ func IndexData(w http.ResponseWriter, r *http.Request) {
 		handlePageError(w, r, pageError)
 		return
 	}
+	// stamp live server time outside of cached page data so clients can correct local clock drift
+	w.Header().Set("X-Server-Time", strconv.FormatInt(time.Now().UnixMilli(), 10))
 	w.Header().Set("Content-Type", "application/json")
 	err := json.NewEncoder(w).Encode(pageData)
 	if err != nil {

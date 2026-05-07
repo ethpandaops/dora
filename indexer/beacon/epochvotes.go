@@ -113,17 +113,14 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 
 	for _, block := range blocks {
 		blockBody := block.GetBlock(indexer.ctx)
-		if blockBody == nil {
+		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
 			continue
 		}
 
 		slot := block.Slot
 
 		isNextEpoch := chainState.EpochOfSlot(slot) > epoch
-		attestations, err := blockBody.Attestations()
-		if err != nil {
-			continue
-		}
+		attestations := blockBody.Message.Body.Attestations
 
 		processedFlag := uint8(1)
 		if isNextEpoch {
@@ -134,21 +131,18 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 			block.processedActivity |= processedFlag
 		}
 
-		for attIdx, attVersioned := range attestations {
-			attData, err := attVersioned.Data()
-			if err != nil {
-				indexer.logger.Debugf("aggregateEpochVotes slot %v failed, can't get data for attestation %v: %v", slot, attIdx, err)
+		for attIdx, att := range attestations {
+			if att == nil || att.Data == nil {
+				indexer.logger.Debugf("aggregateEpochVotes slot %v failed, no data for attestation %v", slot, attIdx)
 				continue
 			}
+
+			attData := att.Data
 			if chainState.EpochOfSlot(attData.Slot) != epoch {
 				continue
 			}
 
-			attAggregationBits, err := attVersioned.AggregationBits()
-			if err != nil {
-				indexer.logger.Debugf("aggregateEpochVotes slot %v failed, can't get grregation bits for attestation %v: %v", slot, attIdx, err)
-				continue
-			}
+			attAggregationBits := att.AggregationBits
 
 			voteAmount := phase0.Gwei(0)
 			slotIndex := chainState.SlotToSlotIndex(attData.Slot)
@@ -158,14 +152,10 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 				}
 			}
 
-			if attVersioned.Version >= spec.DataVersionElectra {
+			if att.Version >= spec.DataVersionElectra {
 				// EIP-7549 changes the attestation aggregation
 				// there can now be attestations from all committees aggregated into a single attestation aggregate
-				committeeBits, err := attVersioned.CommitteeBits()
-				if err != nil {
-					indexer.logger.Debugf("aggregateEpochVotes slot %v failed, can't get committeeBits for attestation %v: %v", slot, attIdx, err)
-					continue
-				}
+				committeeBits := att.CommitteeBits
 
 				aggregationBitsOffset := uint64(0)
 				aggregationBitsIndex := uint64(0)

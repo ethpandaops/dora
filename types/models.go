@@ -9,6 +9,7 @@ type PageData struct {
 	Data                    interface{}
 	Version                 string
 	BuildTime               string
+	ServerTime              int64
 	Year                    int
 	ExplorerLogo            string
 	ExplorerTitle           string

@@ -8,6 +8,25 @@
   });
   var tooltipDict = {};
   var tooltipIdx = 1;
+  // Offset in milliseconds: serverTime - clientTime. Used to correct relative-time
+  // rendering when the user's local clock drifts from the server clock.
+  var serverTimeOffsetMs = 0;
+  function applyServerTime(serverMs) {
+    if (!isFinite(serverMs) || serverMs <= 0) return;
+    serverTimeOffsetMs = serverMs - Date.now();
+    if (Math.abs(serverTimeOffsetMs) > 10000) {
+      console.warn("Local clock drift detected: " + Math.round(serverTimeOffsetMs / 1000) + "s vs server. Relative times are corrected.");
+    }
+  }
+  (function initServerTimeOffset() {
+    var meta = document.querySelector('meta[name="server-time"]');
+    if (!meta) return;
+    applyServerTime(parseInt(meta.getAttribute("content"), 10));
+  })();
+  function serverNow() { return Date.now() + serverTimeOffsetMs; }
+  function updateServerTime(serverMs) {
+    applyServerTime(parseInt(serverMs, 10));
+  }
   window.explorer = {
     initControls: initControls,
     renderRecentTime: renderRecentTime,
@@ -15,6 +34,8 @@
     refreshPeerInfos: refreshPeerInfos,
     hexToDecimal: hexToDecimal,
     checkRefreshCooldown: checkRefreshCooldown,
+    serverNow: serverNow,
+    updateServerTime: updateServerTime,
   };
 
   function modalFixes() {
@@ -199,7 +220,7 @@
   }
 
   function renderRecentTime(time) {
-    var duration = time - Math.floor(new Date().getTime() / 1000);
+    var duration = time - Math.floor(serverNow() / 1000);
     var timeStr= "";
     var absDuration = Math.abs(duration);
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -49,7 +50,7 @@ type ApplyInfo struct {
 }
 
 // ApplyBlock applies a beacon block to the state in-place.
-func (st *StateTransition) ApplyBlock(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock) error {
+func (st *StateTransition) ApplyBlock(state *all.BeaconState, block *all.SignedBeaconBlock) error {
 	return st.applyBlock(state, block, phase0.Root{}, nil)
 }
 
@@ -58,18 +59,18 @@ func (st *StateTransition) ApplyBlock(state *spec.VersionedBeaconState, block *s
 // process_slot. The hint must match the HTR of the current state — typically
 // sourced from the previously applied block's state_root field. Passing an
 // incorrect hint will produce an inconsistent state and is undefined behavior.
-func (st *StateTransition) ApplyBlockWithStateRoot(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, parentStateRoot phase0.Root) error {
+func (st *StateTransition) ApplyBlockWithStateRoot(state *all.BeaconState, block *all.SignedBeaconBlock, parentStateRoot phase0.Root) error {
 	return st.applyBlock(state, block, parentStateRoot, nil)
 }
 
 // ApplyBlockWithInfo is like ApplyBlockWithStateRoot but also populates info
 // with timing details (e.g. epoch transition duration).
-func (st *StateTransition) ApplyBlockWithInfo(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, parentStateRoot phase0.Root, info *ApplyInfo) error {
+func (st *StateTransition) ApplyBlockWithInfo(state *all.BeaconState, block *all.SignedBeaconBlock, parentStateRoot phase0.Root, info *ApplyInfo) error {
 	return st.applyBlock(state, block, parentStateRoot, info)
 }
 
 // PrepareEpochPreState advances a post-block state to the pre-state of the target epoch.
-func (st *StateTransition) PrepareEpochPreState(state *spec.VersionedBeaconState, epoch phase0.Epoch, info *TransitionInfo) error {
+func (st *StateTransition) PrepareEpochPreState(state *all.BeaconState, epoch phase0.Epoch, info *TransitionInfo) error {
 	if state.Version < spec.DataVersionFulu {
 		return nil
 	}
@@ -101,13 +102,8 @@ type TransitionInfo struct {
 // outputs we need. Jumps directly to each epoch boundary.
 //
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#process_slots
-func (st *StateTransition) processSlots(state *spec.VersionedBeaconState, targetSlot phase0.Slot, info *TransitionInfo) error {
-	currentSlot, err := state.Slot()
-	if err != nil {
-		return fmt.Errorf("failed to get state slot: %w", err)
-	}
-
-	if currentSlot >= targetSlot {
+func (st *StateTransition) processSlots(state *all.BeaconState, targetSlot phase0.Slot, info *TransitionInfo) error {
+	if state.Slot >= targetSlot {
 		return nil
 	}
 
@@ -130,8 +126,6 @@ func (st *StateTransition) processSlots(state *spec.VersionedBeaconState, target
 
 		s.Slot++
 	}
-
-	s.writeBack()
 
 	return nil
 }
@@ -200,7 +194,7 @@ func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 	processPendingConsolidations(s)
 
 	// Gloas-only: process builder pending payments
-	if s.version >= spec.DataVersionGloas {
+	if s.Version >= spec.DataVersionGloas {
 		delayedCount := processBuilderPendingPayments(s)
 		if info != nil {
 			info.DelayedBuilderPayments = delayedCount
@@ -218,7 +212,7 @@ func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 	processProposerLookahead(s)
 
 	// Gloas-only: process PTC window
-	if s.version >= spec.DataVersionGloas {
+	if s.Version >= spec.DataVersionGloas {
 		processPtcWindow(s)
 	}
 

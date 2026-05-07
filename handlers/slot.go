@@ -16,11 +16,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethpandaops/go-eth2-client/api/v1"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -161,13 +162,13 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 
 	// Get the block to retrieve the KZG commitment
 	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), phase0.Root(blockRoot))
-	if err != nil || blockData == nil || blockData.Block == nil {
+	if err != nil || blockData == nil || blockData.Block == nil || blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
 		http.Error(w, "Block not found", http.StatusNotFound)
 		return
 	}
 
-	commitments, err := blockData.Block.BlobKZGCommitments()
-	if err != nil || int(blobIndex) >= len(commitments) {
+	commitments := blockData.Block.Message.Body.BlobKZGCommitments
+	if int(blobIndex) >= len(commitments) {
 		http.Error(w, "Blob index out of range", http.StatusBadRequest)
 		return
 	}
@@ -433,19 +434,27 @@ func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byt
 func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues, blockUid uint64) *models.SlotPageBlockData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
-	graffiti, _ := blockData.Block.Graffiti()
-	randaoReveal, _ := blockData.Block.RandaoReveal()
-	eth1Data, _ := blockData.Block.ETH1Data()
-	attestations, _ := blockData.Block.Attestations()
-	deposits, _ := blockData.Block.Deposits()
-	voluntaryExits, _ := blockData.Block.VoluntaryExits()
-	attesterSlashings, _ := blockData.Block.AttesterSlashings()
-	proposerSlashings, _ := blockData.Block.ProposerSlashings()
-	blsToExecChanges, _ := blockData.Block.BLSToExecutionChanges()
-	syncAggregate, _ := blockData.Block.SyncAggregate()
-	executionWithdrawals, _ := blockData.Block.Withdrawals()
-	blobKzgCommitments, _ := blockData.Block.BlobKZGCommitments()
-	//consolidations, _ := blockData.Block.Consolidations()
+
+	if blockData.Block == nil || blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
+		return nil
+	}
+
+	body := blockData.Block.Message.Body
+	graffiti := body.Graffiti
+	randaoReveal := body.RANDAOReveal
+	eth1Data := body.ETH1Data
+	attestations := body.Attestations
+	deposits := body.Deposits
+	voluntaryExits := body.VoluntaryExits
+	attesterSlashings := body.AttesterSlashings
+	proposerSlashings := body.ProposerSlashings
+	blsToExecChanges := body.BLSToExecutionChanges
+	syncAggregate := body.SyncAggregate
+	blobKzgCommitments := body.BlobKZGCommitments
+	var executionWithdrawals []*capella.Withdrawal
+	if body.ExecutionPayload != nil {
+		executionWithdrawals = body.ExecutionPayload.Withdrawals
+	}
 
 	pageData := &models.SlotPageBlockData{
 		BlockRoot:              blockData.Root[:],
@@ -490,21 +499,14 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	attHeadBlocks := make(map[phase0.Root]phase0.Slot)
 
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
-	for i, attVersioned := range attestations {
-		attData, _ := attVersioned.Data()
-		if attData == nil {
+	for i, att := range attestations {
+		if att == nil || att.Data == nil {
 			continue
 		}
 
-		attSignature, err := attVersioned.Signature()
-		if err != nil {
-			continue
-		}
-
-		attAggregationBits, err := attVersioned.AggregationBits()
-		if err != nil {
-			continue
-		}
+		attData := att.Data
+		attSignature := att.Signature
+		attAggregationBits := att.AggregationBits
 
 		totalActiveValidators := uint64(0)
 
@@ -564,20 +566,17 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		includedValidators := []uint64{}
 		attEpochStatsValues := assignmentsMap[attEpoch]
 
-		if attVersioned.Version >= spec.DataVersionGloas {
+		if att.Version >= spec.DataVersionGloas {
 			payloadStatus := uint64(attData.Index)
 			attPageData.PayloadStatus = &payloadStatus
 		}
 
-		if attVersioned.Version >= spec.DataVersionElectra {
+		if att.Version >= spec.DataVersionElectra {
 			// EIP-7549 attestation
 			attAssignments = []uint64{}
 			attPageData.CommitteeIndex = []uint64{}
 
-			committeeBits, err := attVersioned.CommitteeBits()
-			if err != nil {
-				continue
-			}
+			committeeBits := att.CommitteeBits
 
 			attBitsOffset := uint64(0)
 			for _, committee := range committeeBits.BitIndices() {
@@ -670,27 +669,24 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	pageData.AttesterSlashings = make([]*models.SlotPageAttesterSlashing, pageData.AttesterSlashingsCount)
 	for i, slashing := range attesterSlashings {
-		att1, _ := slashing.Attestation1()
-		att2, _ := slashing.Attestation2()
-		if att1 == nil || att2 == nil {
+		if slashing == nil || slashing.Attestation1 == nil || slashing.Attestation2 == nil {
 			continue
 		}
 
-		att1AttestingIndices, _ := att1.AttestingIndices()
-		att2AttestingIndices, _ := att2.AttestingIndices()
+		att1, att2 := slashing.Attestation1, slashing.Attestation2
+
+		att1AttestingIndices := att1.AttestingIndices
+		att2AttestingIndices := att2.AttestingIndices
 		if att1AttestingIndices == nil || att2AttestingIndices == nil {
 			continue
 		}
 
-		att1Signature, err1 := att1.Signature()
-		att2Signature, err2 := att2.Signature()
-		if err1 != nil || err2 != nil {
-			continue
-		}
+		att1Signature := att1.Signature
+		att2Signature := att2.Signature
 
-		att1Data, err1 := att1.Data()
-		att2Data, err2 := att2.Data()
-		if err1 != nil || err2 != nil {
+		att1Data := att1.Data
+		att2Data := att2.Data
+		if att1Data == nil || att2Data == nil {
 			continue
 		}
 
@@ -778,17 +774,9 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits, specs.SyncCommitteeSize)
 	}
 
-	if payloadBid, err := blockData.Block.SignedExecutionPayloadBid(); err == nil {
-		blobKzgCommitments, _ := payloadBid.BlobKZGCommitments()
-		parentBlockHash, _ := payloadBid.ParentBlockHash()
-		parentBlockRoot, _ := payloadBid.ParentBlockRoot()
-		blockHash, _ := payloadBid.BlockHash()
-		gasLimit, _ := payloadBid.GasLimit()
-		builderIndex, _ := payloadBid.BuilderIndex()
-		slot, _ := payloadBid.Slot()
-		value, _ := payloadBid.Value()
-		signature, _ := payloadBid.Signature()
-
+	if signedBid := body.SignedExecutionPayloadBid; signedBid != nil && signedBid.Message != nil {
+		bid := signedBid.Message
+		blobKzgCommitments := bid.BlobKZGCommitments
 		commitments := make([][]byte, len(blobKzgCommitments))
 		for i := range blobKzgCommitments {
 			commitments[i] = blobKzgCommitments[i][:]
@@ -796,30 +784,25 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		pageData.PayloadHeader = &models.SlotPagePayloadHeader{
 			PayloadStatus:      uint16(0),
-			ParentBlockHash:    parentBlockHash[:],
-			ParentBlockRoot:    parentBlockRoot[:],
-			BlockHash:          blockHash[:],
-			GasLimit:           uint64(gasLimit),
-			BuilderIndex:       uint64(builderIndex),
-			BuilderName:        services.GlobalBeaconService.GetValidatorName(uint64(builderIndex) | services.BuilderIndexFlag),
-			Slot:               uint64(slot),
-			Value:              uint64(value),
+			ParentBlockHash:    bid.ParentBlockHash[:],
+			ParentBlockRoot:    bid.ParentBlockRoot[:],
+			BlockHash:          bid.BlockHash[:],
+			GasLimit:           bid.GasLimit,
+			BuilderIndex:       uint64(bid.BuilderIndex),
+			BuilderName:        services.GlobalBeaconService.GetValidatorName(uint64(bid.BuilderIndex) | services.BuilderIndexFlag),
+			Slot:               uint64(bid.Slot),
+			Value:              uint64(bid.Value),
 			BlobKZGCommitments: commitments,
-			Signature:          signature[:],
+			Signature:          signedBid.Signature[:],
 		}
 	}
 
-	var executionPayload *spec.VersionedExecutionPayload
-	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil {
-		executionPayload = &spec.VersionedExecutionPayload{
-			Version: blockData.Block.Version,
-		}
-		switch blockData.Block.Version {
-		case spec.DataVersionGloas:
-			executionPayload.Gloas = blockData.Payload.Message.Payload
-		case spec.DataVersionHeze:
-			executionPayload.Heze = blockData.Payload.Message.Payload
-		}
+	// Source the execution payload either from the in-block payload (pre-EIP-7732)
+	// or from the separately-delivered envelope (Gloas+). Both share the same
+	// fork-specific fields exposed via the agnostic ExecutionPayload struct.
+	var executionPayload *all.ExecutionPayload
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil && blockData.Payload.Message != nil {
+		executionPayload = blockData.Payload.Message.Payload
 
 		// Determine payload status by checking if any canonical child
 		// builds on this block's execution payload.
@@ -846,70 +829,38 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusOrphaned)
 		}
 	} else {
-		executionPayload, _ = blockData.Block.ExecutionPayload()
+		executionPayload = body.ExecutionPayload
 	}
 
 	if executionPayload != nil {
-		pageData.ExecutionData = &models.SlotPageExecutionData{}
-
-		if parentHash, err := executionPayload.ParentHash(); err == nil {
-			pageData.ExecutionData.ParentHash = parentHash[:]
+		pageData.ExecutionData = &models.SlotPageExecutionData{
+			ParentHash:   executionPayload.ParentHash[:],
+			FeeRecipient: executionPayload.FeeRecipient[:],
+			StateRoot:    executionPayload.StateRoot[:],
+			ReceiptsRoot: executionPayload.ReceiptsRoot[:],
+			LogsBloom:    executionPayload.LogsBloom[:],
+			Random:       executionPayload.PrevRandao[:],
+			GasLimit:     executionPayload.GasLimit,
+			GasUsed:      executionPayload.GasUsed,
+			Timestamp:    executionPayload.Timestamp,
+			Time:         time.Unix(int64(executionPayload.Timestamp), 0),
+			ExtraData:    executionPayload.ExtraData,
+			BlockHash:    executionPayload.BlockHash[:],
+			BlockNumber:  executionPayload.BlockNumber,
 		}
 
-		if feeRecipient, err := executionPayload.FeeRecipient(); err == nil {
-			pageData.ExecutionData.FeeRecipient = feeRecipient[:]
+		// BaseFeePerGas: post-Deneb is *uint256.Int, Bellatrix/Capella store the
+		// little-endian byte representation in BaseFeePerGasLE.
+		if executionPayload.BaseFeePerGas != nil {
+			pageData.ExecutionData.BaseFeePerGas = executionPayload.BaseFeePerGas.Uint64()
+		} else {
+			pageData.ExecutionData.BaseFeePerGas = utils.GetBaseFeeAsUint64(executionPayload.BaseFeePerGasLE)
 		}
 
-		if stateRoot, err := executionPayload.StateRoot(); err == nil {
-			pageData.ExecutionData.StateRoot = stateRoot[:]
-		}
-
-		if receiptsRoot, err := executionPayload.ReceiptsRoot(); err == nil {
-			pageData.ExecutionData.ReceiptsRoot = receiptsRoot[:]
-		}
-
-		if logsBloom, err := executionPayload.LogsBloom(); err == nil {
-			pageData.ExecutionData.LogsBloom = logsBloom[:]
-		}
-
-		if random, err := executionPayload.PrevRandao(); err == nil {
-			pageData.ExecutionData.Random = random[:]
-		}
-
-		if gasLimit, err := executionPayload.GasLimit(); err == nil {
-			pageData.ExecutionData.GasLimit = uint64(gasLimit)
-		}
-
-		if gasUsed, err := executionPayload.GasUsed(); err == nil {
-			pageData.ExecutionData.GasUsed = uint64(gasUsed)
-		}
-
-		if timestamp, err := executionPayload.Timestamp(); err == nil {
-			pageData.ExecutionData.Timestamp = uint64(timestamp)
-			pageData.ExecutionData.Time = time.Unix(int64(timestamp), 0)
-		}
-
-		if extraData, err := executionPayload.ExtraData(); err == nil {
-			pageData.ExecutionData.ExtraData = extraData
-		}
-
-		if baseFeePerGas, err := executionPayload.BaseFeePerGas(); err == nil {
-			pageData.ExecutionData.BaseFeePerGas = baseFeePerGas.Uint64()
-		}
-
-		if blockHash, err := executionPayload.BlockHash(); err == nil {
-			pageData.ExecutionData.BlockHash = blockHash[:]
-		}
-
-		if blockNumber, err := executionPayload.BlockNumber(); err == nil {
-			pageData.ExecutionData.BlockNumber = uint64(blockNumber)
-		}
-
-		if excessBlobGas, err := executionPayload.ExcessBlobGas(); err == nil {
+		if executionPayload.Version >= spec.DataVersionDeneb {
+			excessBlobGas := executionPayload.ExcessBlobGas
 			pageData.ExecutionData.ExcessBlobGas = &excessBlobGas
-		}
-
-		if blobGasUsed, err := executionPayload.BlobGasUsed(); err == nil {
+			blobGasUsed := executionPayload.BlobGasUsed
 			pageData.ExecutionData.BlobGasUsed = &blobGasUsed
 		}
 
@@ -936,8 +887,8 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			}
 		}
 
-		if transactions, err := executionPayload.Transactions(); err == nil {
-			getSlotPageTransactions(ctx, pageData, transactions, blockUid)
+		if len(executionPayload.Transactions) > 0 {
+			getSlotPageTransactions(ctx, pageData, executionPayload.Transactions, blockUid)
 		}
 
 		// EIP-7928 Block Access List — the chainservice sources the bytes
@@ -946,7 +897,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		if len(blockData.BlockAccessList) > 0 {
 			accesses, err := utils.DecodeBlockAccessList(blockData.BlockAccessList)
 			if err != nil {
-				logrus.Warnf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
+				logrus.Errorf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
 			} else {
 				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
 			}
@@ -983,7 +934,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 				executionWithdrawals = blockData.Payload.Message.Payload.Withdrawals
 			}
 		} else {
-			requests, _ = blockData.Block.ExecutionRequests()
+			requests = body.ExecutionRequests
 		}
 
 		if requests != nil {
@@ -1086,7 +1037,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	// Load execution payload bids for ePBS (gloas+) blocks
 	if blockData.Block.Version >= spec.DataVersionGloas {
-		getSlotPageBids(pageData)
+		getSlotPageBids(pageData, blockData.Header.Message.Slot)
 		getSlotPagePtcVotes(pageData, blockData, blockData.Header.Message.Slot)
 	}
 
@@ -1379,9 +1330,9 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 	pageData.ExecutionProofsCount = uint64(len(pageData.ExecutionProofs))
 }
 
-func getSlotPageBids(pageData *models.SlotPageBlockData) {
+func getSlotPageBids(pageData *models.SlotPageBlockData, blockSlot phase0.Slot) {
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
-	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot))
+	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot), blockSlot)
 
 	pageData.Bids = make([]*models.SlotPageBid, 0, len(bids))
 
@@ -1442,15 +1393,11 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 		return
 	}
 
-	var payloadAttestations []*gloas.PayloadAttestation
-	switch {
-	case blockData.Block.Gloas != nil:
-		payloadAttestations = blockData.Block.Gloas.Message.Body.PayloadAttestations
-	case blockData.Block.Heze != nil:
-		payloadAttestations = blockData.Block.Heze.Message.Body.PayloadAttestations
-	default:
+	if blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
 		return
 	}
+
+	payloadAttestations := blockData.Block.Message.Body.PayloadAttestations
 	if len(payloadAttestations) == 0 {
 		return
 	}
@@ -1517,29 +1464,33 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 			Validators:        make([]types.NamedValidator, 0),
 		}
 
-		// Count votes from aggregation bits and map to unique validators
-		bitCount := uint64(len(pa.AggregationBits)) * 8
-		if bitCount > ptcSize {
-			bitCount = ptcSize
-		}
+		// Count votes from raw aggregation bits, then enrich with validator
+		// names when PTC duties are available. Vote count must not depend on
+		// duty availability — duties may be missing for pruned/unloaded epochs.
+		bitCount := min(uint64(len(pa.AggregationBits))*8, ptcSize)
 		aggValidatorSet := make(map[uint64]bool)
+		bitVoteCount := uint64(0)
 		for i := uint64(0); i < bitCount; i++ {
-			if (pa.AggregationBits[i/8]>>(i%8))&1 == 1 {
-				votedPositions[i] = true
-				if int(i) < len(ptcDuties) {
-					vidx := uint64(ptcDuties[i])
-					if !aggValidatorSet[vidx] {
-						aggValidatorSet[vidx] = true
-						aggregate.Validators = append(aggregate.Validators, types.NamedValidator{
-							Index: vidx,
-							Name:  services.GlobalBeaconService.GetValidatorName(vidx),
-						})
-					}
-				}
+			if (pa.AggregationBits[i/8]>>(i%8))&1 != 1 {
+				continue
 			}
+			votedPositions[i] = true
+			bitVoteCount++
+			if int(i) >= len(ptcDuties) {
+				continue
+			}
+			vidx := uint64(ptcDuties[i])
+			if aggValidatorSet[vidx] {
+				continue
+			}
+			aggValidatorSet[vidx] = true
+			aggregate.Validators = append(aggregate.Validators, types.NamedValidator{
+				Index: vidx,
+				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+			})
 		}
 
-		aggregate.VoteCount = uint64(len(aggregate.Validators))
+		aggregate.VoteCount = bitVoteCount
 		totalVotes += aggregate.VoteCount
 
 		ptcVotes.Aggregates = append(ptcVotes.Aggregates, aggregate)
