@@ -1833,13 +1833,13 @@
           </div>
           <div class="tx-callout-row">
             <span class="tx-callout-label">From:</span>
-            <span class="tx-callout-value">${tx.from}</span>
-            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('${tx.from}')" title="Copy to clipboard"></i>
+            <span class="tx-callout-value">0x${bytesToHex(tx.from)}</span>
+            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('0x${bytesToHex(tx.from)}')" title="Copy to clipboard"></i>
           </div>
           <div class="tx-callout-row">
             <span class="tx-callout-label">To:</span>
-            <span class="tx-callout-value">${tx.to}</span>
-            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('${tx.to}')" title="Copy to clipboard"></i>
+            <span class="tx-callout-value">${tx.to ? `0x${bytesToHex(tx.to)}` : 'Contract Creation'}</span>
+            ${tx.to ? `<i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('0x${bytesToHex(tx.to)}')" title="Copy to clipboard"></i>` : ''}
           </div>
           <div class="tx-callout-row">
             <span class="tx-callout-label">Value:</span>
