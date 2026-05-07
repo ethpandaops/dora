@@ -7,6 +7,7 @@ import (
 
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -76,11 +77,27 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 	indexer := services.GlobalBeaconService.GetBeaconIndexer()
 	inclusionLists := indexer.GetInclusionListsBySlot(phase0.Slot(dbSlot.Slot))
 
-	// Build a set of block transaction hashes from the canonical/orphaned block,
-	// so each inclusion list transaction can be marked included/not-included.
+	// Build a set of block transaction hashes so each inclusion list transaction
+	// can be marked included/not-included. For gloas+ the execution payload lives
+	// in the SignedExecutionPayloadEnvelope, not on the block — VersionedSigned
+	// BeaconBlock.ExecutionPayload() returns "no execution payload in gloas/heze"
+	// in that case, so we need to construct the payload manually.
 	blockTxHashes := make(map[string]bool)
 	if blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), phase0.Root(dbSlot.Root)); err == nil && blockData != nil && blockData.Block != nil {
-		if executionPayload, err := blockData.Block.ExecutionPayload(); err == nil && executionPayload != nil {
+		var executionPayload *spec.VersionedExecutionPayload
+		if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil {
+			executionPayload = &spec.VersionedExecutionPayload{Version: blockData.Block.Version}
+			switch blockData.Block.Version {
+			case spec.DataVersionGloas:
+				executionPayload.Gloas = blockData.Payload.Message.Payload
+			case spec.DataVersionHeze:
+				executionPayload.Heze = blockData.Payload.Message.Payload
+			}
+		} else {
+			executionPayload, _ = blockData.Block.ExecutionPayload()
+		}
+
+		if executionPayload != nil {
 			if txs, err := executionPayload.Transactions(); err == nil {
 				for _, txBytes := range txs {
 					var tx ethtypes.Transaction
