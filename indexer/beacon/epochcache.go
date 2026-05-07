@@ -489,10 +489,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 
 	var validatorSet []*phase0.Validator
 	if state != nil {
-		validatorSet, err = state.Validators()
-		if err != nil {
-			cache.indexer.logger.Errorf("error getting validator set from state %v: %v", epochStats.dependentRoot.String(), err)
-		}
+		validatorSet = state.Validators
 	}
 
 	// Process the triggering EpochStats
@@ -544,7 +541,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 				entry.epochState.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
 
 				// Extract values from the advanced state.
-				if err := entry.epochState.processState(state, cache, specs); err != nil {
+				if err := entry.epochState.processState(state, cache); err != nil {
 					cache.indexer.logger.Errorf("error processing state for epoch %v: %v", entry.epochState.targetEpoch, err)
 					continue
 				}

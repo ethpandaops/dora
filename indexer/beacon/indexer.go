@@ -241,6 +241,11 @@ func (indexer *Indexer) StartIndexer() {
 	if err == nil {
 		yaml.Unmarshal(specYaml, &staticSpec)
 	}
+	// Mirror the spec on the global DynSsz so HashTreeRoot() (no-arg) calls on
+	// generated SSZ types resolve preset-dependent sizes (SLOTS_PER_HISTORICAL_ROOT,
+	// EPOCHS_PER_HISTORICAL_VECTOR, …) against the active chain rather than the
+	// mainnet defaults baked into the generated code.
+	dynssz.SetGlobalSpecs(staticSpec)
 	indexer.dynSsz = dynssz.NewDynSsz(staticSpec)
 
 	// initialize synchronizer & restore state
@@ -388,7 +393,7 @@ func (indexer *Indexer) StartIndexer() {
 		block.SetHeader(header)
 		indexer.blockCache.addBlockToParentMap(block)
 
-		blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+		blockBody, err := UnmarshalSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 		if err != nil {
 			indexer.logger.Warnf("could not restore unfinalized block body %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
 		} else if block.processingStatus == 0 {

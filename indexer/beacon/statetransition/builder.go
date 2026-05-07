@@ -65,7 +65,7 @@ func getBuilderPaymentQuorumThreshold(s *stateAccessor) uint64 {
 // New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_ptc_window
 func processPtcWindow(s *stateAccessor) {
 	// PTC window is Gloas-only.
-	if s.version < spec.DataVersionGloas {
+	if s.Version < spec.DataVersionGloas {
 		return
 	}
 

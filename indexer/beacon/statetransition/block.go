@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
-	"github.com/ethpandaops/go-eth2-client/spec/deneb"
-	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/pk910/dynamic-ssz/sszutils"
@@ -27,9 +26,13 @@ import (
 // calls (when there are skipped slots) still compute HTR normally.
 //
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-block-processing
-func (st *StateTransition) applyBlock(state *spec.VersionedBeaconState, block *spec.VersionedSignedBeaconBlock, parentStateRoot phase0.Root, info *ApplyInfo) error {
+func (st *StateTransition) applyBlock(state *all.BeaconState, block *all.SignedBeaconBlock, parentStateRoot phase0.Root, info *ApplyInfo) error {
 	if state.Version < spec.DataVersionFulu {
 		return nil
+	}
+
+	if block == nil || block.Message == nil || block.Message.Body == nil {
+		return fmt.Errorf("nil block body")
 	}
 
 	s, err := st.newAccessor(state)
@@ -37,10 +40,7 @@ func (st *StateTransition) applyBlock(state *spec.VersionedBeaconState, block *s
 		return fmt.Errorf("failed to create state accessor: %w", err)
 	}
 
-	blockSlot, err := block.Slot()
-	if err != nil {
-		return fmt.Errorf("failed to get block slot: %w", err)
-	}
+	blockSlot := block.Message.Slot
 
 	// Advance state to the block's slot via process_slots.
 	// This implements the spec's process_slots exactly:
@@ -69,20 +69,12 @@ func (st *StateTransition) applyBlock(state *spec.VersionedBeaconState, block *s
 			}
 		}
 		s.Slot++
-		s.writeBack()
 	}
 
-	proposerIndex, err := block.ProposerIndex()
-	if err != nil {
-		return fmt.Errorf("failed to get proposer index: %w", err)
-	}
+	proposerIndex := block.Message.ProposerIndex
+	parentRoot := block.Message.ParentRoot
 
-	parentRoot, err := block.ParentRoot()
-	if err != nil {
-		return fmt.Errorf("failed to get parent root: %w", err)
-	}
-
-	bodyRoot, err := getBlockBodyRoot(block)
+	bodyRoot, err := block.Message.Body.HashTreeRoot()
 	if err != nil {
 		return fmt.Errorf("failed to get body root: %w", err)
 	}
@@ -123,8 +115,6 @@ func (st *StateTransition) applyBlock(state *spec.VersionedBeaconState, block *s
 
 	// process_sync_aggregate
 	processSyncAggregate(s, block)
-
-	s.writeBack()
 
 	return nil
 }
@@ -185,11 +175,12 @@ func processBlockHeader(s *stateAccessor, slot phase0.Slot, proposerIndex phase0
 
 // processRandao mixes in the block's RANDAO reveal.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#randao
-func processRandao(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
-	randaoReveal, err := block.RandaoReveal()
-	if err != nil {
+func processRandao(s *stateAccessor, block *all.SignedBeaconBlock) {
+	if block == nil || block.Message == nil || block.Message.Body == nil {
 		return
 	}
+
+	randaoReveal := block.Message.Body.RANDAOReveal
 
 	epoch := s.currentEpoch()
 	idx := uint64(epoch) % s.specs.EpochsPerHistoricalVector
@@ -205,9 +196,13 @@ func processRandao(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
 
 // processEth1Data adds the block's ETH1 vote.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#eth1-data
-func processEth1Data(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
-	eth1Data, err := block.ETH1Data()
-	if err != nil || eth1Data == nil {
+func processEth1Data(s *stateAccessor, block *all.SignedBeaconBlock) {
+	if block == nil || block.Message == nil || block.Message.Body == nil {
+		return
+	}
+
+	eth1Data := block.Message.Body.ETH1Data
+	if eth1Data == nil {
 		return
 	}
 
@@ -236,16 +231,16 @@ var _ = sszutils.Annotate[transactionList](`ssz-max:"1048576,1073741824" ssz-siz
 
 type withdrawalList []*capella.Withdrawal
 
-var _ = sszutils.Annotate[withdrawalList](`ssz-max:"16"`)
+var _ = sszutils.Annotate[withdrawalList](`dynssz-max:"MAX_WITHDRAWALS_PER_PAYLOAD" ssz-max:"16"`)
 
 // processFuluExecutionPayload caches the execution payload header for Fulu blocks.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/fulu/beacon-chain.md#modified-process_execution_payload
-func processFuluExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
-	if block.Fulu == nil || block.Fulu.Message == nil || block.Fulu.Message.Body == nil {
+func processFuluExecutionPayload(s *stateAccessor, block *all.SignedBeaconBlock) {
+	if block == nil || block.Message == nil || block.Message.Body == nil {
 		return
 	}
 
-	payload := block.Fulu.Message.Body.ExecutionPayload
+	payload := block.Message.Body.ExecutionPayload
 	if payload == nil {
 		return
 	}
@@ -264,7 +259,8 @@ func processFuluExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBe
 		return
 	}
 
-	s.LatestExecutionPayloadHeader = &deneb.ExecutionPayloadHeader{
+	s.LatestExecutionPayloadHeader = &all.ExecutionPayloadHeader{
+		Version:          payload.Version,
 		ParentHash:       payload.ParentHash,
 		FeeRecipient:     payload.FeeRecipient,
 		StateRoot:        payload.StateRoot,
@@ -276,6 +272,7 @@ func processFuluExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBe
 		GasUsed:          payload.GasUsed,
 		Timestamp:        payload.Timestamp,
 		ExtraData:        payload.ExtraData,
+		BaseFeePerGasLE:  payload.BaseFeePerGasLE,
 		BaseFeePerGas:    payload.BaseFeePerGas,
 		BlockHash:        payload.BlockHash,
 		TransactionsRoot: phase0.Root(txRoot),
@@ -285,25 +282,6 @@ func processFuluExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBe
 	}
 }
 
-// getBlockBodyRoot computes the body root of a signed beacon block.
-func getBlockBodyRoot(block *spec.VersionedSignedBeaconBlock) (phase0.Root, error) {
-	switch block.Version {
-	case spec.DataVersionFulu:
-		if block.Fulu != nil && block.Fulu.Message != nil && block.Fulu.Message.Body != nil {
-			return block.Fulu.Message.Body.HashTreeRoot()
-		}
-	case spec.DataVersionGloas:
-		if block.Gloas != nil && block.Gloas.Message != nil && block.Gloas.Message.Body != nil {
-			return block.Gloas.Message.Body.HashTreeRoot()
-		}
-	case spec.DataVersionHeze:
-		if block.Heze != nil && block.Heze.Message != nil && block.Heze.Message.Body != nil {
-			return block.Heze.Message.Body.HashTreeRoot()
-		}
-	}
-	return phase0.Root{}, fmt.Errorf("unsupported block version: %v", block.Version)
-}
-
 // processParentExecutionPayload applies the parent block's execution requests and
 // settles its builder payment when the current block builds on a full parent payload.
 // Spec: new first step of process_block in Gloas — payload envelopes no longer trigger
@@ -311,61 +289,31 @@ func getBlockBodyRoot(block *spec.VersionedSignedBeaconBlock) (phase0.Root, erro
 // block.body.parent_execution_requests. Heze (EIP-7805) keeps the same body field.
 //
 // New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_parent_execution_payload
-func processParentExecutionPayload(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
-	if s.version < spec.DataVersionGloas {
+func processParentExecutionPayload(s *stateAccessor, block *all.SignedBeaconBlock) {
+	if s.Version < spec.DataVersionGloas {
 		return
 	}
 
-	var (
-		bidParentHash    phase0.Hash32
-		parentBlockHash  phase0.Hash32
-		parentSlot       phase0.Slot
-		parentValue      phase0.Gwei
-		parentBuilderIdx gloas.BuilderIndex
-		parentFeeRecip   bellatrix.ExecutionAddress
-		parentRequests   *electra.ExecutionRequests
-	)
-
-	switch s.version {
-	case spec.DataVersionGloas:
-		if block.Gloas == nil || block.Gloas.Message == nil || block.Gloas.Message.Body == nil {
-			return
-		}
-		body := block.Gloas.Message.Body
-		if body.SignedExecutionPayloadBid == nil || body.SignedExecutionPayloadBid.Message == nil {
-			return
-		}
-		if s.LatestExecutionPayloadBid == nil {
-			return
-		}
-		bidParentHash = body.SignedExecutionPayloadBid.Message.ParentBlockHash
-		parentBlockHash = s.LatestExecutionPayloadBid.BlockHash
-		parentSlot = s.LatestExecutionPayloadBid.Slot
-		parentValue = s.LatestExecutionPayloadBid.Value
-		parentBuilderIdx = s.LatestExecutionPayloadBid.BuilderIndex
-		parentFeeRecip = s.LatestExecutionPayloadBid.FeeRecipient
-		parentRequests = body.ParentExecutionRequests
-	case spec.DataVersionHeze:
-		if block.Heze == nil || block.Heze.Message == nil || block.Heze.Message.Body == nil {
-			return
-		}
-		body := block.Heze.Message.Body
-		if body.SignedExecutionPayloadBid == nil || body.SignedExecutionPayloadBid.Message == nil {
-			return
-		}
-		if s.LatestExecutionPayloadBidHeze == nil {
-			return
-		}
-		bidParentHash = body.SignedExecutionPayloadBid.Message.ParentBlockHash
-		parentBlockHash = s.LatestExecutionPayloadBidHeze.BlockHash
-		parentSlot = s.LatestExecutionPayloadBidHeze.Slot
-		parentValue = s.LatestExecutionPayloadBidHeze.Value
-		parentBuilderIdx = s.LatestExecutionPayloadBidHeze.BuilderIndex
-		parentFeeRecip = s.LatestExecutionPayloadBidHeze.FeeRecipient
-		parentRequests = body.ParentExecutionRequests
-	default:
+	if block == nil || block.Message == nil || block.Message.Body == nil {
 		return
 	}
+
+	body := block.Message.Body
+	if body.SignedExecutionPayloadBid == nil || body.SignedExecutionPayloadBid.Message == nil {
+		return
+	}
+
+	if s.LatestExecutionPayloadBid == nil {
+		return
+	}
+
+	bidParentHash := body.SignedExecutionPayloadBid.Message.ParentBlockHash
+	parentBlockHash := s.LatestExecutionPayloadBid.BlockHash
+	parentSlot := s.LatestExecutionPayloadBid.Slot
+	parentValue := s.LatestExecutionPayloadBid.Value
+	parentBuilderIdx := s.LatestExecutionPayloadBid.BuilderIndex
+	parentFeeRecip := s.LatestExecutionPayloadBid.FeeRecipient
+	parentRequests := body.ParentExecutionRequests
 
 	// Genesis: no prior committed payload bid — nothing to apply.
 	if parentBlockHash == (phase0.Hash32{}) {

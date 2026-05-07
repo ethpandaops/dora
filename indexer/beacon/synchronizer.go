@@ -14,8 +14,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
-	"github.com/ethpandaops/go-eth2-client/spec"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
@@ -264,13 +263,14 @@ func (s *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase
 	return header, root, err
 }
 
-func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
+func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*all.SignedBeaconBlock, error) {
 	ctx, cancel := context.WithTimeout(s.syncCtx, beaconBodyRequestTimeout)
 	defer cancel()
+
 	return LoadBeaconBlock(ctx, client, root)
 }
 
-func (s *synchronizer) loadBlockPayload(client *Client, root phase0.Root) (*gloas.SignedExecutionPayloadEnvelope, error) {
+func (s *synchronizer) loadBlockPayload(client *Client, root phase0.Root) (*all.SignedExecutionPayloadEnvelope, error) {
 	ctx, cancel := context.WithTimeout(s.syncCtx, executionPayloadRequestTimeout)
 	defer cancel()
 	return LoadExecutionPayload(ctx, client, root)
@@ -394,10 +394,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	if state == nil {
 		s.logger.Warnf("state for epoch %v not found", syncEpoch)
 	} else {
-		validatorSet, err = state.Validators()
-		if err != nil {
-			s.logger.Warnf("error getting validator set from state %v: %v", dependentRoot.String(), err)
-		}
+		validatorSet = state.Validators
 	}
 
 	var epochStats *EpochStats

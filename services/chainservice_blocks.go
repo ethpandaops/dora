@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/blockdb"
@@ -23,8 +23,8 @@ import (
 type CombinedBlockResponse struct {
 	Root            phase0.Root
 	Header          *phase0.SignedBeaconBlockHeader
-	Block           *spec.VersionedSignedBeaconBlock
-	Payload         *gloas.SignedExecutionPayloadEnvelope
+	Block           *all.SignedBeaconBlock
+	Payload         *all.SignedExecutionPayloadEnvelope
 	BlockAccessList []byte
 	Orphaned        bool
 }
@@ -105,8 +105,8 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		if blockHeader != nil && blockBody != nil {
 			result = &CombinedBlockResponse{
 				Root:     blockInfo.Root,
-				Header:   blockInfo.GetHeader(),
-				Block:    blockInfo.GetBlock(ctx),
+				Header:   blockHeader,
+				Block:    blockBody,
 				Payload:  blockInfo.GetExecutionPayload(ctx),
 				Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
 			}
@@ -116,6 +116,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		if err != nil {
 			return nil, err
 		}
+
 		result = &CombinedBlockResponse{
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
@@ -132,8 +133,8 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			return nil, err
 		}
 
-		var block *spec.VersionedSignedBeaconBlock
-		var payload *gloas.SignedExecutionPayloadEnvelope
+		var block *all.SignedBeaconBlock
+		var payload *all.SignedExecutionPayloadEnvelope
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
@@ -148,7 +149,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 				}
 			}
 
-			if block.Version >= spec.DataVersionGloas {
+			if block != nil && block.Version >= spec.DataVersionGloas {
 				payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
 				if payload != nil {
 					break
@@ -179,7 +180,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(header.Message.Slot), blockroot[:],
 			btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload|btypes.BlockDataFlagBal,
 			func(version uint64, block []byte) (any, error) {
-				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+				return beacon.UnmarshalSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
 			}, func(version uint64, payload []byte) (any, error) {
 				return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
 			})
@@ -187,11 +188,11 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			resp := &CombinedBlockResponse{
 				Root:     blockroot,
 				Header:   header,
-				Block:    blockData.Body.(*spec.VersionedSignedBeaconBlock),
+				Block:    blockData.Body.(*all.SignedBeaconBlock),
 				Orphaned: false,
 			}
 			if blockData.Payload != nil {
-				resp.Payload = blockData.Payload.(*gloas.SignedExecutionPayloadEnvelope)
+				resp.Payload = blockData.Payload.(*all.SignedExecutionPayloadEnvelope)
 			}
 			if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
 				if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {
@@ -286,8 +287,8 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		}
 
 		var err error
-		var block *spec.VersionedSignedBeaconBlock
-		var payload *gloas.SignedExecutionPayloadEnvelope
+		var block *all.SignedBeaconBlock
+		var payload *all.SignedExecutionPayloadEnvelope
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
@@ -331,7 +332,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockRoot[:],
 			btypes.BlockDataFlagHeader|btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload|btypes.BlockDataFlagBal,
 			func(version uint64, block []byte) (any, error) {
-				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+				return beacon.UnmarshalSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
 			}, func(version uint64, payload []byte) (any, error) {
 				return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
 			})
@@ -345,11 +346,11 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			resp := &CombinedBlockResponse{
 				Root:     blockRoot,
 				Header:   header,
-				Block:    blockData.Body.(*spec.VersionedSignedBeaconBlock),
+				Block:    blockData.Body.(*all.SignedBeaconBlock),
 				Orphaned: false,
 			}
 			if blockData.Payload != nil {
-				resp.Payload = blockData.Payload.(*gloas.SignedExecutionPayloadEnvelope)
+				resp.Payload = blockData.Payload.(*all.SignedExecutionPayloadEnvelope)
 			}
 			if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
 				if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {

@@ -5,8 +5,8 @@ import (
 	"slices"
 
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/altair"
-	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
@@ -18,26 +18,28 @@ import (
 //
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#operations
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_operations
-func processOperations(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
-	proposerSlashings, _ := block.ProposerSlashings()
-	for _, slashing := range proposerSlashings {
+func processOperations(s *stateAccessor, block *all.SignedBeaconBlock) {
+	if block == nil || block.Message == nil || block.Message.Body == nil {
+		return
+	}
+
+	body := block.Message.Body
+
+	for _, slashing := range body.ProposerSlashings {
 		processProposerSlashing(s, slashing)
 	}
 
-	attesterSlashings, _ := block.AttesterSlashings()
-	for _, slashing := range attesterSlashings {
+	for _, slashing := range body.AttesterSlashings {
 		processAttesterSlashing(s, slashing)
 	}
 
 	processAttestations(s, block)
 
-	voluntaryExits, _ := block.VoluntaryExits()
-	for _, exit := range voluntaryExits {
+	for _, exit := range body.VoluntaryExits {
 		processVoluntaryExit(s, exit)
 	}
 
-	blsChanges, _ := block.BLSToExecutionChanges()
-	for _, change := range blsChanges {
+	for _, change := range body.BLSToExecutionChanges {
 		processBLSToExecutionChange(s, change)
 	}
 
@@ -45,11 +47,8 @@ func processOperations(s *stateAccessor, block *spec.VersionedSignedBeaconBlock)
 	// Gloas moves these out of process_operations — the parent payload's requests
 	// are processed at the start of block processing via processParentExecutionPayload.
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-process_execution_requests
-	if s.version < spec.DataVersionGloas {
-		requests, err := block.ExecutionRequests()
-		if err == nil {
-			applyExecutionRequests(s, requests)
-		}
+	if s.Version < spec.DataVersionGloas {
+		applyExecutionRequests(s, body.ExecutionRequests)
 	}
 }
 
@@ -92,14 +91,13 @@ func processProposerSlashing(s *stateAccessor, slashing *phase0.ProposerSlashing
 
 // processAttesterSlashing processes an attester slashing.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#attester-slashings
-func processAttesterSlashing(s *stateAccessor, slashing any) {
-	att1, att2 := getSlashingAttestations(slashing)
-	if att1 == nil || att2 == nil {
+func processAttesterSlashing(s *stateAccessor, slashing *all.AttesterSlashing) {
+	if slashing == nil || slashing.Attestation1 == nil || slashing.Attestation2 == nil {
 		return
 	}
 
-	att1Indices, _ := att1.AttestingIndices()
-	att2Indices, _ := att2.AttestingIndices()
+	att1Indices := slashing.Attestation1.AttestingIndices
+	att2Indices := slashing.Attestation2.AttestingIndices
 	if att1Indices == nil || att2Indices == nil {
 		return
 	}
@@ -118,32 +116,19 @@ func processAttesterSlashing(s *stateAccessor, slashing any) {
 
 // processAttestations processes all attestations in the block.
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-process_attestation
-func processAttestations(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
-	var attestations []*electra.Attestation
-
-	switch block.Version {
-	case spec.DataVersionFulu:
-		if block.Fulu != nil && block.Fulu.Message != nil && block.Fulu.Message.Body != nil {
-			attestations = block.Fulu.Message.Body.Attestations
-		}
-	case spec.DataVersionGloas:
-		if block.Gloas != nil && block.Gloas.Message != nil && block.Gloas.Message.Body != nil {
-			attestations = block.Gloas.Message.Body.Attestations
-		}
-	case spec.DataVersionHeze:
-		if block.Heze != nil && block.Heze.Message != nil && block.Heze.Message.Body != nil {
-			attestations = block.Heze.Message.Body.Attestations
-		}
+func processAttestations(s *stateAccessor, block *all.SignedBeaconBlock) {
+	if block == nil || block.Message == nil || block.Message.Body == nil {
+		return
 	}
 
-	for _, att := range attestations {
+	for _, att := range block.Message.Body.Attestations {
 		processAttestation(s, att, s.caches.committeeCache)
 	}
 }
 
 // processAttestation processes a single Electra+ attestation, updating participation flags.
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-process_attestation
-func processAttestation(s *stateAccessor, att *electra.Attestation, cc *committeeCache) {
+func processAttestation(s *stateAccessor, att *all.Attestation, cc *committeeCache) {
 	if att == nil || att.Data == nil {
 		return
 	}
@@ -179,7 +164,7 @@ func processAttestation(s *stateAccessor, att *electra.Attestation, cc *committe
 	// Gloas: payload_matches check for head attestation.
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_attestation
 	payloadMatches := true
-	if s.version >= spec.DataVersionGloas {
+	if s.Version >= spec.DataVersionGloas {
 		if isAttestationSameSlot(s, data) {
 			payloadMatches = true
 		} else {
@@ -220,11 +205,11 @@ func processAttestation(s *stateAccessor, att *electra.Attestation, cc *committe
 		participation = s.PreviousEpochParticipation
 		builderPaymentIdx = uint64(data.Slot) % slotsPerEpoch
 	}
-	if s.version >= spec.DataVersionGloas && builderPaymentIdx < uint64(len(s.BuilderPendingPayments)) {
+	if s.Version >= spec.DataVersionGloas && builderPaymentIdx < uint64(len(s.BuilderPendingPayments)) {
 		builderPayment = s.BuilderPendingPayments[builderPaymentIdx]
 	}
 
-	sameSlot := s.version >= spec.DataVersionGloas && isAttestationSameSlot(s, data)
+	sameSlot := s.Version >= spec.DataVersionGloas && isAttestationSameSlot(s, data)
 
 	// Update participation flags, compute proposer reward, and (Gloas) accumulate
 	// builder payment weight from validators contributing new flags on same-slot
@@ -495,71 +480,51 @@ func processConsolidationRequest(s *stateAccessor, request *electra.Consolidatio
 		}
 	}
 
+	// Initiate source validator exit using the CONSOLIDATION churn (not the
+	// activation/exit churn). Spec: source.exit_epoch =
+	// compute_consolidation_epoch_and_update_churn(state, source.effective_balance).
+	exitEpoch := computeConsolidationEpochAndUpdateChurn(s, sourceValidator.EffectiveBalance)
+	sourceValidator.ExitEpoch = exitEpoch
+	sourceValidator.WithdrawableEpoch = exitEpoch + phase0.Epoch(s.specs.MinValidatorWithdrawbilityDelay)
+
 	s.PendingConsolidations = append(s.PendingConsolidations, &electra.PendingConsolidation{
 		SourceIndex: *sourceIndex,
 		TargetIndex: *targetIndex,
 	})
-
-	// Initiate exit for the source
-	initiateValidatorExit(s, *sourceIndex)
 }
 
 // processExecutionPayloadBid records the builder's bid in builder_pending_payments.
 // New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_execution_payload_bid
-func processExecutionPayloadBid(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
-	if s.version < spec.DataVersionGloas {
+func processExecutionPayloadBid(s *stateAccessor, block *all.SignedBeaconBlock) {
+	if s.Version < spec.DataVersionGloas {
 		return
 	}
 
-	var (
-		amount       phase0.Gwei
-		feeRecipient bellatrix.ExecutionAddress
-		builderIdx   gloas.BuilderIndex
-	)
-
-	switch s.version {
-	case spec.DataVersionGloas:
-		if block.Gloas == nil || block.Gloas.Message == nil || block.Gloas.Message.Body == nil {
-			return
-		}
-		signedBid := block.Gloas.Message.Body.SignedExecutionPayloadBid
-		if signedBid == nil || signedBid.Message == nil {
-			return
-		}
-		bid := signedBid.Message
-		amount = bid.Value
-		feeRecipient = bid.FeeRecipient
-		builderIdx = bid.BuilderIndex
-		// Cache the signed execution payload bid (always, regardless of amount)
-		s.LatestExecutionPayloadBid = bid
-	case spec.DataVersionHeze:
-		if block.Heze == nil || block.Heze.Message == nil || block.Heze.Message.Body == nil {
-			return
-		}
-		signedBid := block.Heze.Message.Body.SignedExecutionPayloadBid
-		if signedBid == nil || signedBid.Message == nil {
-			return
-		}
-		bid := signedBid.Message
-		amount = bid.Value
-		feeRecipient = bid.FeeRecipient
-		builderIdx = bid.BuilderIndex
-		s.LatestExecutionPayloadBidHeze = bid
-	default:
+	if block == nil || block.Message == nil || block.Message.Body == nil {
 		return
 	}
+
+	signedBid := block.Message.Body.SignedExecutionPayloadBid
+	if signedBid == nil || signedBid.Message == nil {
+		return
+	}
+
+	bid := signedBid.Message
+
+	// Cache the signed execution payload bid (always, regardless of amount)
+	s.LatestExecutionPayloadBid = bid
 
 	// Record the pending payment if there is some payment
-	if amount > 0 {
+	if bid.Value > 0 {
 		slotsPerEpoch := s.specs.SlotsPerEpoch
 		paymentIdx := slotsPerEpoch + uint64(s.Slot)%slotsPerEpoch
 		if paymentIdx < uint64(len(s.BuilderPendingPayments)) {
 			s.BuilderPendingPayments[paymentIdx] = &gloas.BuilderPendingPayment{
 				Weight: 0,
 				Withdrawal: &gloas.BuilderPendingWithdrawal{
-					FeeRecipient: feeRecipient,
-					Amount:       amount,
-					BuilderIndex: builderIdx,
+					FeeRecipient: bid.FeeRecipient,
+					Amount:       bid.Value,
+					BuilderIndex: bid.BuilderIndex,
 				},
 			}
 		}
@@ -568,9 +533,13 @@ func processExecutionPayloadBid(s *stateAccessor, block *spec.VersionedSignedBea
 
 // processSyncAggregate processes the sync committee aggregate.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#sync-aggregate-processing
-func processSyncAggregate(s *stateAccessor, block *spec.VersionedSignedBeaconBlock) {
-	syncAggregate, err := block.SyncAggregate()
-	if err != nil || syncAggregate == nil {
+func processSyncAggregate(s *stateAccessor, block *all.SignedBeaconBlock) {
+	if block == nil || block.Message == nil || block.Message.Body == nil {
+		return
+	}
+
+	syncAggregate := block.Message.Body.SyncAggregate
+	if syncAggregate == nil {
 		return
 	}
 
@@ -718,23 +687,6 @@ func maxEpoch(a, b phase0.Epoch) phase0.Epoch {
 		return a
 	}
 	return b
-}
-
-// getSlashingAttestations extracts both attestations from an attester slashing.
-func getSlashingAttestations(slashing any) (att1, att2 interface {
-	AttestingIndices() ([]uint64, error)
-}) {
-	type attestationPair interface {
-		Attestation1() (interface{ AttestingIndices() ([]uint64, error) }, error)
-		Attestation2() (interface{ AttestingIndices() ([]uint64, error) }, error)
-	}
-
-	if s, ok := slashing.(attestationPair); ok {
-		a1, _ := s.Attestation1()
-		a2, _ := s.Attestation2()
-		return a1, a2
-	}
-	return nil, nil
 }
 
 // Unused import guards.
