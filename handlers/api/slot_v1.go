@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,54 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
+
+// parseSlotOrHashFilter parses a "slotOrHash" path parameter (slot number or
+// 0x-prefixed 32-byte block root) into a BlockFilter with WithOrphaned=1.
+// Returns nil after writing a 400 response when the value can't be parsed.
+// Callers can layer extra filter fields (WithMissing, BuilderIndex, ...) on
+// top of the returned filter as needed.
+func parseSlotOrHashFilter(w http.ResponseWriter, slotOrHash string) *dbtypes.BlockFilter {
+	if strings.HasPrefix(slotOrHash, "0x") && len(slotOrHash) == 66 {
+		rootBytes, err := hex.DecodeString(strings.TrimPrefix(slotOrHash, "0x"))
+		if err != nil {
+			http.Error(w, `{"status": "ERROR: invalid root format"}`, http.StatusBadRequest)
+			return nil
+		}
+		return &dbtypes.BlockFilter{
+			BlockRoot:    rootBytes,
+			WithOrphaned: 1,
+		}
+	}
+	slot, err := strconv.ParseUint(slotOrHash, 10, 64)
+	if err != nil {
+		http.Error(w, `{"status": "ERROR: invalid slot number or root format"}`, http.StatusBadRequest)
+		return nil
+	}
+	return &dbtypes.BlockFilter{
+		Slot:         &slot,
+		WithOrphaned: 1,
+	}
+}
+
+// resolveSlotOrHash parses a "slotOrHash" path parameter and returns the
+// matching canonical/orphaned slot record. Returns nil after writing the
+// appropriate JSON error response when the value can't be parsed (400) or no
+// block is found (404). Shared by all /v1/slot/{slotOrHash}/... endpoints
+// that only make sense when an actual block exists.
+func resolveSlotOrHash(ctx context.Context, w http.ResponseWriter, slotOrHash string) *dbtypes.Slot {
+	filter := parseSlotOrHashFilter(w, slotOrHash)
+	if filter == nil {
+		return nil
+	}
+
+	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, 1, 0)
+	if len(assignedSlots) == 0 || assignedSlots[0].Block == nil {
+		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
+		return nil
+	}
+
+	return assignedSlots[0].Block
+}
 
 // APISlotResponse represents the response for slot information
 type APISlotResponse struct {
@@ -64,44 +113,18 @@ type APISlotData struct {
 func APISlotV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	vars := mux.Vars(r)
-	slotOrHash := vars["slotOrHash"]
-
-	var filter *dbtypes.BlockFilter
-
-	// Check if it's a block root (0x-prefixed hex) or slot number
-	if strings.HasPrefix(slotOrHash, "0x") && len(slotOrHash) == 66 {
-		// It's a block root
-		rootStr := strings.TrimPrefix(slotOrHash, "0x")
-		rootBytes, err := hex.DecodeString(rootStr)
-		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid root format"}`, http.StatusBadRequest)
-			return
-		}
-
-		// Create filter for block root
-		filter = &dbtypes.BlockFilter{
-			BlockRoot:    rootBytes,
-			WithOrphaned: 1, // Include all (canonical + orphaned)
-			WithMissing:  0, // Exclude missing (they don't have roots)
-		}
-	} else {
-		// It's a slot number
-		slot, err := strconv.ParseUint(slotOrHash, 10, 64)
-		if err != nil {
-			http.Error(w, `{"status": "invalid slot number or root format"}`, http.StatusBadRequest)
-			return
-		}
-
-		// Create filter for specific slot
-		filter = &dbtypes.BlockFilter{
-			Slot:         &slot,
-			WithOrphaned: 1, // Include all (canonical + orphaned)
-			WithMissing:  1, // Include missing blocks
-		}
+	filter := parseSlotOrHashFilter(w, mux.Vars(r)["slotOrHash"])
+	if filter == nil {
+		return
+	}
+	// Unlike the other slot endpoints, this one surfaces "Missing" slots when
+	// queried by slot number — there's no block but the assignment still tells
+	// us the proposer. Querying by root never matches a missing slot (no root
+	// exists), so this flag only kicks in for slot-number queries.
+	if filter.Slot != nil {
+		filter.WithMissing = 1
 	}
 
-	// Get slot data using ChainService with filter
 	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), filter, 0, 1, 0)
 
 	// Handle case where slot is not found
