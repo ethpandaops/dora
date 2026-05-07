@@ -4400,6 +4400,9 @@ const docTemplate = `{
                 "has_payload_header": {
                     "type": "boolean"
                 },
+                "is_self_built": {
+                    "type": "boolean"
+                },
                 "parent_block_hash": {
                     "type": "string"
                 },

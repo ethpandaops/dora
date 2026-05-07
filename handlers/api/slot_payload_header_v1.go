@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -34,8 +35,9 @@ type APISlotPayloadHeaderData struct {
 	ParentBlockRoot    string   `json:"parent_block_root,omitempty"`
 	BlockHash          string   `json:"block_hash,omitempty"`
 	GasLimit           uint64   `json:"gas_limit,omitempty"`
-	BuilderIndex       uint64   `json:"builder_index,omitempty"`
+	BuilderIndex       uint64   `json:"builder_index"`
 	BuilderName        string   `json:"builder_name,omitempty"`
+	IsSelfBuilt        bool     `json:"is_self_built"`
 	Value              uint64   `json:"value,omitempty"`
 	BlobKZGCommitments []string `json:"blob_kzg_commitments,omitempty"`
 	Signature          string   `json:"signature,omitempty"`
@@ -131,13 +133,22 @@ func APISlotPayloadHeaderV1(w http.ResponseWriter, r *http.Request) {
 		commitments[i] = fmt.Sprintf("0x%x", blobCommitments[i][:])
 	}
 
+	// Self-built blocks come over the wire with builder_index = MaxUint64; mirror
+	// the bids endpoint and surface that as is_self_built rather than as a magic
+	// "named validator at MaxUint64" lookup.
+	builderIndexU := uint64(builderIndex)
+	isSelfBuilt := builderIndexU == math.MaxUint64
+
 	data.HasPayloadHeader = true
 	data.ParentBlockHash = fmt.Sprintf("0x%x", parentBlockHash[:])
 	data.ParentBlockRoot = fmt.Sprintf("0x%x", parentBlockRoot[:])
 	data.BlockHash = fmt.Sprintf("0x%x", blockHash[:])
 	data.GasLimit = uint64(gasLimit)
-	data.BuilderIndex = uint64(builderIndex)
-	data.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(builderIndex) | services.BuilderIndexFlag)
+	data.BuilderIndex = builderIndexU
+	data.IsSelfBuilt = isSelfBuilt
+	if !isSelfBuilt {
+		data.BuilderName = services.GlobalBeaconService.GetValidatorName(builderIndexU | services.BuilderIndexFlag)
+	}
 	data.Value = uint64(value)
 	data.BlobKZGCommitments = commitments
 	data.Signature = fmt.Sprintf("0x%x", signature[:])

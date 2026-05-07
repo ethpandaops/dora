@@ -34,7 +34,7 @@ type APISlotBid struct {
 	BlockHash    string `json:"block_hash"`
 	FeeRecipient string `json:"fee_recipient"`
 	GasLimit     uint64 `json:"gas_limit"`
-	BuilderIndex int64  `json:"builder_index"`
+	BuilderIndex uint64 `json:"builder_index"`
 	BuilderName  string `json:"builder_name,omitempty"`
 	IsSelfBuilt  bool   `json:"is_self_built"`
 	Slot         uint64 `json:"slot"`
@@ -74,9 +74,13 @@ func APISlotBidsV1(w http.ResponseWriter, r *http.Request) {
 	for _, bid := range bids {
 		isWinning := len(dbSlot.EthBlockHash) > 0 && bytes.Equal(bid.BlockHash, dbSlot.EthBlockHash)
 
+		// Dora's bid indexer casts the on-chain uint64 BuilderIndex to int64 and
+		// uses -1 (== MaxUint64 reinterpreted) as a "self-built" sentinel. Surface
+		// the spec-faithful uint64 on the wire plus a boolean for ergonomics.
+		isSelfBuilt := bid.BuilderIndex < 0
 		builderIndexU := uint64(bid.BuilderIndex)
 		builderName := ""
-		if bid.BuilderIndex >= 0 {
+		if !isSelfBuilt {
 			builderName = services.GlobalBeaconService.GetValidatorName(builderIndexU | services.BuilderIndexFlag)
 		}
 
@@ -86,9 +90,9 @@ func APISlotBidsV1(w http.ResponseWriter, r *http.Request) {
 			BlockHash:    fmt.Sprintf("0x%x", bid.BlockHash),
 			FeeRecipient: fmt.Sprintf("0x%x", bid.FeeRecipient),
 			GasLimit:     bid.GasLimit,
-			BuilderIndex: bid.BuilderIndex,
+			BuilderIndex: builderIndexU,
 			BuilderName:  builderName,
-			IsSelfBuilt:  bid.BuilderIndex < 0,
+			IsSelfBuilt:  isSelfBuilt,
 			Slot:         bid.Slot,
 			Value:        bid.Value,
 			ElPayment:    bid.ElPayment,
