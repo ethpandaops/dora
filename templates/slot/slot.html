@@ -449,8 +449,23 @@
         }
       });
       $(function() {
-        if(location.hash)
-          $('.nav-tabs a[href="' + location.hash + '"]').tab('show');
+        function activateTabByHash() {
+          if (!location.hash) return;
+          var target = $('.nav-tabs a[href="' + location.hash + '"]');
+          if (target.length) target.tab('show');
+        }
+
+        activateTabByHash();
+        window.addEventListener('hashchange', activateTabByHash);
+
+        $('.nav-tabs a[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
+          var href = e.target.getAttribute('href') || '';
+          if (!href.startsWith('#')) return;
+          var newHash = href === '#overview' ? '' : href;
+          if (window.location.hash !== newHash) {
+            window.history.replaceState(null, document.title, window.location.pathname + window.location.search + newHash);
+          }
+        });
 
         // Handle EIP-7918 info button click
         $('.eip7918-info-btn').on('click', function(e) {
