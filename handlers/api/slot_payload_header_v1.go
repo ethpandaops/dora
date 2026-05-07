@@ -1,0 +1,193 @@
+package api
+
+import (
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/gorilla/mux"
+	"github.com/sirupsen/logrus"
+)
+
+// APISlotPayloadHeaderResponse represents the response for the slot payload header endpoint.
+type APISlotPayloadHeaderResponse struct {
+	Status string                    `json:"status"`
+	Data   *APISlotPayloadHeaderData `json:"data"`
+}
+
+// APISlotPayloadHeaderData wraps the gloas signed execution payload bid (header).
+type APISlotPayloadHeaderData struct {
+	Slot               uint64   `json:"slot"`
+	BlockRoot          string   `json:"block_root"`
+	HasPayloadHeader   bool     `json:"has_payload_header"`
+	PayloadStatus      uint16   `json:"payload_status"`
+	PayloadStatusName  string   `json:"payload_status_name"`
+	ParentBlockHash    string   `json:"parent_block_hash,omitempty"`
+	ParentBlockRoot    string   `json:"parent_block_root,omitempty"`
+	BlockHash          string   `json:"block_hash,omitempty"`
+	GasLimit           uint64   `json:"gas_limit,omitempty"`
+	BuilderIndex       uint64   `json:"builder_index,omitempty"`
+	BuilderName        string   `json:"builder_name,omitempty"`
+	Value              uint64   `json:"value,omitempty"`
+	BlobKZGCommitments []string `json:"blob_kzg_commitments,omitempty"`
+	Signature          string   `json:"signature,omitempty"`
+}
+
+// APISlotPayloadHeaderV1 returns the gloas+ signed execution payload bid (header) for a slot.
+// @Summary Get the execution payload header for a slot
+// @Description Returns the gloas+ signed execution payload bid (header) included in a block,
+// @Description plus its observed payload status (canonical / orphaned). Pre-gloas blocks return
+// @Description has_payload_header=false.
+// @Tags Slot
+// @Produce json
+// @Param slotOrHash path string true "Slot number or block root (0x-prefixed hex)"
+// @Success 200 {object} APISlotPayloadHeaderResponse
+// @Failure 400 {object} map[string]string "Invalid slot number or root format"
+// @Failure 404 {object} map[string]string "Slot not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /v1/slot/{slotOrHash}/payload_header [get]
+// @ID getSlotPayloadHeader
+func APISlotPayloadHeaderV1(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	slotOrHash := mux.Vars(r)["slotOrHash"]
+
+	var (
+		blockRoot phase0.Root
+		slotNum   *uint64
+	)
+
+	if strings.HasPrefix(slotOrHash, "0x") && len(slotOrHash) == 66 {
+		rootBytes, err := hex.DecodeString(strings.TrimPrefix(slotOrHash, "0x"))
+		if err != nil {
+			http.Error(w, `{"status": "ERROR: invalid root format"}`, http.StatusBadRequest)
+			return
+		}
+		copy(blockRoot[:], rootBytes)
+	} else {
+		parsed, err := strconv.ParseUint(slotOrHash, 10, 64)
+		if err != nil {
+			http.Error(w, `{"status": "ERROR: invalid slot number or root format"}`, http.StatusBadRequest)
+			return
+		}
+		slotNum = &parsed
+	}
+
+	var (
+		blockData *services.CombinedBlockResponse
+		err       error
+	)
+	if slotNum != nil {
+		blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(r.Context(), phase0.Slot(*slotNum))
+	} else {
+		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), blockRoot)
+	}
+	if err != nil {
+		logrus.WithError(err).Error("failed to load slot details")
+		http.Error(w, `{"status": "ERROR: failed to load slot details"}`, http.StatusInternalServerError)
+		return
+	}
+	if blockData == nil || blockData.Header == nil || blockData.Block == nil {
+		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
+		return
+	}
+
+	data := &APISlotPayloadHeaderData{
+		Slot:              uint64(blockData.Header.Message.Slot),
+		BlockRoot:         fmt.Sprintf("0x%x", blockData.Root[:]),
+		PayloadStatusName: payloadStatusName(dbtypes.PayloadStatusMissing),
+	}
+
+	if blockData.Block.Version < spec.DataVersionGloas {
+		writePayloadHeaderResponse(w, data)
+		return
+	}
+
+	payloadBid, err := blockData.Block.SignedExecutionPayloadBid()
+	if err != nil || payloadBid == nil {
+		writePayloadHeaderResponse(w, data)
+		return
+	}
+
+	parentBlockHash, _ := payloadBid.ParentBlockHash()
+	parentBlockRoot, _ := payloadBid.ParentBlockRoot()
+	blockHash, _ := payloadBid.BlockHash()
+	gasLimit, _ := payloadBid.GasLimit()
+	builderIndex, _ := payloadBid.BuilderIndex()
+	value, _ := payloadBid.Value()
+	signature, _ := payloadBid.Signature()
+	blobCommitments, _ := payloadBid.BlobKZGCommitments()
+
+	commitments := make([]string, len(blobCommitments))
+	for i := range blobCommitments {
+		commitments[i] = fmt.Sprintf("0x%x", blobCommitments[i][:])
+	}
+
+	data.HasPayloadHeader = true
+	data.ParentBlockHash = fmt.Sprintf("0x%x", parentBlockHash[:])
+	data.ParentBlockRoot = fmt.Sprintf("0x%x", parentBlockRoot[:])
+	data.BlockHash = fmt.Sprintf("0x%x", blockHash[:])
+	data.GasLimit = uint64(gasLimit)
+	data.BuilderIndex = uint64(builderIndex)
+	data.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(builderIndex) | services.BuilderIndexFlag)
+	data.Value = uint64(value)
+	data.BlobKZGCommitments = commitments
+	data.Signature = fmt.Sprintf("0x%x", signature[:])
+
+	// Determine payload status — match the slot page logic: status is canonical
+	// unless we have a canonical child that does NOT build on this payload.
+	status := dbtypes.PayloadStatusCanonical
+	if blockData.Payload != nil {
+		childSlots := services.GlobalBeaconService.GetDbBlocksByParentRoot(r.Context(), blockData.Root)
+		hasCanonicalChild := false
+		payloadIncluded := false
+		for _, child := range childSlots {
+			if child.Status != dbtypes.Canonical {
+				continue
+			}
+			hasCanonicalChild = true
+			if bytes.Equal(child.EthBlockParentHash, blockHash[:]) {
+				payloadIncluded = true
+				break
+			}
+		}
+		if hasCanonicalChild && !payloadIncluded {
+			status = dbtypes.PayloadStatusOrphaned
+		}
+	} else {
+		status = dbtypes.PayloadStatusMissing
+	}
+	data.PayloadStatus = uint16(status)
+	data.PayloadStatusName = payloadStatusName(status)
+
+	writePayloadHeaderResponse(w, data)
+}
+
+func payloadStatusName(status dbtypes.PayloadStatus) string {
+	switch status {
+	case dbtypes.PayloadStatusCanonical:
+		return "canonical"
+	case dbtypes.PayloadStatusOrphaned:
+		return "orphaned"
+	case dbtypes.PayloadStatusMissing:
+		return "missing"
+	default:
+		return "unknown"
+	}
+}
+
+func writePayloadHeaderResponse(w http.ResponseWriter, data *APISlotPayloadHeaderData) {
+	resp := APISlotPayloadHeaderResponse{Status: "OK", Data: data}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		logrus.WithError(err).Error("failed to encode payload header response")
+		http.Error(w, `{"status": "ERROR: failed to encode response"}`, http.StatusInternalServerError)
+	}
+}

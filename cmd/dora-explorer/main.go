@@ -316,6 +316,11 @@ func startApi(router *mux.Router) {
 		{"/v1/epochs", api.APIEpochsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/epoch/{epoch}", api.ApiEpochV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slot/{slotOrHash}", api.APISlotV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}/bids", api.APISlotBidsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}/block_access_list", api.APISlotBlockAccessListV1, []string{"GET", "OPTIONS"}, 2},
+		{"/v1/slot/{slotOrHash}/ptc_votes", api.APISlotPtcVotesV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}/inclusion_lists", api.APISlotInclusionListsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}/payload_header", api.APISlotPayloadHeaderV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slots", api.APISlotsV1, []string{"GET", "OPTIONS"}, 1},
 
 		// Deposit APIs
