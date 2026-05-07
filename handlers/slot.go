@@ -16,7 +16,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethpandaops/go-eth2-client/api/v1"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
@@ -802,31 +802,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	// fork-specific fields exposed via the agnostic ExecutionPayload struct.
 	var executionPayload *all.ExecutionPayload
 	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil && blockData.Payload.Message != nil {
-		envPayload := blockData.Payload.Message.Payload
-		if envPayload != nil {
-			executionPayload = &all.ExecutionPayload{
-				Version:         blockData.Block.Version,
-				ParentHash:      envPayload.ParentHash,
-				FeeRecipient:    envPayload.FeeRecipient,
-				StateRoot:       envPayload.StateRoot,
-				ReceiptsRoot:    envPayload.ReceiptsRoot,
-				LogsBloom:       envPayload.LogsBloom,
-				PrevRandao:      envPayload.PrevRandao,
-				BlockNumber:     envPayload.BlockNumber,
-				GasLimit:        envPayload.GasLimit,
-				GasUsed:         envPayload.GasUsed,
-				Timestamp:       envPayload.Timestamp,
-				ExtraData:       envPayload.ExtraData,
-				BaseFeePerGas:   envPayload.BaseFeePerGas,
-				BlockHash:       envPayload.BlockHash,
-				Transactions:    envPayload.Transactions,
-				Withdrawals:     envPayload.Withdrawals,
-				BlobGasUsed:     envPayload.BlobGasUsed,
-				ExcessBlobGas:   envPayload.ExcessBlobGas,
-				BlockAccessList: envPayload.BlockAccessList,
-				SlotNumber:      envPayload.SlotNumber,
-			}
-		}
+		executionPayload = blockData.Payload.Message.Payload
 
 		// Determine payload status by checking if any canonical child
 		// builds on this block's execution payload.

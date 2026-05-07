@@ -191,29 +191,7 @@ func resolveExecutionPayload(blockData *services.CombinedBlockResponse) (*all.Ex
 		if blockData.Payload == nil || blockData.Payload.Message == nil || blockData.Payload.Message.Payload == nil {
 			return nil, fmt.Errorf("block has no execution payload")
 		}
-		envPayload := blockData.Payload.Message.Payload
-		return &all.ExecutionPayload{
-			Version:         blockData.Block.Version,
-			ParentHash:      envPayload.ParentHash,
-			FeeRecipient:    envPayload.FeeRecipient,
-			StateRoot:       envPayload.StateRoot,
-			ReceiptsRoot:    envPayload.ReceiptsRoot,
-			LogsBloom:       envPayload.LogsBloom,
-			PrevRandao:      envPayload.PrevRandao,
-			BlockNumber:     envPayload.BlockNumber,
-			GasLimit:        envPayload.GasLimit,
-			GasUsed:         envPayload.GasUsed,
-			Timestamp:       envPayload.Timestamp,
-			ExtraData:       envPayload.ExtraData,
-			BaseFeePerGas:   envPayload.BaseFeePerGas,
-			BlockHash:       envPayload.BlockHash,
-			Transactions:    envPayload.Transactions,
-			Withdrawals:     envPayload.Withdrawals,
-			BlobGasUsed:     envPayload.BlobGasUsed,
-			ExcessBlobGas:   envPayload.ExcessBlobGas,
-			BlockAccessList: envPayload.BlockAccessList,
-			SlotNumber:      envPayload.SlotNumber,
-		}, nil
+		return blockData.Payload.Message.Payload, nil
 	}
 
 	executionPayload := blockData.Block.Message.Body.ExecutionPayload
