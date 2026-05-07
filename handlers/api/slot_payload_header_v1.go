@@ -89,45 +89,44 @@ func APISlotPayloadHeaderV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payloadBid, err := blockData.Block.SignedExecutionPayloadBid()
-	if err != nil || payloadBid == nil {
+	if blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
 		writePayloadHeaderResponse(w, data)
 		return
 	}
 
-	parentBlockHash, _ := payloadBid.ParentBlockHash()
-	parentBlockRoot, _ := payloadBid.ParentBlockRoot()
-	blockHash, _ := payloadBid.BlockHash()
-	gasLimit, _ := payloadBid.GasLimit()
-	builderIndex, _ := payloadBid.BuilderIndex()
-	value, _ := payloadBid.Value()
-	signature, _ := payloadBid.Signature()
-	blobCommitments, _ := payloadBid.BlobKZGCommitments()
+	signedBid := blockData.Block.Message.Body.SignedExecutionPayloadBid
+	if signedBid == nil || signedBid.Message == nil {
+		writePayloadHeaderResponse(w, data)
+		return
+	}
+	bid := signedBid.Message
 
-	commitments := make([]string, len(blobCommitments))
-	for i := range blobCommitments {
-		commitments[i] = fmt.Sprintf("0x%x", blobCommitments[i][:])
+	commitments := make([]string, len(bid.BlobKZGCommitments))
+	for i := range bid.BlobKZGCommitments {
+		commitments[i] = fmt.Sprintf("0x%x", bid.BlobKZGCommitments[i][:])
 	}
 
 	// Self-built blocks come over the wire with builder_index = MaxUint64; mirror
 	// the bids endpoint and surface that as is_self_built rather than as a magic
 	// "named validator at MaxUint64" lookup.
-	builderIndexU := uint64(builderIndex)
+	builderIndexU := uint64(bid.BuilderIndex)
 	isSelfBuilt := builderIndexU == math.MaxUint64
 
+	blockHash := bid.BlockHash
+
 	data.HasPayloadHeader = true
-	data.ParentBlockHash = fmt.Sprintf("0x%x", parentBlockHash[:])
-	data.ParentBlockRoot = fmt.Sprintf("0x%x", parentBlockRoot[:])
+	data.ParentBlockHash = fmt.Sprintf("0x%x", bid.ParentBlockHash[:])
+	data.ParentBlockRoot = fmt.Sprintf("0x%x", bid.ParentBlockRoot[:])
 	data.BlockHash = fmt.Sprintf("0x%x", blockHash[:])
-	data.GasLimit = uint64(gasLimit)
+	data.GasLimit = bid.GasLimit
 	data.BuilderIndex = builderIndexU
 	data.IsSelfBuilt = isSelfBuilt
 	if !isSelfBuilt {
 		data.BuilderName = services.GlobalBeaconService.GetValidatorName(builderIndexU | services.BuilderIndexFlag)
 	}
-	data.Value = uint64(value)
+	data.Value = uint64(bid.Value)
 	data.BlobKZGCommitments = commitments
-	data.Signature = fmt.Sprintf("0x%x", signature[:])
+	data.Signature = fmt.Sprintf("0x%x", signedBid.Signature[:])
 
 	// Determine payload status — match the slot page logic: status is canonical
 	// unless we have a canonical child that does NOT build on this payload.

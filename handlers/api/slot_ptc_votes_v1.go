@@ -7,7 +7,6 @@ import (
 
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/go-eth2-client/spec"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -101,13 +100,12 @@ func APISlotPtcVotesV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payloadAttestations []*gloas.PayloadAttestation
-	switch {
-	case blockData.Block.Gloas != nil:
-		payloadAttestations = blockData.Block.Gloas.Message.Body.PayloadAttestations
-	case blockData.Block.Heze != nil:
-		payloadAttestations = blockData.Block.Heze.Message.Body.PayloadAttestations
+	if blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
+		writePtcVotesResponse(w, data)
+		return
 	}
+
+	payloadAttestations := blockData.Block.Message.Body.PayloadAttestations
 	if len(payloadAttestations) == 0 {
 		writePtcVotesResponse(w, data)
 		return
