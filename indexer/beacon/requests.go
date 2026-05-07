@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethpandaops/go-eth2-client/spec"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
@@ -55,8 +54,9 @@ func LoadBeaconHeaderBySlot(ctx context.Context, client *Client, slot phase0.Slo
 	return header.Header, header.Root, !header.Canonical, nil
 }
 
-// LoadBeaconBlock loads the block body from the RPC client.
-func LoadBeaconBlock(ctx context.Context, client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
+// LoadBeaconBlock loads the block body from the RPC client as a fork-agnostic
+// *all.SignedBeaconBlock.
+func LoadBeaconBlock(ctx context.Context, client *Client, root phase0.Root) (*all.SignedBeaconBlock, error) {
 	ctx, cancel := context.WithTimeout(ctx, beaconBodyRequestTimeout)
 	defer cancel()
 
@@ -68,8 +68,9 @@ func LoadBeaconBlock(ctx context.Context, client *Client, root phase0.Root) (*sp
 	return body, nil
 }
 
-// LoadBeaconState loads the beacon state from the client.
-func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*spec.VersionedBeaconState, error) {
+// LoadBeaconState loads the beacon state from the client as a fork-agnostic
+// *all.BeaconState.
+func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*all.BeaconState, error) {
 	ctx, cancel := context.WithTimeout(ctx, beaconStateRequestTimeout)
 	defer cancel()
 
@@ -88,7 +89,7 @@ func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*sp
 }
 
 // LoadExecutionPayload loads the execution payload from the client.
-func LoadExecutionPayload(ctx context.Context, client *Client, root phase0.Root) (*gloas.SignedExecutionPayloadEnvelope, error) {
+func LoadExecutionPayload(ctx context.Context, client *Client, root phase0.Root) (*all.SignedExecutionPayloadEnvelope, error) {
 	ctx, cancel := context.WithTimeout(ctx, executionPayloadRequestTimeout)
 	defer cancel()
 

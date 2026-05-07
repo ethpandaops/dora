@@ -26,7 +26,7 @@ func processPendingDeposits(s *stateAccessor) error {
 
 	for _, deposit := range s.PendingDeposits {
 		// Do not process deposit requests if Eth1 bridge deposits are not yet applied.
-		if deposit.Slot > 0 && s.Eth1DepositIndex < s.DepositRequestsStartIndex {
+		if deposit.Slot > 0 && s.ETH1DepositIndex < s.DepositRequestsStartIndex {
 			break
 		}
 

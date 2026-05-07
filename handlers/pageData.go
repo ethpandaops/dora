@@ -47,6 +47,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Data:                    &types.Empty{},
 		Version:                 utils.GetExplorerVersion(),
 		BuildTime:               fmt.Sprintf("%v", buildTime.Unix()),
+		ServerTime:              time.Now().UnixMilli(),
 		Year:                    time.Now().UTC().Year(),
 		ExplorerTitle:           utils.Config.Frontend.SiteName,
 		ExplorerSubtitle:        utils.Config.Frontend.SiteSubtitle,
