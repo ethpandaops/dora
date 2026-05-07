@@ -2,13 +2,10 @@ package api
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -60,52 +57,31 @@ type APISlotPayloadHeaderData struct {
 func APISlotPayloadHeaderV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	slotOrHash := mux.Vars(r)["slotOrHash"]
-
-	var (
-		blockRoot phase0.Root
-		slotNum   *uint64
-	)
-
-	if strings.HasPrefix(slotOrHash, "0x") && len(slotOrHash) == 66 {
-		rootBytes, err := hex.DecodeString(strings.TrimPrefix(slotOrHash, "0x"))
-		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid root format"}`, http.StatusBadRequest)
-			return
-		}
-		copy(blockRoot[:], rootBytes)
-	} else {
-		parsed, err := strconv.ParseUint(slotOrHash, 10, 64)
-		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid slot number or root format"}`, http.StatusBadRequest)
-			return
-		}
-		slotNum = &parsed
+	// Resolve through the indexer first so unknown slots/roots return 404
+	// instead of bubbling up a 500 from beacon header loading.
+	dbSlot := resolveSlotOrHash(r.Context(), w, mux.Vars(r)["slotOrHash"])
+	if dbSlot == nil {
+		return
 	}
 
-	var (
-		blockData *services.CombinedBlockResponse
-		err       error
-	)
-	if slotNum != nil {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(r.Context(), phase0.Slot(*slotNum))
-	} else {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), blockRoot)
+	var resolvedRoot phase0.Root
+	copy(resolvedRoot[:], dbSlot.Root)
+
+	data := &APISlotPayloadHeaderData{
+		Slot:              dbSlot.Slot,
+		BlockRoot:         fmt.Sprintf("0x%x", dbSlot.Root),
+		PayloadStatusName: payloadStatusName(dbtypes.PayloadStatusMissing),
 	}
+
+	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), resolvedRoot)
 	if err != nil {
 		logrus.WithError(err).Error("failed to load slot details")
 		http.Error(w, `{"status": "ERROR: failed to load slot details"}`, http.StatusInternalServerError)
 		return
 	}
-	if blockData == nil || blockData.Header == nil || blockData.Block == nil {
-		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
+	if blockData == nil || blockData.Block == nil {
+		writePayloadHeaderResponse(w, data)
 		return
-	}
-
-	data := &APISlotPayloadHeaderData{
-		Slot:              uint64(blockData.Header.Message.Slot),
-		BlockRoot:         fmt.Sprintf("0x%x", blockData.Root[:]),
-		PayloadStatusName: payloadStatusName(dbtypes.PayloadStatusMissing),
 	}
 
 	if blockData.Block.Version < spec.DataVersionGloas {

@@ -1,12 +1,9 @@
 package api
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/utils"
@@ -84,50 +81,30 @@ type APISlotBlockAccessListCode struct {
 func APISlotBlockAccessListV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	slotOrHash := mux.Vars(r)["slotOrHash"]
-
-	var (
-		blockRoot phase0.Root
-		slotNum   *uint64
-	)
-
-	if strings.HasPrefix(slotOrHash, "0x") && len(slotOrHash) == 66 {
-		rootBytes, err := hex.DecodeString(strings.TrimPrefix(slotOrHash, "0x"))
-		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid root format"}`, http.StatusBadRequest)
-			return
-		}
-		copy(blockRoot[:], rootBytes)
-	} else {
-		parsed, err := strconv.ParseUint(slotOrHash, 10, 64)
-		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid slot number or root format"}`, http.StatusBadRequest)
-			return
-		}
-		slotNum = &parsed
+	// First confirm the slot exists in the indexer (clean 404 on miss). Going
+	// straight to GetSlotDetailsByBlockroot for an unknown root surfaces a
+	// "no clients available" error from beacon header loading and turns into a
+	// 500 instead of a 404.
+	dbSlot := resolveSlotOrHash(r.Context(), w, mux.Vars(r)["slotOrHash"])
+	if dbSlot == nil {
+		return
 	}
 
-	var (
-		blockData *services.CombinedBlockResponse
-		err       error
-	)
-	if slotNum != nil {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(r.Context(), phase0.Slot(*slotNum))
-	} else {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), blockRoot)
-	}
+	var resolvedRoot phase0.Root
+	copy(resolvedRoot[:], dbSlot.Root)
+	resolvedSlot := dbSlot.Slot
+
+	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), resolvedRoot)
 	if err != nil {
 		logrus.WithError(err).Error("failed to load slot details")
 		http.Error(w, `{"status": "ERROR: failed to load slot details"}`, http.StatusInternalServerError)
 		return
 	}
-	if blockData == nil || blockData.Header == nil {
-		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
+	if blockData == nil {
+		// Indexer knows the slot but block details aren't loadable — treat as missing.
+		writeBALResponse(w, resolvedSlot, resolvedRoot[:], nil)
 		return
 	}
-
-	resolvedRoot := blockData.Root
-	resolvedSlot := uint64(blockData.Header.Message.Slot)
 
 	if len(blockData.BlockAccessList) == 0 {
 		// No BAL is a valid response (pre-fulu / pre-7928 blocks). Return empty list.
