@@ -1,12 +1,9 @@
 package api
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/go-eth2-client/spec"
@@ -70,55 +67,33 @@ type APISlotPtcValidator struct {
 func APISlotPtcVotesV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	slotOrHash := mux.Vars(r)["slotOrHash"]
-
-	var (
-		blockRoot phase0.Root
-		slotNum   *uint64
-	)
-
-	if strings.HasPrefix(slotOrHash, "0x") && len(slotOrHash) == 66 {
-		rootBytes, err := hex.DecodeString(strings.TrimPrefix(slotOrHash, "0x"))
-		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid root format"}`, http.StatusBadRequest)
-			return
-		}
-		copy(blockRoot[:], rootBytes)
-	} else {
-		parsed, err := strconv.ParseUint(slotOrHash, 10, 64)
-		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid slot number or root format"}`, http.StatusBadRequest)
-			return
-		}
-		slotNum = &parsed
+	// Resolve through the indexer first so unknown slots/roots return 404
+	// instead of bubbling up a 500 from beacon header loading.
+	dbSlot := resolveSlotOrHash(r.Context(), w, mux.Vars(r)["slotOrHash"])
+	if dbSlot == nil {
+		return
 	}
 
-	var (
-		blockData *services.CombinedBlockResponse
-		err       error
-	)
-	if slotNum != nil {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(r.Context(), phase0.Slot(*slotNum))
-	} else {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), blockRoot)
+	var resolvedRoot phase0.Root
+	copy(resolvedRoot[:], dbSlot.Root)
+	resolvedSlot := phase0.Slot(dbSlot.Slot)
+
+	data := &APISlotPtcVotesData{
+		Slot:       uint64(resolvedSlot),
+		BlockRoot:  fmt.Sprintf("0x%x", dbSlot.Root),
+		Aggregates: []*APISlotPtcAggregate{},
+		NonVoters:  []APISlotPtcValidator{},
 	}
+
+	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), resolvedRoot)
 	if err != nil {
 		logrus.WithError(err).Error("failed to load slot details")
 		http.Error(w, `{"status": "ERROR: failed to load slot details"}`, http.StatusInternalServerError)
 		return
 	}
-	if blockData == nil || blockData.Header == nil || blockData.Block == nil {
-		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
+	if blockData == nil || blockData.Block == nil {
+		writePtcVotesResponse(w, data)
 		return
-	}
-
-	resolvedSlot := blockData.Header.Message.Slot
-
-	data := &APISlotPtcVotesData{
-		Slot:       uint64(resolvedSlot),
-		BlockRoot:  fmt.Sprintf("0x%x", blockData.Root[:]),
-		Aggregates: []*APISlotPtcAggregate{},
-		NonVoters:  []APISlotPtcValidator{},
 	}
 
 	if blockData.Block.Version < spec.DataVersionGloas {
