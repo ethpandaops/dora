@@ -17,9 +17,9 @@
           <tr{{ if $bid.IsWinning }} style="border-left: 3px solid var(--bs-success);"{{ end }}>
             <td>
               {{ if $bid.IsSelfBuilt }}
-                <span class="validator-label validator-index"><i class="fas fa-male mr-2"></i> Self-built</span>
+                <span class="builder-label builder-index"><i class="fas fa-hard-hat mr-2"></i> Self-built</span>
               {{ else }}
-                {{ formatValidatorWithIndex $bid.BuilderIndex $bid.BuilderName }}
+                {{ formatBuilderWithIndex $bid.BuilderIndex $bid.BuilderName }}
               {{ end }}
               {{ if $bid.IsWinning }}<span class="badge bg-success ms-1">Winner</span>{{ end }}
             </td>
