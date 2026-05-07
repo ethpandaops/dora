@@ -248,5 +248,3 @@ require (
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0
 )
-
-replace github.com/ethpandaops/go-eth2-client => /home/pk910/github/pk910/go-eth2-client
