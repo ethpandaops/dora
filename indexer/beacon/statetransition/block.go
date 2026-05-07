@@ -231,7 +231,7 @@ var _ = sszutils.Annotate[transactionList](`ssz-max:"1048576,1073741824" ssz-siz
 
 type withdrawalList []*capella.Withdrawal
 
-var _ = sszutils.Annotate[withdrawalList](`ssz-max:"16"`)
+var _ = sszutils.Annotate[withdrawalList](`dynssz-max:"MAX_WITHDRAWALS_PER_PAYLOAD" ssz-max:"16"`)
 
 // processFuluExecutionPayload caches the execution payload header for Fulu blocks.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/fulu/beacon-chain.md#modified-process_execution_payload

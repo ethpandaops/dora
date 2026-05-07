@@ -438,7 +438,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	}
 
 	if loadPayload {
-		newPayload, _ := block.EnsureExecutionPayload(func() (*gloas.SignedExecutionPayloadEnvelope, error) {
+		newPayload, _ := block.EnsureExecutionPayload(func() (*all.SignedExecutionPayloadEnvelope, error) {
 			t1 := time.Now()
 			defer func() {
 				processingTimes[0] += time.Since(t1)
@@ -641,7 +641,7 @@ func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1
 		return nil
 	}
 
-	newPayload, err := block.EnsureExecutionPayload(func() (*gloas.SignedExecutionPayloadEnvelope, error) {
+	newPayload, err := block.EnsureExecutionPayload(func() (*all.SignedExecutionPayloadEnvelope, error) {
 		return LoadExecutionPayload(c.getContext(), c, executionPayloadEvent.BlockRoot)
 	})
 	if err != nil {

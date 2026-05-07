@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ethpandaops/go-eth2-client/spec/all"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
@@ -90,7 +89,7 @@ func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*al
 }
 
 // LoadExecutionPayload loads the execution payload from the client.
-func LoadExecutionPayload(ctx context.Context, client *Client, root phase0.Root) (*gloas.SignedExecutionPayloadEnvelope, error) {
+func LoadExecutionPayload(ctx context.Context, client *Client, root phase0.Root) (*all.SignedExecutionPayloadEnvelope, error) {
 	ctx, cancel := context.WithTimeout(ctx, executionPayloadRequestTimeout)
 	defer cancel()
 

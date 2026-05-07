@@ -62,6 +62,13 @@ func (c *stateTransitionCaches) invalidateBalanceCaches() {
 	c.baseRewardPerIncrCache = nil
 	c.activeIndices = nil
 	c.committeeCache = newCommitteeCache()
+	// pubkeyCache filters validators by activeness against the epoch in which
+	// it was first built. Once that epoch is past, newly activated validators
+	// aren't in the cache and findValidatorByPubkey returns nil for them —
+	// breaking sync-committee rewards and any other pubkey lookup. Invalidate
+	// it on every epoch transition so the next call rebuilds it against the
+	// current epoch's active set.
+	c.pubkeyCache = nil
 }
 
 // newAccessor creates a stateAccessor wrapping the given fork-agnostic state

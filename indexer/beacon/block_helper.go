@@ -83,7 +83,7 @@ func UnmarshalSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, versionWord uint64, ss
 }
 
 // MarshalVersionedSignedExecutionPayloadEnvelopeSSZ marshals a signed execution payload envelope using SSZ encoding.
-func MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, payload *gloas.SignedExecutionPayloadEnvelope, compress bool) (version uint64, ssz []byte, err error) {
+func MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, payload *all.SignedExecutionPayloadEnvelope, compress bool) (version uint64, ssz []byte, err error) {
 	if utils.Config.KillSwitch.DisableSSZEncoding {
 		// SSZ encoding disabled, use json instead
 		version, ssz, err = marshalVersionedSignedExecutionPayloadEnvelopeJson(payload)
@@ -102,7 +102,7 @@ func MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, pa
 }
 
 // UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ unmarshals a versioned signed execution payload envelope using SSZ encoding.
-func UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*gloas.SignedExecutionPayloadEnvelope, error) {
+func UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*all.SignedExecutionPayloadEnvelope, error) {
 	if (version & compressionFlag) != 0 {
 		// decompress
 		if d, err := decompressBytes(ssz); err != nil {
@@ -118,22 +118,18 @@ func UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, 
 		return unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version, ssz)
 	}
 
-	if version != uint64(spec.DataVersionGloas) {
-		return nil, fmt.Errorf("unknown version")
-	}
-
 	// SSZ encoding
-	payload := &gloas.SignedExecutionPayloadEnvelope{}
+	payload := &all.SignedExecutionPayloadEnvelope{Version: spec.DataVersion(version)}
 	if err := dynSsz.UnmarshalSSZ(payload, ssz); err != nil {
-		return nil, fmt.Errorf("failed to decode gloas signed execution payload envelope: %v", err)
+		return nil, fmt.Errorf("failed to decode signed execution payload envelope: %v", err)
 	}
 
 	return payload, nil
 }
 
 // marshalVersionedSignedExecutionPayloadEnvelopeJson marshals a versioned signed execution payload envelope using JSON encoding.
-func marshalVersionedSignedExecutionPayloadEnvelopeJson(payload *gloas.SignedExecutionPayloadEnvelope) (version uint64, jsonRes []byte, err error) {
-	version = uint64(spec.DataVersionGloas)
+func marshalVersionedSignedExecutionPayloadEnvelopeJson(payload *all.SignedExecutionPayloadEnvelope) (version uint64, jsonRes []byte, err error) {
+	version = uint64(payload.Version)
 	jsonRes, err = payload.MarshalJSON()
 
 	version |= jsonVersionFlag
@@ -142,16 +138,12 @@ func marshalVersionedSignedExecutionPayloadEnvelopeJson(payload *gloas.SignedExe
 }
 
 // unmarshalVersionedSignedExecutionPayloadEnvelopeJson unmarshals a versioned signed execution payload envelope using JSON encoding.
-func unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version uint64, ssz []byte) (*gloas.SignedExecutionPayloadEnvelope, error) {
+func unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version uint64, ssz []byte) (*all.SignedExecutionPayloadEnvelope, error) {
 	if version&jsonVersionFlag == 0 {
 		return nil, fmt.Errorf("no json encoding")
 	}
 
-	if version-jsonVersionFlag != uint64(spec.DataVersionGloas) {
-		return nil, fmt.Errorf("unknown version")
-	}
-
-	payload := &gloas.SignedExecutionPayloadEnvelope{}
+	payload := &all.SignedExecutionPayloadEnvelope{Version: spec.DataVersion(version - jsonVersionFlag)}
 	if err := payload.UnmarshalJSON(ssz); err != nil {
 		return nil, fmt.Errorf("failed to decode gloas signed execution payload envelope: %v", err)
 	}

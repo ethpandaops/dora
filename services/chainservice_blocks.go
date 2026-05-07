@@ -10,7 +10,6 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/blockdb"
@@ -25,7 +24,7 @@ type CombinedBlockResponse struct {
 	Root            phase0.Root
 	Header          *phase0.SignedBeaconBlockHeader
 	Block           *all.SignedBeaconBlock
-	Payload         *gloas.SignedExecutionPayloadEnvelope
+	Payload         *all.SignedExecutionPayloadEnvelope
 	BlockAccessList []byte
 	Orphaned        bool
 }
@@ -135,7 +134,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		}
 
 		var block *all.SignedBeaconBlock
-		var payload *gloas.SignedExecutionPayloadEnvelope
+		var payload *all.SignedExecutionPayloadEnvelope
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
@@ -193,7 +192,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 				Orphaned: false,
 			}
 			if blockData.Payload != nil {
-				resp.Payload = blockData.Payload.(*gloas.SignedExecutionPayloadEnvelope)
+				resp.Payload = blockData.Payload.(*all.SignedExecutionPayloadEnvelope)
 			}
 			if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
 				if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {
@@ -289,7 +288,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 
 		var err error
 		var block *all.SignedBeaconBlock
-		var payload *gloas.SignedExecutionPayloadEnvelope
+		var payload *all.SignedExecutionPayloadEnvelope
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
@@ -351,7 +350,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 				Orphaned: false,
 			}
 			if blockData.Payload != nil {
-				resp.Payload = blockData.Payload.(*gloas.SignedExecutionPayloadEnvelope)
+				resp.Payload = blockData.Payload.(*all.SignedExecutionPayloadEnvelope)
 			}
 			if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
 				if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {

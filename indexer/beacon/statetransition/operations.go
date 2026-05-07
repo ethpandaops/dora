@@ -480,13 +480,17 @@ func processConsolidationRequest(s *stateAccessor, request *electra.Consolidatio
 		}
 	}
 
+	// Initiate source validator exit using the CONSOLIDATION churn (not the
+	// activation/exit churn). Spec: source.exit_epoch =
+	// compute_consolidation_epoch_and_update_churn(state, source.effective_balance).
+	exitEpoch := computeConsolidationEpochAndUpdateChurn(s, sourceValidator.EffectiveBalance)
+	sourceValidator.ExitEpoch = exitEpoch
+	sourceValidator.WithdrawableEpoch = exitEpoch + phase0.Epoch(s.specs.MinValidatorWithdrawbilityDelay)
+
 	s.PendingConsolidations = append(s.PendingConsolidations, &electra.PendingConsolidation{
 		SourceIndex: *sourceIndex,
 		TargetIndex: *targetIndex,
 	})
-
-	// Initiate exit for the source
-	initiateValidatorExit(s, *sourceIndex)
 }
 
 // processExecutionPayloadBid records the builder's bid in builder_pending_payments.

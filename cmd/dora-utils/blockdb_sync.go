@@ -150,6 +150,7 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 	if err == nil {
 		yaml.Unmarshal(specYaml, &staticSpec)
 	}
+	dynssz.SetGlobalSpecs(staticSpec)
 	dynSsz := dynssz.NewDynSsz(staticSpec)
 
 	slotsPerEpoch := chainState.GetSpecs().SlotsPerEpoch

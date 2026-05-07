@@ -14,7 +14,6 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -38,7 +37,7 @@ type Block struct {
 	block                 *all.SignedBeaconBlock
 	executionPayloadMutex sync.Mutex
 	executionPayloadChan  chan bool
-	executionPayload      *gloas.SignedExecutionPayloadEnvelope
+	executionPayload      *all.SignedExecutionPayloadEnvelope
 	blockIndex            *BlockBodyIndex
 	recvDelay             int32
 	executionTimes        []ExecutionTime // execution times from snooper clients
@@ -222,7 +221,7 @@ func (block *Block) AwaitBlock(ctx context.Context, timeout time.Duration) *all.
 }
 
 // GetExecutionPayload returns the execution payload of this block.
-func (block *Block) GetExecutionPayload(ctx context.Context) *gloas.SignedExecutionPayloadEnvelope {
+func (block *Block) GetExecutionPayload(ctx context.Context) *all.SignedExecutionPayloadEnvelope {
 	if block.executionPayload != nil {
 		return block.executionPayload
 	}
@@ -241,7 +240,7 @@ func (block *Block) GetExecutionPayload(ctx context.Context) *gloas.SignedExecut
 }
 
 // AwaitExecutionPayload waits for the execution payload of this block to be available.
-func (block *Block) AwaitExecutionPayload(ctx context.Context, timeout time.Duration) *gloas.SignedExecutionPayloadEnvelope {
+func (block *Block) AwaitExecutionPayload(ctx context.Context, timeout time.Duration) *all.SignedExecutionPayloadEnvelope {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -366,7 +365,7 @@ func (block *Block) EnsureBlock(loadBlock func() (*all.SignedBeaconBlock, error)
 }
 
 // SetExecutionPayload sets the execution payload of this block.
-func (block *Block) SetExecutionPayload(payload *gloas.SignedExecutionPayloadEnvelope) {
+func (block *Block) SetExecutionPayload(payload *all.SignedExecutionPayloadEnvelope) {
 	block.setBlockIndex(block.block, payload)
 	block.executionPayload = payload
 	block.hasExecutionPayload = true
@@ -378,7 +377,7 @@ func (block *Block) SetExecutionPayload(payload *gloas.SignedExecutionPayloadEnv
 }
 
 // EnsureExecutionPayload ensures that the execution payload of this block is available.
-func (block *Block) EnsureExecutionPayload(loadExecutionPayload func() (*gloas.SignedExecutionPayloadEnvelope, error)) (bool, error) {
+func (block *Block) EnsureExecutionPayload(loadExecutionPayload func() (*all.SignedExecutionPayloadEnvelope, error)) (bool, error) {
 	if block.executionPayload != nil {
 		return false, nil
 	}
@@ -415,7 +414,7 @@ func (block *Block) EnsureExecutionPayload(loadExecutionPayload func() (*gloas.S
 }
 
 // setBlockIndex sets the block index of this block.
-func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *gloas.SignedExecutionPayloadEnvelope) {
+func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.SignedExecutionPayloadEnvelope) {
 	if body == nil || body.Message == nil || body.Message.Body == nil {
 		return
 	}

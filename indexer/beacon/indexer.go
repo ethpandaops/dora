@@ -241,6 +241,11 @@ func (indexer *Indexer) StartIndexer() {
 	if err == nil {
 		yaml.Unmarshal(specYaml, &staticSpec)
 	}
+	// Mirror the spec on the global DynSsz so HashTreeRoot() (no-arg) calls on
+	// generated SSZ types resolve preset-dependent sizes (SLOTS_PER_HISTORICAL_ROOT,
+	// EPOCHS_PER_HISTORICAL_VECTOR, …) against the active chain rather than the
+	// mainnet defaults baked into the generated code.
+	dynssz.SetGlobalSpecs(staticSpec)
 	indexer.dynSsz = dynssz.NewDynSsz(staticSpec)
 
 	// initialize synchronizer & restore state
