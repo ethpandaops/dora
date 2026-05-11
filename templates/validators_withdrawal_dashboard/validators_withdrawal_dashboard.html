@@ -1,0 +1,254 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-wallet mx-2"></i> Withdrawal Dashboard</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Withdrawal Dashboard</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div id="header-placeholder" style="height:35px;"></div>
+    <form action="/validators/withdrawal-dashboard" method="get" id="withdrawalDashboardForm">
+      <div class="card mt-2">
+        <div class="card-header">Withdrawal Address</div>
+        <div class="card-body p-2">
+          <div class="row align-items-end">
+            <div class="col-sm-12 col-lg-9">
+              <label for="withdrawal">Address or withdrawal credentials</label>
+              <input name="withdrawal" id="withdrawal" type="text" class="form-control" placeholder="0x..." value="{{ .Query }}">
+            </div>
+            <div class="col-sm-12 col-lg-3 mt-2 mt-lg-0 text-end">
+              <button type="submit" class="btn btn-primary">Load Dashboard</button>
+            </div>
+          </div>
+          {{ if .Error }}
+            <div class="alert alert-warning mt-3 mb-0" role="alert">
+              {{ .Error }}
+            </div>
+          {{ end }}
+        </div>
+      </div>
+    </form>
+
+    {{ if and .HasQuery (not .Error) }}
+      <div class="row mt-3">
+        <div class="col-md-3 mb-2">
+          <div class="card h-100">
+            <div class="card-body text-center">
+              <h5 class="card-title">Validators</h5>
+              <h3 class="text-primary">{{ formatAddCommas .ValidatorCount }}</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 mb-2">
+          <div class="card h-100">
+            <div class="card-body text-center">
+              <h5 class="card-title">Active</h5>
+              <h3 class="text-info">{{ formatAddCommas .ActiveCount }}</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 mb-2">
+          <div class="card h-100">
+            <div class="card-body text-center">
+              <h5 class="card-title">Online Rate</h5>
+              <h3 class="{{ if ge .OnlineRate 95.0 }}text-success{{ else if ge .OnlineRate 90.0 }}text-warning{{ else }}text-danger{{ end }}">{{ printf "%.1f" .OnlineRate }}%</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 mb-2">
+          <div class="card h-100">
+            <div class="card-body text-center">
+              <h5 class="card-title">Participation</h5>
+              <h3 class="{{ if ge .ParticipationRate 95.0 }}text-success{{ else if ge .ParticipationRate 90.0 }}text-warning{{ else }}text-danger{{ end }}">{{ printf "%.1f" .ParticipationRate }}%</h3>
+              {{ if .ParticipationLoading }}
+                <div class="small text-muted">
+                  <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                  {{ printf "%.0f" .ParticipationLoadingPct }}% -
+                  {{ .ParticipationLoadingText }}
+                </div>
+              {{ end }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-2">
+        <div class="card-header">
+          <div class="d-md-flex justify-content-md-between align-items-md-center">
+            <span>Performance Overview</span>
+            <div class="mt-2 mt-md-0">
+              <a href="{{ .ValidatorsLink }}" class="btn btn-sm btn-outline-primary">Validators</a>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-lg-5">
+              <div class="mb-3">
+                <div class="text-muted small">Withdrawal address</div>
+                <div class="text-monospace text-break">
+                  {{ if .NormalizedAddress }}{{ ethAddressLink .NormalizedAddress }}{{ else }}-{{ end }}
+                </div>
+              </div>
+              {{ if .Credentials }}
+                <div class="mb-3">
+                  <div class="text-muted small">Withdrawal credentials</div>
+                  <div class="text-monospace text-break">0x{{ printf "%x" .Credentials }}</div>
+                </div>
+              {{ end }}
+              <div class="row">
+                <div class="col-6">
+                  <div class="text-muted small">Balance</div>
+                  <div class="h5 mb-3">{{ formatEthAddCommasFromGwei .TotalBalance }} {{ tokenSymbol }}</div>
+                </div>
+                <div class="col-6">
+                  <div class="text-muted small">Effective balance</div>
+                  <div class="h5 mb-3">{{ formatEthAddCommasFromGwei .TotalEffectiveBalance }} {{ tokenSymbol }}</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-7">
+              <div class="row">
+                <div class="col-sm-6 mb-3">
+                  <div class="d-flex justify-content-between">
+                    <span>Online</span>
+                    <span class="text-muted">{{ formatAddCommas .OnlineCount }}</span>
+                  </div>
+                  <div class="progress" style="height: 8px;">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ printf "%.2f" .OnlineRate }}%;"></div>
+                  </div>
+                </div>
+                <div class="col-sm-6 mb-3">
+                  <div class="d-flex justify-content-between">
+                    <span>Offline</span>
+                    <span class="text-muted">{{ formatAddCommas .OfflineCount }}</span>
+                  </div>
+                  <div class="progress" style="height: 8px;">
+                    <div class="progress-bar bg-danger" role="progressbar" style="width: {{ printf "%.2f" .OfflineRate }}%;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th class="text-end">Validators</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Active</td><td class="text-end">{{ formatAddCommas .ActiveCount }}</td></tr>
+                    <tr><td><span class="text-muted ms-3">Online</span></td><td class="text-end text-muted">{{ formatAddCommas .OnlineCount }}</td></tr>
+                    <tr><td><span class="text-muted ms-3">Offline</span></td><td class="text-end text-muted">{{ formatAddCommas .OfflineCount }}</td></tr>
+                    <tr><td>Pending</td><td class="text-end">{{ formatAddCommas .PendingTotalCount }}</td></tr>
+                    <tr><td><span class="text-muted ms-3">Validator queue</span></td><td class="text-end text-muted">{{ formatAddCommas .PendingCount }}</td></tr>
+                    <tr><td><span class="text-muted ms-3">Pending validators</span></td><td class="text-end text-muted">{{ formatAddCommas .QueuedDepositCount }}</td></tr>
+                    <tr><td>Exiting</td><td class="text-end">{{ formatAddCommas .ExitingCount }}</td></tr>
+                    <tr><td>Exited</td><td class="text-end">{{ formatAddCommas .ExitedCount }}</td></tr>
+                    <tr><td>Withdrawable</td><td class="text-end">{{ formatAddCommas .WithdrawableCount }}</td></tr>
+                    <tr><td>Withdrawn</td><td class="text-end">{{ formatAddCommas .WithdrawnCount }}</td></tr>
+                    <tr><td>Slashed</td><td class="text-end">{{ formatAddCommas .SlashedCount }}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-2">
+        <div class="card-header">
+          <div class="d-md-flex justify-content-md-between align-items-md-center">
+            <span>Validators</span>
+            {{ if gt .ValidatorCount .DisplayedValidatorCount }}
+              <small class="text-muted mt-2 mt-md-0">Showing first {{ formatAddCommas .DisplayedValidatorCount }} of {{ formatAddCommas .ValidatorCount }}</small>
+            {{ end }}
+          </div>
+        </div>
+        <div class="card-body px-0 py-3">
+          <div class="table-responsive px-0 py-1">
+            <table class="table table-nobr mb-0">
+              <thead>
+                <tr>
+                  <th>Validator</th>
+                  <th>Public Key</th>
+                  <th>Balance</th>
+                  <th>State</th>
+                  <th>Liveness</th>
+                  <th>W/address</th>
+                </tr>
+              </thead>
+              {{ if gt .DisplayedValidatorCount 0 }}
+                <tbody>
+                  {{ range $i, $validator := .Validators }}
+                    <tr>
+                      <td><a href="/validator/{{ $validator.Index }}">{{ formatValidatorNameWithIndex $validator.Index $validator.Name }}</a></td>
+                      <td class="text-monospace"><a href="/validator/0x{{ printf "%x" $validator.PublicKey }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $validator.PublicKey }}</a></td>
+                      <td>{{ formatEthFromGwei $validator.Balance }} ({{ formatEthAddCommasFromGwei $validator.EffectiveBalance }} {{ tokenSymbol }})</td>
+                      <td>{{ $validator.State }}</td>
+                      <td style="min-width: 150px;">
+                        {{ if $validator.ShowLiveness }}
+                          <div class="d-flex align-items-center">
+                            <div class="progress flex-grow-1 me-2" style="height: 8px;">
+                              <div class="progress-bar {{ if ge $validator.LivenessPercent 95.0 }}bg-success{{ else if ge $validator.LivenessPercent 50.0 }}bg-warning{{ else }}bg-danger{{ end }}" role="progressbar" style="width: {{ printf "%.2f" $validator.LivenessPercent }}%;"></div>
+                            </div>
+                            <span class="text-muted small">{{ $validator.Liveness }}/{{ $validator.LivenessMax }}</span>
+                          </div>
+                        {{ else }}
+                          -
+                        {{ end }}
+                      </td>
+                      <td>{{ if $validator.WithdrawalAddress }}{{ ethAddressLink $validator.WithdrawalAddress }}{{ else }}-{{ end }}</td>
+                    </tr>
+                  {{ end }}
+                </tbody>
+              {{ else }}
+                <tbody>
+                  <tr style="height: 260px;">
+                    <td style="vertical-align: middle;" colspan="6">
+                      <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 240px; max-width: 240px; overflow: hidden;">
+                        {{ template "professor_svg" }}
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              {{ end }}
+            </table>
+          </div>
+        </div>
+      </div>
+    {{ else if not .HasQuery }}
+      <div class="card mt-2">
+        <div class="card-body text-center py-5">
+          <i class="fas fa-search fa-2x text-muted mb-3"></i>
+          <h5>Enter a withdrawal address to load validator performance.</h5>
+          <div class="text-muted">The dashboard uses the current indexed validator set and recent liveness data.</div>
+        </div>
+      </div>
+    {{ end }}
+  </div>
+{{ end }}
+{{ define "js" }}
+<script type="text/javascript">
+$('#withdrawalDashboardForm').submit(function () {
+  $(this).find('input[type="text"]').filter(function () { return !this.value; }).prop('name', '');
+});
+{{ if and .HasQuery (not .Error) .ParticipationLoading }}
+setTimeout(function () {
+  window.location.reload();
+}, 15000);
+{{ end }}
+</script>
+{{ end }}
+{{ define "css" }}
+<style>
+  .progress {
+    background-color: rgba(127, 127, 127, 0.18);
+  }
+</style>
+{{ end }}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,9 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -60,8 +64,8 @@ type APIValidatorActivityGroup struct {
 // @Produce json
 // @Param limit query int false "Number of groups to return (max 1000, default 50)"
 // @Param page query int false "Page number (starts at 1)"
-// @Param group query int false "Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator names (default: 3 if names available, else 1)"
-// @Param search query string false "Search term for group names (supports regex)"
+// @Param group query int false "Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator names, 4=by withdrawal address (default: 3 if names available, else 1)"
+// @Param search query string false "Search term for group names, withdrawal addresses, or withdrawal credentials (supports regex for non-exact address searches)"
 // @Param order query string false "Sort order: group, group-d, count, count-d, active, active-d, online, online-d, offline, offline-d, exited, exited-d, slashed, slashed-d (default: group)"
 // @Success 200 {object} APIValidatorsActivityResponse
 // @Failure 400 {object} map[string]string "Invalid parameters"
@@ -125,8 +129,8 @@ func APIValidatorsActivityV1(w http.ResponseWriter, r *http.Request) {
 			groupBy = 1
 		}
 	}
-	if groupBy < 1 || groupBy > 3 {
-		http.Error(w, `{"status": "ERROR: group parameter must be 1, 2, or 3"}`, http.StatusBadRequest)
+	if groupBy < 1 || groupBy > 4 {
+		http.Error(w, `{"status": "ERROR: group parameter must be 1, 2, 3, or 4"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -240,8 +244,15 @@ func buildValidatorsActivityAPIData(pageIdx uint64, pageSize uint64, sortOrder s
 	// Group validators
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
 	currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
+	var withdrawalAddressFilter []byte
+	var withdrawalCredsFilter []byte
+	exactWithdrawalSearch := false
+	if groupBy == 4 && searchTerm != "" {
+		withdrawalAddressFilter, withdrawalCredsFilter, _ = utils.ParseWithdrawalAddressOrCredentials(searchTerm)
+		exactWithdrawalSearch = len(withdrawalAddressFilter) > 0 || len(withdrawalCredsFilter) > 0
+	}
 
-	services.GlobalBeaconService.StreamActiveValidatorData(false, func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
+	addGroupValidator := func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) {
 		var groupKey string
 		var groupName string
 
@@ -257,8 +268,15 @@ func buildValidatorsActivityAPIData(pageIdx uint64, pageSize uint64, sortOrder s
 		case 3:
 			groupName = services.GlobalBeaconService.GetValidatorName(uint64(index))
 			groupKey = strings.ToLower(groupName)
+		case 4:
+			if validator != nil {
+				groupKey, groupName = utils.WithdrawalCredentialsGroup(validator.WithdrawalCredentials)
+			}
 		}
 
+		if groupKey == "" {
+			groupKey = "unknown"
+		}
 		validatorGroup := validatorGroupMap[groupKey]
 		if validatorGroup == nil {
 			validatorGroup = &models.ValidatorsActiviyPageDataGroup{
@@ -301,16 +319,48 @@ func buildValidatorsActivityAPIData(pageIdx uint64, pageSize uint64, sortOrder s
 		if isExited {
 			validatorGroup.Exited++
 		}
+	}
 
-		return nil
-	})
+	if groupBy == 4 && exactWithdrawalSearch {
+		filteredValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(context.Background(), &dbtypes.ValidatorFilter{
+			WithdrawalAddress: withdrawalAddressFilter,
+			WithdrawalCreds:   withdrawalCredsFilter,
+			OrderBy:           dbtypes.ValidatorOrderIndexAsc,
+		}, false)
+		for _, validator := range filteredValidators {
+			if validator.Validator == nil {
+				continue
+			}
+
+			flags := uint16(0)
+			if validator.Validator.Slashed {
+				flags |= beacon.ValidatorStatusSlashed
+			}
+			activeData := (*beacon.ValidatorData)(nil)
+			if validator.Status == v1.ValidatorStateActiveOngoing || validator.Status == v1.ValidatorStateActiveExiting || validator.Status == v1.ValidatorStateActiveSlashed {
+				activeData = &beacon.ValidatorData{
+					ActivationEpoch: validator.Validator.ActivationEpoch,
+					ExitEpoch:       validator.Validator.ExitEpoch,
+				}
+			} else if validator.Status == v1.ValidatorStateExitedUnslashed || validator.Status == v1.ValidatorStateExitedSlashed {
+				flags |= beacon.ValidatorStatusExited
+			}
+
+			addGroupValidator(validator.Index, flags, activeData, validator.Validator)
+		}
+	} else {
+		services.GlobalBeaconService.StreamActiveValidatorData(false, func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
+			addGroupValidator(index, validatorFlags, activeData, validator)
+			return nil
+		})
+	}
 
 	// Filter groups based on search term
 	validatorGroups := []*models.ValidatorsActiviyPageDataGroup{}
 
 	// Check if search term is a valid regex pattern
 	var searchRegex *regexp.Regexp
-	if searchTerm != "" {
+	if searchTerm != "" && !exactWithdrawalSearch {
 		// Try to compile as regex
 		var err error
 		searchRegex, err = regexp.Compile("(?i)" + searchTerm) // Case-insensitive regex
@@ -322,7 +372,7 @@ func buildValidatorsActivityAPIData(pageIdx uint64, pageSize uint64, sortOrder s
 
 	for _, group := range validatorGroupMap {
 		// Apply search filter
-		if searchTerm != "" {
+		if searchTerm != "" && !exactWithdrawalSearch {
 			matched := false
 
 			if searchRegex != nil {
@@ -421,7 +471,9 @@ func buildValidatorsActivityAPIData(pageIdx uint64, pageSize uint64, sortOrder s
 	if groupCount%pageSize != 0 {
 		pageData.TotalPages++
 	}
-	pageData.LastPageIndex = pageData.TotalPages - 1
+	if pageData.TotalPages > 0 {
+		pageData.LastPageIndex = pageData.TotalPages - 1
+	}
 	pageData.FirstGroup = startIdx
 	pageData.LastGroup = endIdx
 

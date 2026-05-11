@@ -1,14 +1,13 @@
 package api
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
@@ -35,55 +34,36 @@ func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request
 	limitQuery := q.Get("limit")
 	offsetQuery := q.Get("offset")
 
-	limit, err := strconv.ParseInt(limitQuery, 10, 64)
+	limit, err := strconv.ParseUint(limitQuery, 10, 64)
 	if err != nil {
 		limit = 2000
 	}
 
-	offset, err := strconv.ParseInt(offsetQuery, 10, 64)
+	offset, err := strconv.ParseUint(offsetQuery, 10, 64)
 	if err != nil {
 		offset = 0
 	}
 
-	if offset < 0 {
-		offset = 0
-	}
-
-	if limit > (2000+offset) || limit <= 0 || limit <= offset {
-		limit = 2000 + offset
+	if limit == 0 || limit > 2000 {
+		limit = 2000
 	}
 
 	vars := mux.Vars(r)
 	search := vars["withdrawalCredentialsOrEth1address"]
-	searchBytes, err := hex.DecodeString(strings.Replace(search, "0x", "", -1))
+	withdrawalAddress, withdrawalCreds, err := utils.ParseWithdrawalAddressOrCredentials(search)
 	if err != nil {
-		sendBadRequestResponse(w, r.URL.String(), "invalid eth1 address provided")
+		sendBadRequestResponse(w, r.URL.String(), "invalid withdrawal address or credentials provided")
 		return
 	}
 
-	filter := &dbtypes.ValidatorFilter{}
-
-	if len(searchBytes) == 20 {
-		filter.WithdrawalAddress = searchBytes
-	} else {
-		filter.WithdrawalCreds = searchBytes
+	filter := &dbtypes.ValidatorFilter{
+		WithdrawalAddress: withdrawalAddress,
+		WithdrawalCreds:   withdrawalCreds,
+		Limit:             limit,
+		Offset:            offset,
 	}
 
 	relevantValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(r.Context(), filter, true)
-
-	if offset > 0 {
-		if int(offset) > len(relevantValidators) {
-			relevantValidators = relevantValidators[offset:]
-		} else {
-			relevantValidators = relevantValidators[:0]
-		}
-	}
-
-	if limit > 0 {
-		if len(relevantValidators) > int(limit) {
-			relevantValidators = relevantValidators[:limit]
-		}
-	}
 
 	data := []*ApiWithdrawalCredentialsResponseV1{}
 	for _, validator := range relevantValidators {
