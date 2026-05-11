@@ -194,6 +194,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 		Path:  "/validators/activity",
 		Icon:  "fa-tachometer",
 	})
+	validatorMenuLinks = append(validatorMenuLinks, types.NavigationLink{
+		Label: "Withdrawal Dashboard",
+		Path:  "/validators/withdrawal-dashboard",
+		Icon:  "fa-wallet",
+	})
 
 	validatorMenu = append(validatorMenu, types.NavigationGroup{
 		Links: validatorMenuLinks,

@@ -26,6 +26,7 @@
                   <option value="1" {{ if eq .ViewOptionGroupBy 1 }}selected{{ end }}>Validator Indexes (100k)</option>
                   <option value="2" {{ if eq .ViewOptionGroupBy 2 }}selected{{ end }}>Validator Indexes (10k)</option>
                   <option value="3" {{ if eq .ViewOptionGroupBy 3 }}selected{{ end }}>Validator Names</option>
+                  <option value="4" {{ if eq .ViewOptionGroupBy 4 }}selected{{ end }}>Withdrawal Address</option>
                 </select>
               </div>
             </div>
@@ -33,7 +34,7 @@
               <div class="form-group">
                 <label for="search">Search</label>
                 <div class="input-group">
-                  <input type="text" name="search" id="search" class="form-control" placeholder="Search by group name (supports regex)..." value="{{ .SearchTerm }}">
+                  <input type="text" name="search" id="search" class="form-control" placeholder="Search by group name, address, or credentials..." value="{{ .SearchTerm }}">
                   <div class="input-group-append">
                     <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">
                       <i class="fas fa-times"></i>

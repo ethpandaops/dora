@@ -206,6 +206,7 @@ func startFrontend(router *mux.Router) {
 		router.HandleFunc("/validators/summary", handlers.ValidatorsSummary).Methods("GET")
 	}
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
+	router.HandleFunc("/validators/withdrawal-dashboard", handlers.ValidatorsWithdrawalDashboard).Methods("GET")
 	router.HandleFunc("/validators/offline", handlers.ValidatorsOffline).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
 	router.HandleFunc("/validators/deposits/submit", handlers.SubmitDeposit).Methods("GET", "POST")

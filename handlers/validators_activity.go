@@ -10,11 +10,14 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -56,6 +59,9 @@ func ValidatorsActivity(w http.ResponseWriter, r *http.Request) {
 		} else {
 			groupBy = 1
 		}
+	}
+	if groupBy < 1 || groupBy > 4 {
+		groupBy = 1
 	}
 
 	// Parse filter parameters
@@ -126,8 +132,15 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 	// group validators
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
 	currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
+	var withdrawalAddressFilter []byte
+	var withdrawalCredsFilter []byte
+	exactWithdrawalSearch := false
+	if groupBy == 4 && searchTerm != "" {
+		withdrawalAddressFilter, withdrawalCredsFilter, _ = utils.ParseWithdrawalAddressOrCredentials(searchTerm)
+		exactWithdrawalSearch = len(withdrawalAddressFilter) > 0 || len(withdrawalCredsFilter) > 0
+	}
 
-	services.GlobalBeaconService.StreamActiveValidatorData(false, func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
+	addGroupValidator := func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) {
 		var groupKey string
 		var groupName string
 
@@ -143,8 +156,15 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		case 3:
 			groupName = services.GlobalBeaconService.GetValidatorName(uint64(index))
 			groupKey = strings.ToLower(groupName)
+		case 4:
+			if validator != nil {
+				groupKey, groupName = utils.WithdrawalCredentialsGroup(validator.WithdrawalCredentials)
+			}
 		}
 
+		if groupKey == "" {
+			groupKey = "unknown"
+		}
 		validatorGroup := validatorGroupMap[groupKey]
 		if validatorGroup == nil {
 			validatorGroup = &models.ValidatorsActiviyPageDataGroup{
@@ -187,16 +207,47 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		if isExited {
 			validatorGroup.Exited++
 		}
+	}
 
-		return nil
-	})
+	if groupBy == 4 && exactWithdrawalSearch {
+		filteredValidators, _ := services.GlobalBeaconService.GetValidatorsByWithdrawalFilter(dbtypes.ValidatorFilter{
+			WithdrawalAddress: withdrawalAddressFilter,
+			WithdrawalCreds:   withdrawalCredsFilter,
+		}, false)
+		for _, validator := range filteredValidators {
+			if validator.Validator == nil {
+				continue
+			}
+
+			flags := uint16(0)
+			if validator.Validator.Slashed {
+				flags |= beacon.ValidatorStatusSlashed
+			}
+			activeData := (*beacon.ValidatorData)(nil)
+			if validator.Status == v1.ValidatorStateActiveOngoing || validator.Status == v1.ValidatorStateActiveExiting || validator.Status == v1.ValidatorStateActiveSlashed {
+				activeData = &beacon.ValidatorData{
+					ActivationEpoch: validator.Validator.ActivationEpoch,
+					ExitEpoch:       validator.Validator.ExitEpoch,
+				}
+			} else if validator.Status == v1.ValidatorStateExitedUnslashed || validator.Status == v1.ValidatorStateExitedSlashed {
+				flags |= beacon.ValidatorStatusExited
+			}
+
+			addGroupValidator(validator.Index, flags, activeData, validator.Validator)
+		}
+	} else {
+		services.GlobalBeaconService.StreamActiveValidatorData(false, func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
+			addGroupValidator(index, validatorFlags, activeData, validator)
+			return nil
+		})
+	}
 
 	// filter groups based on search term
 	validatorGroups := []*models.ValidatorsActiviyPageDataGroup{}
 
 	// Check if search term is a valid regex pattern
 	var searchRegex *regexp.Regexp
-	if searchTerm != "" {
+	if searchTerm != "" && !exactWithdrawalSearch {
 		// Try to compile as regex
 		var err error
 		searchRegex, err = regexp.Compile("(?i)" + searchTerm) // Case-insensitive regex
@@ -208,7 +259,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 	for _, group := range validatorGroupMap {
 		// Apply search filter
-		if searchTerm != "" {
+		if searchTerm != "" && !exactWithdrawalSearch {
 			matched := false
 
 			if searchRegex != nil {
@@ -308,7 +359,9 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 	if groupCount%pageSize != 0 {
 		pageData.TotalPages++
 	}
-	pageData.LastPageIndex = pageData.TotalPages - 1
+	if pageData.TotalPages > 0 {
+		pageData.LastPageIndex = pageData.TotalPages - 1
+	}
 	pageData.FirstGroup = startIdx
 	pageData.LastGroup = endIdx
 

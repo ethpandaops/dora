@@ -65,6 +65,51 @@ func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorInde
 	return validatorActivity
 }
 
+func (bs *ChainService) GetValidatorsByWithdrawalFilter(filter dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
+	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
+	filter.OrderBy = dbtypes.ValidatorOrderIndexAsc
+
+	dbIndexes, err := db.GetValidatorIndexesByFilter(filter, uint64(currentEpoch))
+	if err != nil {
+		bs.logger.Warnf("error getting validator indexes by withdrawal filter: %v", err)
+		return nil, 0
+	}
+
+	totalMatches := uint64(len(dbIndexes))
+	if filter.Offset >= totalMatches {
+		return []v1.Validator{}, totalMatches
+	}
+
+	if filter.Offset > 0 {
+		dbIndexes = dbIndexes[filter.Offset:]
+	}
+	if filter.Limit > 0 && uint64(len(dbIndexes)) > filter.Limit {
+		dbIndexes = dbIndexes[:filter.Limit]
+	}
+
+	validators := make([]v1.Validator, 0, len(dbIndexes))
+	for _, validatorIndex := range dbIndexes {
+		validator := bs.beaconIndexer.GetFullValidatorByIndex(phase0.ValidatorIndex(validatorIndex), currentEpoch, nil, withBalance)
+		if validator == nil || validator.Validator == nil {
+			continue
+		}
+		if filter.WithdrawalAddress != nil {
+			if validator.Validator.WithdrawalCredentials[0] != 0x01 && validator.Validator.WithdrawalCredentials[0] != 0x02 {
+				continue
+			}
+			if !bytes.Equal(validator.Validator.WithdrawalCredentials[12:], filter.WithdrawalAddress[:]) {
+				continue
+			}
+		}
+		if filter.WithdrawalCreds != nil && !bytes.Equal(validator.Validator.WithdrawalCredentials, filter.WithdrawalCreds) {
+			continue
+		}
+		validators = append(validators, *validator)
+	}
+
+	return validators, totalMatches
+}
+
 type ValidatorWithIndex struct {
 	Index     phase0.ValidatorIndex
 	Validator *phase0.Validator
