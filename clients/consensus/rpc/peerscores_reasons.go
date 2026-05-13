@@ -16,6 +16,7 @@ const (
 	ReasonRPCRateLimited         = "rpc_rate_limited"
 	ReasonRPCUnsupportedProtocol = "rpc_unsupported_protocol"
 	ReasonRPCIncompleteStream    = "rpc_incomplete_stream"
+	ReasonRPCDialError           = "rpc_dial_error"
 	ReasonRPCBadBlocksByRange    = "rpc_bad_blocks_by_range"
 	ReasonRPCBadBlocksByRoot     = "rpc_bad_blocks_by_root"
 	ReasonRPCBadBlobs            = "rpc_bad_blobs"
@@ -147,6 +148,17 @@ var lodestarReasons = map[string]string{
 	"SyncChainMaxProcessingAttempts": ReasonSyncMaxProcessingAttempt,
 	"BadBlockByRoot":                 ReasonRPCBadBlocksByRoot,
 	"rate_limit_rpc":                 ReasonRPCRateLimited,
+
+	"REQUEST_ERROR_INVALID_REQUEST":          ReasonRPCInvalidRequest,
+	"REQUEST_ERROR_INVALID_RESPONSE_SSZ":     ReasonRPCInvalidResponseSSZ,
+	"REQUEST_ERROR_SSZ_OVER_MAX_SIZE":        ReasonRPCInvalidResponseSSZ,
+	"REQUEST_ERROR_RESP_TIMEOUT":             ReasonRPCResponseTimeout,
+	"REQUEST_ERROR_SERVER_ERROR":             ReasonRPCServerError,
+	"REQUEST_ERROR_RESP_RATE_LIMITED":        ReasonRPCRateLimited,
+	"REQUEST_ERROR_ERR_UNSUPPORTED_PROTOCOL": ReasonRPCUnsupportedProtocol,
+	"REQUEST_ERROR_UNKNOWN_ERROR_STATUS":     ReasonRPCOther,
+	"REQUEST_ERROR_DIAL_ERROR":               ReasonRPCDialError,
+	"REQUEST_ERROR_DIAL_TIMEOUT":             ReasonRPCDialError,
 }
 
 // translateLodestarReason maps a Lodestar lastActionName to our

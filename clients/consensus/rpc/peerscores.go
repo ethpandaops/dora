@@ -94,11 +94,14 @@ func normalizePrysm(score float64) float64 {
 }
 
 // scoreStateFor returns a coarse health label given a normalized score.
+// Thresholds match the lighthouse/lodestar semantic boundaries:
+// disconnect at -20/100 = -0.2, ban at -50/100 = -0.5. Prysm's
+// asymmetric range still lands the same buckets after normalizePrysm.
 func scoreStateFor(scoreNormalized float64) string {
 	switch {
-	case scoreNormalized <= -1:
+	case scoreNormalized <= -0.5:
 		return "banned"
-	case scoreNormalized < -0.5:
+	case scoreNormalized <= -0.2:
 		return "disconnect"
 	default:
 		return "healthy"
