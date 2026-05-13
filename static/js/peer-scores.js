@@ -170,12 +170,17 @@
   function onReporterClick(ev) {
     var el = ev.currentTarget;
     var reporter = el.getAttribute('data-reporter') || '';
-    selectedReporter = reporter;
     var labels = document.querySelectorAll('.ps-reporter-label.active');
+    var wasActive = el.classList.contains('active');
     for (var i = 0; i < labels.length; i++) {
       labels[i].classList.remove('active');
     }
-    el.classList.add('active');
+    if (wasActive) {
+      selectedReporter = '';
+    } else {
+      selectedReporter = reporter;
+      el.classList.add('active');
+    }
     refreshGlobalHistogram();
   }
 
