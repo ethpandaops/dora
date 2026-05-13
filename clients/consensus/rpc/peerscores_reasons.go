@@ -17,6 +17,12 @@ const (
 	ReasonRPCUnsupportedProtocol = "rpc_unsupported_protocol"
 	ReasonRPCIncompleteStream    = "rpc_incomplete_stream"
 	ReasonRPCDialError           = "rpc_dial_error"
+	ReasonRPCIOError             = "rpc_io_error"
+	ReasonRPCStreamTimeout       = "rpc_stream_timeout"
+	ReasonRPCInvalidData         = "rpc_invalid_data"
+	ReasonRPCHandlerRejected     = "rpc_handler_rejected"
+	ReasonRPCDisconnected        = "rpc_disconnected"
+	ReasonRPCInternalError       = "rpc_internal_error"
 	ReasonRPCBadBlocksByRange    = "rpc_bad_blocks_by_range"
 	ReasonRPCBadBlocksByRoot     = "rpc_bad_blocks_by_root"
 	ReasonRPCBadBlobs            = "rpc_bad_blobs"
@@ -88,21 +94,38 @@ func CategoryFor(reasonCode string) string {
 // vocabulary. Anything not listed falls through to translateLighthouseReason's
 // prefix heuristics.
 var lighthouseReasons = map[string]string{
-	"bad_gossip_block_ssz":                     ReasonGossipInvalidBlock,
-	"gossip_block_low":                         ReasonGossipInvalidBlock,
-	"gossip_block_mid":                         ReasonGossipInvalidBlock,
-	"gossip_block_high":                        ReasonGossipInvalidBlock,
-	"bad_gossip_blob_ssz":                      ReasonGossipInvalidBlobSidecar,
-	"gossip_blob_low":                          ReasonGossipInvalidBlobSidecar,
-	"gossip_blob_high":                         ReasonGossipInvalidBlobSidecar,
-	"bad_gossip_data_column_ssz":               ReasonGossipInvalidDataColumnSidecar,
-	"gossip_data_column_low":                   ReasonGossipInvalidDataColumnSidecar,
-	"gossip_data_column_high":                  ReasonGossipInvalidDataColumnSidecar,
-	"invalid_gossip_exit":                      ReasonGossipInvalidVoluntaryExit,
-	"invalid_gossip_attester_slashing":         ReasonGossipInvalidSlashing,
-	"invalid_gossip_proposer_slashing":         ReasonGossipInvalidSlashing,
-	"invalid_bls_to_execution_change":          ReasonGossipInvalidBLSChange,
-	"handle_rpc_error":                         ReasonRPCOther,
+	"bad_gossip_block_ssz":             ReasonGossipInvalidBlock,
+	"gossip_block_low":                 ReasonGossipInvalidBlock,
+	"gossip_block_mid":                 ReasonGossipInvalidBlock,
+	"gossip_block_high":                ReasonGossipInvalidBlock,
+	"bad_gossip_blob_ssz":              ReasonGossipInvalidBlobSidecar,
+	"gossip_blob_low":                  ReasonGossipInvalidBlobSidecar,
+	"gossip_blob_high":                 ReasonGossipInvalidBlobSidecar,
+	"bad_gossip_data_column_ssz":       ReasonGossipInvalidDataColumnSidecar,
+	"gossip_data_column_low":           ReasonGossipInvalidDataColumnSidecar,
+	"gossip_data_column_high":          ReasonGossipInvalidDataColumnSidecar,
+	"invalid_gossip_exit":              ReasonGossipInvalidVoluntaryExit,
+	"invalid_gossip_attester_slashing": ReasonGossipInvalidSlashing,
+	"invalid_gossip_proposer_slashing": ReasonGossipInvalidSlashing,
+	"invalid_bls_to_execution_change":  ReasonGossipInvalidBLSChange,
+	"handle_rpc_error":                 ReasonRPCOther,
+
+	"rpc_incomplete_stream":                    ReasonRPCIncompleteStream,
+	"rpc_handler_rejected":                     ReasonRPCHandlerRejected,
+	"rpc_invalid_data":                         ReasonRPCInvalidData,
+	"rpc_ssz_decode_error":                     ReasonRPCInvalidResponseSSZ,
+	"rpc_io_error":                             ReasonRPCIOError,
+	"rpc_negotiation_timeout":                  ReasonRPCResponseTimeout,
+	"rpc_stream_timeout":                       ReasonRPCStreamTimeout,
+	"rpc_unsupported_protocol":                 ReasonRPCUnsupportedProtocol,
+	"rpc_disconnected":                         ReasonRPCDisconnected,
+	"rpc_internal_error":                       ReasonRPCInternalError,
+	"rpc_unknown_status":                       ReasonRPCOther,
+	"rpc_resource_unavailable":                 ReasonRPCResourceUnavailable,
+	"rpc_server_error":                         ReasonRPCServerError,
+	"rpc_invalid_request":                      ReasonRPCInvalidRequest,
+	"rpc_rate_limited":                         ReasonRPCRateLimited,
+	"rpc_blobs_not_found":                      ReasonRPCBadBlobs,
 	"faulty_batch":                             ReasonSyncBadBatch,
 	"faulty_chain":                             ReasonSyncBadBatch,
 	"batch_reprocessed_too_many_times":         ReasonSyncMaxProcessingAttempt,
