@@ -78,6 +78,11 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 		mevRelayIndexer: mevRelayIndexer,
 		snooperManager:  snooperManager,
 	}
+
+	// Wire the peer-scores persister before any consensus endpoints are
+	// added; AddEndpoint kicks off the per-client poll loop which calls
+	// into the registered persister hook on every successful fetch.
+	StartPeerScoresPersister(ctx, logger, consensusPool)
 }
 
 // applyAuthGroupToEndpoint applies authGroup settings to an endpoint configuration
