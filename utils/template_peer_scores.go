@@ -20,6 +20,8 @@ func peerScoreColor(normalized any) template.CSS {
 		return template.CSS("hsl(0, 60%, 38%)")
 	case v <= -0.2:
 		return template.CSS("hsl(28, 70%, 40%)")
+	case v < 0:
+		return template.CSS("hsl(45, 70%, 36%)")
 	default:
 		return template.CSS("hsl(120, 45%, 32%)")
 	}
