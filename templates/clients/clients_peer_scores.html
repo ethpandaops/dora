@@ -1,35 +1,170 @@
 {{ define "page" }}
 {{ $root := . }}
-  <div class="container mt-2">
-    <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-chart-line mx-2"></i>Peer scores</h1>
-      <nav aria-label="breadcrumb">
-        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
-          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Peer scores</li>
-        </ol>
-      </nav>
-    </div>
+<div class="container mt-2">
+  <div class="d-md-flex py-2 justify-content-md-between">
+    <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-chart-line mx-2"></i>Peer scores</h1>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+        <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Peer scores</li>
+      </ol>
+    </nav>
+  </div>
 
-    <div class="card mt-2">
-      <div class="card-body text-center py-5">
-        <i class="fas fa-tools fa-3x text-muted mb-3"></i>
-        <h4 class="mb-2">Peer scoring &mdash; coming soon</h4>
-        <p class="text-muted mb-0">
-          This view is in active development. Per-peer scoring data collected
-          from the configured consensus clients will be surfaced here in a
-          follow-up release.
-        </p>
-        {{ if gt $root.PollIntervalSeconds 0 }}
-        <p class="text-muted small mt-3 mb-0">
-          Configured poll interval: {{ $root.PollIntervalSeconds }}s
-        </p>
-        {{ end }}
+  <div id="peer-scores-config"
+       data-poll-interval="{{ $root.PollIntervalSeconds }}"
+       style="display:none;"></div>
+
+  <div class="card mt-2">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="fas fa-th me-1"></i>Reporter → Target score matrix</span>
+      <span class="text-muted small">
+        {{ if gt $root.PollIntervalSeconds 0 }}Polling every {{ $root.PollIntervalSeconds }}s ·{{ end }}
+        {{ len $root.Reporters }} reporters · {{ len $root.Targets }} unique peers
+      </span>
+    </div>
+    <div class="card-body p-2">
+      {{ if eq (len $root.Reporters) 0 }}
+        <div class="text-muted small p-3 text-center">No consensus clients connected yet.</div>
+      {{ else if eq (len $root.Targets) 0 }}
+        <div class="text-muted small p-3 text-center">
+          No peer-score data yet &mdash; either the connected clients haven't been polled, or none expose a
+          peer-scores endpoint (Nimbus, Grandine and Caplin are intentionally skipped).
+        </div>
+      {{ else }}
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm peer-scores-matrix mb-0 align-middle text-center">
+          <thead>
+            <tr>
+              <th class="text-start" style="min-width:160px;">Reporter</th>
+              {{ range $target := $root.Targets }}
+                <th class="text-nowrap small" style="font-weight:normal;">
+                  {{ if gt $target.KnownClientType 0 }}
+                    <span class="badge bg-secondary text-light" title="{{ $target.PeerID }}">{{ $target.KnownAs }}</span>
+                  {{ else }}
+                    <span title="{{ $target.PeerID }}{{ if $target.AgentVersion }} &middot; {{ $target.AgentVersion }}{{ end }}">{{ $target.PeerIDShort }}</span>
+                  {{ end }}
+                </th>
+              {{ end }}
+            </tr>
+          </thead>
+          <tbody>
+            {{ range $reporter := $root.Reporters }}
+              {{ $row := index $root.Matrix $reporter.PeerID }}
+              <tr>
+                <td class="text-start ps-reporter-label" data-reporter="{{ $reporter.PeerID }}" style="cursor:pointer;">
+                  <strong>{{ $reporter.Name }}</strong>
+                  <span class="badge bg-info text-dark ms-1">{{ $reporter.ClientName }}</span>
+                  {{ if not $reporter.Supported }}<span class="badge bg-warning text-dark ms-1" title="Client has no peer-scores endpoint">n/a</span>{{ end }}
+                </td>
+                {{ range $target := $root.Targets }}
+                  {{ $cell := index $row $target.PeerID }}
+                  {{ if $cell }}
+                    {{ template "peer_score_cell" dict "Cell" $cell "Reporter" $reporter "Target" $target }}
+                  {{ else }}
+                    <td class="bg-light text-muted" title="No data">·</td>
+                  {{ end }}
+                {{ end }}
+              </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="fas fa-bars-staggered me-1"></i>Reason histogram (last 24h)</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="peer-scores-reasons-all">All reporters</button>
+    </div>
+    <div class="card-body">
+      <div id="peer-scores-reason-histogram">
+        <div class="text-muted small">Loading reasons…</div>
+      </div>
+      <div class="text-muted small mt-2">
+        Click a reporter row above to scope this histogram to one reporter.
       </div>
     </div>
   </div>
+</div>
+
+<div class="modal fade" id="peer-scores-detail" tabindex="-1" aria-labelledby="peer-scores-detail-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="peer-scores-detail-title">Peer score detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3" id="peer-scores-detail-meta"></div>
+        <h6 class="mt-3 mb-2">Components</h6>
+        <div id="peer-scores-detail-components"></div>
+        <h6 class="mt-3 mb-2">Recent events</h6>
+        <div id="peer-scores-detail-events"></div>
+      </div>
+    </div>
+  </div>
+</div>
 {{ end }}
+
+{{ define "peer_score_cell" }}
+{{ $cell := .Cell }}{{ $reporter := .Reporter }}{{ $target := .Target }}
+<td class="ps-cell text-light fw-semibold"
+    data-reporter="{{ $reporter.PeerID }}"
+    data-reporter-name="{{ $reporter.Name }}"
+    data-target="{{ $target.PeerID }}"
+    data-target-name="{{ if gt $target.KnownClientType 0 }}{{ $target.KnownAs }}{{ else }}{{ $target.PeerIDShort }}{{ end }}"
+    data-score="{{ printf "%.2f" $cell.Score }}"
+    data-score-normalized="{{ printf "%.3f" $cell.ScoreNormalized }}"
+    data-score-state="{{ $cell.ScoreState }}"
+    data-last-reason="{{ $cell.LastEventReason }}"
+    data-last-native="{{ $cell.LastEventNative }}"
+    data-last-seconds-ago="{{ $cell.LastEventSecondsAgo }}"
+    data-components='{{ $cell.Components | json }}'
+    style="cursor:pointer; background-color: {{ scoreColor $cell.ScoreNormalized }};"
+    title="{{ $reporter.Name }} → {{ if gt $target.KnownClientType 0 }}{{ $target.KnownAs }}{{ else }}{{ $target.PeerIDShort }}{{ end }} · score {{ printf "%.2f" $cell.Score }} · {{ $cell.ScoreState }}{{ if $cell.LastEventReason }} · {{ $cell.LastEventReason }} ({{ $cell.LastEventSecondsAgo }}s ago){{ end }}"
+    data-bs-toggle="tooltip">
+  {{ printf "%.1f" $cell.Score }}
+</td>
+{{ end }}
+
 {{ define "css" }}
+<style>
+.peer-scores-matrix th, .peer-scores-matrix td {
+  vertical-align: middle;
+}
+.peer-scores-matrix .ps-cell {
+  font-size: 0.85rem;
+  min-width: 56px;
+  white-space: nowrap;
+}
+.peer-scores-matrix .ps-reporter-label {
+  white-space: nowrap;
+}
+.peer-scores-matrix .ps-reporter-label.active {
+  background-color: rgba(0, 123, 255, 0.08);
+}
+.ps-components .ps-component-name {
+  width: 8em;
+}
+.ps-reason-name {
+  width: 16em;
+  font-family: var(--bs-font-monospace, monospace);
+  font-size: 0.8rem;
+}
+</style>
 {{ end }}
+
 {{ define "js" }}
+<script src="/js/peer-scores.js"></script>
+<script type="text/javascript">
+(function () {
+  var triggers = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+  for (var i = 0; i < triggers.length; i++) {
+    new bootstrap.Tooltip(triggers[i]);
+  }
+})();
+</script>
 {{ end }}

@@ -171,6 +171,83 @@ func GetEventsForPair(ctx context.Context, reporter, target string, limit int) (
 	return events, nil
 }
 
+// GetPeerScoreEvents returns recent peer-score events filtered by any
+// combination of reporter, target and a sinceMs floor. Newest-first.
+// Empty reporter/target means "any". Drives the API endpoint that
+// powers both the detail modal and the global event log.
+func GetPeerScoreEvents(ctx context.Context, reporter, target string, sinceMs int64, limit int) ([]*dbtypes.ClPeerScoreEvent, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := `
+		SELECT
+			observed_at, reporter_peer_id, target_peer_id, reason_code, native_reason,
+			category, delta, topic, direction
+		FROM cl_peer_score_events
+		WHERE observed_at >= $1
+	`
+	args := []any{sinceMs}
+	argIdx := 1
+	if reporter != "" {
+		argIdx++
+		query += fmt.Sprintf(" AND reporter_peer_id = $%d", argIdx)
+		args = append(args, reporter)
+	}
+	if target != "" {
+		argIdx++
+		query += fmt.Sprintf(" AND target_peer_id = $%d", argIdx)
+		args = append(args, target)
+	}
+	argIdx++
+	query += fmt.Sprintf(" ORDER BY observed_at DESC LIMIT $%d", argIdx)
+	args = append(args, limit)
+
+	events := []*dbtypes.ClPeerScoreEvent{}
+	if err := ReaderDb.SelectContext(ctx, &events, query, args...); err != nil {
+		return nil, fmt.Errorf("get peer-score events: %w", err)
+	}
+	return events, nil
+}
+
+// GetPeerScoreReasonCounts returns a histogram of reason_code -> count
+// over the window [sinceMs, now]. When reporter is non-empty the
+// histogram is scoped to that reporter; otherwise it covers all
+// reporters. Drives the reason histogram on the peer-scores tab.
+func GetPeerScoreReasonCounts(ctx context.Context, reporter string, sinceMs int64) (map[string]int, error) {
+	query := `
+		SELECT reason_code, COUNT(*) AS c
+		FROM cl_peer_score_events
+		WHERE observed_at >= $1
+	`
+	args := []any{sinceMs}
+	if reporter != "" {
+		query += " AND reporter_peer_id = $2"
+		args = append(args, reporter)
+	}
+	query += " GROUP BY reason_code"
+
+	rows, err := ReaderDb.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get peer-score reason counts: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int, 16)
+	for rows.Next() {
+		var code string
+		var c int
+		if err := rows.Scan(&code, &c); err != nil {
+			return nil, fmt.Errorf("scan reason count: %w", err)
+		}
+		counts[code] = c
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate reason counts: %w", err)
+	}
+	return counts, nil
+}
+
 // GetReasonCountsForPair returns a histogram of reason_code -> count
 // for a specific (reporter, target) pair since sinceMs. Drives the
 // reason histogram on the peer-scores tab.

@@ -182,6 +182,8 @@ func GetTemplateFuncs() template.FuncMap {
 			}
 			return af / bf * 100
 		},
+		"scoreColor": peerScoreColor,
+		"json":       peerScoreJSON,
 	}
 
 	for k, v := range customFuncs {

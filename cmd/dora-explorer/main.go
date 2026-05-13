@@ -362,6 +362,18 @@ func startApi(router *mux.Router) {
 			methods:  []string{"GET", "OPTIONS"},
 			callCost: 1,
 		})
+		apiEndpoints = append(apiEndpoints, apiEndpoint{
+			path:     "/v1/clients/peer_scores/events",
+			handler:  api.APIClientsPeerScoresEvents,
+			methods:  []string{"GET", "OPTIONS"},
+			callCost: 1,
+		})
+		apiEndpoints = append(apiEndpoints, apiEndpoint{
+			path:     "/v1/clients/peer_scores/reasons",
+			handler:  api.APIClientsPeerScoresReasons,
+			methods:  []string{"GET", "OPTIONS"},
+			callCost: 1,
+		})
 	}
 
 	// Set endpoint call costs from the map
