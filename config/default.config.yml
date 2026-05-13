@@ -185,3 +185,12 @@ rpcProxy:
     - "eth_chainId"          # Network chain ID
     - "net_version"          # Network version
 
+# Optional "Peer scores" client view (disabled by default).
+# When enabled, registers the /clients/peer_scores frontend route,
+# the /api/v1/clients/peer_scores API endpoint and the "Peer scores"
+# entry in the Clients navigation dropdown. The data wiring is added
+# in a follow-up change; the page currently renders a placeholder.
+#peerScores:
+#  enabled: false
+#  pollIntervalSeconds: 12
+

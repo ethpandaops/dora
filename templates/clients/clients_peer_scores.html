@@ -1,0 +1,35 @@
+{{ define "page" }}
+{{ $root := . }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-chart-line mx-2"></i>Peer scores</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Peer scores</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-body text-center py-5">
+        <i class="fas fa-tools fa-3x text-muted mb-3"></i>
+        <h4 class="mb-2">Peer scoring &mdash; coming soon</h4>
+        <p class="text-muted mb-0">
+          This view is in active development. Per-peer scoring data collected
+          from the configured consensus clients will be surfaced here in a
+          follow-up release.
+        </p>
+        {{ if gt $root.PollIntervalSeconds 0 }}
+        <p class="text-muted small mt-3 mb-0">
+          Configured poll interval: {{ $root.PollIntervalSeconds }}s
+        </p>
+        {{ end }}
+      </div>
+    </div>
+  </div>
+{{ end }}
+{{ define "css" }}
+{{ end }}
+{{ define "js" }}
+{{ end }}

@@ -171,6 +171,14 @@ func createMenuItems(active string) []types.MainMenuItem {
 		})
 	}
 
+	if utils.Config.PeerScores != nil && utils.Config.PeerScores.Enabled {
+		clientLinks = append(clientLinks, types.NavigationLink{
+			Label: "Peer scores",
+			Path:  "/clients/peer_scores",
+			Icon:  "fa-chart-line",
+		})
+	}
+
 	clientLinks = append(clientLinks, types.NavigationLink{
 		Label: "Forks",
 		Path:  "/forks",

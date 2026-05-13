@@ -193,6 +193,16 @@ type Config struct {
 		LogRequests       bool          `yaml:"logRequests" envconfig:"RPC_PROXY_LOG_REQUESTS"`
 		AllowedMethods    []string      `yaml:"allowedMethods" envconfig:"RPC_PROXY_ALLOWED_METHODS"`
 	} `yaml:"rpcProxy"`
+
+	PeerScores *PeerScoresConfig `yaml:"peerScores"`
+}
+
+// PeerScoresConfig configures the optional "Peer scores" client view.
+// The feature is disabled by default; when nil or Enabled is false the
+// frontend route, navigation entry and API endpoint are not registered.
+type PeerScoresConfig struct {
+	Enabled             bool `yaml:"enabled" envconfig:"PEER_SCORES_ENABLED"`
+	PollIntervalSeconds int  `yaml:"pollIntervalSeconds" envconfig:"PEER_SCORES_POLL_INTERVAL"`
 }
 
 type EndpointConfig struct {

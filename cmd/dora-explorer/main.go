@@ -189,6 +189,9 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/clients/execution/refresh", handlers.ClientsELRefresh).Methods("POST")
 	router.HandleFunc("/clients/execution/refresh/status", handlers.ClientsELRefreshStatus).Methods("GET")
 	router.HandleFunc("/clients/execution/status/{clientName}", handlers.ClientsElStatus).Methods("GET")
+	if utils.Config.PeerScores != nil && utils.Config.PeerScores.Enabled {
+		router.HandleFunc("/clients/peer_scores", handlers.ClientsPeerScores).Methods("GET")
+	}
 	router.HandleFunc("/forks", handlers.Forks).Methods("GET")
 	router.HandleFunc("/chain-forks", handlers.ChainForks).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
@@ -350,6 +353,15 @@ func startApi(router *mux.Router) {
 		// DAS Guardian APIs (higher call cost due to computation intensity)
 		{"/v1/das-guardian/scan", api.APIDasGuardianScan, []string{"POST", "OPTIONS"}, 10},
 		{"/v1/das-guardian/mass-scan", api.APIDasGuardianMassScan, []string{"POST", "OPTIONS"}, 25},
+	}
+
+	if utils.Config.PeerScores != nil && utils.Config.PeerScores.Enabled {
+		apiEndpoints = append(apiEndpoints, apiEndpoint{
+			path:     "/v1/clients/peer_scores",
+			handler:  api.APIClientsPeerScores,
+			methods:  []string{"GET", "OPTIONS"},
+			callCost: 1,
+		})
 	}
 
 	// Set endpoint call costs from the map

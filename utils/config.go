@@ -95,6 +95,12 @@ func ReadConfig(cfg *types.Config, path string) error {
 		}
 	}
 
+	// Peer scores: keep feature disabled by default; only fill the
+	// poll interval default when the feature is explicitly enabled.
+	if cfg.PeerScores != nil && cfg.PeerScores.Enabled && cfg.PeerScores.PollIntervalSeconds == 0 {
+		cfg.PeerScores.PollIntervalSeconds = 12
+	}
+
 	return nil
 }
 
