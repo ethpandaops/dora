@@ -113,6 +113,37 @@ func nowMs() int64 {
 	return time.Now().UnixMilli()
 }
 
+// synthesizeLastEvent infers a reason when the peer's score state is bad
+// but the underlying client never produced an explicit last-action tag.
+// Gossipsub-driven bans are the most common case: libp2p computes the
+// gossipsub score internally and the eth2 client never routes that
+// through its downscore-with-reason machinery, so dora has to interpret
+// the components itself. The synthesized NativeReason carries the value
+// that drove it so the user can see the magnitude, not just the label.
+func synthesizeLastEvent(ps *PeerScore) {
+	if ps.LastEvent != nil || ps.ScoreState == "healthy" {
+		return
+	}
+	worst := ""
+	worstVal := 0.0
+	if g := ps.Components.Gossipsub; g != nil && *g < -100 {
+		worst, worstVal = ReasonGossipsubLow, *g
+	}
+	if b := ps.Components.BadResponses; b != nil && *b < -10 && *b < worstVal {
+		worst, worstVal = ReasonBadResponsesAccumulated, *b
+	}
+	if s := ps.Components.PeerStatus; s != nil && *s <= 0 && worst == "" {
+		worst, worstVal = ReasonPeerStatusFailed, *s
+	}
+	if worst == "" {
+		return
+	}
+	ps.LastEvent = &PeerScoreEvent{
+		Reason:       worst,
+		NativeReason: fmt.Sprintf("%s=%.2f (inferred)", worst, worstVal),
+	}
+}
+
 // --- Lighthouse -------------------------------------------------------------
 
 // lhScore matches Lighthouse's externally-tagged Score enum: trusted peers
@@ -231,6 +262,7 @@ func (bc *BeaconClient) GetLighthousePeerScores(ctx context.Context) ([]*PeerSco
 				SecondsAgo:   d.SecondsAgo,
 			}
 		}
+		synthesizeLastEvent(ps)
 		out = append(out, ps)
 	}
 	return out, nil
@@ -300,6 +332,7 @@ func (bc *BeaconClient) GetLodestarPeerScores(ctx context.Context) ([]*PeerScore
 				SecondsAgo:   secondsAgo,
 			}
 		}
+		synthesizeLastEvent(ps)
 		out = append(out, ps)
 	}
 	return out, nil
@@ -340,6 +373,7 @@ func (bc *BeaconClient) GetTekuPeerScores(ctx context.Context) ([]*PeerScore, er
 		}
 		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
 		ps.Components.Gossipsub = &gossip
+		synthesizeLastEvent(ps)
 		out = append(out, ps)
 	}
 	return out, nil
@@ -419,6 +453,7 @@ func (bc *BeaconClient) GetPrysmPeerScores(ctx context.Context) ([]*PeerScore, e
 				SecondsAgo:   uint64(item.LastDownscoreSecondsAgo),
 			}
 		}
+		synthesizeLastEvent(ps)
 		out = append(out, ps)
 	}
 	return out, nil

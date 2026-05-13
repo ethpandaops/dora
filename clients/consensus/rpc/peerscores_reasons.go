@@ -50,6 +50,13 @@ const (
 	ReasonBehaviourPenalty         = "behaviour_penalty"
 	ReasonDASBadColumnIntersection = "das_bad_column_intersection"
 
+	// Synthesized reasons: clients don't emit these, dora infers them
+	// when a peer is in disconnect/banned state without an explicit
+	// client-side reason. NativeReason carries the value that drove it.
+	ReasonGossipsubLow            = "gossipsub_low"
+	ReasonBadResponsesAccumulated = "bad_responses_accumulated"
+	ReasonPeerStatusFailed        = "peer_status_failed"
+
 	ReasonRewardGoodResponse  = "reward_good_response"
 	ReasonRewardGoodStatus    = "reward_good_status"
 	ReasonRewardBlockProvider = "reward_block_provider"

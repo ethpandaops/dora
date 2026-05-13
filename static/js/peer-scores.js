@@ -201,7 +201,7 @@
       var color = pos ? 'bg-success' : 'bg-danger';
       html += '<div class="d-flex align-items-center mb-1">';
       html += '<div class="ps-component-name flex-shrink-0 me-2">' + escapeHTML(ent.name) + '</div>';
-      html += '<div class="flex-grow-1 bg-light position-relative" style="height:14px;border-radius:3px;overflow:hidden;">';
+      html += '<div class="flex-grow-1 position-relative" style="height:14px;border-radius:3px;overflow:hidden;background-color:rgba(255,255,255,0.06);">';
       html += '<div class="' + color + '" style="width:' + pct + '%;height:100%;"></div>';
       html += '</div>';
       html += '<div class="ps-component-value text-end ms-2" style="min-width:5em;">' +
@@ -304,9 +304,9 @@
 
   function barClassForCategory(category) {
     switch (category) {
-      case 'rpc': return 'bg-warning';
+      case 'rpc': return 'bg-info';
       case 'gossip': return 'bg-danger';
-      case 'sync': return 'bg-info';
+      case 'sync': return 'bg-warning';
       case 'status': return 'bg-primary';
       case 'reward': return 'bg-success';
       case 'connection': return 'bg-secondary';
