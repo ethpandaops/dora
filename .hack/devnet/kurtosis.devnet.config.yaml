@@ -1,21 +1,23 @@
 participants_matrix:
   el:
     - el_type: geth
+      el_image: ethpandaops/geth:bal-devnet-6
 
   cl:
+    - cl_type: prysm
+      cl_image: ethpandaops/prysm-beacon-chain:peer-scores-ui
+    - cl_type: lodestar
+      cl_image: ethpandaops/lodestar:barnabasbusa-bbusa-peer-scores-last-action
     - cl_type: lighthouse
-    # - cl_type: prysm
-    # - cl_type: teku
-    # - cl_type: nimbus
-    # - cl_type: grandine
-    # - cl_type: lodestar
+      cl_image: ethpandaops/lighthouse:barnabasbusa-bbusa-peer-scores-last-event
+    - cl_type: teku
+      cl_image: ethpandaops/teku:master
 
 network_params:
-  preset: minimal
+  preset: mainnet
+  seconds_per_slot: 6
 
 additional_services:
-  - dora # needed for config exctraction
-  - spamoor
+  - dora
 
-# mev_type: flashbots
-# snooper_enabled: true
+global_log_level: debug

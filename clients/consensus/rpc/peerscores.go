@@ -342,14 +342,22 @@ func (bc *BeaconClient) GetLodestarPeerScores(ctx context.Context) ([]*PeerScore
 
 type tekuPeerScoresResponse struct {
 	Data []struct {
-		PeerID      string  `json:"peer_id"`
-		GossipScore float64 `json:"gossip_score"`
+		PeerID          string  `json:"peer_id"`
+		GossipScore     float64 `json:"gossip_score"`
+		ReputationScore *int    `json:"reputation_score,omitempty"`
+		LastAction      *struct {
+			Reason     string  `json:"reason"`
+			Delta      float64 `json:"delta"`
+			SecondsAgo uint64  `json:"seconds_ago"`
+		} `json:"last_action,omitempty"`
 	} `json:"data"`
 }
 
 // GetTekuPeerScores polls Teku's /teku/v1/nodes/peer_scores endpoint.
-// Teku exposes only the raw gossip score and no reason metadata, so
-// LastEvent is always nil.
+// The patched Teku exposes reputation_score (range [-10, +20] from
+// ReputationAdjustment) and last_action {reason, delta, seconds_ago}.
+// Vanilla Teku still returns only peer_id + gossip_score; those fields
+// are optional so this fetcher handles both shapes.
 func (bc *BeaconClient) GetTekuPeerScores(ctx context.Context) ([]*PeerScore, error) {
 	var resp tekuPeerScoresResponse
 	url := fmt.Sprintf("%s/teku/v1/nodes/peer_scores", bc.endpoint)
@@ -357,22 +365,44 @@ func (bc *BeaconClient) GetTekuPeerScores(ctx context.Context) ([]*PeerScore, er
 		return nil, fmt.Errorf("teku peer scores: %w", err)
 	}
 
-	const tkMin, tkMax = -100.0, 100.0
+	// Teku's ReputationAdjustment range is asymmetric [-10, +20].
+	const tkRepMin, tkRepMax = -10.0, 20.0
 	out := make([]*PeerScore, 0, len(resp.Data))
 	fetched := nowMs()
 	for _, item := range resp.Data {
-		score := item.GossipScore
-		gossip := score
+		gossip := item.GossipScore
+		var score float64
+		var min, max float64 = tkRepMin, tkRepMax
+		if item.ReputationScore != nil {
+			score = float64(*item.ReputationScore)
+		} else {
+			// Fall back to gossip score on vanilla teku; normalize on the
+			// libp2p-gossipsub scale (gossip can run to thousands).
+			score = gossip
+			min, max = -100.0, 100.0
+		}
 		ps := &PeerScore{
 			PeerID:          item.PeerID,
 			Score:           score,
-			ScoreNormalized: normalizeSymmetric(score, tkMin, tkMax),
-			ScoreMin:        tkMin,
-			ScoreMax:        tkMax,
+			ScoreNormalized: normalizeSymmetric(score, min, max),
+			ScoreMin:        min,
+			ScoreMax:        max,
 			FetchedAt:       fetched,
 		}
 		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
 		ps.Components.Gossipsub = &gossip
+		if item.ReputationScore != nil {
+			rep := float64(*item.ReputationScore)
+			ps.Components.Reputation = &rep
+		}
+		if a := item.LastAction; a != nil {
+			ps.LastEvent = &PeerScoreEvent{
+				Reason:       translateTekuReason(a.Reason),
+				NativeReason: a.Reason,
+				Delta:        a.Delta,
+				SecondsAgo:   a.SecondsAgo,
+			}
+		}
 		synthesizeLastEvent(ps)
 		out = append(out, ps)
 	}

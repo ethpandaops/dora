@@ -215,6 +215,39 @@ func translateLodestarReason(native string) string {
 	}
 }
 
+// tekuReasons maps Teku's ReputationAdjustment + DisconnectReason
+// enum names to our controlled vocabulary.
+var tekuReasons = map[string]string{
+	"SMALL_REWARD":  ReasonRewardGoodResponse,
+	"LARGE_REWARD":  ReasonRewardGoodResponse,
+	"SMALL_PENALTY": ReasonRPCOther,
+	"LARGE_PENALTY": ReasonRPCOther,
+
+	"IRRELEVANT_NETWORK":       ReasonStatusBadForkDigest,
+	"UNABLE_TO_VERIFY_NETWORK": ReasonStatusOther,
+	"REMOTE_FAULT":             ReasonRPCServerError,
+	"UNRESPONSIVE":             ReasonRPCResponseTimeout,
+	"RATE_LIMITING":            ReasonRPCRateLimited,
+	"BAD_SCORE":                ReasonGossipsubLow,
+	"BANNED":                   ReasonGossipsubLow,
+	"TOO_MANY_PEERS":           ReasonRPCOther,
+	"DUPLICATE_CONNECTION":     ReasonRPCOther,
+	"NO_STATUS_RECEIVED":       ReasonStatusOther,
+	"SHUTTING_DOWN":            ReasonRPCDisconnected,
+}
+
+// translateTekuReason maps Teku's last_action.reason to our controlled
+// vocabulary. The native string is the bare enum name as Java emits it.
+func translateTekuReason(native string) string {
+	if native == "" {
+		return ReasonUnknown
+	}
+	if code, ok := tekuReasons[native]; ok {
+		return code
+	}
+	return ReasonUnknown
+}
+
 // translatePrysmReason maps Prysm's last_downscore_topic + info pair
 // to our controlled vocabulary. Topic is checked first (the topic
 // prefix carries the strongest signal); info is checked for the
