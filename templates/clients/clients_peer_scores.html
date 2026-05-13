@@ -58,11 +58,15 @@
                   {{ if not $reporter.Supported }}<span class="badge bg-warning text-dark ms-1" title="Client has no peer-scores endpoint">n/a</span>{{ end }}
                 </td>
                 {{ range $target := $root.Targets }}
-                  {{ $cell := index $row $target.PeerID }}
-                  {{ if $cell }}
-                    {{ template "peer_score_cell" dict "Cell" $cell "Reporter" $reporter "Target" $target }}
+                  {{ if eq $reporter.PeerID $target.PeerID }}
+                    <td class="ps-cell-self" title="Self">—</td>
                   {{ else }}
-                    <td class="bg-light text-muted" title="No data">·</td>
+                    {{ $cell := index $row $target.PeerID }}
+                    {{ if $cell }}
+                      {{ template "peer_score_cell" dict "Cell" $cell "Reporter" $reporter "Target" $target }}
+                    {{ else }}
+                      <td class="ps-cell-empty" title="No data">·</td>
+                    {{ end }}
                   {{ end }}
                 {{ end }}
               </tr>
@@ -139,6 +143,26 @@
   font-size: 0.85rem;
   min-width: 56px;
   white-space: nowrap;
+}
+.peer-scores-matrix .ps-cell-self {
+  background-color: transparent;
+  color: rgba(255, 255, 255, 0.18);
+  text-align: center;
+  font-size: 1.1rem;
+  cursor: default;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.04) 0,
+    rgba(255, 255, 255, 0.04) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+}
+.peer-scores-matrix .ps-cell-empty {
+  background-color: transparent;
+  color: rgba(255, 255, 255, 0.25);
+  text-align: center;
+  font-size: 0.85rem;
 }
 .peer-scores-matrix .ps-reporter-label {
   white-space: nowrap;

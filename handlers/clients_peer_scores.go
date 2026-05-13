@@ -170,6 +170,9 @@ func buildPeerScoresPageData() (*models.ClientsPeerScoresPageData, time.Duration
 		if (ai.KnownClientType > 0) != (aj.KnownClientType > 0) {
 			return ai.KnownClientType > 0
 		}
+		if ai.KnownClientType > 0 {
+			return ai.KnownAs < aj.KnownAs
+		}
 		return ai.PeerID < aj.PeerID
 	})
 
