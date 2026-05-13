@@ -18,9 +18,16 @@
   <div class="card mt-2">
     <div class="card-header d-flex justify-content-between align-items-center">
       <span><i class="fas fa-th me-1"></i>Reporter → Target score matrix</span>
-      <span class="text-muted small">
-        {{ if gt $root.PollIntervalSeconds 0 }}Polling every {{ $root.PollIntervalSeconds }}s ·{{ end }}
-        {{ len $root.Reporters }} reporters · {{ len $root.Targets }} unique peers
+      <span class="d-flex align-items-center gap-3">
+        <span class="text-muted small">
+          {{ if gt $root.PollIntervalSeconds 0 }}Polling every {{ $root.PollIntervalSeconds }}s ·{{ end }}
+          {{ len $root.Reporters }} reporters · {{ len $root.Targets }} unique peers
+        </span>
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                data-bs-toggle="collapse" data-bs-target="#peer-scores-filter-panel"
+                aria-expanded="false" aria-controls="peer-scores-filter-panel">
+          <i class="fas fa-filter me-1"></i>Filter
+        </button>
       </span>
     </div>
     <div class="card-body p-2">
@@ -32,6 +39,7 @@
           peer-scores endpoint (Nimbus, Grandine and Caplin are intentionally skipped).
         </div>
       {{ else }}
+      <div class="collapse" id="peer-scores-filter-panel">
       <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom small">
         <i class="fas fa-filter text-muted"></i>
         <input type="text" id="peer-scores-filter" class="form-control form-control-sm" style="max-width:280px;" placeholder="Filter by peer name (rows + columns)">
@@ -48,6 +56,7 @@
           <label class="form-check-label" for="ps-state-banned">banned</label>
         </div>
         <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="peer-scores-filter-clear">Clear</button>
+      </div>
       </div>
       <div class="table-responsive">
         <table class="table table-bordered table-sm peer-scores-matrix mb-0 align-middle text-center">
