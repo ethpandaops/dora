@@ -6,23 +6,24 @@ import (
 	"html/template"
 )
 
-// peerScoreColor maps a normalized peer score in [-1, +1] to an HSL CSS
-// color. Healthy peers (close to +1) render green; banned peers
-// (close to -1) render red. The intermediate band fades through
-// yellow so a quick scan of the matrix surfaces unhealthy cells.
+// peerScoreColor maps a normalized peer score to a discrete background
+// color keyed on the same threshold bands as scoreStateFor (-0.2 =
+// disconnect, -0.5 = ban). Discrete bands prevent the matrix from
+// rendering four different greens for four "healthy" peers across
+// clients with wildly different score scales. The intermediate
+// disconnect band uses a darker orange so a quick scan immediately
+// surfaces the unhealthy cells without distracting cross-cell shade
+// differences.
 func peerScoreColor(normalized any) template.CSS {
 	v := toScoreFloat(normalized)
-	if v > 1 {
-		v = 1
+	switch {
+	case v <= -0.5:
+		return template.CSS("hsl(0, 60%, 38%)")
+	case v <= -0.2:
+		return template.CSS("hsl(28, 70%, 40%)")
+	default:
+		return template.CSS("hsl(120, 45%, 32%)")
 	}
-	if v < -1 {
-		v = -1
-	}
-
-	// Map [-1, +1] linearly to hue [0, 120] (red → yellow → green).
-	hue := (v + 1) * 60
-	// Keep cells legible: high saturation, mid lightness.
-	return template.CSS(fmt.Sprintf("hsl(%.0f, 65%%, 42%%)", hue))
 }
 
 // peerScoreJSON marshals a value to a JSON string suitable for embedding

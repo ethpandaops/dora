@@ -294,10 +294,22 @@ func (bc *BeaconClient) GetLodestarPeerScores(ctx context.Context) ([]*PeerScore
 	}
 
 	const lsMin, lsMax = -100.0, 100.0
+	// Lodestar's `score` field is only recomputed when reportPeer() fires.
+	// Pure gossipsub updates leave it stale, so dora blends locally using
+	// Lodestar's own formula: score = lodestar_score + gossip_score *
+	// (MIN_SCORE_BEFORE_DISCONNECT + 1) / graylistThreshold = -19/-16000.
+	const lsGossipWeight = 19.0 / 16000.0
 	out := make([]*PeerScore, 0, len(resp.Data))
 	fetched := nowMs()
 	for _, item := range resp.Data {
-		score := item.Score
+		score := item.LodestarScore
+		if score > -60 {
+			if item.GossipScore >= 0 {
+				score += item.GossipScore * lsGossipWeight
+			} else if !item.IgnoreNegativeGossipScore {
+				score += item.GossipScore * lsGossipWeight
+			}
+		}
 		ps := &PeerScore{
 			PeerID:          item.PeerID,
 			Score:           score,
