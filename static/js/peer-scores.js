@@ -35,7 +35,36 @@
     var cells = document.querySelectorAll('.ps-cell[data-target]');
     for (var i = 0; i < cells.length; i++) {
       cells[i].addEventListener('click', onCellClick);
+      cells[i].addEventListener('mouseenter', onCellHoverEnter);
+      cells[i].addEventListener('mouseleave', onCellHoverLeave);
     }
+  }
+
+  function onCellHoverEnter(ev) {
+    var c = ev.currentTarget;
+    var rep = c.getAttribute('data-reporter');
+    var tgt = c.getAttribute('data-target');
+    if (!rep || !tgt) { return; }
+    c.classList.add('ps-cell-hover');
+    var sel = '.ps-cell[data-reporter="' + cssEscape(tgt) +
+      '"][data-target="' + cssEscape(rep) + '"]';
+    var mirror = document.querySelector(sel);
+    if (mirror) { mirror.classList.add('ps-cell-mirror'); }
+  }
+
+  function onCellHoverLeave(ev) {
+    ev.currentTarget.classList.remove('ps-cell-hover');
+    var mirrors = document.querySelectorAll('.ps-cell-mirror');
+    for (var i = 0; i < mirrors.length; i++) {
+      mirrors[i].classList.remove('ps-cell-mirror');
+    }
+  }
+
+  function cssEscape(v) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(v);
+    }
+    return String(v).replace(/(["\\])/g, '\\$1');
   }
 
   function bindReporterRows() {
