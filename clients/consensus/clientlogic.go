@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
+	"github.com/ethpandaops/dora/utils"
 )
 
 func (client *Client) runClientLoop() {
@@ -384,6 +386,78 @@ func (client *Client) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) er
 
 		client.logger.Debugf("processed finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x], retry: %v", client.finalizedEpoch, client.finalizedRoot, client.justifiedEpoch, client.justifiedRoot, retry)
 	}()
+
+	return nil
+}
+
+// runPeerScoresLoop polls the connected client's peer-scores endpoint
+// on a fixed cadence and pushes results to the cache + optional
+// persister. The goroutine is only started when peerScores.enabled is
+// true (see newPoolClient), so there is zero overhead when the
+// feature is off.
+func (client *Client) runPeerScoresLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			client.logger.Errorf("uncaught panic in runPeerScoresLoop: %v, stack: %v", r, string(debug.Stack()))
+		}
+	}()
+
+	interval := time.Duration(utils.Config.PeerScores.PollIntervalSeconds) * time.Second
+	if interval < time.Second {
+		interval = 12 * time.Second
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-client.clientCtx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		if client.IsPeerScoresUnsupported() {
+			return
+		}
+		if !client.isOnline {
+			continue
+		}
+
+		if err := client.updatePeerScores(client.clientCtx); err != nil {
+			if errors.Is(err, rpc.ErrNotSupported) {
+				client.peerScoresMu.Lock()
+				client.peerScoresUnsupported = true
+				client.peerScoresMu.Unlock()
+				client.logger.Debugf("peer scores not supported by %s, disabling poll", client.clientType)
+				return
+			}
+			client.logger.Debugf("peer scores fetch failed: %v", err)
+		}
+	}
+}
+
+// updatePeerScores fetches the latest peer scores from the connected
+// client and updates the in-memory cache. When a pool-level
+// persister is configured, the fresh snapshot is also handed off for
+// database persistence.
+func (client *Client) updatePeerScores(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	scores, err := client.rpcClient.GetPeerScores(ctx, int(client.clientType))
+	if err != nil {
+		return err
+	}
+
+	client.peerScoresMu.Lock()
+	client.peerScores = scores
+	client.peerScoresAt = time.Now()
+	client.peerScoresMu.Unlock()
+
+	if persister := client.pool.peerScoresPersister; persister != nil {
+		persister(client, scores)
+	}
 
 	return nil
 }

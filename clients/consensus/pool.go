@@ -6,18 +6,28 @@ import (
 
 	"math/rand/v2"
 
+	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/sirupsen/logrus"
 )
 
+// PeerScoresPersister is invoked by the per-client peer-scores poll
+// loop after a successful fetch. The pool consumer (chain service) is
+// expected to wire this when database persistence is enabled.
+//
+// Implementations must be non-blocking or short-lived; the poll loop
+// invokes them synchronously after each tick.
+type PeerScoresPersister func(client *Client, scores []*rpc.PeerScore)
+
 type Pool struct {
-	ctx           context.Context
-	logger        logrus.FieldLogger
-	clientCounter uint16
-	clients       []*Client
-	chainState    *ChainState
+	ctx                 context.Context
+	logger              logrus.FieldLogger
+	clientCounter       uint16
+	clients             []*Client
+	chainState          *ChainState
+	peerScoresPersister PeerScoresPersister
 }
 
 func NewPool(ctx context.Context, logger logrus.FieldLogger) *Pool {
@@ -43,6 +53,13 @@ func (pool *Pool) SubscribeWallclockSlotEvent(capacity int) *utils.Subscription[
 
 func (pool *Pool) GetChainState() *ChainState {
 	return pool.chainState
+}
+
+// SetPeerScoresPersister registers a callback that the per-client
+// peer-scores poll loop will invoke after each successful fetch.
+// Passing nil disables persistence.
+func (pool *Pool) SetPeerScoresPersister(p PeerScoresPersister) {
+	pool.peerScoresPersister = p
 }
 
 func (pool *Pool) AddEndpoint(endpoint *ClientConfig) (*Client, error) {

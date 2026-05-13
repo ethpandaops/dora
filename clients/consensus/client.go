@@ -52,6 +52,10 @@ type Client struct {
 	lastMetadataUpdateTime        time.Time
 	lastSyncUpdateEpoch           phase0.Epoch
 	peers                         []*v1.Peer
+	peerScoresMu                  sync.RWMutex
+	peerScores                    []*rpc.PeerScore
+	peerScoresAt                  time.Time
+	peerScoresUnsupported         bool
 	streamDispatcher              utils.Dispatcher[*rpc.BeaconStreamEvent]
 	checkpointDispatcher          utils.Dispatcher[*v1.Finality]
 	executionPayloadDispatcher    utils.Dispatcher[*v1.ExecutionPayloadAvailableEvent]
@@ -81,6 +85,10 @@ func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Clie
 	client.resetContext()
 
 	go client.runClientLoop()
+
+	if utils.Config.PeerScores != nil && utils.Config.PeerScores.Enabled {
+		go client.runPeerScoresLoop()
+	}
 
 	return &client, nil
 }
@@ -195,6 +203,38 @@ func (client *Client) GetNodePeers() []*v1.Peer {
 
 func (client *Client) GetSpecWarnings() []string {
 	return client.specWarnings
+}
+
+// GetPeerScores returns the most recently fetched per-peer scoring
+// snapshot for this client. The returned slice is a copy of the cached
+// scores; callers may iterate it without taking the lock.
+func (client *Client) GetPeerScores() []*rpc.PeerScore {
+	client.peerScoresMu.RLock()
+	defer client.peerScoresMu.RUnlock()
+
+	if client.peerScores == nil {
+		return nil
+	}
+
+	out := make([]*rpc.PeerScore, len(client.peerScores))
+	copy(out, client.peerScores)
+	return out
+}
+
+// GetPeerScoresFetchedAt returns the wall-clock time of the last
+// successful peer-scores fetch. Zero value indicates "never fetched".
+func (client *Client) GetPeerScoresFetchedAt() time.Time {
+	client.peerScoresMu.RLock()
+	defer client.peerScoresMu.RUnlock()
+	return client.peerScoresAt
+}
+
+// IsPeerScoresUnsupported reports whether the connected client has
+// signalled that it does not implement a peer-scores endpoint.
+func (client *Client) IsPeerScoresUnsupported() bool {
+	client.peerScoresMu.RLock()
+	defer client.peerScoresMu.RUnlock()
+	return client.peerScoresUnsupported
 }
 
 func (client *Client) GetSpecs() map[string]interface{} {
