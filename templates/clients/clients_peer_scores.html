@@ -128,7 +128,7 @@
     data-last-seconds-ago="{{ $cell.LastEventSecondsAgo }}"
     data-components='{{ $cell.Components | json }}'
     style="cursor:pointer; background-color: {{ scoreColor $cell.ScoreNormalized }};"
-    title="{{ $reporter.Name }} → {{ if gt $target.KnownClientType 0 }}{{ $target.KnownAs }}{{ else }}{{ $target.PeerIDShort }}{{ end }} · score {{ printf "%.4f" $cell.Score }} · {{ $cell.ScoreState }}{{ if $cell.LastEventReason }} · {{ $cell.LastEventReason }} ({{ $cell.LastEventSecondsAgo }}s ago){{ end }}"
+    title="From: {{ $reporter.Name }}&#10;To: {{ if gt $target.KnownClientType 0 }}{{ $target.KnownAs }}{{ else }}{{ $target.PeerIDShort }}{{ end }}&#10;Score: {{ printf "%.4f" $cell.Score }}&#10;State: {{ $cell.ScoreState }}{{ if $cell.LastEventReason }}&#10;Reason: {{ $cell.LastEventReason }} ({{ $cell.LastEventSecondsAgo }}s ago){{ end }}"
     data-bs-toggle="tooltip">
   {{ printf "%.3f" $cell.Score }}
 </td>
@@ -163,6 +163,13 @@
   color: rgba(255, 255, 255, 0.25);
   text-align: center;
   font-size: 0.85rem;
+}
+.tooltip .tooltip-inner {
+  white-space: pre-line;
+  text-align: left;
+  max-width: 320px;
+  font-family: var(--bs-font-monospace, monospace);
+  font-size: 0.78rem;
 }
 .peer-scores-matrix .ps-reporter-label {
   white-space: nowrap;
