@@ -196,7 +196,8 @@
     var html = '<div class="ps-components small">';
     for (var i = 0; i < entries.length; i++) {
       var ent = entries[i];
-      var pct = Math.max(2, Math.min(100, Math.abs(ent.value)));
+      var absV = Math.abs(ent.value);
+      var pct = absV === 0 ? 0 : Math.max(2, Math.min(100, absV));
       var pos = ent.value >= 0;
       var color = pos ? 'bg-success' : 'bg-danger';
       html += '<div class="d-flex align-items-center mb-1">';
