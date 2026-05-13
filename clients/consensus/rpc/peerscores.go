@@ -1,0 +1,396 @@
+package rpc
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
+
+// ErrNotSupported is returned by GetPeerScores when the connected
+// consensus client does not expose a peer-scores endpoint (e.g.
+// stock Nimbus / Grandine / Caplin).
+var ErrNotSupported = errors.New("peer scores not supported by this client")
+
+// PeerScoreEvent captures a single scoring event observed by the
+// reporter for a target peer. The vocabulary in Reason is controlled
+// (see peerscores_reasons.go); NativeReason preserves the original
+// client-side string for fidelity.
+type PeerScoreEvent struct {
+	Reason       string  `json:"reason"`
+	NativeReason string  `json:"native_reason"`
+	Direction    string  `json:"direction,omitempty"`
+	Delta        float64 `json:"delta,omitempty"`
+	Topic        string  `json:"topic,omitempty"`
+	SecondsAgo   uint64  `json:"seconds_ago,omitempty"`
+}
+
+// PeerScoreComponents holds the per-subsystem score components the
+// underlying client exposes. All fields are optional - clients vary
+// widely in what they report.
+type PeerScoreComponents struct {
+	Gossipsub        *float64 `json:"gossipsub,omitempty"`
+	Reputation       *float64 `json:"reputation,omitempty"`
+	BadResponses     *float64 `json:"bad_responses,omitempty"`
+	PeerStatus       *float64 `json:"peer_status,omitempty"`
+	BlockProvider    *float64 `json:"block_provider,omitempty"`
+	BehaviourPenalty *float64 `json:"behaviour_penalty,omitempty"`
+}
+
+// PeerScore is the normalized per-peer scoring snapshot returned by
+// each per-client fetcher. Score* fields preserve the client-native
+// range; ScoreNormalized maps to [-1, +1] for cross-client display.
+type PeerScore struct {
+	PeerID          string              `json:"peer_id"`
+	State           string              `json:"state,omitempty"`
+	Direction       string              `json:"direction,omitempty"`
+	Score           float64             `json:"score"`
+	ScoreNormalized float64             `json:"score_normalized"`
+	ScoreMin        float64             `json:"score_min"`
+	ScoreMax        float64             `json:"score_max"`
+	ScoreState      string              `json:"score_state"`
+	Components      PeerScoreComponents `json:"components"`
+	LastEvent       *PeerScoreEvent     `json:"last_event,omitempty"`
+	LastDisconnect  *PeerScoreEvent     `json:"last_disconnect,omitempty"`
+	AgentVersion    string              `json:"agent_version,omitempty"`
+	FetchedAt       int64               `json:"fetched_at"`
+}
+
+// clamp confines v to [lo, hi].
+func clamp(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// normalizeSymmetric maps a symmetric (min == -max) range to [-1, +1]
+// with clamping.
+func normalizeSymmetric(score, min, max float64) float64 {
+	if max == min {
+		return 0
+	}
+	n := (score-min)/(max-min)*2 - 1
+	return clamp(n, -1, 1)
+}
+
+// normalizePrysm maps Prysm's asymmetric range (min=-100, max=+1) to
+// [-1, +1]. The native max of +1 is treated as +1 so even a perfectly
+// healthy Prysm peer reads as the top of the band.
+func normalizePrysm(score float64) float64 {
+	if score >= 1 {
+		return 1
+	}
+	if score <= -100 {
+		return -1
+	}
+	// Map [-100, 1] to [-1, 1] linearly.
+	return (score-(-100))/(1-(-100))*2 - 1
+}
+
+// scoreStateFor returns a coarse health label given a normalized score.
+func scoreStateFor(scoreNormalized float64) string {
+	switch {
+	case scoreNormalized <= -1:
+		return "banned"
+	case scoreNormalized < -0.5:
+		return "disconnect"
+	default:
+		return "healthy"
+	}
+}
+
+// nowMs returns the current wall-clock time in unix milliseconds.
+func nowMs() int64 {
+	return time.Now().UnixMilli()
+}
+
+// --- Lighthouse -------------------------------------------------------------
+
+type lhPeersResponse []struct {
+	PeerID   string `json:"peer_id"`
+	PeerInfo struct {
+		ClientVersion string  `json:"client_version"`
+		Direction     string  `json:"direction"`
+		ConnState     string  `json:"connection_state"`
+		Score         float64 `json:"score"`
+		ScoreInfo     struct {
+			Gossipsub *float64 `json:"gossipsub_score"`
+		} `json:"score_info"`
+		LastAction *struct {
+			Reason     string  `json:"reason"`
+			Source     string  `json:"source"`
+			Action     string  `json:"action"`
+			Delta      float64 `json:"delta"`
+			SecondsAgo uint64  `json:"seconds_ago"`
+		} `json:"last_action"`
+		LastDisconnect *struct {
+			Reason     string `json:"reason"`
+			Code       int    `json:"code"`
+			Direction  string `json:"direction"`
+			SecondsAgo uint64 `json:"seconds_ago"`
+		} `json:"last_disconnect"`
+	} `json:"peer_info"`
+}
+
+// GetLighthousePeerScores polls Lighthouse's /lighthouse/peers endpoint
+// and returns per-peer scores in the normalized PeerScore shape.
+func (bc *BeaconClient) GetLighthousePeerScores(ctx context.Context) ([]*PeerScore, error) {
+	var resp lhPeersResponse
+	url := fmt.Sprintf("%s/lighthouse/peers", bc.endpoint)
+	if err := bc.getJSON(ctx, url, &resp); err != nil {
+		return nil, fmt.Errorf("lighthouse peer scores: %w", err)
+	}
+
+	const lhMin, lhMax = -100.0, 100.0
+	out := make([]*PeerScore, 0, len(resp))
+	fetched := nowMs()
+	for _, item := range resp {
+		score := item.PeerInfo.Score
+		ps := &PeerScore{
+			PeerID:          item.PeerID,
+			State:           item.PeerInfo.ConnState,
+			Direction:       strings.ToLower(item.PeerInfo.Direction),
+			Score:           score,
+			ScoreNormalized: normalizeSymmetric(score, lhMin, lhMax),
+			ScoreMin:        lhMin,
+			ScoreMax:        lhMax,
+			AgentVersion:    item.PeerInfo.ClientVersion,
+			FetchedAt:       fetched,
+		}
+		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
+		if g := item.PeerInfo.ScoreInfo.Gossipsub; g != nil {
+			ps.Components.Gossipsub = g
+			rep := score
+			ps.Components.Reputation = &rep
+		}
+
+		if a := item.PeerInfo.LastAction; a != nil {
+			ps.LastEvent = &PeerScoreEvent{
+				Reason:       translateLighthouseReason(a.Reason),
+				NativeReason: a.Reason,
+				Direction:    ps.Direction,
+				Delta:        a.Delta,
+				SecondsAgo:   a.SecondsAgo,
+			}
+		}
+		if d := item.PeerInfo.LastDisconnect; d != nil {
+			ps.LastDisconnect = &PeerScoreEvent{
+				Reason:       translateLighthouseReason(d.Reason),
+				NativeReason: d.Reason,
+				Direction:    strings.ToLower(d.Direction),
+				SecondsAgo:   d.SecondsAgo,
+			}
+		}
+		out = append(out, ps)
+	}
+	return out, nil
+}
+
+// --- Lodestar ---------------------------------------------------------------
+
+type lodestarPeersResponse []struct {
+	PeerID                   string   `json:"peerId"`
+	LodestarScore            float64  `json:"lodestarScore"`
+	GossipScore              float64  `json:"gossipScore"`
+	IgnoreNegativeGossipScor bool     `json:"ignoreNegativeGossipScore"`
+	Score                    float64  `json:"score"`
+	LastUpdate               int64    `json:"lastUpdate"`
+	LastActionName           *string  `json:"lastActionName"`
+	LastActionDeltaScore     *float64 `json:"lastActionDeltaScore"`
+	LastActionUnixMs         *int64   `json:"lastActionUnixMs"`
+}
+
+// GetLodestarPeerScores polls Lodestar's
+// /eth/v1/lodestar/lodestar_peer_score_stats endpoint.
+func (bc *BeaconClient) GetLodestarPeerScores(ctx context.Context) ([]*PeerScore, error) {
+	var resp lodestarPeersResponse
+	url := fmt.Sprintf("%s/eth/v1/lodestar/lodestar_peer_score_stats", bc.endpoint)
+	if err := bc.getJSON(ctx, url, &resp); err != nil {
+		return nil, fmt.Errorf("lodestar peer scores: %w", err)
+	}
+
+	const lsMin, lsMax = -100.0, 100.0
+	out := make([]*PeerScore, 0, len(resp))
+	fetched := nowMs()
+	for _, item := range resp {
+		score := item.Score
+		ps := &PeerScore{
+			PeerID:          item.PeerID,
+			Score:           score,
+			ScoreNormalized: normalizeSymmetric(score, lsMin, lsMax),
+			ScoreMin:        lsMin,
+			ScoreMax:        lsMax,
+			FetchedAt:       fetched,
+		}
+		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
+
+		gossip := item.GossipScore
+		rep := item.LodestarScore
+		ps.Components.Gossipsub = &gossip
+		ps.Components.Reputation = &rep
+
+		if item.LastActionName != nil {
+			native := *item.LastActionName
+			delta := 0.0
+			if item.LastActionDeltaScore != nil {
+				delta = *item.LastActionDeltaScore
+			}
+			var secondsAgo uint64
+			if item.LastActionUnixMs != nil {
+				if diff := time.Now().UnixMilli() - *item.LastActionUnixMs; diff > 0 {
+					secondsAgo = uint64(diff / 1000)
+				}
+			}
+			ps.LastEvent = &PeerScoreEvent{
+				Reason:       translateLodestarReason(native),
+				NativeReason: native,
+				Delta:        delta,
+				SecondsAgo:   secondsAgo,
+			}
+		}
+		out = append(out, ps)
+	}
+	return out, nil
+}
+
+// --- Teku -------------------------------------------------------------------
+
+type tekuPeerScoresResponse struct {
+	Data []struct {
+		PeerID      string  `json:"peer_id"`
+		GossipScore float64 `json:"gossip_score"`
+	} `json:"data"`
+}
+
+// GetTekuPeerScores polls Teku's /teku/v1/nodes/peer_scores endpoint.
+// Teku exposes only the raw gossip score and no reason metadata, so
+// LastEvent is always nil.
+func (bc *BeaconClient) GetTekuPeerScores(ctx context.Context) ([]*PeerScore, error) {
+	var resp tekuPeerScoresResponse
+	url := fmt.Sprintf("%s/teku/v1/nodes/peer_scores", bc.endpoint)
+	if err := bc.getJSON(ctx, url, &resp); err != nil {
+		return nil, fmt.Errorf("teku peer scores: %w", err)
+	}
+
+	const tkMin, tkMax = -100.0, 100.0
+	out := make([]*PeerScore, 0, len(resp.Data))
+	fetched := nowMs()
+	for _, item := range resp.Data {
+		score := item.GossipScore
+		gossip := score
+		ps := &PeerScore{
+			PeerID:          item.PeerID,
+			Score:           score,
+			ScoreNormalized: normalizeSymmetric(score, tkMin, tkMax),
+			ScoreMin:        tkMin,
+			ScoreMax:        tkMax,
+			FetchedAt:       fetched,
+		}
+		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
+		ps.Components.Gossipsub = &gossip
+		out = append(out, ps)
+	}
+	return out, nil
+}
+
+// --- Prysm ------------------------------------------------------------------
+
+type prysmPeerScoresResponse struct {
+	GeneratedAt int64 `json:"generated_at"`
+	Peers       []struct {
+		PeerID                  string  `json:"peer_id"`
+		PeerIDShort             string  `json:"peer_id_short"`
+		Implementation          string  `json:"implementation"`
+		ConnectionState         string  `json:"connection_state"`
+		StartScore              float64 `json:"start_score"`
+		CurrentScore            float64 `json:"current_score"`
+		BehaviourPenalty        float64 `json:"behaviour_penalty"`
+		RatePerMin              float64 `json:"rate_per_min"`
+		LastDelta               float64 `json:"last_delta"`
+		LastDownscoreTopic      string  `json:"last_downscore_topic"`
+		LastDownscoreInfo       string  `json:"last_downscore_info"`
+		LastDownscoreSecondsAgo uint64  `json:"last_downscore_seconds_ago"`
+		GossipScore             float64 `json:"gossip_score"`
+		PeerStatusScore         float64 `json:"peer_status_score"`
+		BadResponseScore        float64 `json:"bad_response_score"`
+		BadResponses            float64 `json:"bad_responses"`
+	} `json:"peers"`
+}
+
+// GetPrysmPeerScores polls Prysm's /prysm/v1/node/peer_scores endpoint.
+// Prysm reports an asymmetric range (min=-100, max=+1), so the
+// normalization uses normalizePrysm.
+func (bc *BeaconClient) GetPrysmPeerScores(ctx context.Context) ([]*PeerScore, error) {
+	var resp prysmPeerScoresResponse
+	url := fmt.Sprintf("%s/prysm/v1/node/peer_scores", bc.endpoint)
+	if err := bc.getJSON(ctx, url, &resp); err != nil {
+		return nil, fmt.Errorf("prysm peer scores: %w", err)
+	}
+
+	const prMin, prMax = -100.0, 1.0
+	out := make([]*PeerScore, 0, len(resp.Peers))
+	fetched := nowMs()
+	for _, item := range resp.Peers {
+		score := item.CurrentScore
+		gossip := item.GossipScore
+		status := item.PeerStatusScore
+		badResp := item.BadResponseScore
+		badCount := item.BadResponses
+		penalty := item.BehaviourPenalty
+		ps := &PeerScore{
+			PeerID:          item.PeerID,
+			State:           strings.ToLower(item.ConnectionState),
+			Score:           score,
+			ScoreNormalized: normalizePrysm(score),
+			ScoreMin:        prMin,
+			ScoreMax:        prMax,
+			AgentVersion:    item.Implementation,
+			FetchedAt:       fetched,
+		}
+		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
+		ps.Components.Gossipsub = &gossip
+		ps.Components.PeerStatus = &status
+		ps.Components.BadResponses = &badResp
+		ps.Components.BehaviourPenalty = &penalty
+		_ = badCount
+
+		if item.LastDownscoreInfo != "" || item.LastDownscoreTopic != "" {
+			native := item.LastDownscoreInfo
+			if native == "" {
+				native = item.LastDownscoreTopic
+			}
+			ps.LastEvent = &PeerScoreEvent{
+				Reason:       translatePrysmReason(item.LastDownscoreTopic, item.LastDownscoreInfo),
+				NativeReason: native,
+				Delta:        item.LastDelta,
+				Topic:        item.LastDownscoreTopic,
+				SecondsAgo:   item.LastDownscoreSecondsAgo,
+			}
+		}
+		out = append(out, ps)
+	}
+	return out, nil
+}
+
+// GetPeerScores dispatches to the appropriate per-client fetcher. Returns
+// ErrNotSupported when the requested client type has no peer-scores
+// endpoint (Nimbus, Grandine, Caplin, unknown).
+func (bc *BeaconClient) GetPeerScores(ctx context.Context, clientType int) ([]*PeerScore, error) {
+	switch clientType {
+	case 1:
+		return bc.GetLighthousePeerScores(ctx)
+	case 2:
+		return bc.GetLodestarPeerScores(ctx)
+	case 4:
+		return bc.GetPrysmPeerScores(ctx)
+	case 5:
+		return bc.GetTekuPeerScores(ctx)
+	default:
+		return nil, ErrNotSupported
+	}
+}
