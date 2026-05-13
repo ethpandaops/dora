@@ -322,8 +322,9 @@
 
   function formatFloat(value) {
     if (typeof value !== 'number' || isNaN(value)) { return ''; }
-    if (Math.abs(value) >= 1000) { return value.toFixed(0); }
-    return value.toFixed(2);
+    if (Math.abs(value) >= 1000) { return value.toFixed(2); }
+    if (Math.abs(value) >= 1) { return value.toFixed(4); }
+    return value.toFixed(6);
   }
 
   function escapeHTML(value) {

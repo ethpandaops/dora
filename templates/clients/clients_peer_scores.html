@@ -116,17 +116,17 @@
     data-reporter-name="{{ $reporter.Name }}"
     data-target="{{ $target.PeerID }}"
     data-target-name="{{ if gt $target.KnownClientType 0 }}{{ $target.KnownAs }}{{ else }}{{ $target.PeerIDShort }}{{ end }}"
-    data-score="{{ printf "%.2f" $cell.Score }}"
-    data-score-normalized="{{ printf "%.3f" $cell.ScoreNormalized }}"
+    data-score="{{ printf "%.4f" $cell.Score }}"
+    data-score-normalized="{{ printf "%.6f" $cell.ScoreNormalized }}"
     data-score-state="{{ $cell.ScoreState }}"
     data-last-reason="{{ $cell.LastEventReason }}"
     data-last-native="{{ $cell.LastEventNative }}"
     data-last-seconds-ago="{{ $cell.LastEventSecondsAgo }}"
     data-components='{{ $cell.Components | json }}'
     style="cursor:pointer; background-color: {{ scoreColor $cell.ScoreNormalized }};"
-    title="{{ $reporter.Name }} → {{ if gt $target.KnownClientType 0 }}{{ $target.KnownAs }}{{ else }}{{ $target.PeerIDShort }}{{ end }} · score {{ printf "%.2f" $cell.Score }} · {{ $cell.ScoreState }}{{ if $cell.LastEventReason }} · {{ $cell.LastEventReason }} ({{ $cell.LastEventSecondsAgo }}s ago){{ end }}"
+    title="{{ $reporter.Name }} → {{ if gt $target.KnownClientType 0 }}{{ $target.KnownAs }}{{ else }}{{ $target.PeerIDShort }}{{ end }} · score {{ printf "%.4f" $cell.Score }} · {{ $cell.ScoreState }}{{ if $cell.LastEventReason }} · {{ $cell.LastEventReason }} ({{ $cell.LastEventSecondsAgo }}s ago){{ end }}"
     data-bs-toggle="tooltip">
-  {{ printf "%.1f" $cell.Score }}
+  {{ printf "%.3f" $cell.Score }}
 </td>
 {{ end }}
 
