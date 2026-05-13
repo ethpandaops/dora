@@ -429,10 +429,10 @@ func (client *Client) runPeerScoresLoop() {
 				client.peerScoresMu.Lock()
 				client.peerScoresUnsupported = true
 				client.peerScoresMu.Unlock()
-				client.logger.Debugf("peer scores not supported by %s, disabling poll", client.clientType)
+				client.logger.Infof("peer scores not supported by %s, disabling poll", client.clientType)
 				return
 			}
-			client.logger.Debugf("peer scores fetch failed: %v", err)
+			client.logger.Warnf("peer scores fetch failed: %v", err)
 		}
 	}
 }
@@ -445,7 +445,22 @@ func (client *Client) updatePeerScores(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	scores, err := client.rpcClient.GetPeerScores(ctx, int(client.clientType))
+	var (
+		scores []*rpc.PeerScore
+		err    error
+	)
+	switch client.clientType {
+	case LighthouseClient:
+		scores, err = client.rpcClient.GetLighthousePeerScores(ctx)
+	case LodestarClient:
+		scores, err = client.rpcClient.GetLodestarPeerScores(ctx)
+	case PrysmClient:
+		scores, err = client.rpcClient.GetPrysmPeerScores(ctx)
+	case TekuClient:
+		scores, err = client.rpcClient.GetTekuPeerScores(ctx)
+	default:
+		return rpc.ErrNotSupported
+	}
 	if err != nil {
 		return err
 	}
