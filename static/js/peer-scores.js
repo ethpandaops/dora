@@ -29,7 +29,72 @@
     refreshGlobalHistogram();
 
     scheduleAutoRefresh();
+    bindFilters();
   });
+
+  function bindFilters() {
+    var input = document.getElementById('peer-scores-filter');
+    if (input) {
+      input.addEventListener('input', applyFilters);
+    }
+    var clear = document.getElementById('peer-scores-filter-clear');
+    if (clear) {
+      clear.addEventListener('click', function () {
+        if (input) { input.value = ''; }
+        var boxes = document.querySelectorAll('.ps-state-filter');
+        for (var i = 0; i < boxes.length; i++) { boxes[i].checked = true; }
+        applyFilters();
+      });
+    }
+    var boxes = document.querySelectorAll('.ps-state-filter');
+    for (var i = 0; i < boxes.length; i++) {
+      boxes[i].addEventListener('change', applyFilters);
+    }
+  }
+
+  function applyFilters() {
+    var input = document.getElementById('peer-scores-filter');
+    var needle = input ? input.value.trim().toLowerCase() : '';
+    var states = {};
+    var boxes = document.querySelectorAll('.ps-state-filter');
+    for (var i = 0; i < boxes.length; i++) {
+      states[boxes[i].getAttribute('data-state')] = boxes[i].checked;
+    }
+    var hiddenTargets = {};
+    var headers = document.querySelectorAll('.ps-target-header');
+    for (var h = 0; h < headers.length; h++) {
+      var name = (headers[h].getAttribute('data-target-name') || '').toLowerCase();
+      var matches = needle === '' || name.indexOf(needle) !== -1;
+      headers[h].style.display = matches ? '' : 'none';
+      if (!matches) { hiddenTargets[headers[h].getAttribute('data-target')] = true; }
+    }
+    var rows = document.querySelectorAll('.ps-reporter-row');
+    for (var r = 0; r < rows.length; r++) {
+      var rname = (rows[r].getAttribute('data-reporter-name') || '').toLowerCase();
+      var rowMatches = needle === '' || rname.indexOf(needle) !== -1;
+      var hasVisibleScoreCell = false;
+      var cells = rows[r].querySelectorAll('td');
+      for (var c = 0; c < cells.length; c++) {
+        var tgt = cells[c].getAttribute('data-target');
+        if (tgt && hiddenTargets[tgt]) {
+          cells[c].style.display = 'none';
+          continue;
+        }
+        var st = cells[c].getAttribute('data-score-state');
+        if (st && !states[st]) {
+          cells[c].style.display = 'none';
+          continue;
+        }
+        cells[c].style.display = '';
+        if (st && states[st]) { hasVisibleScoreCell = true; }
+      }
+      if (needle !== '' && !rowMatches) {
+        rows[r].style.display = hasVisibleScoreCell ? '' : 'none';
+      } else {
+        rows[r].style.display = '';
+      }
+    }
+  }
 
   function bindMatrixCells() {
     var cells = document.querySelectorAll('.ps-cell[data-target]');

@@ -32,13 +32,32 @@
           peer-scores endpoint (Nimbus, Grandine and Caplin are intentionally skipped).
         </div>
       {{ else }}
+      <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom small">
+        <i class="fas fa-filter text-muted"></i>
+        <input type="text" id="peer-scores-filter" class="form-control form-control-sm" style="max-width:280px;" placeholder="Filter by peer name (rows + columns)">
+        <div class="form-check form-check-inline ms-2 mb-0">
+          <input class="form-check-input ps-state-filter" type="checkbox" id="ps-state-healthy" data-state="healthy" checked>
+          <label class="form-check-label" for="ps-state-healthy">healthy</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input ps-state-filter" type="checkbox" id="ps-state-disconnect" data-state="disconnect" checked>
+          <label class="form-check-label" for="ps-state-disconnect">disconnect</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input ps-state-filter" type="checkbox" id="ps-state-banned" data-state="banned" checked>
+          <label class="form-check-label" for="ps-state-banned">banned</label>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="peer-scores-filter-clear">Clear</button>
+      </div>
       <div class="table-responsive">
         <table class="table table-bordered table-sm peer-scores-matrix mb-0 align-middle text-center">
           <thead>
             <tr>
               <th class="text-start" style="min-width:160px;">Reporter</th>
               {{ range $target := $root.Targets }}
-                <th class="text-nowrap small" style="font-weight:normal;">
+                <th class="text-nowrap small ps-target-header" style="font-weight:normal;"
+                    data-target="{{ $target.PeerID }}"
+                    data-target-name="{{ if gt $target.KnownClientType 0 }}{{ $target.KnownAs }}{{ else }}{{ $target.PeerIDShort }}{{ end }}">
                   {{ if gt $target.KnownClientType 0 }}
                     <span class="badge bg-secondary text-light" title="{{ $target.PeerID }}">{{ $target.KnownAs }}</span>
                   {{ else }}
@@ -51,7 +70,7 @@
           <tbody>
             {{ range $reporter := $root.Reporters }}
               {{ $row := index $root.Matrix $reporter.PeerID }}
-              <tr>
+              <tr class="ps-reporter-row" data-reporter="{{ $reporter.PeerID }}" data-reporter-name="{{ $reporter.Name }}">
                 <td class="text-start ps-reporter-label" data-reporter="{{ $reporter.PeerID }}" style="cursor:pointer;">
                   <strong>{{ $reporter.Name }}</strong>
                   <span class="badge bg-info text-dark ms-1">{{ $reporter.ClientName }}</span>
