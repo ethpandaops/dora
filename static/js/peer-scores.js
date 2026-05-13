@@ -278,7 +278,7 @@
       html += '<div class="d-flex align-items-center mb-1 small">';
       html += '<div class="ps-reason-name flex-shrink-0 me-2" title="' +
         escapeHTML(category) + '">' + escapeHTML(k) + '</div>';
-      html += '<div class="flex-grow-1 bg-light position-relative" style="height:16px;border-radius:3px;overflow:hidden;">';
+      html += '<div class="flex-grow-1 position-relative" style="height:16px;border-radius:3px;overflow:hidden;background-color:rgba(255,255,255,0.06);">';
       html += '<div class="' + barClassForCategory(category) +
         '" style="width:' + pct + '%;height:100%;"></div>';
       html += '</div>';
@@ -310,7 +310,7 @@
       case 'status': return 'bg-primary';
       case 'reward': return 'bg-success';
       case 'connection': return 'bg-secondary';
-      default: return 'bg-dark';
+      default: return 'bg-secondary';
     }
   }
 
