@@ -449,17 +449,30 @@ func (client *Client) updatePeerScores(ctx context.Context) error {
 		scores []*rpc.PeerScore
 		err    error
 	)
-	switch client.clientType {
-	case LighthouseClient:
-		scores, err = client.rpcClient.GetLighthousePeerScores(ctx)
-	case LodestarClient:
-		scores, err = client.rpcClient.GetLodestarPeerScores(ctx)
-	case PrysmClient:
-		scores, err = client.rpcClient.GetPrysmPeerScores(ctx)
-	case TekuClient:
-		scores, err = client.rpcClient.GetTekuPeerScores(ctx)
-	default:
-		return rpc.ErrNotSupported
+
+	// Try the simplified beacon-API spec extension at /eth/v1/node/peers
+	// first. Once the patched client images roll out, every supported
+	// client will populate the new optional score fields there and dora
+	// gets a uniform data source. ErrNotSupported is returned when the
+	// fetched response had no score field populated - we then fall back
+	// to the per-client native endpoint for that client.
+	scores, err = client.rpcClient.GetStandardPeerScores(ctx)
+	if err != nil && !errors.Is(err, rpc.ErrNotSupported) {
+		client.logger.Debugf("standard peer scores fetch failed: %v", err)
+	}
+	if errors.Is(err, rpc.ErrNotSupported) || len(scores) == 0 {
+		switch client.clientType {
+		case LighthouseClient:
+			scores, err = client.rpcClient.GetLighthousePeerScores(ctx)
+		case LodestarClient:
+			scores, err = client.rpcClient.GetLodestarPeerScores(ctx)
+		case PrysmClient:
+			scores, err = client.rpcClient.GetPrysmPeerScores(ctx)
+		case TekuClient:
+			scores, err = client.rpcClient.GetTekuPeerScores(ctx)
+		default:
+			return rpc.ErrNotSupported
+		}
 	}
 	if err != nil {
 		return err

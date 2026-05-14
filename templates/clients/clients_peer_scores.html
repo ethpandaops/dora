@@ -86,8 +86,10 @@
               <tr class="ps-reporter-row" data-reporter="{{ $reporter.PeerID }}" data-reporter-name="{{ $reporter.Name }}">
                 <td class="text-start ps-reporter-label" data-reporter="{{ $reporter.PeerID }}" style="cursor:pointer;">
                   <strong>{{ $reporter.Name }}</strong>
-                  <span class="badge bg-info text-dark ms-1">{{ $reporter.ClientName }}</span>
-                  {{ if not $reporter.Supported }}<span class="badge bg-warning text-dark ms-1" title="Client has no peer-scores endpoint">n/a</span>{{ end }}
+                  {{ if not $reporter.Supported }}<span class="badge bg-warning text-dark ms-1"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="top"
+                      title="Peer-scores endpoint not yet implemented in this client">n/a</span>{{ end }}
                 </td>
                 {{ range $target := $root.Targets }}
                   {{ if eq $reporter.PeerID $target.PeerID }}
@@ -96,6 +98,10 @@
                     {{ $cell := index $row $target.PeerID }}
                     {{ if $cell }}
                       {{ template "peer_score_cell" dict "Cell" $cell "Reporter" $reporter "Target" $target }}
+                    {{ else if not $reporter.Supported }}
+                      <td class="ps-cell-empty"
+                          data-bs-toggle="tooltip"
+                          title="Peer-scores endpoint not yet implemented in this client">·</td>
                     {{ else }}
                       <td class="ps-cell-empty" title="No data">·</td>
                     {{ end }}

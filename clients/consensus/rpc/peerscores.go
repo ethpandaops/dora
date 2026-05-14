@@ -79,6 +79,25 @@ func normalizeSymmetric(score, min, max float64) float64 {
 	return clamp(n, -1, 1)
 }
 
+// normalizeAroundNeutral maps an asymmetric range with a known neutral
+// anchor to [-1, +1]. score == neutral always returns 0 so a fresh,
+// healthy peer never falls into the negative state bands even when the
+// range itself is asymmetric (e.g. Teku's [-10, +20] with neutral=0).
+func normalizeAroundNeutral(score, min, max, neutral float64) float64 {
+	switch {
+	case score >= neutral:
+		if max == neutral {
+			return 0
+		}
+		return clamp((score-neutral)/(max-neutral), 0, 1)
+	default:
+		if neutral == min {
+			return 0
+		}
+		return clamp((score-neutral)/(neutral-min), -1, 0)
+	}
+}
+
 // normalizePrysm maps Prysm's asymmetric range (min=-100, max=+1) to
 // [-1, +1]. The native max of +1 is treated as +1 so even a perfectly
 // healthy Prysm peer reads as the top of the band.
@@ -353,6 +372,99 @@ func (bc *BeaconClient) GetLodestarPeerScores(ctx context.Context) ([]*PeerScore
 	return out, nil
 }
 
+// --- Standard /eth/v1/node/peers --------------------------------------------
+
+// standardPeer mirrors the simplified beacon-API spec extension to
+// /eth/v1/node/peers: agent_version, score, disconnect_reason,
+// downscore_reasons are all optional additive fields.
+type standardPeer struct {
+	PeerID             string   `json:"peer_id"`
+	State              string   `json:"state"`
+	Direction          string   `json:"direction"`
+	LastSeenP2PAddress string   `json:"last_seen_p2p_address"`
+	AgentVersion       string   `json:"agent_version,omitempty"`
+	Score              *float64 `json:"score,omitempty"`
+	DisconnectReason   string   `json:"disconnect_reason,omitempty"`
+	DownscoreReasons   []string `json:"downscore_reasons,omitempty"`
+}
+
+type standardPeersResponse struct {
+	Data []standardPeer `json:"data"`
+}
+
+// rangeForAgent picks a sensible (min, max, neutral) score range from
+// the peer's libp2p agent string. The spec leaves score scale
+// implementation-defined, so dora keeps per-client knowledge to drive
+// normalized bars.
+func rangeForAgent(agent string) (min, max, neutral float64) {
+	lower := strings.ToLower(agent)
+	switch {
+	case strings.Contains(lower, "teku"):
+		return -10, 20, 0
+	case strings.Contains(lower, "prysm"):
+		return -100, 1, 0
+	default:
+		return -100, 100, 0
+	}
+}
+
+// GetStandardPeerScores polls /eth/v1/node/peers and maps the spec-
+// extended Peer records to PeerScore. ErrNotSupported is returned when
+// none of the observed peers populated the new score fields - the
+// caller can then fall back to a per-client native endpoint.
+func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context) ([]*PeerScore, error) {
+	var resp standardPeersResponse
+	url := fmt.Sprintf("%s/eth/v1/node/peers", bc.endpoint)
+	if err := bc.getJSON(ctx, url, &resp); err != nil {
+		return nil, fmt.Errorf("standard peer scores: %w", err)
+	}
+
+	out := make([]*PeerScore, 0, len(resp.Data))
+	fetched := nowMs()
+	scoreSeen := false
+	for _, p := range resp.Data {
+		if p.PeerID == "" {
+			continue
+		}
+		min, max, neutral := rangeForAgent(p.AgentVersion)
+		var score float64
+		if p.Score != nil {
+			score = *p.Score
+			scoreSeen = true
+		}
+		ps := &PeerScore{
+			PeerID:          p.PeerID,
+			State:           strings.ToLower(p.State),
+			Direction:       strings.ToLower(p.Direction),
+			Score:           score,
+			ScoreNormalized: normalizeAroundNeutral(score, min, max, neutral),
+			ScoreMin:        min,
+			ScoreMax:        max,
+			AgentVersion:    p.AgentVersion,
+			FetchedAt:       fetched,
+		}
+		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
+		if len(p.DownscoreReasons) > 0 {
+			ps.LastEvent = &PeerScoreEvent{
+				Reason:       p.DownscoreReasons[0],
+				NativeReason: p.DownscoreReasons[0],
+			}
+		}
+		if p.DisconnectReason != "" {
+			ps.LastDisconnect = &PeerScoreEvent{
+				Reason:       p.DisconnectReason,
+				NativeReason: p.DisconnectReason,
+			}
+		}
+		synthesizeLastEvent(ps)
+		out = append(out, ps)
+	}
+	if !scoreSeen && len(out) > 0 {
+		return nil, ErrNotSupported
+	}
+	return out, nil
+}
+
 // --- Teku -------------------------------------------------------------------
 
 type tekuPeerScoresResponse struct {
@@ -380,36 +492,33 @@ func (bc *BeaconClient) GetTekuPeerScores(ctx context.Context) ([]*PeerScore, er
 		return nil, fmt.Errorf("teku peer scores: %w", err)
 	}
 
-	// Teku's ReputationAdjustment range is asymmetric [-10, +20].
-	const tkRepMin, tkRepMax = -10.0, 20.0
+	// Teku's ReputationAdjustment range is asymmetric [-10, +20] with
+	// neutral=0 (default starting reputation, not the range midpoint).
+	// Reputation is the single value Teku compares against its ban
+	// threshold, so it is always the canonical Score — missing entries
+	// from ReputationManager are reported as 0 (Teku's own default)
+	// rather than falling back to gossipsub. That keeps the Score
+	// semantics consistent across all of Teku's peers.
+	const tkRepMin, tkRepMax, tkRepNeutral = -10.0, 20.0, 0.0
 	out := make([]*PeerScore, 0, len(resp.Data))
 	fetched := nowMs()
 	for _, item := range resp.Data {
 		gossip := item.GossipScore
-		var score float64
-		var min, max float64 = tkRepMin, tkRepMax
+		var rep float64
 		if item.ReputationScore != nil {
-			score = float64(*item.ReputationScore)
-		} else {
-			// Fall back to gossip score on vanilla teku; normalize on the
-			// libp2p-gossipsub scale (gossip can run to thousands).
-			score = gossip
-			min, max = -100.0, 100.0
+			rep = float64(*item.ReputationScore)
 		}
 		ps := &PeerScore{
 			PeerID:          item.PeerID,
-			Score:           score,
-			ScoreNormalized: normalizeSymmetric(score, min, max),
-			ScoreMin:        min,
-			ScoreMax:        max,
+			Score:           rep,
+			ScoreNormalized: normalizeAroundNeutral(rep, tkRepMin, tkRepMax, tkRepNeutral),
+			ScoreMin:        tkRepMin,
+			ScoreMax:        tkRepMax,
 			FetchedAt:       fetched,
 		}
 		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
 		ps.Components.Gossipsub = &gossip
-		if item.ReputationScore != nil {
-			rep := float64(*item.ReputationScore)
-			ps.Components.Reputation = &rep
-		}
+		ps.Components.Reputation = &rep
 		if a := item.LastAction; a != nil {
 			ps.LastEvent = &PeerScoreEvent{
 				Reason:       translateTekuReason(a.Reason),
