@@ -456,7 +456,7 @@ func (client *Client) updatePeerScores(ctx context.Context) error {
 	// gets a uniform data source. ErrNotSupported is returned when the
 	// fetched response had no score field populated - we then fall back
 	// to the per-client native endpoint for that client.
-	scores, err = client.rpcClient.GetStandardPeerScores(ctx)
+	scores, err = client.rpcClient.GetStandardPeerScores(ctx, client.clientType.String())
 	if err != nil && !errors.Is(err, rpc.ErrNotSupported) {
 		client.logger.Debugf("standard peer scores fetch failed: %v", err)
 	}

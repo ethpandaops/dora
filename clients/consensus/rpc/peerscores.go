@@ -417,13 +417,20 @@ func rangeForAgent(agent string) (min, max, neutral float64) {
 // extended Peer records to PeerScore. ErrNotSupported is returned when
 // none of the observed peers populated the new score fields - the
 // caller can then fall back to a per-client native endpoint.
-func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context) ([]*PeerScore, error) {
+//
+// reporterAgent is the libp2p agent string of the *reporter* (the
+// client we're querying), used to drive normalization. Score scale is
+// a property of who is reporting, not who is being scored - Lighthouse
+// reports on a [-100, +100] scale regardless of which client the peer
+// is.
+func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context, reporterAgent string) ([]*PeerScore, error) {
 	var resp standardPeersResponse
 	url := fmt.Sprintf("%s/eth/v1/node/peers", bc.endpoint)
 	if err := bc.getJSON(ctx, url, &resp); err != nil {
 		return nil, fmt.Errorf("standard peer scores: %w", err)
 	}
 
+	min, max, neutral := rangeForAgent(reporterAgent)
 	out := make([]*PeerScore, 0, len(resp.Data))
 	fetched := nowMs()
 	scoreSeen := false
@@ -435,7 +442,6 @@ func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context) ([]*PeerScore
 		if agentVersion == "" {
 			agentVersion = p.Agent
 		}
-		min, max, neutral := rangeForAgent(agentVersion)
 		var score float64
 		if p.Score != nil {
 			score = *p.Score
