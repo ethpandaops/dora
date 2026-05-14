@@ -431,6 +431,13 @@ func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context, reporterAgent
 	}
 
 	min, max, neutral := rangeForAgent(reporterAgent)
+	// Nimbus uses [0, 1000] with neutral 300 internally. Pre-transform to
+	// the common [-100, +100] / neutral=0 scale so its column reads
+	// comparably to the other clients (300 -> 0, 1000 -> +100, 0 -> -100).
+	rescaleNimbus := strings.Contains(strings.ToLower(reporterAgent), "nimbus")
+	if rescaleNimbus {
+		min, max, neutral = -100, 100, 0
+	}
 	out := make([]*PeerScore, 0, len(resp.Data))
 	fetched := nowMs()
 	scoreSeen := false
@@ -446,6 +453,9 @@ func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context, reporterAgent
 		if p.Score != nil {
 			score = *p.Score
 			scoreSeen = true
+			if rescaleNimbus {
+				score = normalizeAroundNeutral(score, 0, 1000, 300) * 100
+			}
 		}
 		ps := &PeerScore{
 			PeerID:          p.PeerID,
