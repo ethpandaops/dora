@@ -430,14 +430,13 @@ func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context, reporterAgent
 		return nil, fmt.Errorf("standard peer scores: %w", err)
 	}
 
-	min, max, neutral := rangeForAgent(reporterAgent)
-	// Nimbus uses [0, 1000] with neutral 300 internally. Pre-transform to
-	// the common [-100, +100] / neutral=0 scale so its column reads
-	// comparably to the other clients (300 -> 0, 1000 -> +100, 0 -> -100).
-	rescaleNimbus := strings.Contains(strings.ToLower(reporterAgent), "nimbus")
-	if rescaleNimbus {
-		min, max, neutral = -100, 100, 0
-	}
+	rawMin, rawMax, rawNeutral := rangeForAgent(reporterAgent)
+	// Universally rescale every client's raw score onto a common
+	// [-100, +100] / neutral=0 display scale (transform: normalized * 100).
+	// Lighthouse/Lodestar/Grandine already sit on [-100, +100] so this is a
+	// no-op for them; Teku [-10, +20], Prysm [-100, +1] and Nimbus [0, 1000]
+	// get spread onto the same axis so the matrix reads consistently.
+	const displayMin, displayMax, displayNeutral = -100.0, 100.0, 0.0
 	out := make([]*PeerScore, 0, len(resp.Data))
 	fetched := nowMs()
 	scoreSeen := false
@@ -451,20 +450,17 @@ func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context, reporterAgent
 		}
 		var score float64
 		if p.Score != nil {
-			score = *p.Score
+			score = normalizeAroundNeutral(*p.Score, rawMin, rawMax, rawNeutral) * 100
 			scoreSeen = true
-			if rescaleNimbus {
-				score = normalizeAroundNeutral(score, 0, 1000, 300) * 100
-			}
 		}
 		ps := &PeerScore{
 			PeerID:          p.PeerID,
 			State:           strings.ToLower(p.State),
 			Direction:       strings.ToLower(p.Direction),
 			Score:           score,
-			ScoreNormalized: normalizeAroundNeutral(score, min, max, neutral),
-			ScoreMin:        min,
-			ScoreMax:        max,
+			ScoreNormalized: normalizeAroundNeutral(score, displayMin, displayMax, displayNeutral),
+			ScoreMin:        displayMin,
+			ScoreMax:        displayMax,
 			AgentVersion:    agentVersion,
 			FetchedAt:       fetched,
 		}
