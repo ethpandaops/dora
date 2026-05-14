@@ -378,14 +378,17 @@ func (bc *BeaconClient) GetLodestarPeerScores(ctx context.Context) ([]*PeerScore
 // /eth/v1/node/peers: agent_version, score, disconnect_reason,
 // downscore_reasons are all optional additive fields.
 type standardPeer struct {
-	PeerID             string   `json:"peer_id"`
-	State              string   `json:"state"`
-	Direction          string   `json:"direction"`
-	LastSeenP2PAddress string   `json:"last_seen_p2p_address"`
-	AgentVersion       string   `json:"agent_version,omitempty"`
-	Score              *float64 `json:"score,omitempty"`
-	DisconnectReason   string   `json:"disconnect_reason,omitempty"`
-	DownscoreReasons   []string `json:"downscore_reasons,omitempty"`
+	PeerID             string `json:"peer_id"`
+	State              string `json:"state"`
+	Direction          string `json:"direction"`
+	LastSeenP2PAddress string `json:"last_seen_p2p_address"`
+	AgentVersion       string `json:"agent_version,omitempty"`
+	// Agent is Nimbus's existing field name (pre-spec); falls back when
+	// agent_version is empty.
+	Agent            string   `json:"agent,omitempty"`
+	Score            *float64 `json:"score,omitempty"`
+	DisconnectReason string   `json:"disconnect_reason,omitempty"`
+	DownscoreReasons []string `json:"downscore_reasons,omitempty"`
 }
 
 type standardPeersResponse struct {
@@ -403,6 +406,8 @@ func rangeForAgent(agent string) (min, max, neutral float64) {
 		return -10, 20, 0
 	case strings.Contains(lower, "prysm"):
 		return -100, 1, 0
+	case strings.Contains(lower, "nimbus"):
+		return 0, 1000, 300
 	default:
 		return -100, 100, 0
 	}
@@ -426,7 +431,11 @@ func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context) ([]*PeerScore
 		if p.PeerID == "" {
 			continue
 		}
-		min, max, neutral := rangeForAgent(p.AgentVersion)
+		agentVersion := p.AgentVersion
+		if agentVersion == "" {
+			agentVersion = p.Agent
+		}
+		min, max, neutral := rangeForAgent(agentVersion)
 		var score float64
 		if p.Score != nil {
 			score = *p.Score
@@ -440,7 +449,7 @@ func (bc *BeaconClient) GetStandardPeerScores(ctx context.Context) ([]*PeerScore
 			ScoreNormalized: normalizeAroundNeutral(score, min, max, neutral),
 			ScoreMin:        min,
 			ScoreMax:        max,
-			AgentVersion:    p.AgentVersion,
+			AgentVersion:    agentVersion,
 			FetchedAt:       fetched,
 		}
 		ps.ScoreState = scoreStateFor(ps.ScoreNormalized)
