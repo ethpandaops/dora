@@ -25,6 +25,29 @@ type ClientsCLPageData struct {
 	ExpectedConfigFields      []string                         `json:"expected_config_fields"`
 	ExpectedPresetFields      []string                         `json:"expected_preset_fields"`
 	ExpectedDomainTypeFields  []string                         `json:"expected_domain_type_fields"`
+
+	// Endpoint compatibility matrix
+	EndpointCatalog []ClientsCLEndpointInfo `json:"endpoint_catalog"`
+	GloasActive     bool                    `json:"gloas_active"`
+}
+
+// ClientsCLEndpointInfo describes one row of the endpoint compatibility matrix.
+type ClientsCLEndpointInfo struct {
+	Key         string `json:"key"`
+	Number      int    `json:"number"`
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+	Description string `json:"description"`
+	SpecPR      string `json:"spec_pr"`
+	Kind        string `json:"kind"`
+}
+
+// ClientsCLEndpointStatus is the per-client outcome for a single endpoint.
+type ClientsCLEndpointStatus struct {
+	Status      string    `json:"status"`
+	StatusCode  int       `json:"status_code,omitempty"`
+	LastChecked time.Time `json:"last_checked"`
+	Detail      string    `json:"detail,omitempty"`
 }
 
 // ## Peer graph data
@@ -82,20 +105,21 @@ type ClientCLPageDataPeerDASWarnings struct {
 
 // ClientsCLPageDataClient represents a configured endpoint CL client
 type ClientsCLPageDataClient struct {
-	Index                int       `json:"index"`
-	Name                 string    `json:"name"`
-	Version              string    `json:"version"`
-	HeadSlot             uint64    `json:"head_slot"`
-	HeadRoot             []byte    `json:"head_root"`
-	Status               string    `json:"status"`
-	LastRefresh          time.Time `json:"refresh"`
-	LastError            string    `json:"error"`
-	PeerID               string    `json:"peer_id"`
-	NodeENR              string    `json:"node_enr"`
-	PeerCount            uint32    `json:"peer_count"`
-	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
-	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`
-	SpecWarnings         []string  `json:"spec_warnings"`
+	Index                int                                `json:"index"`
+	Name                 string                             `json:"name"`
+	Version              string                             `json:"version"`
+	HeadSlot             uint64                             `json:"head_slot"`
+	HeadRoot             []byte                             `json:"head_root"`
+	Status               string                             `json:"status"`
+	LastRefresh          time.Time                          `json:"refresh"`
+	LastError            string                             `json:"error"`
+	PeerID               string                             `json:"peer_id"`
+	NodeENR              string                             `json:"node_enr"`
+	PeerCount            uint32                             `json:"peer_count"`
+	PeersInboundCounter  uint32                             `json:"peers_inbound_counter"`
+	PeersOutboundCounter uint32                             `json:"peers_outbound_counter"`
+	SpecWarnings         []string                           `json:"spec_warnings"`
+	EndpointStatuses     map[string]ClientsCLEndpointStatus `json:"endpoint_statuses"`
 }
 
 // ClientCLPageDataNode represents a generic node on the CL network. Can be a client or a peer of a client

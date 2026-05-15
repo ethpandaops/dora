@@ -61,6 +61,10 @@ type Client struct {
 	specWarnings []string // warnings from incomplete spec checks
 	specs        map[string]interface{}
 	hasBadSpecs  bool
+
+	endpointStatusMu       sync.RWMutex
+	endpointStatuses       map[string]rpc.ProbeResult
+	lastEndpointCheckEpoch phase0.Epoch
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {

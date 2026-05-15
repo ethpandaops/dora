@@ -396,6 +396,16 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 
 		node.Peers = resPeers
 
+		endpointStatuses := map[string]models.ClientsCLEndpointStatus{}
+		for key, res := range client.GetEndpointStatuses() {
+			endpointStatuses[key] = models.ClientsCLEndpointStatus{
+				Status:      string(res.Status),
+				StatusCode:  res.StatusCode,
+				LastChecked: res.LastChecked,
+				Detail:      res.Detail,
+			}
+		}
+
 		resClient := &models.ClientsCLPageDataClient{
 			Index:                int(client.GetIndex()) + 1,
 			Name:                 client.GetName(),
@@ -410,6 +420,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
 			SpecWarnings:         client.GetSpecWarnings(),
+			EndpointStatuses:     endpointStatuses,
 		}
 
 		lastError := client.GetLastClientError()
@@ -696,6 +707,21 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	pageData.ExpectedPresetFields = presetOrder
 	pageData.ExpectedDomainTypeFields = domainTypeOrder
 	pageData.ExpectedChainSpec = expectedSpecsMap
+
+	// Populate endpoint compatibility matrix catalog and Gloas gating.
+	pageData.GloasActive = chainState.IsEip7732Enabled(chainState.CurrentEpoch())
+	pageData.EndpointCatalog = make([]models.ClientsCLEndpointInfo, 0, len(rpc.EndpointCatalog))
+	for _, ep := range rpc.EndpointCatalog {
+		pageData.EndpointCatalog = append(pageData.EndpointCatalog, models.ClientsCLEndpointInfo{
+			Key:         ep.Key,
+			Number:      ep.Number,
+			Method:      ep.Method,
+			Path:        ep.Path,
+			Description: ep.Description,
+			SpecPR:      ep.SpecPR,
+			Kind:        string(ep.Kind),
+		})
+	}
 
 	return pageData, cacheTime
 }

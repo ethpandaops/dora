@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	eth2client "github.com/ethpandaops/go-eth2-client"
@@ -36,6 +37,9 @@ type BeaconClient struct {
 	disableSSZ bool
 	clientSvc  eth2client.Service
 	logger     logrus.FieldLogger
+
+	sseFiredMu sync.RWMutex
+	sseFiredAt map[string]time.Time
 }
 
 // NewBeaconClient is used to create a new beacon client
@@ -46,6 +50,7 @@ func NewBeaconClient(name, endpoint string, headers map[string]string, sshcfg *s
 		headers:    headers,
 		disableSSZ: disableSSZ,
 		logger:     logger,
+		sseFiredAt: make(map[string]time.Time, 6),
 	}
 
 	if sshcfg != nil {

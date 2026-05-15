@@ -242,6 +242,9 @@
             <div class="btn-group btn-group-sm" role="group" aria-label="Peer info controls">
               <button type="button" id="toggleAllPeers" class="btn btn-outline-secondary" onclick='toggleAllPeers();'>Show all</button>
               <button type="button" id="toggleNodeIds" class="btn btn-outline-secondary" onclick='toggleNodeIds();'>Expand node IDs</button>
+              <button type="button" id="showEndpointCompat" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#endpointCompatModal">
+                <i class="fa-solid fa-table-cells"></i> Endpoint compatibility
+              </button>
             </div>
           </div>
           <table class="table table-nobr" id="clients">
@@ -898,6 +901,55 @@
         </div>
         {{ end }}
 
+        <!-- Endpoint Compatibility Modal -->
+        <div class="modal fade" id="endpointCompatModal" tabindex="-1" role="dialog" aria-labelledby="endpointCompatModalTitle" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="endpointCompatModalTitle">
+                  <i class="fa-solid fa-table-cells text-primary me-2"></i>Beacon API Endpoint Compatibility
+                  {{ if not .GloasActive }}
+                  <span class="badge text-bg-secondary ms-2" title="Probes only run after Gloas fork activation">pre-Gloas</span>
+                  {{ end }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body" id="endpointCompatModalBody">
+                {{ if not .GloasActive }}
+                  <div class="alert alert-secondary mb-0">
+                    Endpoint probing is gated on Gloas (EIP-7732) activation. The matrix will populate once the fork is live; until then every probed endpoint would 404.
+                  </div>
+                {{ else }}
+                  <div class="text-muted small mb-2">
+                    <span class="me-3"><i class="fa-solid fa-circle-check text-success"></i> handler exists / event firing</span>
+                    <span class="me-3"><i class="fa-solid fa-circle-exclamation text-warning"></i> accepted but no events</span>
+                    <span class="me-3"><i class="fa-solid fa-circle-xmark text-danger"></i> missing / not implemented</span>
+                    <span class="me-3"><i class="fa-solid fa-circle-question text-muted"></i> unknown / error</span>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-sm table-hover endpoint-compat-table mb-0">
+                      <thead>
+                        <tr>
+                          <th style="min-width: 60px;">#</th>
+                          <th style="min-width: 320px;">Endpoint</th>
+                          <th style="min-width: 80px;">Spec</th>
+                          {{ range .Clients }}
+                            <th class="text-center" style="min-width: 80px;">{{ .Name }}</th>
+                          {{ end }}
+                        </tr>
+                      </thead>
+                      <tbody id="endpointCompatBody"></tbody>
+                    </table>
+                  </div>
+                {{ end }}
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Spec Mismatch Modal -->
         <div class="modal fade" id="specMismatchModal" tabindex="-1" role="dialog" aria-labelledby="specMismatchModalTitle" aria-hidden="true">
           <div class="modal-dialog modal-dialog-centered config-modal-dialog" role="document">
@@ -939,6 +991,10 @@
   var peerGraph, peerGraphRendered = false;
 
   var nodes = {{ .Nodes }};
+
+  var endpointCatalog = {{ .EndpointCatalog }};
+  var clientsList = {{ .Clients }};
+  var gloasActive = {{ .GloasActive }};
 
   function renderPeerGraph() {
     var container = document.getElementById("nodemap");
@@ -1361,8 +1417,111 @@
       var modal = new bootstrap.Modal(modalElement);
       modal.show();
     }
-    
-    // Helper function to compare values with type normalization
+
+    function renderEndpointStatusCell(status) {
+      if (!status) {
+        return '<span class="text-muted" data-bs-toggle="tooltip" title="Not yet probed">' +
+               '<i class="fa-solid fa-circle-question"></i></span>';
+      }
+      var iconClass = 'fa-circle-question';
+      var colorClass = 'text-muted';
+      var label = status.status || 'unknown';
+      switch (status.status) {
+        case 'ok':
+          iconClass = 'fa-circle-check';
+          colorClass = 'text-success';
+          break;
+        case 'accepted_no_events':
+          iconClass = 'fa-circle-exclamation';
+          colorClass = 'text-warning';
+          break;
+        case 'missing':
+          iconClass = 'fa-circle-xmark';
+          colorClass = 'text-danger';
+          break;
+        case 'error':
+          iconClass = 'fa-triangle-exclamation';
+          colorClass = 'text-danger';
+          break;
+      }
+      var tip = label;
+      if (status.status_code) {
+        tip += ' (HTTP ' + status.status_code + ')';
+      }
+      if (status.detail) {
+        tip += ' - ' + status.detail.replace(/"/g, '&quot;').substring(0, 200);
+      }
+      if (status.last_checked) {
+        tip += ' | checked ' + status.last_checked;
+      }
+      return '<span class="' + colorClass + '" data-bs-toggle="tooltip" title="' + tip + '">' +
+             '<i class="fa-solid ' + iconClass + '"></i></span>';
+    }
+
+    function renderSpecLink(specPR) {
+      if (!specPR) return '';
+      var parts = String(specPR).split('/');
+      var links = [];
+      for (var i = 0; i < parts.length; i++) {
+        var num = parts[i].trim();
+        if (!num) continue;
+        links.push('<a href="https://github.com/ethereum/consensus-specs/pull/' + encodeURIComponent(num) +
+                   '" target="_blank" rel="noopener" class="text-decoration-none">#' + num + '</a>');
+      }
+      return links.join(' / ');
+    }
+
+    function renderEndpointCompatMatrix() {
+      if (!gloasActive) return;
+      var $body = $('#endpointCompatBody');
+      if (!$body.length) return;
+      if ($body.data('rendered')) return;
+
+      var sections = [
+        { label: 'GET',  method: 'GET',  kind: 'rest' },
+        { label: 'POST', method: 'POST', kind: 'rest' },
+        { label: 'SSE',  method: 'SSE',  kind: 'sse' }
+      ];
+      var colspan = 3 + clientsList.length;
+      var rows = [];
+
+      for (var s = 0; s < sections.length; s++) {
+        var section = sections[s];
+        var sectionEntries = endpointCatalog.filter(function (ep) {
+          return ep.kind === section.kind && ep.method === section.method;
+        });
+        if (sectionEntries.length === 0) continue;
+
+        rows.push('<tr class="table-light"><th colspan="' + colspan +
+                  '" class="text-uppercase small fw-bold text-secondary">' + section.label +
+                  ' <span class="badge text-bg-secondary ms-1">' + sectionEntries.length + '</span></th></tr>');
+
+        for (var i = 0; i < sectionEntries.length; i++) {
+          var ep = sectionEntries[i];
+          var row = '<tr>';
+          row += '<td class="text-muted">' + (ep.number || '') + '</td>';
+          row += '<td><div><code>' + ep.method + '</code> <span class="text-monospace">' + ep.path + '</span></div>';
+          row += '<div class="text-muted small">' + ep.description + '</div></td>';
+          row += '<td>' + renderSpecLink(ep.spec_pr) + '</td>';
+          for (var c = 0; c < clientsList.length; c++) {
+            var st = clientsList[c].endpoint_statuses ? clientsList[c].endpoint_statuses[ep.key] : null;
+            row += '<td class="text-center">' + renderEndpointStatusCell(st) + '</td>';
+          }
+          row += '</tr>';
+          rows.push(row);
+        }
+      }
+
+      $body.html(rows.join(''));
+      $body.data('rendered', true);
+
+      $body.find('[data-bs-toggle="tooltip"]').each(function () {
+        new bootstrap.Tooltip(this);
+      });
+    }
+
+    $('#endpointCompatModal').on('shown.bs.modal', renderEndpointCompatMatrix);
+
     function valuesMatch(value1, value2) {
       if (value1 === value2) {
         return true;

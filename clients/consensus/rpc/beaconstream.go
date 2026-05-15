@@ -18,12 +18,15 @@ import (
 )
 
 const (
-	StreamBlockEvent               uint16 = 0x01
-	StreamHeadEvent                uint16 = 0x02
-	StreamFinalizedEvent           uint16 = 0x04
-	StreamExecutionPayloadEvent    uint16 = 0x08
-	StreamExecutionPayloadBidEvent uint16 = 0x10
-	StreamInclusionListEvent       uint16 = 0x20
+	StreamBlockEvent                  uint16 = 0x01
+	StreamHeadEvent                   uint16 = 0x02
+	StreamFinalizedEvent              uint16 = 0x04
+	StreamExecutionPayloadEvent       uint16 = 0x08
+	StreamExecutionPayloadBidEvent    uint16 = 0x10
+	StreamInclusionListEvent          uint16 = 0x20
+	StreamPayloadAttestationEvent     uint16 = 0x40
+	StreamExecutionPayloadV2Event     uint16 = 0x80
+	StreamExecutionPayloadGossipEvent uint16 = 0x100
 )
 
 type BeaconStreamEvent struct {
@@ -125,6 +128,13 @@ func (bs *BeaconStream) ensureAncillaryStreams(events uint16) {
 
 	hezeEvents := events & StreamInclusionListEvent
 	bs.startAncillaryStream(hezeEvents)
+
+	// Probe-only topics are isolated into their own SSE subscriptions so that a
+	// client rejecting one (e.g. "Invalid topic: payload_attestation_message")
+	// does not poison the others bundled with it.
+	bs.startAncillaryStream(events & StreamPayloadAttestationEvent)
+	bs.startAncillaryStream(events & StreamExecutionPayloadV2Event)
+	bs.startAncillaryStream(events & StreamExecutionPayloadGossipEvent)
 }
 
 func (bs *BeaconStream) startAncillaryStream(events uint16) {
@@ -158,10 +168,18 @@ func (bs *BeaconStream) runAncillaryStream(events uint16) {
 			switch evt.Event() {
 			case "execution_payload_available":
 				bs.processExecutionPayloadAvailableEvent(evt)
+				bs.client.RecordSSETopicFired("execution_payload_available")
 			case "execution_payload_bid":
 				bs.processExecutionPayloadBidEvent(evt)
+				bs.client.RecordSSETopicFired("execution_payload_bid")
 			case "inclusion_list":
 				bs.processInclusionListEvent(evt)
+			case "payload_attestation_message":
+				bs.client.RecordSSETopicFired("payload_attestation_message")
+			case "execution_payload":
+				bs.client.RecordSSETopicFired("execution_payload")
+			case "execution_payload_gossip":
+				bs.client.RecordSSETopicFired("execution_payload_gossip")
 			}
 		case <-stream.Ready:
 		case <-stream.Errors:
@@ -255,6 +273,36 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 		topicsCount++
 	}
 
+	if events&StreamPayloadAttestationEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "payload_attestation_message")
+
+		topicsCount++
+	}
+
+	if events&StreamExecutionPayloadV2Event > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "execution_payload")
+
+		topicsCount++
+	}
+
+	if events&StreamExecutionPayloadGossipEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "execution_payload_gossip")
+
+		topicsCount++
+	}
+
 	if topicsCount == 0 {
 		return nil
 	}
@@ -274,6 +322,14 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 		}
 
 		if err != nil {
+			// HTTP 400 means the server permanently rejected one of the
+			// requested topics (e.g. "Invalid topic: payload_attestation_message").
+			// Retrying every 10s won't change that, so log once and give up.
+			if strings.Contains(err.Error(), "400:") || strings.Contains(err.Error(), "invalid topic") {
+				bs.logger.Infof("beacon event topic(s) %q not supported by client, abandoning subscription: %v", topics.String(), err)
+				return nil
+			}
+
 			bs.logger.Warnf("Error while subscribing beacon event stream %v: %v", getRedactedURL(streamURL), err)
 			select {
 			case <-bs.ctx.Done():

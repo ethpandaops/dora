@@ -129,6 +129,10 @@ func (client *Client) buildEventStreamMask() uint16 {
 
 	if chainState.IsEip7732Enabled(currentEpoch) {
 		events |= rpc.StreamExecutionPayloadEvent | rpc.StreamExecutionPayloadBidEvent
+		// Subscribe to the additional Gloas SSE topics tracked by the endpoint
+		// compatibility check. These are passive: events are only used to
+		// record last-fired timestamps.
+		events |= rpc.StreamPayloadAttestationEvent | rpc.StreamExecutionPayloadV2Event | rpc.StreamExecutionPayloadGossipEvent
 	}
 
 	if chainState.IsEip7805Enabled(currentEpoch) {
@@ -266,6 +270,14 @@ func (client *Client) runClientLogic() error {
 					client.logger.WithFields(logrus.Fields{"epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated consensus node peers")
 				}
 			}()
+		}
+
+		// Run beacon-API endpoint compatibility probes once per epoch, but only
+		// after the Gloas fork is active - pre-Gloas every probed endpoint would
+		// 404 and the UI would be all-red noise.
+		if client.pool.chainState.IsEip7732Enabled(currentEpoch) && currentEpoch-client.lastEndpointCheckEpoch >= 1 {
+			client.lastEndpointCheckEpoch = currentEpoch
+			go client.runEndpointProbes(client.clientCtx)
 		}
 	}
 }
