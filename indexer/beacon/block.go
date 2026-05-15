@@ -419,6 +419,18 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 		return
 	}
 
+	// Fall back to any execution payload already attached to the block.
+	// In EIP-7732 the body and the payload arrive on separate gossip topics,
+	// so the payload event can fire before the block body is known. When the
+	// body subsequently lands via SetBlock/EnsureBlock the caller passes
+	// payload=nil; without this fallback ExecutionHash would stay zero even
+	// though block.executionPayload has been populated, causing payload-status
+	// comparisons (finalization, list views) to misclassify the payload as
+	// orphaned.
+	if payload == nil && block.executionPayload != nil {
+		payload = block.executionPayload
+	}
+
 	blockIndex := block.blockIndex
 	if blockIndex == nil {
 		blockIndex = &BlockBodyIndex{}

@@ -432,14 +432,11 @@ func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Bloc
 		return dbtypes.PayloadStatusCanonical
 	}
 
-	// Get child blocks and check if any canonical child builds on this payload
+	// Check if any canonical child builds on this block's execution payload.
+	// A payload is only orphaned when a canonical child exists but skips this
+	// payload; if no canonical child is observed yet, treat as canonical.
 	childBlocks := bs.beaconIndexer.GetBlockByParentRoot(block.Root)
-
-	if len(childBlocks) == 0 {
-		// no children, so it's canonical for now
-		return dbtypes.PayloadStatusCanonical
-	}
-
+	hasCanonicalChild := false
 	for _, child := range childBlocks {
 		childIndex := child.GetBlockIndex(ctx)
 		if childIndex == nil {
@@ -450,13 +447,17 @@ func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Bloc
 		if !bs.beaconIndexer.IsCanonicalBlockByHead(child, canonicalHead) {
 			continue
 		}
+		hasCanonicalChild = true
 		// Check if child builds on this block's execution payload
 		if bytes.Equal(childIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
 			return dbtypes.PayloadStatusCanonical
 		}
 	}
 
-	return dbtypes.PayloadStatusOrphaned
+	if hasCanonicalChild {
+		return dbtypes.PayloadStatusOrphaned
+	}
+	return dbtypes.PayloadStatusCanonical
 }
 
 // GetDbBlocksForSlots retrieves blocks for a range of slots from cache & database.
