@@ -79,6 +79,15 @@ func NewTieredCache(cacheSize int, redisAddress string, redisPrefix string, logg
 	}, nil
 }
 
+// pageKeyPrefix extracts the page type from a cache key by returning
+// the portion before the first ':' separator (e.g. "slots" from "slots:123:456").
+func pageKeyPrefix(key string) string {
+	if before, _, ok := strings.Cut(key, ":"); ok {
+		return before
+	}
+	return key
+}
+
 func (cache *TieredCache) isSszCompatible(value interface{}, key string) bool {
 	if utils.Config.KillSwitch.DisableSSZPageCache {
 		return false
@@ -96,13 +105,17 @@ func (cache *TieredCache) isSszCompatible(value interface{}, key string) bool {
 	cache.sszCompatMutex.Lock()
 	defer cache.sszCompatMutex.Unlock()
 
+	// Re-check after acquiring write lock to avoid redundant validation.
+	if compat, ok = cache.sszCompatMap[valType]; ok {
+		return compat
+	}
+
 	err := modelDynSsz.ValidateType(valType)
 	compat = err == nil
 	cache.sszCompatMap[valType] = compat
 
 	if err != nil {
-		keySplit := strings.Split(key, ":")
-		cache.logger.WithError(err).Warnf("page model not ssz compatible: %v (%v)", keySplit[0], valType.Name())
+		cache.logger.WithError(err).Warnf("page model not ssz compatible: %v (%v)", pageKeyPrefix(key), valType.Name())
 	}
 
 	return compat
@@ -166,8 +179,7 @@ func (cache *TieredCache) Set(key string, value interface{}, expiration time.Dur
 		cache.sszCompatMutex.Lock()
 		cache.sszCompatMap[cacheType] = false
 		cache.sszCompatMutex.Unlock()
-		keySplit := strings.Split(key, ":")
-		cache.logger.WithError(err).Warnf("page model not ssz compatible: %v (%v): %v", keySplit[0], cacheType.Name(), err)
+		cache.logger.WithError(err).Warnf("page model not ssz compatible: %v (%v)", pageKeyPrefix(key), cacheType.Name())
 		return err
 	}
 

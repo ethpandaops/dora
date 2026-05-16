@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -395,7 +396,7 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 		mevBlockRelays := ""
 
 		if dbBlock.Block.EthBlockHash != nil {
-			if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbBlock.Block.EthBlockHash)]; exists {
+			if mevBlock, exists := mevBlocksMap[hex.EncodeToString(dbBlock.Block.EthBlockHash)]; exists {
 				isMevBlock = true
 
 				var relays []string

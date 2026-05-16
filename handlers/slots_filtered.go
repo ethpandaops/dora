@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"net/http"
@@ -544,7 +545,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 			slotData.PayloadStatus = uint8(payloadStatus)
 
 			if pageData.DisplayMevBlock && dbBlock.Block.EthBlockHash != nil {
-				if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbBlock.Block.EthBlockHash)]; exists {
+				if mevBlock, exists := mevBlocksMap[hex.EncodeToString(dbBlock.Block.EthBlockHash)]; exists {
 					slotData.IsMevBlock = true
 
 					var relays []string

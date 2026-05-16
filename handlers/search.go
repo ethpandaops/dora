@@ -105,8 +105,7 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 		}
 	}
 
-	hashQuery := strings.Replace(searchQuery, "0x", "", -1)
-	hashQuery = strings.Replace(hashQuery, "0X", "", -1)
+	hashQuery := strings.TrimPrefix(strings.TrimPrefix(searchQuery, "0x"), "0X")
 	if len(hashQuery) == 96 {
 		validatorPubkey, err := hex.DecodeString(hashQuery)
 		if err == nil && len(validatorPubkey) == 48 {
@@ -199,8 +198,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 	searchType := vars["type"]
 	urlArgs := r.URL.Query()
 	search := strings.Trim(urlArgs.Get("q"), " \t")
-	search = strings.Replace(search, "0x", "", -1)
-	search = strings.Replace(search, "0X", "", -1)
+	search = strings.TrimPrefix(strings.TrimPrefix(search, "0x"), "0X")
 
 	// 404 before cache so we don't cache disabled/unknown types
 	allowedTypes := map[string]bool{
