@@ -104,11 +104,11 @@
               <div class="row">
                 <div class="col-6">
                   <div class="text-muted small">Balance</div>
-                  <div class="h5 mb-3">{{ formatEthAddCommasFromGwei .TotalBalance }} {{ tokenSymbol }}</div>
+                  <div class="h5 mb-3">{{ formatEthAddCommasFromGwei .TotalBalance }} ETH</div>
                 </div>
                 <div class="col-6">
                   <div class="text-muted small">Effective balance</div>
-                  <div class="h5 mb-3">{{ formatEthAddCommasFromGwei .TotalEffectiveBalance }} {{ tokenSymbol }}</div>
+                  <div class="h5 mb-3">{{ formatEthAddCommasFromGwei .TotalEffectiveBalance }} ETH</div>
                 </div>
               </div>
             </div>
@@ -189,7 +189,7 @@
                     <tr>
                       <td><a href="/validator/{{ $validator.Index }}">{{ formatValidatorNameWithIndex $validator.Index $validator.Name }}</a></td>
                       <td class="text-monospace"><a href="/validator/0x{{ printf "%x" $validator.PublicKey }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $validator.PublicKey }}</a></td>
-                      <td>{{ formatEthFromGwei $validator.Balance }} ({{ formatEthAddCommasFromGwei $validator.EffectiveBalance }} {{ tokenSymbol }})</td>
+                      <td>{{ formatEthFromGwei $validator.Balance }} ({{ formatEthAddCommasFromGwei $validator.EffectiveBalance }} ETH)</td>
                       <td>{{ $validator.State }}</td>
                       <td style="min-width: 150px;">
                         {{ if $validator.ShowLiveness }}

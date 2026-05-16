@@ -3229,6 +3229,10 @@ paths:
         in: query
         name: status
         type: string
+      - description: Filter by withdrawal address or withdrawal credentials
+        in: query
+        name: withdrawal
+        type: string
       - description: 'Sort order: index, index-d, pubkey, pubkey-d, balance, balance-d,
           activation, activation-d, exit, exit-d'
         in: query
@@ -3273,11 +3277,12 @@ paths:
         name: page
         type: integer
       - description: 'Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator
-          names (default: 3 if names available, else 1)'
+          names, 4=by withdrawal address (default: 3 if names available, else 1)'
         in: query
         name: group
         type: integer
-      - description: Search term for group names (supports regex)
+      - description: Search term for group names, withdrawal addresses, or withdrawal
+          credentials (supports regex for non-exact address searches)
         in: query
         name: search
         type: string

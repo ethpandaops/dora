@@ -2081,6 +2081,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Filter by withdrawal address or withdrawal credentials",
+                        "name": "withdrawal",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Sort order: index, index-d, pubkey, pubkey-d, balance, balance-d, activation, activation-d, exit, exit-d",
                         "name": "order",
                         "in": "query"
@@ -2143,13 +2149,13 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator names (default: 3 if names available, else 1)",
+                        "description": "Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator names, 4=by withdrawal address (default: 3 if names available, else 1)",
                         "name": "group",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Search term for group names (supports regex)",
+                        "description": "Search term for group names, withdrawal addresses, or withdrawal credentials (supports regex for non-exact address searches)",
                         "name": "search",
                         "in": "query"
                     },
