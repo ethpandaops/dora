@@ -888,6 +888,63 @@ func FormatGraffiti(graffiti []byte) template.HTML {
 	return template.HTML(fmt.Sprintf("<span class=\"graffiti-label\" data-graffiti=\"%#x\">%s</span>", graffiti, html.EscapeString(string(graffiti))))
 }
 
+// FormatSlotStatusTooltip returns "Block: <X>, Payload: <Y>" for the
+// status pill on slot list views. Accepts the raw enum codes used in
+// dbtypes.SlotStatus / dbtypes.PayloadStatus; widened to any so the
+// same template helper can be called from models that store status as
+// uint8 (filtered views) or uint64 (index page).
+func FormatSlotStatusTooltip(blockStatus, payloadStatus any) string {
+	asInt := func(v any) int64 {
+		switch x := v.(type) {
+		case uint8:
+			return int64(x)
+		case uint16:
+			return int64(x)
+		case uint32:
+			return int64(x)
+		case uint64:
+			return int64(x)
+		case int8:
+			return int64(x)
+		case int16:
+			return int64(x)
+		case int32:
+			return int64(x)
+		case int64:
+			return x
+		case int:
+			return int64(x)
+		}
+		return -1
+	}
+
+	var bs string
+	switch asInt(blockStatus) {
+	case 0:
+		bs = "Missed"
+	case 1:
+		bs = "Canonical"
+	case 2:
+		bs = "Orphaned"
+	default:
+		bs = "Unknown"
+	}
+
+	var ps string
+	switch asInt(payloadStatus) {
+	case 0:
+		ps = "Missing"
+	case 1:
+		ps = "Revealed"
+	case 2:
+		ps = "Orphaned"
+	default:
+		ps = "Unknown"
+	}
+
+	return "Block: " + bs + "<br>Payload: " + ps
+}
+
 func formatWithdrawalHash(hash []byte) template.HTML {
 	var colorClass string
 	if hash[0] == 0x01 {

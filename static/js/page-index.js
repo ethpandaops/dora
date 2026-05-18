@@ -89,6 +89,11 @@
     formatFloat: function(x) { return formatFloat(x, 2); },
     formatValidator: function(idx, name) { return formatValidator(idx, name); },
     hexstr: function(x) { return "0x" + base64ToHex(x); },
+    slotStatusTooltip: function(status, payloadStatus) {
+      var bs = ["Missed", "Canonical", "Orphaned"][status] || "Unknown";
+      var ps = ["Missing", "Revealed", "Orphaned"][payloadStatus] || "Unknown";
+      return "Block: " + bs + "<br>Payload: " + ps;
+    },
   };
 
   function scheduleLoop() {

@@ -20,6 +20,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var zeroExecHash phase0.Hash32
+
 type CombinedBlockResponse struct {
 	Root            phase0.Root
 	Header          *phase0.SignedBeaconBlockHeader
@@ -416,25 +418,20 @@ func (bs *ChainService) GetBlobSidecarsByBlockRoot(ctx context.Context, blockroo
 	return client.GetClient().GetRPCClient().GetBlobSidecarsByBlockroot(ctx, blockroot)
 }
 
-// getPayloadStatus computes the payload status for a given block.
+// getPayloadStatus returns the payload status for a Gloas+ block, comparing
+// the committed BlockHash (from the bid) against the next canonical child's
+// bid.parent_block_hash. canonicalHead is the head as seen by the caller.
 func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Block, canonicalHead *beacon.Block) dbtypes.PayloadStatus {
 	chainState := bs.consensusPool.GetChainState()
 	if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 		return dbtypes.PayloadStatusCanonical
 	}
 
-	if !block.HasExecutionPayload() {
+	blockIndex := block.GetBlockIndex(ctx)
+	if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroExecHash[:]) {
 		return dbtypes.PayloadStatusMissing
 	}
 
-	blockIndex := block.GetBlockIndex(ctx)
-	if blockIndex == nil {
-		return dbtypes.PayloadStatusCanonical
-	}
-
-	// Check if any canonical child builds on this block's execution payload.
-	// A payload is only orphaned when a canonical child exists but skips this
-	// payload; if no canonical child is observed yet, treat as canonical.
 	childBlocks := bs.beaconIndexer.GetBlockByParentRoot(block.Root)
 	hasCanonicalChild := false
 	for _, child := range childBlocks {
@@ -442,13 +439,10 @@ func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Bloc
 		if childIndex == nil {
 			continue
 		}
-		// Check if child is in the canonical chain (use original head since
-		// children are at higher slots than the updated lastCanonicalBlock)
 		if !bs.beaconIndexer.IsCanonicalBlockByHead(child, canonicalHead) {
 			continue
 		}
 		hasCanonicalChild = true
-		// Check if child builds on this block's execution payload
 		if bytes.Equal(childIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
 			return dbtypes.PayloadStatusCanonical
 		}
