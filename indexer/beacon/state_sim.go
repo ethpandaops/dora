@@ -21,12 +21,13 @@ type stateSimulator struct {
 	validatorSet     []*phase0.Validator
 }
 
-// trackedBuilderWithdrawal pairs a builder pending withdrawal with the optional
-// BlockUID of the block whose payload delivery created it. Entries loaded from
-// the epoch boundary state have RefBlockUID == nil; entries added during replay
-// carry the source block's UID.
+// trackedBuilderWithdrawal pairs a builder pending withdrawal with classification
+// metadata. Type identifies whether the entry is a direct or delayed payment, and
+// RefBlockUID points to the source block (set during replay for direct entries; resolved
+// separately for delayed entries by matching builder indices to missed-payload blocks).
 type trackedBuilderWithdrawal struct {
 	gloas.BuilderPendingWithdrawal
+	Type        uint8 // dbtypes.WithdrawalTypeBuilderPayment or WithdrawalTypeBuilderDelayedPayment
 	RefBlockUID *uint64
 }
 
@@ -35,7 +36,6 @@ type stateSimulatorState struct {
 	block                     *Block
 	pendingWithdrawals        []electra.PendingPartialWithdrawal
 	builderPendingWithdrawals []trackedBuilderWithdrawal
-	builderDelayedCount       uint32 // how many entries in builderPendingWithdrawals are delayed/quorum payments
 	additionalWithdrawals     []phase0.ValidatorIndex
 	pendingConsolidationCount uint64
 	validatorMap              map[phase0.ValidatorIndex]*phase0.Validator
@@ -113,9 +113,21 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 	if rawBuilderWithdrawals == nil {
 		rawBuilderWithdrawals = []gloas.BuilderPendingWithdrawal{}
 	}
+	// Epoch boundary layout: [direct from prev epoch's unconsumed payloads..., delayed from
+	// process_builder_pending_payments at the tail]. The split point is given by
+	// DelayedBuilderPaymentCount.
+	delayedCount := int(sim.epochStatsValues.DelayedBuilderPaymentCount)
+	directCount := len(rawBuilderWithdrawals) - delayedCount
 	trackedWithdrawals := make([]trackedBuilderWithdrawal, len(rawBuilderWithdrawals))
 	for i := range rawBuilderWithdrawals {
-		trackedWithdrawals[i] = trackedBuilderWithdrawal{BuilderPendingWithdrawal: rawBuilderWithdrawals[i]}
+		typ := uint8(dbtypes.WithdrawalTypeBuilderPayment)
+		if i >= directCount {
+			typ = dbtypes.WithdrawalTypeBuilderDelayedPayment
+		}
+		trackedWithdrawals[i] = trackedBuilderWithdrawal{
+			BuilderPendingWithdrawal: rawBuilderWithdrawals[i],
+			Type:                     typ,
+		}
 	}
 
 	state := &stateSimulatorState{
@@ -123,7 +135,6 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 		epochRoot:                 epochRoot,
 		pendingWithdrawals:        pendingWithdrawals,
 		builderPendingWithdrawals: trackedWithdrawals,
-		builderDelayedCount:       sim.epochStatsValues.DelayedBuilderPaymentCount, // delayed payments from epoch transition are at the tail
 		pendingConsolidationCount: 0,
 		additionalWithdrawals:     []phase0.ValidatorIndex{},
 		validatorMap:              map[phase0.ValidatorIndex]*phase0.Validator{},
@@ -152,12 +163,62 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 
 	// Resolve RefBlockUIDs for initial direct entries by matching them to
 	// blocks with delivered payloads in the previous epoch (FIFO order).
-	directCount := len(trackedWithdrawals) - int(state.builderDelayedCount)
 	if directCount > 0 {
 		sim.resolveInitialDirectRefs(state, directCount)
 	}
 
 	return state
+}
+
+// resolveParentDirectEntry constructs a trackedBuilderWithdrawal for the parent of `block`
+// if the parent had a delivered (canonical, non-orphaned) payload — i.e., the conditions
+// under which the spec's process_parent_execution_payload would settle the parent's payment
+// into BuilderPendingWithdrawals. Returns nil if the parent is unknown, has no payload, was
+// orphaned, or wasn't built by a registered builder.
+func (sim *stateSimulator) resolveParentDirectEntry(block *Block) *trackedBuilderWithdrawal {
+	parentRoot := block.GetParentRoot()
+	if parentRoot == nil {
+		return nil
+	}
+
+	// Cache lookup
+	if parentBlock := sim.indexer.GetBlockByRoot(*parentRoot); parentBlock != nil {
+		if !parentBlock.HasExecutionPayload() || parentBlock.isPayloadOrphaned {
+			return nil
+		}
+		blockIndex := parentBlock.GetBlockIndex(sim.indexer.ctx)
+		if blockIndex == nil || blockIndex.BuilderIndex == math.MaxUint64 {
+			return nil
+		}
+		uid := parentBlock.BlockUID
+		return &trackedBuilderWithdrawal{
+			BuilderPendingWithdrawal: gloas.BuilderPendingWithdrawal{
+				BuilderIndex: gloas.BuilderIndex(blockIndex.BuilderIndex),
+			},
+			Type:        dbtypes.WithdrawalTypeBuilderPayment,
+			RefBlockUID: &uid,
+		}
+	}
+
+	// Fall back to DB for pruned parents (e.g., during historical replay)
+	parentSlot := db.GetSlotByRoot(sim.indexer.ctx, parentRoot[:])
+	if parentSlot == nil {
+		return nil
+	}
+	if parentSlot.BuilderIndex < 0 {
+		return nil
+	}
+	if parentSlot.PayloadStatus != dbtypes.PayloadStatusCanonical {
+		return nil
+	}
+	uid := parentSlot.BlockUid
+	return &trackedBuilderWithdrawal{
+		BuilderPendingWithdrawal: gloas.BuilderPendingWithdrawal{
+			BuilderIndex: gloas.BuilderIndex(parentSlot.BuilderIndex),
+		},
+		Type:        dbtypes.WithdrawalTypeBuilderPayment,
+		RefBlockUID: &uid,
+	}
 }
 
 // resolveInitialDirectRefs populates RefBlockUID for the first directCount entries
@@ -193,12 +254,11 @@ func (sim *stateSimulator) resolveInitialDirectRefs(state *stateSimulatorState, 
 			}
 		}
 	} else {
-		// Previous epoch is finalized/pruned — query DB
+		// Previous epoch is finalized/pruned — query DB. GetSlotsRange returns slots in
+		// descending order, so iterate it in reverse to walk slots ascending (queue order).
 		dbSlots := db.GetSlotsRange(sim.indexer.ctx, uint64(prevEnd-1), uint64(prevStart), false, false)
-		for _, assignedSlot := range dbSlots {
-			if resolved >= directCount {
-				break
-			}
+		for i := len(dbSlots) - 1; i >= 0 && resolved < directCount; i-- {
+			assignedSlot := dbSlots[i]
 			if assignedSlot.Block == nil {
 				continue
 			}
@@ -432,26 +492,15 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 	// process builder pending withdrawals (come first in the spec)
 	chainState := sim.indexer.consensusPool.GetChainState()
 	chainSpec := chainState.GetSpecs()
-	processedBuilderWithdrawals := uint32(len(sim.prevState.builderPendingWithdrawals))
-	if processedBuilderWithdrawals > 0 {
-		// Delayed entries are at the tail. When consuming N entries from the front,
-		// the delayed count decreases by however many delayed entries were in that batch.
-		// directCount = total - delayed; consumed from front = min(total, processed).
-		// If we consume all: delayed consumed = delayed count.
-		// If we consume partial: delayed consumed = max(0, processed - (total - delayed)).
-		directCount := uint32(0)
-		if processedBuilderWithdrawals > sim.prevState.builderDelayedCount {
-			directCount = processedBuilderWithdrawals - sim.prevState.builderDelayedCount
-		}
-		delayedConsumed := processedBuilderWithdrawals - directCount
-		if delayedConsumed > sim.prevState.builderDelayedCount {
-			delayedConsumed = sim.prevState.builderDelayedCount
-		}
-		sim.prevState.builderDelayedCount -= delayedConsumed
-		sim.prevState.builderPendingWithdrawals = sim.prevState.builderPendingWithdrawals[processedBuilderWithdrawals:]
+	// process_withdrawals drains the queue (up to MAX_WITHDRAWALS_PER_PAYLOAD-1 per spec).
+	// In normal operation the queue never exceeds the limit, so we drain unconditionally.
+	if len(sim.prevState.builderPendingWithdrawals) > 0 {
+		sim.prevState.builderPendingWithdrawals = sim.prevState.builderPendingWithdrawals[:0]
 	}
 
-	// After processing withdrawals, check if this block has a full payload (direct payment added to queue)
+	// Stage this block's direct payment for the NEXT block's drain. In spec terms this
+	// settle happens at B+1's process_parent_execution_payload; we account for it here so
+	// the queue state observed by the next applyBlock matches the spec.
 	if block.HasExecutionPayload() && !block.isPayloadOrphaned {
 		blockIndex := block.GetBlockIndex(sim.indexer.ctx)
 		if blockIndex != nil && blockIndex.BuilderIndex != math.MaxUint64 {
@@ -460,9 +509,9 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 				BuilderPendingWithdrawal: gloas.BuilderPendingWithdrawal{
 					BuilderIndex: gloas.BuilderIndex(blockIndex.BuilderIndex),
 				},
+				Type:        dbtypes.WithdrawalTypeBuilderPayment,
 				RefBlockUID: &uid,
 			})
-			// builderDelayedCount stays the same — the new entry is direct, not delayed
 		}
 	}
 
@@ -665,6 +714,18 @@ func (sim *stateSimulator) replayWithdrawalState(block *Block) *withdrawalSimRes
 		sim.applyBlock(parentBlock)
 	}
 
+	// If the immediate parent is in a previous epoch (no parent blocks were replayed),
+	// applyBlock never had a chance to stage the parent's direct payment. Mirror the spec's
+	// process_parent_execution_payload here so the queue matches what the current block
+	// would observe at process_withdrawals time. Without this, the parent's builder payment
+	// is missing from BuilderPaymentCount and the extra builder withdrawal in the block's
+	// payload would fall through to the builder-sweep classification.
+	if len(parentBlocks) == 0 {
+		if entry := sim.resolveParentDirectEntry(block); entry != nil {
+			sim.prevState.builderPendingWithdrawals = append(sim.prevState.builderPendingWithdrawals, *entry)
+		}
+	}
+
 	// Builder payment classification
 	builderCount := len(sim.prevState.builderPendingWithdrawals)
 	result.BuilderPaymentCount = builderCount
@@ -694,71 +755,61 @@ func (sim *stateSimulator) replayWithdrawalState(block *Block) *withdrawalSimRes
 	return result
 }
 
-// classifyBuilderPayments determines the type and reference slot for each builder payment
-// in the pending queue. The epoch pre-state queue layout is:
+// classifyBuilderPayments produces classifications for each entry in the pending queue.
+// The queue layout at the time of the current block's process_withdrawals is, in spec order:
 //
-//	[direct_from_prev_payloads..., delayed_0, ..., delayed_N]
+//	[unconsumed_direct_from_prev_epoch..., delayed_from_epoch_transition..., parent_direct]
 //
-// Direct entries (from delivered payloads) are at the front — the payload transition
-// (process_execution_payload) runs before the epoch transition. Delayed entries
-// (from process_builder_pending_payments during the epoch transition) are at the tail.
-// The number of delayed entries is known from DelayedBuilderPaymentCount.
-//
-// During block replay, each block consumes all entries from the front and may append
-// a new direct entry at the back if it has a delivered payload.
+// Direct entries (from settle_builder_payment) carry RefBlockUID. Delayed entries are
+// resolved separately by matching builder indices to blocks with missed/orphaned payloads
+// in the source epoch (current epoch - 2).
 func (sim *stateSimulator) classifyBuilderPayments(block *Block, builderCount int) []builderPaymentClassification {
-	delayedCount := sim.prevState.builderDelayedCount
-
 	payments := make([]builderPaymentClassification, builderCount)
 
-	// Delayed entries are at the tail: positions [builderCount - delayedCount, builderCount)
-	delayedStart := builderCount - int(delayedCount)
+	delayedRefs := sim.resolveDelayedPaymentRefSlots(block)
+	delayedIdx := 0
 
-	// Resolve delayed entries by matching against blocks with missed/orphaned payloads
-	// from the source epoch (2 epochs back). The delayed entries are generated in slot
-	// order by process_builder_pending_payments, so we collect all candidate blocks
-	// and assign them to delayed entries in order.
-	delayedRefs := sim.resolveDelayedPaymentRefSlots(builderCount, block)
-
-	for i := range payments {
-		if i >= delayedStart && delayedStart >= 0 {
-			// Delayed entry (tail of queue, from epoch transition)
-			payments[i].Type = dbtypes.WithdrawalTypeBuilderDelayedPayment
-			delayedOff := i - delayedStart
-			if delayedOff < len(delayedRefs) {
-				payments[i].RefSlot = delayedRefs[delayedOff]
+	for i := 0; i < builderCount && i < len(sim.prevState.builderPendingWithdrawals); i++ {
+		entry := sim.prevState.builderPendingWithdrawals[i]
+		payments[i].Type = entry.Type
+		if entry.Type == dbtypes.WithdrawalTypeBuilderDelayedPayment {
+			if delayedIdx < len(delayedRefs) {
+				payments[i].RefSlot = delayedRefs[delayedIdx]
 			}
+			delayedIdx++
 		} else {
-			// Direct entry (from a delivered payload)
-			payments[i].Type = dbtypes.WithdrawalTypeBuilderPayment
-			// Use the tracked source block UID if available (set during replay).
-			if i < len(sim.prevState.builderPendingWithdrawals) {
-				payments[i].RefSlot = sim.prevState.builderPendingWithdrawals[i].RefBlockUID
-			}
+			payments[i].RefSlot = entry.RefBlockUID
 		}
 	}
 
 	return payments
 }
 
-// resolveDelayedPaymentRefSlots resolves reference block UIDs for all delayed entries
-// in the builder pending withdrawals queue. Delayed payments originate from
-// process_builder_pending_payments during the epoch transition, which processes
-// BuilderPendingPayments entries from 2 epochs ago in slot order. Each delayed
-// entry corresponds to a block where the builder's payload was missed/orphaned.
+// resolveDelayedPaymentRefSlots resolves reference block UIDs for delayed entries in the
+// pending queue, returned in queue order. Delayed payments originate from
+// process_builder_pending_payments during the epoch transition, which appends payments from
+// 2 epochs back in slot order. Each delayed entry corresponds to a block where the builder's
+// payload was missed/orphaned (their payment didn't settle in the previous epoch).
 //
-// We scan the source epoch's blocks in slot order, collecting those with missed
-// payloads, and assign them to delayed entries in FIFO order.
-func (sim *stateSimulator) resolveDelayedPaymentRefSlots(builderCount int, block *Block) []*uint64 {
-	delayedCount := int(sim.prevState.builderDelayedCount)
-	if delayedCount == 0 {
+// We scan the source epoch's blocks in slot order, collecting those with missed payloads,
+// then match them to the delayed queue entries (also in slot-ascending order) by builder
+// index in FIFO fashion.
+func (sim *stateSimulator) resolveDelayedPaymentRefSlots(block *Block) []*uint64 {
+	// Collect delayed entries in queue order
+	delayedEntries := make([]gloas.BuilderIndex, 0)
+	for _, entry := range sim.prevState.builderPendingWithdrawals {
+		if entry.Type == dbtypes.WithdrawalTypeBuilderDelayedPayment {
+			delayedEntries = append(delayedEntries, entry.BuilderIndex)
+		}
+	}
+	if len(delayedEntries) == 0 {
 		return nil
 	}
 
 	chainState := sim.indexer.consensusPool.GetChainState()
 	blockEpoch := chainState.EpochOfSlot(block.Slot)
 	if blockEpoch < 2 {
-		return make([]*uint64, delayedCount)
+		return make([]*uint64, len(delayedEntries))
 	}
 
 	// Delayed payments from epoch K-2 are evaluated at epoch K boundary
@@ -791,8 +842,11 @@ func (sim *stateSimulator) resolveDelayedPaymentRefSlots(builderCount int, block
 			}
 		}
 	} else {
+		// GetSlotsRange returns slots in descending order; iterate in reverse to walk
+		// slots ascending so delayed entries match missed blocks in matching slot order.
 		dbSlots := db.GetSlotsRange(sim.indexer.ctx, uint64(sourceEpochEndSlot-1), uint64(sourceEpochFirstSlot), false, false)
-		for _, assignedSlot := range dbSlots {
+		for i := len(dbSlots) - 1; i >= 0; i-- {
+			assignedSlot := dbSlots[i]
 			if assignedSlot.Block == nil {
 				continue
 			}
@@ -808,19 +862,12 @@ func (sim *stateSimulator) resolveDelayedPaymentRefSlots(builderCount int, block
 		}
 	}
 
-	// Match delayed entries to missed blocks in order. Each delayed entry's builder
-	// index must match the missed block's builder index. Multiple delayed entries for
-	// the same builder consume successive missed blocks for that builder.
-	delayedStart := builderCount - delayedCount
-	refs := make([]*uint64, delayedCount)
+	// Match delayed entries to missed blocks in order. Each delayed entry's builder index
+	// must match the missed block's builder index. Multiple delayed entries for the same
+	// builder consume successive missed blocks for that builder.
+	refs := make([]*uint64, len(delayedEntries))
 	consumed := make([]bool, len(missedBlocks))
-
-	for i := range delayedCount {
-		queueIdx := delayedStart + i
-		if queueIdx < 0 || queueIdx >= len(sim.prevState.builderPendingWithdrawals) {
-			continue
-		}
-		wantBuilder := sim.prevState.builderPendingWithdrawals[queueIdx].BuilderIndex
+	for i, wantBuilder := range delayedEntries {
 		for j, mb := range missedBlocks {
 			if consumed[j] {
 				continue
