@@ -699,7 +699,7 @@ func calculateTxHashRowspans(transfers []*models.AddressPageDataTokenTransfer) {
 }
 
 func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	// Get internal transactions for this account
+	// Get per-tx aggregate rows where this account was involved
 	dbEntries, totalCount, _ := db.GetElTransactionsInternalByAccount(ctx, account.ID, offset, limit)
 
 	pageData.InternalTxCount = totalCount
@@ -709,15 +709,12 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 	pageData.InternalTxFirstItem = (pageIdx-1)*uint64(limit) + 1
 	pageData.InternalTxLastItem = min(pageIdx*uint64(limit), totalCount)
 
-	// Collect account IDs, block UIDs, and tx UIDs for batch lookup
-	accountIDs := make(map[uint64]bool, len(dbEntries)*2)
+	// Collect block UIDs and tx UIDs for batch lookup (account_id is implicit = page address)
 	blockUidSet := make(map[uint64]bool, len(dbEntries))
 	blockUids := make([]uint64, 0, len(dbEntries))
 	txUidSet := make(map[uint64]bool, len(dbEntries))
 	txUids := make([]uint64, 0, len(dbEntries))
 	for _, e := range dbEntries {
-		accountIDs[e.FromID] = true
-		accountIDs[e.ToID] = true
 		blockUid := e.TxUid >> 16
 		if !blockUidSet[blockUid] {
 			blockUidSet[blockUid] = true
@@ -726,20 +723,6 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 		if !txUidSet[e.TxUid] {
 			txUidSet[e.TxUid] = true
 			txUids = append(txUids, e.TxUid)
-		}
-	}
-
-	// Batch lookup accounts
-	accountIDList := make([]uint64, 0, len(accountIDs))
-	for id := range accountIDs {
-		accountIDList = append(accountIDList, id)
-	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
-	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
-			for _, a := range accounts {
-				accountMap[a.ID] = a
-			}
 		}
 	}
 
@@ -768,16 +751,6 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 		}
 	}
 
-	// Call type names
-	callTypeNames := map[uint8]string{
-		0: "CALL",
-		1: "STATICCALL",
-		2: "DELEGATECALL",
-		3: "CREATE",
-		4: "CREATE2",
-		5: "SELFDESTRUCT",
-	}
-
 	// Build internal transaction list
 	pageData.InternalTxs = make([]*models.AddressPageDataInternalTransaction, 0, len(dbEntries))
 	for _, e := range dbEntries {
@@ -786,25 +759,17 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 		blockTime := chainState.SlotToTime(phase0.Slot(slot))
 
 		itx := &models.AddressPageDataInternalTransaction{
-			TxHash:     txHashMap[e.TxUid],
-			BlockUid:   blockUid,
-			BlockTime:  blockTime,
-			CallIndex:  e.TxCallIdx,
-			CallType:   e.CallType,
-			FromID:     e.FromID,
-			ToID:       e.ToID,
-			IsOutgoing: e.FromID == account.ID,
-			Amount:     e.Value,
-			AmountRaw:  e.ValueRaw,
+			TxHash:    txHashMap[e.TxUid],
+			BlockUid:  blockUid,
+			BlockTime: blockTime,
+			InCount:   e.InCount,
+			OutCount:  e.OutCount,
+			CallTypes: expandCallTypeMask(e.CallTypeMask),
+			ValueIn:   e.ValueIn,
+			ValueOut:  e.ValueOut,
+			GasUsed:   e.GasUsed,
 		}
 
-		if name, ok := callTypeNames[e.CallType]; ok {
-			itx.TypeName = name
-		} else {
-			itx.TypeName = fmt.Sprintf("TYPE_%d", e.CallType)
-		}
-
-		// Set block info
 		if blockInfo, ok := blockMap[blockUid]; ok && blockInfo.Block != nil {
 			itx.BlockRoot = blockInfo.Block.Root
 			itx.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
@@ -813,47 +778,40 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 			}
 		}
 
-		// Set addresses
-		if from, ok := accountMap[e.FromID]; ok {
-			itx.FromAddr = from.Address
-			itx.FromIsContract = from.IsContract
-		}
-		if to, ok := accountMap[e.ToID]; ok {
-			itx.ToAddr = to.Address
-			itx.ToIsContract = to.IsContract
-		}
-
 		pageData.InternalTxs = append(pageData.InternalTxs, itx)
 	}
-
-	// Calculate TxHashRowspan for consecutive internal txs with same txhash
-	calculateInternalTxHashRowspans(pageData.InternalTxs)
 }
 
-// calculateInternalTxHashRowspans sets TxHashRowspan for consecutive internal txs with the same txhash.
-// The first occurrence gets the rowspan count, subsequent occurrences get 0 (meaning skip rendering the cell).
-func calculateInternalTxHashRowspans(txs []*models.AddressPageDataInternalTransaction) {
-	if len(txs) == 0 {
-		return
+// callTypeBitNames maps a CallTypeMask bit position to its display name. Keep
+// in sync with exerpc.CallTypeFromString.
+var callTypeBitNames = []string{
+	"CALL",         // 0
+	"STATICCALL",   // 1
+	"DELEGATECALL", // 2
+	"CREATE",       // 3
+	"CREATE2",      // 4
+	"SELFDESTRUCT", // 5
+}
+
+func expandCallTypeMask(mask uint16) []models.AddressPageDataInternalTransactionCallType {
+	if mask == 0 {
+		return nil
 	}
-
-	i := len(txs) - 1
-	for i >= 0 {
-		currentTxHash := txs[i].TxHash
-		groupStart := i
-
-		for groupStart > 0 && bytes.Equal(txs[groupStart-1].TxHash, currentTxHash) {
-			groupStart--
+	types := make([]models.AddressPageDataInternalTransactionCallType, 0, 4)
+	for bit := uint8(0); bit < 16; bit++ {
+		if mask&(1<<bit) == 0 {
+			continue
 		}
-
-		rowspan := i - groupStart + 1
-		txs[groupStart].TxHashRowspan = rowspan
-		for j := groupStart + 1; j <= i; j++ {
-			txs[j].TxHashRowspan = 0
+		name := fmt.Sprintf("TYPE_%d", bit)
+		if int(bit) < len(callTypeBitNames) {
+			name = callTypeBitNames[bit]
 		}
-
-		i = groupStart - 1
+		types = append(types, models.AddressPageDataInternalTransactionCallType{
+			Type: bit,
+			Name: name,
+		})
 	}
+	return types
 }
 
 func loadWithdrawalsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, limit uint32, pageIdx uint64) {
