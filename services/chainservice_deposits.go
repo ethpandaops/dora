@@ -635,12 +635,14 @@ func (bs *ChainService) getLastIncludedDeposit(ctx context.Context, headRoot pha
 }
 
 type QueuedDepositFilter struct {
-	MinIndex  uint64
-	MaxIndex  uint64
-	NoIndex   bool
-	PublicKey []byte
-	MinAmount uint64
-	MaxAmount uint64
+	MinIndex          uint64
+	MaxIndex          uint64
+	NoIndex           bool
+	PublicKey         []byte
+	WithdrawalAddress []byte
+	WithdrawalCreds   []byte
+	MinAmount         uint64
+	MaxAmount         uint64
 }
 
 func (bs *ChainService) GetFilteredQueuedDeposits(ctx context.Context, filter *QueuedDepositFilter) []*IndexedDepositQueueEntry {
@@ -667,6 +669,18 @@ func (bs *ChainService) GetFilteredQueuedDeposits(ctx context.Context, filter *Q
 			continue
 		}
 		if len(filter.PublicKey) > 0 && !bytes.Equal(filter.PublicKey, entry.PendingDeposit.Pubkey[:]) {
+			continue
+		}
+		if len(filter.WithdrawalAddress) > 0 {
+			wdcreds := entry.PendingDeposit.WithdrawalCredentials[:]
+			if wdcreds[0] != 0x01 && wdcreds[0] != 0x02 {
+				continue
+			}
+			if !bytes.Equal(wdcreds[12:], filter.WithdrawalAddress) {
+				continue
+			}
+		}
+		if len(filter.WithdrawalCreds) > 0 && !bytes.Equal(entry.PendingDeposit.WithdrawalCredentials[:], filter.WithdrawalCreds) {
 			continue
 		}
 		if filter.MinAmount > 0 && uint64(entry.PendingDeposit.Amount) < filter.MinAmount {

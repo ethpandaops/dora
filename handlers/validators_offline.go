@@ -14,6 +14,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
@@ -57,6 +58,9 @@ func ValidatorsOffline(w http.ResponseWriter, r *http.Request) {
 		} else {
 			groupBy = 1
 		}
+	}
+	if groupBy < 1 || groupBy > 4 {
+		groupBy = 1
 	}
 
 	var groupKey string
@@ -133,8 +137,26 @@ func buildValidatorsOfflinePageData(ctx context.Context, pageIdx uint64, pageSiz
 		groupName = fmt.Sprintf("%v - %v", groupIdx*10000, (groupIdx+1)*10000)
 	case 3:
 		groupName = groupKey
+	case 4:
+		if groupKey == "no-address" {
+			groupName = "no address"
+		} else {
+			withdrawalAddress, withdrawalCreds, err := utils.ParseWithdrawalAddressOrCredentials(groupKey)
+			if err == nil {
+				if len(withdrawalAddress) > 0 {
+					groupKey = fmt.Sprintf("%x", withdrawalAddress)
+					groupName = fmt.Sprintf("0x%x", withdrawalAddress)
+				} else {
+					groupKey = fmt.Sprintf("%x", withdrawalCreds)
+					groupName = fmt.Sprintf("0x%x", withdrawalCreds)
+				}
+			} else {
+				groupName = groupKey
+			}
+		}
 	}
 	pageData.GroupName = groupName
+	pageData.GroupKey = groupKey
 
 	// collect offline validators
 	offlineIndices := []phase0.ValidatorIndex{}
@@ -152,6 +174,10 @@ func buildValidatorsOfflinePageData(ctx context.Context, pageIdx uint64, pageSiz
 			validatorGroupKey = fmt.Sprintf("%06d", groupIdx)
 		case 3:
 			validatorGroupKey = strings.ToLower(services.GlobalBeaconService.GetValidatorName(uint64(index)))
+		case 4:
+			if validator != nil {
+				validatorGroupKey, _ = utils.WithdrawalCredentialsGroup(validator.WithdrawalCredentials)
+			}
 		}
 
 		if validatorGroupKey != groupKey {
