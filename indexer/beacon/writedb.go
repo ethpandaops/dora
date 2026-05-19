@@ -15,7 +15,6 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
-	"github.com/ethpandaops/go-eth2-client/spec/version"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -298,7 +297,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	blsToExecChanges := body.BLSToExecutionChanges
 	syncAggregate := body.SyncAggregate
 	var blobKzgCommitments []deneb.KZGCommitment
-	if body.Version >= version.DataVersionGloas {
+	if body.Version >= spec.DataVersionGloas {
 		if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
 			blobKzgCommitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
 		}
@@ -554,7 +553,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			blsToExecChanges := body.BLSToExecutionChanges
 			syncAggregate := body.SyncAggregate
 			var blobKzgCommitments []deneb.KZGCommitment
-			if body.Version >= version.DataVersionGloas {
+			if body.Version >= spec.DataVersionGloas {
 				if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
 					blobKzgCommitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
 				}

@@ -1366,6 +1366,8 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 		if body.Version >= spec.DataVersionGloas {
 			if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
 				commitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
+			} else {
+				logrus.Warnf("blob tx in block at slot %v has no SignedExecutionPayloadBid; commitments unavailable", blockData.Block.Message.Slot)
 			}
 		} else {
 			commitments = body.BlobKZGCommitments
