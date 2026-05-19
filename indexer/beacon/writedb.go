@@ -295,7 +295,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	proposerSlashings := body.ProposerSlashings
 	blsToExecChanges := body.BLSToExecutionChanges
 	syncAggregate := body.SyncAggregate
-	blobKzgCommitments := body.BlobKZGCommitments
+	blobKzgCommitments := utils.BlockBodyBlobCommitments(body)
 	var executionBlockHash phase0.Hash32
 
 	var executionBlockNumber uint64
@@ -544,7 +544,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			proposerSlashings := body.ProposerSlashings
 			blsToExecChanges := body.BLSToExecutionChanges
 			syncAggregate := body.SyncAggregate
-			blobKzgCommitments := body.BlobKZGCommitments
+			blobKzgCommitments := utils.BlockBodyBlobCommitments(body)
 
 			var executionTransactions []bellatrix.Transaction
 			var executionWithdrawals []*capella.Withdrawal

@@ -430,7 +430,7 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 
 	bbody := body.Message.Body
 	blockIndex.Graffiti = bbody.Graffiti
-	blockIndex.BlobCount = uint64(len(bbody.BlobKZGCommitments))
+	blockIndex.BlobCount = uint64(len(utils.BlockBodyBlobCommitments(bbody)))
 
 	if extra, err := getBlockExecutionExtraData(body); err == nil {
 		blockIndex.ExecutionExtraData = extra
