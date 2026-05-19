@@ -315,26 +315,27 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	canonicalRoots := make([][]byte, len(canonicalBlocks))
-	canonicalBlockHashes := make([][]byte, len(canonicalBlocks))
+	canonicalBlockHashes := make([][]byte, 0, len(canonicalBlocks))
 	finalizedForkIds := map[ForkKey]bool{}
 	for i, block := range canonicalBlocks {
 		canonicalRoots[i] = block.Root[:]
 		if blockIndex := block.GetBlockIndex(indexer.ctx); blockIndex != nil {
-			canonicalBlockHashes[i] = blockIndex.ExecutionHash[:]
+			if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) || block.HasExecutionPayload() {
+				canonicalBlockHashes = append(canonicalBlockHashes, blockIndex.ExecutionHash[:])
+			}
 		}
 
 		block.blockResults = nil // force re-simulation of block results
 		finalizedForkIds[block.GetForkId()] = true
 	}
 
-	// Determine payload status for canonical blocks (ePBS only)
-	// A payload is orphaned if the next canonical block doesn't build on it
+	// Mark payload as orphaned when next canonical block's bid doesn't reference our committed BlockHash.
 	allCanonicalBlocks := append(canonicalBlocks, nextEpochCanonicalBlocks...)
 	if chainState.IsEip7732Enabled(epoch) {
 		for i, block := range canonicalBlocks {
 			blockIndex := block.GetBlockIndex(indexer.ctx)
-			if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
-				continue // no execution payload
+			if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+				continue // no execution commitment (e.g. pre-merge slot)
 			}
 
 			// Find the next canonical block
@@ -352,7 +353,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				continue
 			}
 
-			// Check if next block builds on this block's payload
+			// Check if next block builds on this block's committed payload
 			if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
 				block.isPayloadOrphaned = true
 			}
@@ -428,8 +429,6 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				}
 			}
 
-			// Determine payload status for orphaned chain blocks (ePBS only)
-			// A payload is orphaned if the next block in the chain doesn't build on it
 			allChainBlocks := append(chain, nextBlocks...)
 			for i, block := range chain {
 				if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
@@ -437,8 +436,8 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				}
 
 				blockIndex := block.GetBlockIndex(indexer.ctx)
-				if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
-					continue // no execution payload
+				if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+					continue // no execution commitment
 				}
 
 				// Find the next block in this orphaned chain
@@ -450,7 +449,6 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				if nextBlock != nil {
 					nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
 					if nextBlockIndex != nil {
-						// Check if next block builds on this block's payload
 						if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
 							block.isPayloadOrphaned = true
 						}

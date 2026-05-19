@@ -1359,7 +1359,7 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 	// Get KZG commitments from beacon block
 	var kzgCommitments [][]byte
 	if blockData != nil && blockData.Block != nil && blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
-		commitments := blockData.Block.Message.Body.BlobKZGCommitments
+		commitments := utils.BlockBodyBlobCommitments(blockData.Block.Message.Body)
 		// Find the commitments that correspond to this transaction's blobs
 		// by matching versioned hashes
 		kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
