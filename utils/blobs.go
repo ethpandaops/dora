@@ -4,8 +4,28 @@ import (
 	"crypto/sha256"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 )
+
+// BlockBodyBlobCommitments returns the blob KZG commitments declared by a
+// beacon block body, transparently sourcing them from the body itself
+// pre-Gloas and from the embedded execution payload bid post-EIP-7732
+// (where they were moved off the body). Returns nil on a Gloas+ body
+// that's missing the bid container.
+func BlockBodyBlobCommitments(body *all.BeaconBlockBody) []deneb.KZGCommitment {
+	if body == nil {
+		return nil
+	}
+	if body.Version >= spec.DataVersionGloas {
+		if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
+			return body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
+		}
+		return nil
+	}
+	return body.BlobKZGCommitments
+}
 
 // MatchBlobCommitments finds the KZG commitments from the block that match
 // the given versioned hashes from a transaction.

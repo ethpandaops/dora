@@ -167,14 +167,7 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body := blockData.Block.Message.Body
-	commitments := body.BlobKZGCommitments
-	if body.Version >= spec.DataVersionGloas {
-		commitments = nil
-		if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
-			commitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
-		}
-	}
+	commitments := utils.BlockBodyBlobCommitments(blockData.Block.Message.Body)
 	if int(blobIndex) >= len(commitments) {
 		http.Error(w, "Blob index out of range", http.StatusBadRequest)
 		return
@@ -457,13 +450,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	proposerSlashings := body.ProposerSlashings
 	blsToExecChanges := body.BLSToExecutionChanges
 	syncAggregate := body.SyncAggregate
-	blobKzgCommitments := body.BlobKZGCommitments
-	if body.Version >= spec.DataVersionGloas {
-		blobKzgCommitments = nil
-		if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
-			blobKzgCommitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
-		}
-	}
+	blobKzgCommitments := utils.BlockBodyBlobCommitments(body)
 	var executionWithdrawals []*capella.Withdrawal
 	if body.ExecutionPayload != nil {
 		executionWithdrawals = body.ExecutionPayload.Withdrawals
