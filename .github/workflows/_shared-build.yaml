@@ -200,47 +200,6 @@ jobs:
         path: ./bin/*
         name: explorer_windows_amd64
 
-  build_darwin_amd64_binary:
-    name: Build macos/amd64 binary
-    needs: [build_ui_package]
-    runs-on: macos-15-intel
-    steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
-
-    # setup global dependencies
-    - name: Set up go
-      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-      with:
-        go-version: 1.25.x
-
-    # setup project dependencies
-    - name: Get dependencies
-      run: |
-        go get -v -t -d ./...
-
-    # download UI build artifacts
-    - name: Download UI build artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-      with:
-        name: ui-package
-        path: ./ui-package/dist
-
-    # build binaries
-    - name: Build macos amd64 binary
-      run: |
-        make build
-      env:
-        RELEASE: ${{ inputs.release }}
-
-    # upload artifacts
-    - name: "Upload artifact: explorer_darwin_amd64"
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        path: ./bin/*
-        name: explorer_darwin_amd64
-
   build_darwin_arm64_binary:
     name: Build macos/arm64 binary
     needs: [build_ui_package]
