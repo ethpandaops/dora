@@ -460,31 +460,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		c.indexer.blockCache.addBlockToParentMap(block)
 		c.indexer.blockCache.addBlockToExecBlockMap(block)
 
-		// Check for cached execution times and add them to the block
-		blockIndex := block.GetBlockIndex(c.indexer.ctx)
-		if blockIndex != nil && !bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
-			executionHash := common.Hash(blockIndex.ExecutionHash)
-			cachedTimes := c.indexer.executionTimeProvider.GetAndDeleteExecutionTimes(executionHash)
-			for _, cachedTime := range cachedTimes {
-				// Convert the cached time to beacon ExecutionTime format
-				client := cachedTime.GetClient()
-				execTime := ExecutionTime{
-					ClientType: client.GetClientType().Uint8(),
-					MinTime:    cachedTime.GetTime(),
-					MaxTime:    cachedTime.GetTime(),
-					AvgTime:    cachedTime.GetTime(),
-					Count:      1,
-				}
-				block.AddExecutionTime(c.indexer.ctx, execTime)
-			}
-			if len(cachedTimes) > 0 {
-				c.logger.WithFields(map[string]interface{}{
-					"slot":           block.Slot,
-					"execution_hash": executionHash.Hex(),
-					"times_count":    len(cachedTimes),
-				}).Debug("Added cached execution times to block")
-			}
-		}
+		c.drainCachedExecutionTimes(block)
 
 		t1 := time.Now()
 
@@ -654,9 +630,54 @@ func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1
 		if err != nil {
 			return err
 		}
+
+		// In EIP-7732 the body and the payload arrive on separate gossip topics.
+		// When the body arrives first, processBlock ran addBlockToExecBlockMap
+		// while ExecutionHash was still zero (the payload populates it via
+		// setBlockIndex), so the block was skipped and stayed invisible to
+		// execution-hash lookups (most notably the snooper exec-time matcher).
+		// Now that EnsureExecutionPayload populated ExecutionHash, register the
+		// block and drain any exec times the snooper cached in the meantime.
+		if executionPayloadEvent.Slot >= finalizedSlot {
+			c.indexer.blockCache.addBlockToExecBlockMap(block)
+			c.drainCachedExecutionTimes(block)
+		}
 	}
 
 	return nil
+}
+
+// drainCachedExecutionTimes attaches any execution times the snooper cached
+// for this block's execution payload hash. Safe to call multiple times:
+// GetAndDeleteExecutionTimes removes entries on read.
+func (c *Client) drainCachedExecutionTimes(block *Block) {
+	blockIndex := block.GetBlockIndex(c.indexer.ctx)
+	if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+		return
+	}
+
+	executionHash := common.Hash(blockIndex.ExecutionHash)
+	cachedTimes := c.indexer.executionTimeProvider.GetAndDeleteExecutionTimes(executionHash)
+	if len(cachedTimes) == 0 {
+		return
+	}
+
+	for _, cachedTime := range cachedTimes {
+		client := cachedTime.GetClient()
+		block.AddExecutionTime(c.indexer.ctx, ExecutionTime{
+			ClientType: client.GetClientType().Uint8(),
+			MinTime:    cachedTime.GetTime(),
+			MaxTime:    cachedTime.GetTime(),
+			AvgTime:    cachedTime.GetTime(),
+			Count:      1,
+		})
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"slot":           block.Slot,
+		"execution_hash": executionHash.Hex(),
+		"times_count":    len(cachedTimes),
+	}).Debug("attached cached execution times to block")
 }
 
 func (c *Client) persistExecutionPayload(block *Block) error {
