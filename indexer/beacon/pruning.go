@@ -169,8 +169,6 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 				}
 			}
 
-			// Determine payload status for chain blocks (ePBS only)
-			// A payload is orphaned if the next block in the chain doesn't build on it
 			allChainBlocks := append(chain, nextBlocks...)
 			for i, block := range chain {
 				if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
@@ -178,8 +176,8 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 				}
 
 				blockIndex := block.GetBlockIndex(indexer.ctx)
-				if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
-					continue // no execution payload
+				if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+					continue // no execution commitment
 				}
 
 				// Find the next block in this chain
@@ -191,7 +189,6 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 				if nextBlock != nil {
 					nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
 					if nextBlockIndex != nil {
-						// Check if next block builds on this block's payload
 						if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
 							block.isPayloadOrphaned = true
 						}
