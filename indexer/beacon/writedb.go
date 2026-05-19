@@ -12,8 +12,10 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/version"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -295,7 +297,14 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	proposerSlashings := body.ProposerSlashings
 	blsToExecChanges := body.BLSToExecutionChanges
 	syncAggregate := body.SyncAggregate
-	blobKzgCommitments := body.BlobKZGCommitments
+	var blobKzgCommitments []deneb.KZGCommitment
+	if body.Version >= version.DataVersionGloas {
+		if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
+			blobKzgCommitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
+		}
+	} else {
+		blobKzgCommitments = body.BlobKZGCommitments
+	}
 	var executionBlockHash phase0.Hash32
 
 	var executionBlockNumber uint64
@@ -544,7 +553,14 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			proposerSlashings := body.ProposerSlashings
 			blsToExecChanges := body.BLSToExecutionChanges
 			syncAggregate := body.SyncAggregate
-			blobKzgCommitments := body.BlobKZGCommitments
+			var blobKzgCommitments []deneb.KZGCommitment
+			if body.Version >= version.DataVersionGloas {
+				if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
+					blobKzgCommitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
+				}
+			} else {
+				blobKzgCommitments = body.BlobKZGCommitments
+			}
 
 			var executionTransactions []bellatrix.Transaction
 			var executionWithdrawals []*capella.Withdrawal

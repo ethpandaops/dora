@@ -21,6 +21,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
@@ -167,7 +168,15 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commitments := blockData.Block.Message.Body.BlobKZGCommitments
+	body := blockData.Block.Message.Body
+	var commitments []deneb.KZGCommitment
+	if body.Version >= spec.DataVersionGloas {
+		if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
+			commitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
+		}
+	} else {
+		commitments = body.BlobKZGCommitments
+	}
 	if int(blobIndex) >= len(commitments) {
 		http.Error(w, "Blob index out of range", http.StatusBadRequest)
 		return
@@ -450,7 +459,14 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	proposerSlashings := body.ProposerSlashings
 	blsToExecChanges := body.BLSToExecutionChanges
 	syncAggregate := body.SyncAggregate
-	blobKzgCommitments := body.BlobKZGCommitments
+	var blobKzgCommitments []deneb.KZGCommitment
+	if body.Version >= spec.DataVersionGloas {
+		if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
+			blobKzgCommitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
+		}
+	} else {
+		blobKzgCommitments = body.BlobKZGCommitments
+	}
 	var executionWithdrawals []*capella.Withdrawal
 	if body.ExecutionPayload != nil {
 		executionWithdrawals = body.ExecutionPayload.Withdrawals

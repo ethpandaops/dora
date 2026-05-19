@@ -15,6 +15,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/version"
 	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -430,7 +431,13 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 
 	bbody := body.Message.Body
 	blockIndex.Graffiti = bbody.Graffiti
-	blockIndex.BlobCount = uint64(len(bbody.BlobKZGCommitments))
+	if bbody.Version >= version.DataVersionGloas {
+		if bbody.SignedExecutionPayloadBid != nil && bbody.SignedExecutionPayloadBid.Message != nil {
+			blockIndex.BlobCount = uint64(len(bbody.SignedExecutionPayloadBid.Message.BlobKZGCommitments))
+		}
+	} else {
+		blockIndex.BlobCount = uint64(len(bbody.BlobKZGCommitments))
+	}
 
 	if extra, err := getBlockExecutionExtraData(body); err == nil {
 		blockIndex.ExecutionExtraData = extra

@@ -14,7 +14,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
@@ -1359,7 +1361,15 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 	// Get KZG commitments from beacon block
 	var kzgCommitments [][]byte
 	if blockData != nil && blockData.Block != nil && blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
-		commitments := blockData.Block.Message.Body.BlobKZGCommitments
+		body := blockData.Block.Message.Body
+		var commitments []deneb.KZGCommitment
+		if body.Version >= spec.DataVersionGloas {
+			if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
+				commitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
+			}
+		} else {
+			commitments = body.BlobKZGCommitments
+		}
 		// Find the commitments that correspond to this transaction's blobs
 		// by matching versioned hashes
 		kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
