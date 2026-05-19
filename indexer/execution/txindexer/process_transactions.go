@@ -125,8 +125,8 @@ type txProcessingResult struct {
 	toAccount      *pendingAccount
 
 	// Call trace data (populated in Mode Full + tracesEnabled)
-	internalCalls []*pendingInternalCall
-	callTraceData []bdbtypes.FlatCallFrame // Flattened call trace for blockdb serialization
+	internalAggregates map[*pendingAccount]*pendingInternalAggregate
+	callTraceData      []bdbtypes.FlatCallFrame // Flattened call trace for blockdb serialization
 
 	// State changes data (populated in Mode Full + tracesEnabled)
 	stateChangesData []bdbtypes.StateChangeAccount
@@ -149,14 +149,17 @@ type pendingTxEvent struct {
 	data       []byte   // Event data
 }
 
-// pendingInternalCall represents an internal call extracted from a call trace.
-type pendingInternalCall struct {
-	txCallIdx   uint32
-	callType    uint8
-	fromAccount *pendingAccount
-	toAccount   *pendingAccount
-	value       float64
-	valueRaw    []byte
+// pendingInternalAggregate accumulates per-account internal-call stats for a
+// single transaction. One instance per touched account; updated as the call
+// tree is walked. Persisted as a single row in el_transactions_internal.
+type pendingInternalAggregate struct {
+	account      *pendingAccount
+	inCount      uint32  // calls where account = callee (clamped to uint16 max on flush)
+	outCount     uint32  // calls where account = caller (clamped to uint16 max on flush)
+	callTypeMask uint16  // bits 1<<n set when account was the callee of a CALL of type n
+	valueIn      float64 // sum of value when account was callee
+	valueOut     float64 // sum of value when account was caller
+	gasUsed      uint64  // sum of gas_used across calls involving the account
 }
 
 // pendingTokenTransfer represents a token transfer with references to its token and accounts.
@@ -340,7 +343,7 @@ func (ctx *txProcessingContext) processTransaction(
 
 	// 6. Process call trace if available (Mode Full + tracesEnabled)
 	if callTrace != nil {
-		result.callTraceData, result.internalCalls = ctx.processCallTrace(callTrace, fromAccount)
+		result.callTraceData, result.internalAggregates = ctx.processCallTrace(callTrace, fromAccount)
 	}
 
 	// 7. Process state diffs (storage changes) if available (Mode Full + tracesEnabled)
@@ -1147,18 +1150,28 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 		}
 	}
 
-	// 6. Insert internal call index entries (Mode Full + tracesEnabled)
-	if ctx.indexer.mode == ModeFull && utils.Config.ExecutionIndexer.TracesEnabled && len(result.internalCalls) > 0 {
-		internalEntries := make([]*dbtypes.ElTransactionInternal, 0, len(result.internalCalls))
-		for _, ic := range result.internalCalls {
+	// 6. Insert per-account internal-tx aggregates (Mode Full + tracesEnabled).
+	// One row per touched account regardless of how many sub-calls involved it.
+	if ctx.indexer.mode == ModeFull && utils.Config.ExecutionIndexer.TracesEnabled && len(result.internalAggregates) > 0 {
+		internalEntries := make([]*dbtypes.ElTransactionInternal, 0, len(result.internalAggregates))
+		for _, agg := range result.internalAggregates {
+			inCount := agg.inCount
+			if inCount > 32767 {
+				inCount = 32767 // clamp to SMALLINT max (postgres int2 is signed)
+			}
+			outCount := agg.outCount
+			if outCount > 32767 {
+				outCount = 32767
+			}
 			internalEntries = append(internalEntries, &dbtypes.ElTransactionInternal{
-				TxUid:     result.transaction.TxUid,
-				TxCallIdx: ic.txCallIdx,
-				CallType:  ic.callType,
-				FromID:    ic.fromAccount.id,
-				ToID:      ic.toAccount.id,
-				Value:     ic.value,
-				ValueRaw:  ic.valueRaw,
+				TxUid:        result.transaction.TxUid,
+				AccountID:    agg.account.id,
+				InCount:      uint16(inCount),
+				OutCount:     uint16(outCount),
+				CallTypeMask: agg.callTypeMask,
+				ValueIn:      agg.valueIn,
+				ValueOut:     agg.valueOut,
+				GasUsed:      agg.gasUsed,
 			})
 		}
 
@@ -1172,18 +1185,28 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 
 // processCallTrace processes a call trace result for a single transaction.
 // It flattens the nested call tree depth-first for blockdb serialization
-// and extracts internal calls (sub-calls, skipping index 0) for the DB index.
+// and builds per-account aggregates over sub-calls (skipping index 0) for
+// the DB index.
 func (ctx *txProcessingContext) processCallTrace(
 	traceResult *exerpc.CallTraceCall,
 	funderAccount *pendingAccount,
-) ([]bdbtypes.FlatCallFrame, []*pendingInternalCall) {
+) ([]bdbtypes.FlatCallFrame, map[*pendingAccount]*pendingInternalAggregate) {
 	if traceResult == nil {
 		return nil, nil
 	}
 
 	frames := make([]bdbtypes.FlatCallFrame, 0, 16)
-	internalCalls := make([]*pendingInternalCall, 0, 16)
+	aggregates := make(map[*pendingAccount]*pendingInternalAggregate, 8)
 	callIdx := uint32(0)
+
+	getAgg := func(acc *pendingAccount) *pendingInternalAggregate {
+		agg, ok := aggregates[acc]
+		if !ok {
+			agg = &pendingInternalAggregate{account: acc}
+			aggregates[acc] = agg
+		}
+		return agg
+	}
 
 	var walkTrace func(call *exerpc.CallTraceCall, depth uint16)
 	walkTrace = func(call *exerpc.CallTraceCall, depth uint16) {
@@ -1200,12 +1223,27 @@ func (ctx *txProcessingContext) processCallTrace(
 			}
 		}
 
+		// callTracer reports gasUsed cumulatively over the subtree, so summing
+		// it across frames double-counts nested execution. Compute the
+		// frame-local gas (this frame's execution only) by subtracting direct
+		// children's cumulative gasUsed. Saturating subtract guards against
+		// rounding/clamping quirks from non-Geth tracers.
+		selfGas := uint64(call.GasUsed)
+		for i := range call.Calls {
+			childGas := uint64(call.Calls[i].GasUsed)
+			if childGas >= selfGas {
+				selfGas = 0
+				break
+			}
+			selfGas -= childGas
+		}
+
 		// Build flat call frame for blockdb
 		frame := bdbtypes.FlatCallFrame{
 			Depth:   depth,
 			Type:    exerpc.CallTypeFromString(call.Type),
 			Gas:     uint64(call.Gas),
-			GasUsed: uint64(call.GasUsed),
+			GasUsed: selfGas,
 			Status:  status,
 			Input:   call.Input,
 			Output:  call.Output,
@@ -1218,25 +1256,40 @@ func (ctx *txProcessingContext) processCallTrace(
 
 		frames = append(frames, frame)
 
-		// Extract internal call for DB index (skip index 0 = top-level call,
-		// which duplicates el_transactions)
+		// Aggregate per touched account (skip index 0 = top-level call,
+		// which duplicates el_transactions).
 		if currentIdx > 0 {
 			fromAccount := ctx.ensureAccount(call.From, funderAccount, false)
 			toAccount := ctx.ensureAccount(call.To, fromAccount, false)
+			callType := exerpc.CallTypeFromString(call.Type)
+			gasUsed := selfGas
 
-			ic := &pendingInternalCall{
-				txCallIdx:   currentIdx,
-				callType:    exerpc.CallTypeFromString(call.Type),
-				fromAccount: fromAccount,
-				toAccount:   toAccount,
-			}
-
+			var value float64
 			if frame.Value.Sign() > 0 {
-				ic.value = weiToFloat(frame.Value.ToBig(), 18)
-				ic.valueRaw = frame.Value.Bytes()
+				value = weiToFloat(frame.Value.ToBig(), 18)
 			}
 
-			internalCalls = append(internalCalls, ic)
+			if fromAccount == toAccount {
+				// Self-call: account is both caller and callee, count both ways.
+				agg := getAgg(fromAccount)
+				agg.inCount++
+				agg.outCount++
+				agg.callTypeMask |= 1 << callType
+				agg.valueIn += value
+				agg.valueOut += value
+				agg.gasUsed += gasUsed
+			} else {
+				fromAgg := getAgg(fromAccount)
+				fromAgg.outCount++
+				fromAgg.valueOut += value
+				fromAgg.gasUsed += gasUsed
+
+				toAgg := getAgg(toAccount)
+				toAgg.inCount++
+				toAgg.callTypeMask |= 1 << callType
+				toAgg.valueIn += value
+				toAgg.gasUsed += gasUsed
+			}
 		}
 
 		// Recurse into child calls
@@ -1246,7 +1299,7 @@ func (ctx *txProcessingContext) processCallTrace(
 	}
 
 	walkTrace(traceResult, 0)
-	return frames, internalCalls
+	return frames, aggregates
 }
 
 // buildExecDataObject builds the per-block execution data object from collected

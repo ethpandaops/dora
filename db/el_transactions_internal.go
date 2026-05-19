@@ -9,7 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// InsertElTransactionsInternal inserts internal transaction index entries in batch.
+// InsertElTransactionsInternal inserts per-account internal-tx aggregates in
+// batch. Each entry is one (tx_uid, account_id) row.
 func InsertElTransactionsInternal(ctx context.Context, dbTx *sqlx.Tx, entries []*dbtypes.ElTransactionInternal) error {
 	if len(entries) == 0 {
 		return nil
@@ -21,12 +22,12 @@ func InsertElTransactionsInternal(ctx context.Context, dbTx *sqlx.Tx, entries []
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_transactions_internal ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_transactions_internal ",
 		}),
-		"(tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw)",
+		"(tx_uid, account_id, in_count, out_count, call_type_mask, value_in, value_out, gas_used)",
 		" VALUES ",
 	)
 
 	argIdx := 0
-	fieldCount := 7
+	fieldCount := 8
 	args := make([]any, len(entries)*fieldCount)
 
 	for i, entry := range entries {
@@ -43,22 +44,24 @@ func InsertElTransactionsInternal(ctx context.Context, dbTx *sqlx.Tx, entries []
 		fmt.Fprint(&sql, ")")
 
 		args[argIdx+0] = entry.TxUid
-		args[argIdx+1] = entry.TxCallIdx
-		args[argIdx+2] = entry.CallType
-		args[argIdx+3] = entry.FromID
-		args[argIdx+4] = entry.ToID
-		args[argIdx+5] = entry.Value
-		args[argIdx+6] = entry.ValueRaw
+		args[argIdx+1] = entry.AccountID
+		args[argIdx+2] = entry.InCount
+		args[argIdx+3] = entry.OutCount
+		args[argIdx+4] = entry.CallTypeMask
+		args[argIdx+5] = entry.ValueIn
+		args[argIdx+6] = entry.ValueOut
+		args[argIdx+7] = entry.GasUsed
 		argIdx += fieldCount
 	}
 
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql: " ON CONFLICT (tx_uid, tx_callidx) DO UPDATE SET" +
-			" call_type = excluded.call_type," +
-			" from_id = excluded.from_id," +
-			" to_id = excluded.to_id," +
-			" value = excluded.value," +
-			" value_raw = excluded.value_raw",
+		dbtypes.DBEnginePgsql: " ON CONFLICT (tx_uid, account_id) DO UPDATE SET" +
+			" in_count = excluded.in_count," +
+			" out_count = excluded.out_count," +
+			" call_type_mask = excluded.call_type_mask," +
+			" value_in = excluded.value_in," +
+			" value_out = excluded.value_out," +
+			" gas_used = excluded.gas_used",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -67,11 +70,11 @@ func InsertElTransactionsInternal(ctx context.Context, dbTx *sqlx.Tx, entries []
 }
 
 // HasElTransactionsInternalByAccount returns true if the given account has any
-// internal transactions (as sender or receiver). Uses EXISTS for O(1) lookup.
+// internal-tx aggregate rows. EXISTS scan on the (account_id, tx_uid DESC) idx.
 func HasElTransactionsInternalByAccount(ctx context.Context, accountID uint64) (bool, error) {
 	var exists bool
 	err := ReaderDb.GetContext(ctx, &exists,
-		"SELECT EXISTS(SELECT 1 FROM el_transactions_internal WHERE from_id = $1 LIMIT 1) OR EXISTS(SELECT 1 FROM el_transactions_internal WHERE to_id = $1 LIMIT 1)",
+		"SELECT EXISTS(SELECT 1 FROM el_transactions_internal WHERE account_id = $1 LIMIT 1)",
 		accountID,
 	)
 	if err != nil {
@@ -84,38 +87,24 @@ func HasElTransactionsInternalByAccount(ctx context.Context, accountID uint64) (
 // If the actual count exceeds this, the query returns this limit and sets the "more" flag.
 const MaxAccountInternalTxCount = 100000
 
-// GetElTransactionsInternalByAccount returns internal transactions
-// involving the given account (as sender or receiver), ordered by tx_uid DESC.
-// Uses UNION ALL instead of OR to enable index scans on the composite indexes
-// (from_id, tx_uid DESC) and (to_id, tx_uid DESC).
-// NULLS LAST is required to match the index definition and enable index scans.
+// GetElTransactionsInternalByAccount returns per-tx aggregate rows involving
+// the given account, ordered by tx_uid DESC. The (account_id, tx_uid DESC)
+// index makes this a direct index scan.
 func GetElTransactionsInternalByAccount(
 	ctx context.Context,
 	accountID uint64,
 	offset uint64,
 	limit uint32,
 ) ([]*dbtypes.ElTransactionInternal, uint64, error) {
-	// Data query: UNION ALL with pushed LIMIT into each branch
 	var sql strings.Builder
-	innerLimit := offset + uint64(limit)
-	args := []any{accountID, accountID, accountID, innerLimit}
+	args := []any{accountID, limit}
 
 	fmt.Fprint(&sql, `
-		SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw
-		FROM (
-			SELECT * FROM (SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw
-			FROM el_transactions_internal WHERE from_id = $1
-			ORDER BY tx_uid DESC NULLS LAST
-			LIMIT $4) AS a
-			UNION ALL
-			SELECT * FROM (SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw
-			FROM el_transactions_internal WHERE to_id = $2 AND from_id != $3
-			ORDER BY tx_uid DESC NULLS LAST
-			LIMIT $4) AS b
-		) combined
-		ORDER BY tx_uid DESC, tx_callidx ASC
-		LIMIT $5`)
-	args = append(args, limit)
+		SELECT tx_uid, account_id, in_count, out_count, call_type_mask, value_in, value_out, gas_used
+		FROM el_transactions_internal
+		WHERE account_id = $1
+		ORDER BY tx_uid DESC
+		LIMIT $2`)
 
 	if offset > 0 {
 		args = append(args, offset)
@@ -128,11 +117,11 @@ func GetElTransactionsInternalByAccount(
 		return nil, 0, err
 	}
 
-	// Count query: separate index-only scans per direction, capped at MaxAccountInternalTxCount.
+	// Count query: capped at MaxAccountInternalTxCount.
 	countSQL := `
-		SELECT
-			(SELECT COUNT(*) FROM (SELECT 1 FROM el_transactions_internal WHERE from_id = $1 LIMIT $2) a) +
-			(SELECT COUNT(*) FROM (SELECT 1 FROM el_transactions_internal WHERE to_id = $1 LIMIT $2) b)`
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM el_transactions_internal WHERE account_id = $1 LIMIT $2
+		) a`
 	var totalCount uint64
 	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, accountID, MaxAccountInternalTxCount)
 	if err != nil {
@@ -146,8 +135,8 @@ func GetElTransactionsInternalByAccount(
 	return entries, totalCount, nil
 }
 
-// GetElTransactionsInternalCountByTxUid returns the number of internal
-// transactions for a given transaction UID.
+// GetElTransactionsInternalCountByTxUid returns the number of distinct
+// accounts touched by the transaction's internal calls.
 func GetElTransactionsInternalCountByTxUid(ctx context.Context, txUid uint64) (uint64, error) {
 	var count uint64
 	err := ReaderDb.GetContext(ctx, &count,
@@ -160,13 +149,14 @@ func GetElTransactionsInternalCountByTxUid(ctx context.Context, txUid uint64) (u
 	return count, nil
 }
 
-// GetElTransactionsInternalByTxUid returns all internal transactions
-// for a given transaction UID.
+// GetElTransactionsInternalByTxUid returns the per-account aggregate rows
+// for a transaction. There is no natural ordering between accounts, so we
+// sort by account_id for stability.
 func GetElTransactionsInternalByTxUid(ctx context.Context, txUid uint64) ([]*dbtypes.ElTransactionInternal, error) {
 	entries := []*dbtypes.ElTransactionInternal{}
 	err := ReaderDb.SelectContext(ctx, &entries,
-		"SELECT tx_uid, tx_callidx, call_type, from_id, to_id, value, value_raw"+
-			" FROM el_transactions_internal WHERE tx_uid = $1 ORDER BY tx_callidx ASC",
+		"SELECT tx_uid, account_id, in_count, out_count, call_type_mask, value_in, value_out, gas_used"+
+			" FROM el_transactions_internal WHERE tx_uid = $1 ORDER BY account_id ASC",
 		txUid,
 	)
 	if err != nil {

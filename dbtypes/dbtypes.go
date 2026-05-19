@@ -491,15 +491,18 @@ type ElTransaction struct {
 	EffGasPrice float64 `db:"eff_gas_price"` // Effective gas price actually paid (in Gwei)
 }
 
-// ElTransactionInternal is a lightweight index of internal calls from call traces.
+// ElTransactionInternal is a per-account aggregate of internal calls within a
+// transaction. One row per (tx_uid, account_id) regardless of how many sub-
+// calls touched the account — keeps insert volume bounded for call-heavy txs.
 type ElTransactionInternal struct {
-	TxUid     uint64  `db:"tx_uid"`     // block_uid << 16 | tx_index
-	TxCallIdx uint32  `db:"tx_callidx"` // Depth-first traversal index (0=top-level, skipped)
-	CallType  uint8   `db:"call_type"`  // 0=CALL, 1=STATICCALL, 2=DELEGATECALL, 3=CREATE, 4=CREATE2, 5=SELFDESTRUCT
-	FromID    uint64  `db:"from_id"`
-	ToID      uint64  `db:"to_id"`
-	Value     float64 `db:"value"`
-	ValueRaw  []byte  `db:"value_raw"`
+	TxUid        uint64  `db:"tx_uid"`         // block_uid << 16 | tx_index
+	AccountID    uint64  `db:"account_id"`     // touched account (from, to, or both)
+	InCount      uint16  `db:"in_count"`       // calls where account = callee (clamped)
+	OutCount     uint16  `db:"out_count"`      // calls where account = caller (clamped)
+	CallTypeMask uint16  `db:"call_type_mask"` // bitmap of incoming call types (account = to-side): bit n = 1 << n
+	ValueIn      float64 `db:"value_in"`       // sum of value where account was callee (ETH)
+	ValueOut     float64 `db:"value_out"`      // sum of value where account was caller (ETH)
+	GasUsed      uint64  `db:"gas_used"`       // sum of gas_used across calls involving the account
 }
 
 // ElEventIndex is a lightweight searchable index for events (full data in blockdb).

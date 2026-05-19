@@ -153,27 +153,28 @@ type AddressPageDataTokenTransfer struct {
 	MethodName     string    `json:"method_name"` // Function name if known
 }
 
-// AddressPageDataInternalTransaction represents an internal transaction for the address page
+// AddressPageDataInternalTransaction is a per-transaction aggregate of
+// internal calls touching the address. One row per tx (not per call).
 type AddressPageDataInternalTransaction struct {
-	TxHash         []byte    `json:"tx_hash" ssz-size:"32"`
-	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 means render with rowspan, 0 means skip cell
-	BlockNumber    uint64    `json:"block_number"`
-	BlockUid       uint64    `json:"block_uid"`
-	BlockRoot      []byte    `json:"block_root" ssz-size:"32"`
-	BlockOrphaned  bool      `json:"block_orphaned"`
-	BlockTime      time.Time `json:"block_time"`
-	CallIndex      uint32    `json:"call_index"`
-	CallType       uint8     `json:"call_type"`
-	TypeName       string    `json:"type_name"`
-	FromAddr       []byte    `json:"from_addr" ssz-size:"20"`
-	FromID         uint64    `json:"from_id"`
-	FromIsContract bool      `json:"from_is_contract"`
-	ToAddr         []byte    `json:"to_addr" ssz-size:"20"`
-	ToID           uint64    `json:"to_id"`
-	ToIsContract   bool      `json:"to_is_contract"`
-	IsOutgoing     bool      `json:"is_outgoing"`
-	Amount         float64   `json:"amount"`
-	AmountRaw      []byte    `json:"amount_raw" ssz-size:"32"`
+	TxHash        []byte                                       `json:"tx_hash" ssz-size:"32"`
+	BlockNumber   uint64                                       `json:"block_number"`
+	BlockUid      uint64                                       `json:"block_uid"`
+	BlockRoot     []byte                                       `json:"block_root" ssz-size:"32"`
+	BlockOrphaned bool                                         `json:"block_orphaned"`
+	BlockTime     time.Time                                    `json:"block_time"`
+	InCount       uint16                                       `json:"in_count"`   // calls where address was callee
+	OutCount      uint16                                       `json:"out_count"`  // calls where address was caller
+	CallTypes     []AddressPageDataInternalTransactionCallType `json:"call_types"` // pre-expanded incoming call types
+	ValueIn       float64                                      `json:"value_in"`
+	ValueOut      float64                                      `json:"value_out"`
+	GasUsed       uint64                                       `json:"gas_used"`
+}
+
+// AddressPageDataInternalTransactionCallType is a single bit of CallTypeMask
+// expanded for template rendering.
+type AddressPageDataInternalTransactionCallType struct {
+	Type uint8  `json:"type"` // 0=CALL, 1=STATICCALL, 2=DELEGATECALL, 3=CREATE, 4=CREATE2, 5=SELFDESTRUCT
+	Name string `json:"name"`
 }
 
 // AddressPageDataWithdrawal represents a beacon withdrawal on the address page.

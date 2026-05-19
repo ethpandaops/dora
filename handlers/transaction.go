@@ -1004,9 +1004,11 @@ func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models
 		}
 	}
 
-	// Fallback: load from DB index (only when blockdb is unavailable)
-	entries, _ := db.GetElTransactionsInternalByTxUid(ctx, txUid)
-	loadTransactionInternalTxsFromDB(ctx, pageData, entries)
+	// No per-call detail in the DB index (it stores per-account aggregates),
+	// so when blockdb is unavailable we have nothing to render. Surface the
+	// "not available" state so the template shows the archive notice.
+	_ = txUid
+	pageData.InternalTxsNotAvailable = true
 }
 
 // buildInternalTxsFromBlockdb converts decoded blockdb call frames to page
@@ -1111,63 +1113,6 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 					}
 				}
 			}
-		}
-
-		pageData.InternalTxs = append(pageData.InternalTxs, itx)
-	}
-}
-
-// loadTransactionInternalTxsFromDB populates internal transactions from DB data
-// only (no depth/input/output trace data).
-func loadTransactionInternalTxsFromDB(ctx context.Context, pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
-	if len(entries) == 0 {
-		return
-	}
-
-	// Collect account IDs for batch lookup
-	accountIDs := make(map[uint64]bool, len(entries)*2)
-	for _, e := range entries {
-		accountIDs[e.FromID] = true
-		accountIDs[e.ToID] = true
-	}
-
-	// Batch lookup accounts
-	accountIDList := make([]uint64, 0, len(accountIDs))
-	for id := range accountIDs {
-		accountIDList = append(accountIDList, id)
-	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
-	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
-			for _, a := range accounts {
-				accountMap[a.ID] = a
-			}
-		}
-	}
-
-	// Build internal tx list
-	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(entries))
-	for _, e := range entries {
-		itx := &models.TransactionPageDataInternalTx{
-			CallIndex: e.TxCallIdx,
-			CallType:  e.CallType,
-			Amount:    e.Value,
-			AmountRaw: e.ValueRaw,
-		}
-
-		if name, ok := callTypeNames[e.CallType]; ok {
-			itx.TypeName = name
-		} else {
-			itx.TypeName = fmt.Sprintf("TYPE_%d", e.CallType)
-		}
-
-		if from, ok := accountMap[e.FromID]; ok {
-			itx.FromAddr = from.Address
-			itx.FromIsContract = from.IsContract
-		}
-		if to, ok := accountMap[e.ToID]; ok {
-			itx.ToAddr = to.Address
-			itx.ToIsContract = to.IsContract
 		}
 
 		pageData.InternalTxs = append(pageData.InternalTxs, itx)
