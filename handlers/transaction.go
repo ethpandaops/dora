@@ -1360,9 +1360,6 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 	var kzgCommitments [][]byte
 	if blockData != nil && blockData.Block != nil && blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
 		commitments := utils.BlockBodyBlobCommitments(blockData.Block.Message.Body)
-		if len(commitments) == 0 && len(blobHashes) > 0 {
-			logrus.Warnf("blob tx in block at slot %v has no resolvable KZG commitments", blockData.Block.Message.Slot)
-		}
 		// Find the commitments that correspond to this transaction's blobs
 		// by matching versioned hashes
 		kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
