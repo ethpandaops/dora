@@ -16,7 +16,6 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
-	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
@@ -1362,15 +1361,14 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 	var kzgCommitments [][]byte
 	if blockData != nil && blockData.Block != nil && blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
 		body := blockData.Block.Message.Body
-		var commitments []deneb.KZGCommitment
+		commitments := body.BlobKZGCommitments
 		if body.Version >= spec.DataVersionGloas {
+			commitments = nil
 			if body.SignedExecutionPayloadBid != nil && body.SignedExecutionPayloadBid.Message != nil {
 				commitments = body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
 			} else {
 				logrus.Warnf("blob tx in block at slot %v has no SignedExecutionPayloadBid; commitments unavailable", blockData.Block.Message.Slot)
 			}
-		} else {
-			commitments = body.BlobKZGCommitments
 		}
 		// Find the commitments that correspond to this transaction's blobs
 		// by matching versioned hashes
