@@ -20,6 +20,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var zeroExecHash phase0.Hash32
+
 type CombinedBlockResponse struct {
 	Root            phase0.Root
 	Header          *phase0.SignedBeaconBlockHeader
@@ -416,47 +418,40 @@ func (bs *ChainService) GetBlobSidecarsByBlockRoot(ctx context.Context, blockroo
 	return client.GetClient().GetRPCClient().GetBlobSidecarsByBlockroot(ctx, blockroot)
 }
 
-// getPayloadStatus computes the payload status for a given block.
+// getPayloadStatus returns the payload status for a Gloas+ block, comparing
+// the committed BlockHash (from the bid) against the next canonical child's
+// bid.parent_block_hash. canonicalHead is the head as seen by the caller.
 func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Block, canonicalHead *beacon.Block) dbtypes.PayloadStatus {
 	chainState := bs.consensusPool.GetChainState()
 	if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 		return dbtypes.PayloadStatusCanonical
 	}
 
-	if !block.HasExecutionPayload() {
+	blockIndex := block.GetBlockIndex(ctx)
+	if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroExecHash[:]) {
 		return dbtypes.PayloadStatusMissing
 	}
 
-	blockIndex := block.GetBlockIndex(ctx)
-	if blockIndex == nil {
-		return dbtypes.PayloadStatusCanonical
-	}
-
-	// Get child blocks and check if any canonical child builds on this payload
 	childBlocks := bs.beaconIndexer.GetBlockByParentRoot(block.Root)
-
-	if len(childBlocks) == 0 {
-		// no children, so it's canonical for now
-		return dbtypes.PayloadStatusCanonical
-	}
-
+	hasCanonicalChild := false
 	for _, child := range childBlocks {
 		childIndex := child.GetBlockIndex(ctx)
 		if childIndex == nil {
 			continue
 		}
-		// Check if child is in the canonical chain (use original head since
-		// children are at higher slots than the updated lastCanonicalBlock)
 		if !bs.beaconIndexer.IsCanonicalBlockByHead(child, canonicalHead) {
 			continue
 		}
-		// Check if child builds on this block's execution payload
+		hasCanonicalChild = true
 		if bytes.Equal(childIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
 			return dbtypes.PayloadStatusCanonical
 		}
 	}
 
-	return dbtypes.PayloadStatusOrphaned
+	if hasCanonicalChild {
+		return dbtypes.PayloadStatusOrphaned
+	}
+	return dbtypes.PayloadStatusCanonical
 }
 
 // GetDbBlocksForSlots retrieves blocks for a range of slots from cache & database.

@@ -78,6 +78,14 @@ type ChainSpecConfig struct {
 	ReorgHeadWeightThreshold        uint64 `yaml:"REORG_HEAD_WEIGHT_THRESHOLD"`
 	ReorgParentWeightThreshold      uint64 `yaml:"REORG_PARENT_WEIGHT_THRESHOLD"`
 	ReorgMaxEpochsSinceFinalization uint64 `yaml:"REORG_MAX_EPOCHS_SINCE_FINALIZATION"`
+	ProposerReorgCutoffBps          uint64 `yaml:"PROPOSER_REORG_CUTOFF_BPS"`
+	ConfirmationByzantineThreshold  uint64 `yaml:"CONFIRMATION_BYZANTINE_THRESHOLD"`
+
+	// Validator timing
+	AggregateDueBps    uint64 `yaml:"AGGREGATE_DUE_BPS"`
+	AttestationDueBps  uint64 `yaml:"ATTESTATION_DUE_BPS"`
+	ContributionDueBps uint64 `yaml:"CONTRIBUTION_DUE_BPS"`
+	SyncMessageDueBps  uint64 `yaml:"SYNC_MESSAGE_DUE_BPS"`
 
 	// Deposit contract
 	DepositChainId         uint64 `yaml:"DEPOSIT_CHAIN_ID"`
@@ -123,6 +131,11 @@ type ChainSpecConfig struct {
 	ChurnLimitQuotientGloas              uint64 `yaml:"CHURN_LIMIT_QUOTIENT_GLOAS"                 check-if-fork:"GloasForkEpoch"`
 	ConsolidationChurnLimitQuotient      uint64 `yaml:"CONSOLIDATION_CHURN_LIMIT_QUOTIENT"         check-if-fork:"GloasForkEpoch"`
 	MaxPerEpochActivationChurnLimitGloas uint64 `yaml:"MAX_PER_EPOCH_ACTIVATION_CHURN_LIMIT_GLOAS" check-if-fork:"GloasForkEpoch"`
+	AggregateDueBpsGloas                 uint64 `yaml:"AGGREGATE_DUE_BPS_GLOAS"                    check-if-fork:"GloasForkEpoch"`
+	AttestationDueBpsGloas               uint64 `yaml:"ATTESTATION_DUE_BPS_GLOAS"                  check-if-fork:"GloasForkEpoch"`
+	ContributionDueBpsGloas              uint64 `yaml:"CONTRIBUTION_DUE_BPS_GLOAS"                 check-if-fork:"GloasForkEpoch"`
+	SyncMessageDueBpsGloas               uint64 `yaml:"SYNC_MESSAGE_DUE_BPS_GLOAS"                 check-if-fork:"GloasForkEpoch"`
+	PayloadAttestationDueBps             uint64 `yaml:"PAYLOAD_ATTESTATION_DUE_BPS"                check-if-fork:"GloasForkEpoch"`
 
 	// Heze
 	InclusionListDueBPS uint64 `yaml:"INCLUSION_LIST_DUE_BPS" check-if-fork:"HezeForkEpoch"`

@@ -263,6 +263,33 @@ func getBlockExecutionParentHash(b *all.SignedBeaconBlock) (phase0.Hash32, error
 	}
 }
 
+// getBlockExecutionBlockHash returns the committed execution block hash.
+// For Gloas+ it is sourced from the bid (always present in the body),
+// not from the separately gossiped envelope.
+func getBlockExecutionBlockHash(b *all.SignedBeaconBlock) (phase0.Hash32, error) {
+	if b == nil || b.Message == nil || b.Message.Body == nil {
+		return phase0.Hash32{}, errors.New("nil block body")
+	}
+
+	switch {
+	case b.Version < spec.DataVersionBellatrix:
+		return phase0.Hash32{}, errors.New("no execution block hash in pre-bellatrix block")
+	case b.Version >= spec.DataVersionGloas:
+		bid := b.Message.Body.SignedExecutionPayloadBid
+		if bid == nil || bid.Message == nil {
+			return phase0.Hash32{}, errors.New("no payload bid")
+		}
+
+		return bid.Message.BlockHash, nil
+	default:
+		if b.Message.Body.ExecutionPayload == nil {
+			return phase0.Hash32{}, errors.New("no execution payload")
+		}
+
+		return b.Message.Body.ExecutionPayload.BlockHash, nil
+	}
+}
+
 // getBlockSize returns the SSZ-encoded byte size of a fork-agnostic signed
 // beacon block.
 func getBlockSize(dynSsz *dynssz.DynSsz, block *all.SignedBeaconBlock) (int, error) {

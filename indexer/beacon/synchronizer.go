@@ -356,7 +356,9 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 			canonicalBlocks = append(canonicalBlocks, s.cachedBlocks[slot])
 			canonicalBlockRoots = append(canonicalBlockRoots, s.cachedBlocks[slot].Root[:])
 			if blockIndex := s.cachedBlocks[slot].GetBlockIndex(s.indexer.ctx); blockIndex != nil {
-				canonicalBlockHashes = append(canonicalBlockHashes, blockIndex.ExecutionHash[:])
+				if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(slot)) || s.cachedBlocks[slot].HasExecutionPayload() {
+					canonicalBlockHashes = append(canonicalBlockHashes, blockIndex.ExecutionHash[:])
+				}
 			}
 		} else {
 			nextEpochCanonicalBlocks = append(nextEpochCanonicalBlocks, s.cachedBlocks[slot])
@@ -427,8 +429,6 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		sim.validatorSet = validatorSet
 	}
 
-	// Determine payload status for canonical blocks (ePBS only)
-	// A payload is orphaned if the next canonical block doesn't build on it
 	allCanonicalBlocks := append(canonicalBlocks, nextEpochCanonicalBlocks...)
 	for i, block := range canonicalBlocks {
 		if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
@@ -436,8 +436,8 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		}
 
 		blockIndex := block.GetBlockIndex(s.indexer.ctx)
-		if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
-			continue // no execution payload
+		if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+			continue // no execution commitment
 		}
 
 		// Find the next canonical block
@@ -449,7 +449,6 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		if nextBlock != nil {
 			nextBlockIndex := nextBlock.GetBlockIndex(s.indexer.ctx)
 			if nextBlockIndex != nil {
-				// Check if next block builds on this block's payload
 				if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
 					block.isPayloadOrphaned = true
 				}
