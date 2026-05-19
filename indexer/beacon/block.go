@@ -419,14 +419,6 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 		return
 	}
 
-	// Fall back to any execution payload already attached to the block.
-	// In EIP-7732 the body and the payload arrive on separate gossip topics,
-	// so the payload event can fire before the block body is known. When the
-	// body subsequently lands via SetBlock/EnsureBlock the caller passes
-	// payload=nil; without this fallback ExecutionHash would stay zero even
-	// though block.executionPayload has been populated, causing payload-status
-	// comparisons (finalization, list views) to misclassify the payload as
-	// orphaned.
 	if payload == nil && block.executionPayload != nil {
 		payload = block.executionPayload
 	}
@@ -454,19 +446,18 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 		blockIndex.ExecutionParentHash = parentHash
 	}
 
-	// Pre-EIP-7732: in-block execution payload carries hash, number,
-	// transaction count, gas accounting.
+	if blockHash, err := getBlockExecutionBlockHash(body); err == nil {
+		blockIndex.ExecutionHash = blockHash
+	}
+
 	if bbody.ExecutionPayload != nil {
 		ep := bbody.ExecutionPayload
-		blockIndex.ExecutionHash = ep.BlockHash
 		blockIndex.ExecutionNumber = ep.BlockNumber
 		blockIndex.EthTransactionCount = uint64(len(ep.Transactions))
 		blockIndex.GasUsed = ep.GasUsed
 		blockIndex.GasLimit = ep.GasLimit
 	}
 
-	// EIP-7732+: when the payload envelope is delivered separately,
-	// populate the execution accounting fields from it.
 	if payload != nil && payload.Message != nil && payload.Message.Payload != nil {
 		blockIndex.ExecutionHash = payload.Message.Payload.BlockHash
 		blockIndex.ExecutionNumber = payload.Message.Payload.BlockNumber
