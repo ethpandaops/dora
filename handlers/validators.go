@@ -18,6 +18,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -50,6 +51,7 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	var filterIndex string
 	var filterName string
 	var filterStatus string
+	var filterWithdrawal string
 	if urlArgs.Has("f") {
 		if urlArgs.Has("f.pubkey") {
 			filterPubKey = urlArgs.Get("f.pubkey")
@@ -63,6 +65,9 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.status") {
 			filterStatus = strings.Join(urlArgs["f.status"], ",")
 		}
+		if urlArgs.Has("f.withdrawal") {
+			filterWithdrawal = urlArgs.Get("f.withdrawal")
+		}
 	}
 	var sortOrder string
 	if urlArgs.Has("o") {
@@ -72,7 +77,7 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getValidatorsPageData(pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+		data.Data, pageError = getValidatorsPageData(pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus, filterWithdrawal)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -94,11 +99,11 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) (*models.ValidatorsPageData, error) {
+func getValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string, filterWithdrawal string) (*models.ValidatorsPageData, error) {
 	pageData := &models.ValidatorsPageData{}
-	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v:%v:%v:%v:%v", pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v:%v:%v:%v:%v:%v", pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus, filterWithdrawal)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildValidatorsPageData(pageCall.CallCtx, pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+		pageData, cacheTimeout := buildValidatorsPageData(pageCall.CallCtx, pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus, filterWithdrawal)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -112,8 +117,8 @@ func getValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder string,
 	return pageData, pageErr
 }
 
-func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) (*models.ValidatorsPageData, time.Duration) {
-	logrus.Debugf("validators page called: %v:%v:%v:%v:%v:%v:%v", pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string, filterWithdrawal string) (*models.ValidatorsPageData, time.Duration) {
+	logrus.Debugf("validators page called: %v:%v:%v:%v:%v:%v:%v:%v", pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus, filterWithdrawal)
 	pageData := &models.ValidatorsPageData{}
 	cacheTime := 10 * time.Minute
 
@@ -125,7 +130,7 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 	}
 
 	filterArgs := url.Values{}
-	if filterPubKey != "" || filterIndex != "" || filterName != "" || filterStatus != "" {
+	if filterPubKey != "" || filterIndex != "" || filterName != "" || filterStatus != "" || filterWithdrawal != "" {
 		if filterPubKey != "" {
 			pageData.FilterPubKey = filterPubKey
 			filterArgs.Add("f.pubkey", filterPubKey)
@@ -155,6 +160,17 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 				if err == nil {
 					validatorFilter.Status = append(validatorFilter.Status, statusVal)
 				}
+			}
+		}
+		if filterWithdrawal != "" {
+			pageData.FilterWithdrawal = filterWithdrawal
+			filterArgs.Add("f.withdrawal", filterWithdrawal)
+			withdrawalAddress, withdrawalCreds, err := utils.ParseWithdrawalAddressOrCredentials(filterWithdrawal)
+			if err == nil {
+				validatorFilter.WithdrawalAddress = withdrawalAddress
+				validatorFilter.WithdrawalCreds = withdrawalCreds
+			} else {
+				validatorFilter.WithdrawalCreds = []byte{0xff}
 			}
 		}
 	}

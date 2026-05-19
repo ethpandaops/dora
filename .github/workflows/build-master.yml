@@ -117,10 +117,6 @@ jobs:
       run: |
         cd explorer_linux_arm64
         tar -czf ../dora_snapshot_linux_arm64.tar.gz .
-    - name: "Generate release package: dora_snapshot_darwin_amd64.tar.gz"
-      run: |
-        cd explorer_darwin_amd64
-        tar -czf ../dora_snapshot_darwin_amd64.tar.gz .
     - name: "Generate release package: dora_snapshot_darwin_arm64.tar.gz"
       run: |
         cd explorer_darwin_arm64
@@ -145,11 +141,9 @@ jobs:
           | [dora_snapshot_windows_amd64.zip](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_windows_amd64.zip) | dora executables for windows/amd64 |
           | [dora_snapshot_linux_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_linux_amd64.tar.gz) | dora executables for linux/amd64 |
           | [dora_snapshot_linux_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_linux_arm64.tar.gz) | dora executables for linux/arm64 |
-          | [dora_snapshot_darwin_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
           | [dora_snapshot_darwin_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
         files: |
           dora_snapshot_windows_amd64.zip
           dora_snapshot_linux_amd64.tar.gz
           dora_snapshot_linux_arm64.tar.gz
-          dora_snapshot_darwin_amd64.tar.gz
           dora_snapshot_darwin_arm64.tar.gz
