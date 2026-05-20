@@ -26,6 +26,9 @@ on:
         description: 'Docker Hub Token'
         required: false
 
+permissions:
+  contents: read
+
 # shared build jobs
 jobs:
   clone_docker_images:
