@@ -304,7 +304,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 			epochStats := c.indexer.epochCache.createOrGetEpochStats(epoch, dependentRoot)
 
 			if epoch >= absoluteMinInMemoryEpoch {
-				c.indexer.epochCache.ensureEpochDependentState(epochStats, currentBlock.Root)
+				c.indexer.epochCache.ensureEpochDependentState(epochStats)
 			}
 			if !epochStats.addRequestedBy(c) {
 				break
