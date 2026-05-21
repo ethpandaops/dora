@@ -11,4 +11,4 @@ if [ -f "${__dir}/custom-blockdb-settings.yaml" ] && [ -f "${__dir}/generated-do
 fi
 
 echo "Cleaning up generated files..."
-rm -f ${__dir}/generated-*
+rm -rf ${__dir}/generated-*
