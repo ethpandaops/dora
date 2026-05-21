@@ -1,4 +1,14 @@
 {{ define "page" }}
+  <script type="text/javascript">
+    (function() {
+      var raw = window.location.hash || "";
+      var sanitized = raw.replace(/^#/, "").replace(/[^a-zA-Z0-9_-]/g, "") || "overview";
+      var style = document.createElement("style");
+      style.id = "dora-initial-tab-style";
+      style.textContent = "#tabContent > .tab-pane{display:none!important;opacity:0!important;}#tabContent > .tab-pane#" + sanitized + "{display:block!important;opacity:1!important;}";
+      (document.head || document.documentElement).appendChild(style);
+    })();
+  </script>
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 my-2 mb-md-0 h1-pager">
@@ -439,18 +449,43 @@
       {{ end }}
     </div>
     <script type="text/javascript">
-      Array.prototype.forEach.call(document.getElementById("tabContent").children, function(paneEl, paneIdx) {
-        if(!paneEl.classList.contains("tab-pane")) {
-          return;
+      (function() {
+        var hashId = (window.location.hash || "").replace(/^#/, "");
+        var targetPane = hashId ? document.getElementById(hashId) : null;
+        var tabContent = document.getElementById("tabContent");
+        if (targetPane && targetPane.parentNode !== tabContent) {
+          targetPane = null;
         }
-        if(paneIdx > 0) {
-          paneEl.classList.remove("active");
-          paneEl.classList.remove("show");
-        }
-      });
+        var activePane = targetPane || document.getElementById("overview");
+        var activeTabId = (activePane && activePane.id ? activePane.id : "overview") + "-tab";
+        Array.prototype.forEach.call(tabContent.children, function(paneEl) {
+          if (!paneEl.classList.contains("tab-pane")) return;
+          if (paneEl === activePane) {
+            paneEl.classList.add("active");
+            paneEl.classList.add("show");
+          } else {
+            paneEl.classList.remove("active");
+            paneEl.classList.remove("show");
+          }
+        });
+        var tabLinks = document.querySelectorAll('.nav-tabs a[data-bs-toggle="tab"]');
+        Array.prototype.forEach.call(tabLinks, function(link) {
+          var isActive = link.id === activeTabId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+      })();
       $(function() {
+        var initialStyle = document.getElementById("dora-initial-tab-style");
+        if (initialStyle && initialStyle.parentNode) {
+          initialStyle.parentNode.removeChild(initialStyle);
+        }
+
         function activateTabByHash() {
-          if (!location.hash) return;
+          if (!location.hash) {
+            $('.nav-tabs a[href="#overview"]').tab('show');
+            return;
+          }
           var target = $('.nav-tabs a[href="' + location.hash + '"]');
           if (target.length) target.tab('show');
         }
@@ -463,7 +498,6 @@
           });
         }
 
-        activateTabByHash();
         syncSlotNavHashes();
         window.addEventListener('hashchange', function() {
           activateTabByHash();
