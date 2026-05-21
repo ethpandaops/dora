@@ -3,13 +3,13 @@
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 my-2 mb-md-0 h1-pager">
         {{- if not (eq .Slot 0) -}}
-          <a href="/slot/{{ .PreviousSlot }}"><i class="fa fa-chevron-left"></i></a>
+          <a href="/slot/{{ .PreviousSlot }}" class="slot-nav-link" data-slot-nav-base="/slot/{{ .PreviousSlot }}"><i class="fa fa-chevron-left"></i></a>
         {{- else -}}
           <a></a>
         {{- end -}}
         <span><i class="fas fa-cube mx-2"></i>Slot <span id="slot">{{ .Slot }}</span></span>
         {{- if gt .NextSlot 0 -}}
-          <a href="/slot/{{ .NextSlot }}"><i class="fa fa-chevron-right"></i></a>
+          <a href="/slot/{{ .NextSlot }}" class="slot-nav-link" data-slot-nav-base="/slot/{{ .NextSlot }}"><i class="fa fa-chevron-right"></i></a>
         {{- else -}}
           <a></a>
         {{- end -}}
@@ -455,8 +455,20 @@
           if (target.length) target.tab('show');
         }
 
+        function syncSlotNavHashes() {
+          var hash = window.location.hash || '';
+          $('.slot-nav-link').each(function() {
+            var base = this.getAttribute('data-slot-nav-base') || this.getAttribute('href');
+            this.setAttribute('href', base + hash);
+          });
+        }
+
         activateTabByHash();
-        window.addEventListener('hashchange', activateTabByHash);
+        syncSlotNavHashes();
+        window.addEventListener('hashchange', function() {
+          activateTabByHash();
+          syncSlotNavHashes();
+        });
 
         $('.nav-tabs a[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
           var href = e.target.getAttribute('href') || '';
@@ -464,6 +476,7 @@
           var newHash = href === '#overview' ? '' : href;
           if (window.location.hash !== newHash) {
             window.history.replaceState(null, document.title, window.location.pathname + window.location.search + newHash);
+            syncSlotNavHashes();
           }
         });
 
