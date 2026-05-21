@@ -87,7 +87,7 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 	return epochStats
 }
 
-func (cache *epochCache) ensureEpochDependentState(epochStats *EpochStats, firstBlockRoot phase0.Root) {
+func (cache *epochCache) ensureEpochDependentState(epochStats *EpochStats) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 

@@ -281,7 +281,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
 		if !epochStats.ready {
 			if epochStats.dependentState == nil {
-				indexer.epochCache.ensureEpochDependentState(epochStats, canonicalBlocks[0].Root)
+				indexer.epochCache.ensureEpochDependentState(epochStats)
 			}
 			if epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
 				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", epoch, dependentRoot.String())

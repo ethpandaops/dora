@@ -464,7 +464,7 @@ func (indexer *Indexer) StartIndexer() {
 				indexer.logger.Warnf("genesis block not found in cache")
 			} else {
 				epochStats := indexer.epochCache.createOrGetEpochStats(0, genesisBlock[0].Root)
-				indexer.epochCache.ensureEpochDependentState(epochStats, genesisBlock[0].Root)
+				indexer.epochCache.ensureEpochDependentState(epochStats)
 			}
 		}
 
