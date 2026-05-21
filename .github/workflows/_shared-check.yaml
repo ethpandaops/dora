@@ -3,6 +3,9 @@ name: Reusable check workflow
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 # shared check jobs
 jobs:
   check_source:
