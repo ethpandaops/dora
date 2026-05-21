@@ -1090,7 +1090,7 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 			filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 &&
 			filter.BuilderIndex == nil && filter.WithPayloadMask&dbtypes.PayloadStatusMaskMissing != 0 && len(filter.EthBlockParentHash) == 0 && filter.MinGasUsed == nil &&
 			filter.MaxGasUsed == nil && filter.MinGasLimit == nil && filter.MaxGasLimit == nil && filter.MinBlockSize == nil && filter.MaxBlockSize == nil &&
-			filter.WithMevBlock == 0 && filter.ProposerIndex == nil && filter.ProposerName == ""
+			filter.WithMevBlock == 0
 
 		// If filtering by slot, only check missing for that specific slot
 		if filter.Slot != nil {
