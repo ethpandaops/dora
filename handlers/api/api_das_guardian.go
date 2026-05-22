@@ -22,6 +22,11 @@ type APIDasGuardianScanRequest struct {
 	Slots       []uint64 `json:"slots,omitempty"`        // Optional slot numbers to scan
 	RandomMode  string   `json:"random_mode,omitempty"`  // Random slot selection mode: "non_missed", "with_blobs", "available"
 	RandomCount int32    `json:"random_count,omitempty"` // Number of random slots to select (default: 4)
+	// WaitForProposerPreferencesSeconds, if > 0, keeps the Gloas
+	// `proposer_preferences` gossip subscription open for this many seconds
+	// after the RPC exchange so the gossip mesh has time to deliver messages.
+	// Capped at 60s server-side. Ignored on pre-Gloas forks.
+	WaitForProposerPreferencesSeconds int32 `json:"wait_for_proposer_preferences_seconds,omitempty"`
 }
 
 // APIDasGuardianScanResponse represents the response from DAS Guardian scan
@@ -126,11 +131,31 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Honour an optional wait window so the Gloas proposer_preferences
+	// gossip subscription has time to deliver messages. Cap at 60s so a
+	// caller can't tie up a worker indefinitely.
+	waitSeconds := req.WaitForProposerPreferencesSeconds
+	if waitSeconds < 0 {
+		waitSeconds = 0
+	}
+	if waitSeconds > 60 {
+		waitSeconds = 60
+	}
+	scanTimeout := 30 * time.Second
+	if extra := time.Duration(waitSeconds) * time.Second; extra > 0 {
+		scanTimeout = 30*time.Second + extra
+	}
+
 	// Create temporary DAS Guardian instance
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), scanTimeout)
 	defer cancel()
 
-	dasGuardian, err := services.NewDasGuardian(ctx, logrus.WithField("component", "das-guardian-api"))
+	guardianOpts := make([]services.DasGuardianOption, 0, 1)
+	if waitSeconds > 0 {
+		guardianOpts = append(guardianOpts, services.WithProposerPreferencesWait(time.Duration(waitSeconds)*time.Second))
+	}
+
+	dasGuardian, err := services.NewDasGuardian(ctx, logrus.WithField("component", "das-guardian-api"), guardianOpts...)
 	if err != nil {
 		logrus.WithError(err).Error("failed to create DAS Guardian instance")
 		http.Error(w, `{"error": "failed to initialize DAS Guardian"}`, http.StatusInternalServerError)

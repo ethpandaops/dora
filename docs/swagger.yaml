@@ -324,6 +324,13 @@ definitions:
         items:
           type: integer
         type: array
+      wait_for_proposer_preferences_seconds:
+        description: |-
+          WaitForProposerPreferencesSeconds, if > 0, keeps the Gloas
+          `proposer_preferences` gossip subscription open for this many seconds
+          after the RPC exchange so the gossip mesh has time to deliver messages.
+          Capped at 60s server-side. Ignored on pre-Gloas forks.
+        type: integer
     type: object
   api.APIDasGuardianScanResponse:
     properties:

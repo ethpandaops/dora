@@ -2944,6 +2944,10 @@
                     "items": {
                         "type": "integer"
                     }
+                },
+                "wait_for_proposer_preferences_seconds": {
+                    "description": "WaitForProposerPreferencesSeconds, if \u003e 0, keeps the Gloas\n`proposer_preferences` gossip subscription open for this many seconds\nafter the RPC exchange so the gossip mesh has time to deliver messages.\nCapped at 60s server-side. Ignored on pre-Gloas forks.",
+                    "type": "integer"
                 }
             }
         },
