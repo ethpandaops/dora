@@ -2901,6 +2901,32 @@ const docTemplate = `{
                 }
             }
         },
+        "api.APIDasGuardianProposerPreference": {
+            "type": "object",
+            "properties": {
+                "dependent_root": {
+                    "type": "string"
+                },
+                "fee_recipient": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "gas_limit": {
+                    "type": "integer"
+                },
+                "proposal_slot": {
+                    "type": "integer"
+                },
+                "received_at": {
+                    "type": "string"
+                },
+                "validator_index": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.APIDasGuardianScanRequest": {
             "type": "object",
             "properties": {
@@ -2953,6 +2979,13 @@ const docTemplate = `{
                     "description": "P2P Information",
                     "type": "object",
                     "additionalProperties": true
+                },
+                "proposer_preferences": {
+                    "description": "Gloas SignedProposerPreferences sniffed off the peer's gossip during\nthe scan window. Empty pre-Gloas, or when no proposer published in time.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIDasGuardianProposerPreference"
+                    }
                 },
                 "remote_metadata": {
                     "description": "Metadata (from RemoteMetadata)",
