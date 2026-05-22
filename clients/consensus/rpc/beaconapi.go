@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	nethttp "net/http"
@@ -27,6 +28,11 @@ import (
 	"github.com/ethpandaops/dora/clients/sshtunnel"
 	"github.com/ethpandaops/dora/utils"
 )
+
+// ErrBlockNotFound is returned by block lookups when the beacon node responds 404.
+// This typically signals a transient race between the SSE event stream and the REST API
+// (most often observed with Lighthouse for head events at high block production rates).
+var ErrBlockNotFound = errors.New("beacon block not found")
 
 type BeaconClient struct {
 	name       string
@@ -355,6 +361,9 @@ func (bc *BeaconClient) GetBlockHeaderByBlockroot(ctx context.Context, blockroot
 		},
 	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, fmt.Errorf("%w: %v", ErrBlockNotFound, err)
+		}
 		return nil, err
 	}
 

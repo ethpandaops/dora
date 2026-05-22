@@ -3,6 +3,7 @@ package beacon
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -181,15 +182,25 @@ func (c *Client) runClientLoop() error {
 				blockEvent := event.Data.(*v1.BlockEvent)
 				err := c.processBlockEvent(blockEvent)
 				if err != nil {
-					c.logger.Errorf("failed processing block %v (%v): %v",
-						blockEvent.Slot, blockEvent.Block.String(), err)
+					if errors.Is(err, rpc.ErrBlockNotFound) {
+						c.logger.Debugf("block %v (%v) not yet queryable via REST API, will retry on next event: %v",
+							blockEvent.Slot, blockEvent.Block.String(), err)
+					} else {
+						c.logger.Errorf("failed processing block %v (%v): %v",
+							blockEvent.Slot, blockEvent.Block.String(), err)
+					}
 				}
 			case rpc.StreamHeadEvent:
 				headEvent := event.Data.(*v1.HeadEvent)
 				err := c.processHeadEvent(headEvent)
 				if err != nil {
-					c.logger.Errorf("failed processing head %v (%v): %v",
-						headEvent.Slot, headEvent.Block.String(), err)
+					if errors.Is(err, rpc.ErrBlockNotFound) {
+						c.logger.Debugf("head %v (%v) not yet queryable via REST API, will retry on next event: %v",
+							headEvent.Slot, headEvent.Block.String(), err)
+					} else {
+						c.logger.Errorf("failed processing head %v (%v): %v",
+							headEvent.Slot, headEvent.Block.String(), err)
+					}
 				}
 			}
 		case executionPayloadEvent := <-c.executionPayloadSubscription.Channel():
