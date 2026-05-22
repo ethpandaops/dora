@@ -116,6 +116,8 @@ github.com/ethereum/go-ethereum v1.17.2 h1:ag6geu0kn8Hv5FLKTpH+Hm2DHD+iuFtuqKxEu
 github.com/ethereum/go-ethereum v1.17.2/go.mod h1:KHcRXfGOUfUmKg51IhQ0IowiqZ6PqZf08CMtk0g5K1o=
 github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522080519-13921e4ca7f1 h1:QbgdX6WLkOSGA6YFu3pg235nvNPgyHWzAORZhqf5WzE=
 github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522080519-13921e4ca7f1/go.mod h1:nNlQGSz4cf8FPBuf0KIXHt1/lPfsuKXl1VfLipaUPeE=
+github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522082151-67ee99d84f56 h1:UtfnQdPA8W5X6RiUOaeNisnjw/BZpcVFkeCdja08lFI=
+github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522082151-67ee99d84f56/go.mod h1:nNlQGSz4cf8FPBuf0KIXHt1/lPfsuKXl1VfLipaUPeE=
 github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c h1:uBRIitwcuCJlRGioqm0jQRIojiH8DSyLRFSTCCBxN6o=
 github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c/go.mod h1:QsmYTdesob+vQ6pW4KtRVvxLZUNop3cdtd/DgD30hJU=
 github.com/ethpandaops/ethwallclock v0.4.0 h1:+sgnhf4pk6hLPukP076VxkiLloE4L0Yk1yat+ZyHh1g=
