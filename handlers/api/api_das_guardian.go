@@ -42,8 +42,24 @@ type APIDasGuardianScanResult struct {
 	// Metadata (from RemoteMetadata)
 	RemoteMetadata *APIDasGuardianMetadata `json:"remote_metadata,omitempty"`
 
+	// Gloas SignedProposerPreferences sniffed off the peer's gossip during
+	// the scan window. Empty pre-Gloas, or when no proposer published in time.
+	ProposerPreferences []*APIDasGuardianProposerPreference `json:"proposer_preferences,omitempty"`
+
 	// DAS Evaluation Result
 	EvalResult *APIDasGuardianEvalResult `json:"eval_result,omitempty"`
+}
+
+// APIDasGuardianProposerPreference is one SignedProposerPreferences gossip
+// message observed during the scan, attributed to the peer that delivered it.
+type APIDasGuardianProposerPreference struct {
+	ValidatorIndex uint64 `json:"validator_index"`
+	ProposalSlot   uint64 `json:"proposal_slot"`
+	FeeRecipient   string `json:"fee_recipient"`
+	GasLimit       uint64 `json:"gas_limit"`
+	DependentRoot  string `json:"dependent_root"`
+	ReceivedAt     string `json:"received_at"`
+	From           string `json:"from"`
 }
 
 // APIDasGuardianStatus represents the beacon node status
@@ -197,6 +213,28 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 				Syncnets:          fmt.Sprintf("0x%x", scanResult.RemoteMetadataV3.Syncnets),
 				CustodyGroupCount: uint64(scanResult.RemoteMetadataV3.CustodyGroupCount),
 			}
+		}
+
+		// Map any Gloas SignedProposerPreferences messages that were observed
+		// off the wire during the scan window.
+		if len(scanResult.ProposerPreferences) > 0 {
+			prefs := make([]*APIDasGuardianProposerPreference, 0, len(scanResult.ProposerPreferences))
+			for _, obs := range scanResult.ProposerPreferences {
+				if obs == nil || obs.Message == nil || obs.Message.Message == nil {
+					continue
+				}
+				msg := obs.Message.Message
+				prefs = append(prefs, &APIDasGuardianProposerPreference{
+					ValidatorIndex: uint64(msg.ValidatorIndex),
+					ProposalSlot:   uint64(msg.ProposalSlot),
+					FeeRecipient:   fmt.Sprintf("0x%x", msg.FeeRecipient),
+					GasLimit:       msg.GasLimit,
+					DependentRoot:  fmt.Sprintf("0x%x", msg.DependentRoot),
+					ReceivedAt:     obs.ReceivedAt.Format(time.RFC3339),
+					From:           obs.From.String(),
+				})
+			}
+			result.ProposerPreferences = prefs
 		}
 
 		// Map evaluation result (always present since it's not a pointer)
