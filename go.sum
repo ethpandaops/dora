@@ -122,6 +122,8 @@ github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522090705-b0aedc982964 h1:
 github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522090705-b0aedc982964/go.mod h1:nNlQGSz4cf8FPBuf0KIXHt1/lPfsuKXl1VfLipaUPeE=
 github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522091055-3f6edd4ccde3 h1:K8h1AX/mBg/s3EQTyrDH4yJsOx1/BfXo6DJDNH5zFtM=
 github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522091055-3f6edd4ccde3/go.mod h1:nNlQGSz4cf8FPBuf0KIXHt1/lPfsuKXl1VfLipaUPeE=
+github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522095023-d09ab17a2b35 h1:uJR6xuKYt8OMIsb+qng0XPE65VSXOn/Kn2dRQbVsm4U=
+github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260522095023-d09ab17a2b35/go.mod h1:nNlQGSz4cf8FPBuf0KIXHt1/lPfsuKXl1VfLipaUPeE=
 github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c h1:uBRIitwcuCJlRGioqm0jQRIojiH8DSyLRFSTCCBxN6o=
 github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c/go.mod h1:QsmYTdesob+vQ6pW4KtRVvxLZUNop3cdtd/DgD30hJU=
 github.com/ethpandaops/ethwallclock v0.4.0 h1:+sgnhf4pk6hLPukP076VxkiLloE4L0Yk1yat+ZyHh1g=
