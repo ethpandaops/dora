@@ -465,6 +465,7 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 		blockIndex.EthTransactionCount = uint64(len(payload.Message.Payload.Transactions))
 		blockIndex.GasUsed = payload.Message.Payload.GasUsed
 		blockIndex.GasLimit = payload.Message.Payload.GasLimit
+		blockIndex.ExecutionExtraData = payload.Message.Payload.ExtraData
 	}
 
 	if blockSize, err := getBlockSize(block.dynSsz, body); err == nil {
