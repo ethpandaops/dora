@@ -317,6 +317,13 @@ func (bs *ChainService) GetDepositOperationsByFilter(ctx context.Context, filter
 				}
 			}
 
+			if len(txFilter.WithdrawalCredTypes) > 0 {
+				wdcreds := depositWithTx.WithdrawalCredentials
+				if len(wdcreds) == 0 || !slices.Contains(txFilter.WithdrawalCredTypes, wdcreds[0]) {
+					continue
+				}
+			}
+
 			filteredMatches = append(filteredMatches, depositWithTx)
 		}
 
