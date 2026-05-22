@@ -422,6 +422,16 @@
                         "description": "Filter by signature validity (0=invalid only, 1=valid only, 2=all)",
                         "name": "with_valid",
                         "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Filter by withdrawal credential type prefix byte (0-3). Repeat the parameter to include multiple types, e.g. cred_type=1\u0026cred_type=2.",
+                        "name": "cred_type",
+                        "in": "query"
                     }
                 ],
                 "responses": {

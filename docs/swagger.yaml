@@ -2181,6 +2181,14 @@ paths:
         in: query
         name: with_valid
         type: integer
+      - collectionFormat: multi
+        description: Filter by withdrawal credential type prefix byte (0-3). Repeat
+          the parameter to include multiple types, e.g. cred_type=1&cred_type=2.
+        in: query
+        items:
+          type: integer
+        name: cred_type
+        type: array
       produces:
       - application/json
       responses:
