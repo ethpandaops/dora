@@ -179,7 +179,7 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 		FilterCredTypes:     credTypeSet,
 	}
 	cacheTimeout := 5 * time.Minute
-	logrus.Debugf("included_deposits page called: %v:%v [%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount)
+	logrus.Debugf("included_deposits page called: %v:%v [%v,%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, credTypes)
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
 	} else {
