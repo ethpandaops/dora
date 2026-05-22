@@ -2264,7 +2264,43 @@
             </table>
           </div>`;
         }
-        
+
+        if (result.proposer_preferences && result.proposer_preferences.length > 0) {
+          const prefs = result.proposer_preferences;
+          html += `<div class="mb-4">
+            <h6 class="border-bottom pb-2">
+              <i class="fa-solid fa-user-tie"></i> Proposer Preferences
+              <span class="badge bg-secondary ms-1">${prefs.length}</span>
+              <small class="text-muted ms-2">(Gloas <code>proposer_preferences</code> gossip sniffed during scan)</small>
+            </h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered">
+                <thead>
+                  <tr>
+                    <th>Validator</th>
+                    <th>Proposal Slot</th>
+                    <th>Fee Recipient</th>
+                    <th class="text-end">Gas Limit</th>
+                    <th>Received</th>
+                  </tr>
+                </thead>
+                <tbody>`;
+          for (const pref of prefs) {
+            const feeShort = pref.fee_recipient
+              ? pref.fee_recipient.slice(0, 10) + '…' + pref.fee_recipient.slice(-6)
+              : '-';
+            html += `<tr>
+                <td><a href="/validator/${pref.validator_index}">${pref.validator_index.toLocaleString()}</a></td>
+                <td><a href="/slot/${pref.proposal_slot}">${pref.proposal_slot.toLocaleString()}</a></td>
+                <td><code title="${escapeHtml(pref.fee_recipient)}">${escapeHtml(feeShort)}</code></td>
+                <td class="text-end">${pref.gas_limit.toLocaleString()}</td>
+                <td><span title="${escapeHtml(pref.received_at)}">${escapeHtml(pref.received_at)}</span></td>
+              </tr>`;
+          }
+          html += `</tbody></table></div>
+          </div>`;
+        }
+
         // DAS Evaluation Results
         if (result.eval_result) {
           const evalResult = result.eval_result;
