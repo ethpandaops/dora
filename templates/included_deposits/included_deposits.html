@@ -112,6 +112,29 @@
                     </select>
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Credential Type</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex flex-wrap gap-3 cred-type-filter">
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="checkbox" name="f.cred" id="credType0" value="0" {{ if index .FilterCredTypes 0 }}checked{{ end }}>
+                      <label class="form-check-label text-monospace text-warning" for="credType0">0x00</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="checkbox" name="f.cred" id="credType1" value="1" {{ if index .FilterCredTypes 1 }}checked{{ end }}>
+                      <label class="form-check-label text-monospace text-success" for="credType1">0x01</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="checkbox" name="f.cred" id="credType2" value="2" {{ if index .FilterCredTypes 2 }}checked{{ end }}>
+                      <label class="form-check-label text-monospace text-info" for="credType2">0x02</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="checkbox" name="f.cred" id="credType3" value="3" {{ if index .FilterCredTypes 3 }}checked{{ end }}>
+                      <label class="form-check-label text-monospace text-primary" for="credType3">0x03</label>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

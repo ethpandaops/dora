@@ -139,6 +139,19 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 			filterOp = "AND"
 		}
 
+		if len(txFilter.WithdrawalCredTypes) > 0 {
+			fmt.Fprintf(&sql, " %v (", filterOp)
+			for i, credType := range txFilter.WithdrawalCredTypes {
+				if i > 0 {
+					fmt.Fprintf(&sql, " OR ")
+				}
+				args = append(args, []byte{credType})
+				fmt.Fprintf(&sql, " SUBSTRING(deposits.withdrawalcredentials, 1, 1) = $%v", len(args))
+			}
+			fmt.Fprintf(&sql, " )")
+			filterOp = "AND"
+		}
+
 		if len(txFilter.Address) > 0 {
 			args = append(args, txFilter.Address)
 			fmt.Fprintf(&sql, " %v deposit_txs.tx_sender = $%v", filterOp, len(args))

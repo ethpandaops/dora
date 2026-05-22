@@ -121,9 +121,10 @@ func (bs *ChainService) GetDepositRequestsByFilter(ctx context.Context, filter *
 	}
 
 	txFilter := &dbtypes.DepositTxFilter{
-		Address:       filter.Filter.Address,
-		TargetAddress: filter.Filter.TargetAddress,
-		WithValid:     filter.Filter.WithValid,
+		Address:             filter.Filter.Address,
+		TargetAddress:       filter.Filter.TargetAddress,
+		WithValid:           filter.Filter.WithValid,
+		WithdrawalCredTypes: filter.Filter.WithdrawalCredTypes,
 	}
 
 	dbOperations, totalReqResults := bs.GetDepositOperationsByFilter(ctx, operationFilter, txFilter, pageOffset, pageSize)
