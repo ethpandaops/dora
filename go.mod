@@ -10,7 +10,7 @@ require (
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c
 	github.com/ethpandaops/ethwallclock v0.4.0
-	github.com/ethpandaops/go-eth2-client v0.1.2
+	github.com/ethpandaops/go-eth2-client v0.1.3
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
