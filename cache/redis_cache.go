@@ -72,7 +72,7 @@ func (cache *RedisCache) SetBool(ctx context.Context, key string, value bool, ex
 
 func (cache *RedisCache) GetBool(ctx context.Context, key string) (bool, error) {
 
-	value, err := cache.redisRemoteCache.Get(ctx, key).Result()
+	value, err := cache.redisRemoteCache.Get(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key)).Result()
 	if err != nil {
 		return false, err
 	}
