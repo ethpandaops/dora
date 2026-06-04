@@ -207,7 +207,9 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 			depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
 
 			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
-			if strings.HasPrefix(validator.Status.String(), "pending") {
+			if validator == nil {
+				depositTxData.ValidatorStatus = "Deposited"
+			} else if strings.HasPrefix(validator.Status.String(), "pending") {
 				depositTxData.ValidatorStatus = "Pending"
 			} else if validator.Status == v1.ValidatorStateActiveOngoing {
 				depositTxData.ValidatorStatus = "Active"

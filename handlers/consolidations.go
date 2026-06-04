@@ -190,7 +190,9 @@ func buildConsolidationsPageData(ctx context.Context, firstEpoch uint64, pageSiz
 				queueData.SourceEffectiveBalance = uint64(queueEntry.SrcValidator.Validator.EffectiveBalance)
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(queueEntry.SrcValidator.Index, false)
-				if strings.HasPrefix(validator.Status.String(), "pending") {
+				if validator == nil {
+					queueData.SourceValidatorStatus = "Unknown"
+				} else if strings.HasPrefix(validator.Status.String(), "pending") {
 					queueData.SourceValidatorStatus = "Pending"
 				} else if validator.Status == v1.ValidatorStateActiveOngoing {
 					queueData.SourceValidatorStatus = "Active"
