@@ -162,8 +162,8 @@ func GetForkVisualizationData(ctx context.Context, startSlot uint64, endSlot uin
 		FROM (
 			-- Forks that overlap with our time window
 			SELECT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
-			FROM forks 
-			WHERE base_slot < $2 AND leaf_slot >= $1
+			FROM forks
+			WHERE leaf_slot >= $1 AND base_slot < $2
 			
 			UNION
 			
@@ -171,7 +171,7 @@ func GetForkVisualizationData(ctx context.Context, startSlot uint64, endSlot uin
 			SELECT p.fork_id, p.base_slot, p.base_root, p.leaf_slot, p.leaf_root, p.parent_fork
 			FROM forks p
 			INNER JOIN forks f ON p.fork_id = f.parent_fork
-			WHERE f.base_slot < $2 AND f.leaf_slot >= $1
+			WHERE f.leaf_slot >= $1 AND f.base_slot < $2
 			
 			UNION
 			
@@ -179,7 +179,7 @@ func GetForkVisualizationData(ctx context.Context, startSlot uint64, endSlot uin
 			SELECT c.fork_id, c.base_slot, c.base_root, c.leaf_slot, c.leaf_root, c.parent_fork
 			FROM forks c
 			INNER JOIN forks f ON c.parent_fork = f.fork_id
-			WHERE f.base_slot < $2 AND f.leaf_slot >= $1
+			WHERE f.leaf_slot >= $1 AND f.base_slot < $2
 		) AS combined_forks
 		ORDER BY base_slot ASC, fork_id ASC
 	`, startSlot, endSlot)
