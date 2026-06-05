@@ -309,7 +309,8 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 	// NULLS LAST is required to match the index definition and enable index scans.
 	var sql strings.Builder
 	innerLimit := offset + uint64(limit)
-	args := []any{accountID, accountID, accountID, innerLimit}
+	// Placeholders must stay in ascending appearance order (see query_helpers.go).
+	args := []any{accountID, innerLimit, accountID, accountID, innerLimit}
 
 	fmt.Fprintf(&sql, `
 		SELECT %s
@@ -317,15 +318,15 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 			SELECT * FROM (SELECT %s
 			FROM el_transactions WHERE from_id = $1
 			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $4) AS a
+			LIMIT $2) AS a
 			UNION ALL
 			SELECT * FROM (SELECT %s
-			FROM el_transactions WHERE to_id = $2 AND from_id != $3
+			FROM el_transactions WHERE to_id = $3 AND from_id != $4
 			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $4) AS b
+			LIMIT $5) AS b
 		) combined
 		ORDER BY tx_uid DESC
-		LIMIT $5`, elTransactionColumns, elTransactionColumns, elTransactionColumns)
+		LIMIT $6`, elTransactionColumns, elTransactionColumns, elTransactionColumns)
 	args = append(args, limit)
 
 	if offset > 0 {
