@@ -223,8 +223,47 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 	s.stateSlot = state.Slot
 	dependentRoot := s.slotRoot
 
+	// validators/balances default to the on-chain registry. For recent (unfinalized)
+	// epoch states we extend them with the validators the chain will create from the
+	// pending_deposits queue, at their exact future indices. New slices are built —
+	// state.Validators/Balances must not be mutated, as the same state object is
+	// advanced for sibling epochs and stored in the state cache.
+	realValidatorCount := len(state.Validators)
+	validators := state.Validators
+	balances := state.Balances
+
+	if cache != nil && state.Version >= spec.DataVersionElectra && len(state.PendingDeposits) > 0 {
+		chainState := cache.indexer.consensusPool.GetChainState()
+		finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
+		if chainState.EpochOfSlot(state.Slot) > finalizedEpoch {
+			specs := chainState.GetSpecs()
+			var gloasForkEpoch *phase0.Epoch
+			if specs.GloasForkEpoch != nil {
+				e := phase0.Epoch(*specs.GloasForkEpoch)
+				gloasForkEpoch = &e
+			}
+			projectedValidators, projectedBalances := cache.indexer.pendingValidators.project(state.Validators, state.PendingDeposits, pendingProjectionInput{
+				genesisForkVersion:         specs.GenesisForkVersion,
+				currentEpoch:               chainState.EpochOfSlot(state.Slot),
+				depositBalanceToConsume:    state.DepositBalanceToConsume,
+				maxPendingDepositsPerEpoch: specs.MaxPendingDepositsPerEpoch,
+				gloasForkEpoch:             gloasForkEpoch,
+				churnLimit:                 chainState.GetActivationExitChurnLimit,
+			})
+			if len(projectedValidators) > 0 {
+				validators = make([]*phase0.Validator, 0, realValidatorCount+len(projectedValidators))
+				validators = append(validators, state.Validators...)
+				validators = append(validators, projectedValidators...)
+
+				balances = make([]phase0.Gwei, 0, realValidatorCount+len(projectedBalances))
+				balances = append(balances, state.Balances...)
+				balances = append(balances, projectedBalances...)
+			}
+		}
+	}
+
 	if cache != nil {
-		cache.indexer.validatorCache.updateValidatorSet(state.Slot, dependentRoot, state.Validators)
+		cache.indexer.validatorCache.updateValidatorSet(state.Slot, dependentRoot, validators)
 	}
 
 	// Process builder set for Gloas+
@@ -245,7 +284,7 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 		validatorPubkeyMap[v.PublicKey] = phase0.ValidatorIndex(i)
 	}
 
-	s.validatorBalances = state.Balances
+	s.validatorBalances = balances
 	s.randaoMixes = state.RANDAOMixes
 	s.depositIndex = state.ETH1DepositIndex
 

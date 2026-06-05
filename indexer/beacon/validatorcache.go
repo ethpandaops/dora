@@ -84,7 +84,9 @@ func (v *ValidatorData) EffectiveBalance() phase0.Gwei {
 // Parameters:
 //   - slot: The slot number for this update
 //   - dependentRoot: The dependent root hash for this update
-//   - validators: Full validator set for this epoch
+//   - validators: Full validator set for this epoch, optionally extended with
+//     validators projected from the pending_deposits queue (those carry a zero
+//     effective balance and unset activation-eligibility epoch)
 func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot phase0.Root, validators []*phase0.Validator) {
 	chainState := cache.indexer.consensusPool.GetChainState()
 	epoch := chainState.EpochOfSlot(slot)
