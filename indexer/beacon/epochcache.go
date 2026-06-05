@@ -524,7 +524,8 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 		cache.cacheMutex.RUnlock()
 
 		if len(pendingOthers) > 0 {
-			specs := client.indexer.consensusPool.GetChainState().GetSpecs()
+			chainState := client.indexer.consensusPool.GetChainState()
+			specs := chainState.GetSpecs()
 
 			// Sort by target epoch so we advance the state forward incrementally.
 			sort.Slice(pendingOthers, func(i, j int) bool {
@@ -532,6 +533,14 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 			})
 
 			for _, entry := range pendingOthers {
+				// Don't advance across a fork boundary — the state transition can't apply
+				// fork upgrades (e.g. upgrade_to_gloas), so it would silently produce a
+				// wrong, un-migrated state. Leave this and the later (higher-epoch)
+				// siblings pending; the loader will load them in full from the node.
+				if chainState.GetForkVersionAtEpoch(chainState.EpochOfSlot(state.Slot)) != chainState.GetForkVersionAtEpoch(entry.epochState.targetEpoch) {
+					break
+				}
+
 				// Advance the already-loaded state to the next target epoch.
 				var transitionInfo statetransition.TransitionInfo
 				if err := statetransition.NewStateTransition(specs, cache.indexer.dynSsz).PrepareEpochPreState(state, entry.epochState.targetEpoch, &transitionInfo); err != nil {

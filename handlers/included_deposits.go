@@ -16,6 +16,7 @@ import (
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -236,9 +237,26 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey())); !found {
 			depositData.ValidatorStatus = "Deposited"
 			depositData.ValidatorExists = false
+		} else if uint64(validatorIdx)&services.BuilderIndexFlag != 0 {
+			builderIndex := uint64(validatorIdx) &^ services.BuilderIndexFlag
+			depositData.IsBuilder = true
+			depositData.ValidatorExists = true
+			depositData.ValidatorIndex = builderIndex
+			depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
+
+			builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
+			if builder == nil {
+				depositData.ValidatorStatus = "Deposited"
+			} else if builder.WithdrawableEpoch <= chainState.CurrentEpoch() {
+				depositData.ValidatorStatus = "Exited"
+			} else {
+				depositData.ValidatorStatus = "Active"
+			}
 		} else {
 			depositData.ValidatorExists = true
 			depositData.ValidatorIndex = uint64(validatorIdx)
+			depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIdx)
+			depositData.IsBuilder = false
 			depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
 
 			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)

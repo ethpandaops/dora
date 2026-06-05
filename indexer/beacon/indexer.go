@@ -48,6 +48,7 @@ type Indexer struct {
 	forkCache          *forkCache
 	pubkeyCache        *pubkeyCache
 	validatorCache     *validatorCache
+	pendingValidators  *pendingValidatorProjector
 	validatorActivity  *validatorActivityCache
 	blockBidCache      *blockBidCache
 	builderCache       *builderCache
@@ -123,6 +124,7 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	indexer.forkCache = newForkCache(indexer)
 	indexer.pubkeyCache = newPubkeyCache(indexer, utils.Config.Indexer.PubkeyCachePath)
 	indexer.validatorCache = newValidatorCache(indexer)
+	indexer.pendingValidators = newPendingValidatorProjector(indexer)
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
 	indexer.blockBidCache = newBlockBidCache(indexer)
 	indexer.builderCache = newBuilderCache(indexer)

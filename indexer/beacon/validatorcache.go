@@ -48,6 +48,19 @@ type validatorEntry struct {
 	statusFlags    uint16
 }
 
+// latestPubkey returns the pubkey of the most recently known state for this entry
+// (finalized value if present, otherwise the newest diff). Returns false if the entry
+// has no known validator value yet.
+func (e *validatorEntry) latestPubkey() (phase0.BLSPubKey, bool) {
+	if n := len(e.validatorDiffs); n > 0 {
+		return e.validatorDiffs[n-1].validator.PublicKey, true
+	}
+	if e.finalValidator != nil {
+		return e.finalValidator.PublicKey, true
+	}
+	return phase0.BLSPubKey{}, false
+}
+
 // ValidatorData contains the essential validator state information for active validators
 type ValidatorData struct {
 	ActivationEligibilityEpoch phase0.Epoch
@@ -84,7 +97,9 @@ func (v *ValidatorData) EffectiveBalance() phase0.Gwei {
 // Parameters:
 //   - slot: The slot number for this update
 //   - dependentRoot: The dependent root hash for this update
-//   - validators: Full validator set for this epoch
+//   - validators: Full validator set for this epoch, optionally extended with
+//     validators projected from the pending_deposits queue (those carry a zero
+//     effective balance and unset activation-eligibility epoch)
 func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot phase0.Root, validators []*phase0.Validator) {
 	chainState := cache.indexer.consensusPool.GetChainState()
 	epoch := chainState.EpochOfSlot(slot)
@@ -130,6 +145,19 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 		} else {
 			cache.valsetCache = cache.valsetCache[:len(validators)]
 		}
+	} else if len(cache.valsetCache) > len(validators) {
+		// The validator set shrank. Real validators only ever grow, so every entry
+		// beyond the new length is a projected (pending-deposit) validator that is no
+		// longer projected — e.g. builder deposits that get onboarded as builders at
+		// the Gloas fork, or a projection that simply produced fewer entries than a
+		// previous one. Drop the excess so stale projected validators don't linger in
+		// the set (and point past the balances array). Their pubkey-cache entries are
+		// left dangling but resolve to nil via the index bound check in
+		// getValidatorByIndex.
+		for i := len(validators); i < len(cache.valsetCache); i++ {
+			cache.valsetCache[i] = nil
+		}
+		cache.valsetCache = cache.valsetCache[:len(validators)]
 	}
 
 	isParentMap := map[phase0.Root]bool{}
@@ -154,6 +182,16 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 		} else {
 			parentValidator = cachedValidator.finalValidator
 			parentChecksum = cachedValidator.finalChecksum
+
+			// Reconcile the pubkey→index map when the pubkey occupying this index changes.
+			// Real validators never change pubkey, but a projected (pending-deposit)
+			// validator's estimated index shifts as the queue ahead of it is processed or
+			// builder deposits are dropped at the Gloas fork. Without this the pubkey cache
+			// keeps a stale mapping and GetValidatorIndexByPubkey misses the validator, so
+			// it appears "not projected".
+			if existingPubkey, ok := cachedValidator.latestPubkey(); ok && existingPubkey != validators[i].PublicKey {
+				cache.indexer.pubkeyCache.Add(validators[i].PublicKey, phase0.ValidatorIndex(i))
+			}
 		}
 
 		deleteKeys := []int{}

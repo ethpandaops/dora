@@ -6,20 +6,31 @@ import (
 
 // ValidatorPageData is a struct to hold info for the validator page
 type ValidatorPageData struct {
-	CurrentEpoch             uint64                                `json:"current_epoch"`
-	Index                    uint64                                `json:"index"`
-	Name                     string                                `json:"name"`
-	PublicKey                []byte                                `json:"pubkey" ssz-size:"48"`
-	Balance                  uint64                                `json:"balance"`
-	EffectiveBalance         uint64                                `json:"eff_balance"`
-	State                    string                                `json:"state"`
-	BeaconState              string                                `json:"beacon_state"`
-	ShowEligible             bool                                  `json:"show_eligible"`
-	EligibleTs               time.Time                             `json:"eligible_ts"`
-	EligibleEpoch            uint64                                `json:"eligible_epoch"`
-	ShowActivation           bool                                  `json:"show_activation"`
-	ActivationTs             time.Time                             `json:"activation_ts"`
-	ActivationEpoch          uint64                                `json:"activation_epoch"`
+	CurrentEpoch     uint64    `json:"current_epoch"`
+	Index            uint64    `json:"index"`
+	ProjectedIndex   bool      `json:"projected_index"`
+	Name             string    `json:"name"`
+	PublicKey        []byte    `json:"pubkey" ssz-size:"48"`
+	Balance          uint64    `json:"balance"`
+	BalanceResolved  bool      `json:"balance_resolved"`
+	EffectiveBalance uint64    `json:"eff_balance"`
+	State            string    `json:"state"`
+	BeaconState      string    `json:"beacon_state"`
+	ShowEligible     bool      `json:"show_eligible"`
+	EligibleTs       time.Time `json:"eligible_ts"`
+	EligibleEpoch    uint64    `json:"eligible_epoch"`
+	ShowActivation   bool      `json:"show_activation"`
+	ActivationTs     time.Time `json:"activation_ts"`
+	ActivationEpoch  uint64    `json:"activation_epoch"`
+	// Lifecycle timeline node states (computed; unified pre/post-Electra).
+	DepositedClass           string                                `json:"deposited_class"`
+	DepositedTooltip         string                                `json:"deposited_tooltip"`
+	PendingClass             string                                `json:"pending_class"`
+	PendingTooltip           string                                `json:"pending_tooltip"`
+	ShowDepositProgress      bool                                  `json:"show_deposit_progress"`
+	DepositProgressLabel     string                                `json:"deposit_progress_label"`
+	ShowDepositEstimate      bool                                  `json:"show_deposit_estimate"`
+	DepositEstimateEpoch     uint64                                `json:"deposit_estimate_epoch"`
 	IsActive                 bool                                  `json:"is_active"`
 	WasActive                bool                                  `json:"was_active"`
 	UpcheckActivity          uint8                                 `json:"upcheck_act"`

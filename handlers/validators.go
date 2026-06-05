@@ -15,6 +15,7 @@ import (
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -262,6 +263,7 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 
 		validatorData := &models.ValidatorsPageDataValidator{
 			Index:            uint64(validator.Index),
+			ProjectedIndex:   beacon.IsProjectedValidator(validator.Validator),
 			Name:             services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
 			PublicKey:        validator.Validator.PublicKey[:],
 			Balance:          uint64(validator.Balance),
@@ -291,12 +293,12 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 			validatorData.UpcheckMaximum = uint8(3)
 		}
 
-		if validator.Validator.ActivationEpoch < 18446744073709551615 {
+		if validator.Validator.ActivationEligibilityEpoch < beacon.FarFutureEpoch && validator.Validator.ActivationEpoch < beacon.FarFutureEpoch {
 			validatorData.ShowActivation = true
 			validatorData.ActivationEpoch = uint64(validator.Validator.ActivationEpoch)
 			validatorData.ActivationTs = chainState.EpochToTime(validator.Validator.ActivationEpoch)
 		}
-		if validator.Validator.ExitEpoch < 18446744073709551615 {
+		if validator.Validator.ExitEpoch < beacon.FarFutureEpoch {
 			validatorData.ShowExit = true
 			validatorData.ExitEpoch = uint64(validator.Validator.ExitEpoch)
 			validatorData.ExitTs = chainState.EpochToTime(validator.Validator.ExitEpoch)

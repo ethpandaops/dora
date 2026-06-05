@@ -1,8 +1,10 @@
 package statetransition
 
 import (
+	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	zrnt_common "github.com/protolambda/zrnt/eth2/beacon/common"
 )
 
 // processPendingDeposits implements the Electra+ version of process_pending_deposits.
@@ -23,6 +25,10 @@ func processPendingDeposits(s *stateAccessor) error {
 	for i, v := range s.Validators {
 		pubkeyIndex[v.PublicKey] = phase0.ValidatorIndex(i)
 	}
+
+	// Computed once and reused: the deposit domain is fork-agnostic and depends
+	// only on the genesis fork version.
+	depositDomain := depositsig.Domain(s.specs.GenesisForkVersion)
 
 	for _, deposit := range s.PendingDeposits {
 		// Do not process deposit requests if Eth1 bridge deposits are not yet applied.
@@ -52,7 +58,7 @@ func processPendingDeposits(s *stateAccessor) error {
 		switch {
 		case isValidatorWithdrawn:
 			// Deposited balance will never become active. Apply without consuming churn.
-			applyPendingDeposit(s, deposit, pubkeyIndex)
+			applyPendingDeposit(s, deposit, pubkeyIndex, depositDomain)
 
 		case isValidatorExited:
 			// Validator is exiting; postpone until after withdrawable epoch.
@@ -65,7 +71,7 @@ func processPendingDeposits(s *stateAccessor) error {
 				break
 			}
 			processedAmount += phase0.Gwei(deposit.Amount)
-			applyPendingDeposit(s, deposit, pubkeyIndex)
+			applyPendingDeposit(s, deposit, pubkeyIndex, depositDomain)
 		}
 
 		if isChurnLimitReached {
@@ -92,24 +98,35 @@ func processPendingDeposits(s *stateAccessor) error {
 	return nil
 }
 
-// applyPendingDeposit implements apply_pending_deposit. If the validator does
-// not exist, a new one is added to the registry. Otherwise the deposit amount
-// is added to the existing validator's balance.
+// applyPendingDeposit implements apply_pending_deposit. For an existing pubkey
+// the deposit amount tops up the validator's balance. For a new pubkey a
+// validator is added to the registry ONLY if the deposit carries a valid
+// signature (proof-of-possession); otherwise the deposit is silently dropped,
+// exactly as the chain does.
 //
-// Signature verification is skipped — we trust blocks fetched from a verified
-// beacon node, so the deposit is always applied.
+// The signature gate is consensus-critical: the deposit contract does not verify
+// it, so invalid-signature deposits for new pubkeys reach the queue. Creating a
+// validator for one would append a phantom entry and shift every subsequent
+// validator index relative to the chain (and diverge the state root). The
+// caller's churn/queue accounting is unaffected — an invalid signature only
+// suppresses the registry append, never the processed-amount/cursor advance.
 //
 // pubkeyIndex is the local pubkey→index map maintained by processPendingDeposits;
 // when a new validator is appended, the map is updated so subsequent deposits
 // in the same loop find the new validator.
 //
 // https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-apply_pending_deposit
-func applyPendingDeposit(s *stateAccessor, deposit *electra.PendingDeposit, pubkeyIndex map[phase0.BLSPubKey]phase0.ValidatorIndex) {
+func applyPendingDeposit(s *stateAccessor, deposit *electra.PendingDeposit, pubkeyIndex map[phase0.BLSPubKey]phase0.ValidatorIndex, depositDomain zrnt_common.BLSDomain) {
 	if existingIdx, ok := pubkeyIndex[deposit.Pubkey]; ok {
 		s.increaseBalance(existingIdx, phase0.Gwei(deposit.Amount))
 		return
 	}
-	// New validator: add to registry.
+
+	// New validator: only create it if the deposit signature is valid.
+	if !depositsig.Valid(deposit.Pubkey, deposit.WithdrawalCredentials, phase0.Gwei(deposit.Amount), deposit.Signature, depositDomain) {
+		return
+	}
+
 	addValidatorToRegistry(s, deposit.Pubkey, deposit.WithdrawalCredentials, phase0.Gwei(deposit.Amount))
 	pubkeyIndex[deposit.Pubkey] = phase0.ValidatorIndex(len(s.Validators) - 1)
 }
