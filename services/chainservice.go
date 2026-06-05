@@ -504,7 +504,7 @@ func (bs *ChainService) isCanonicalForkId(forkId uint64, canonicalForkIds []uint
 
 func (bs *ChainService) GetValidatorName(index uint64) string {
 	if index&BuilderIndexFlag != 0 {
-		if name := bs.buildoorInventory.GetBuilderName(index &^ BuilderIndexFlag); name != "" {
+		if name := bs.buildoorInventory.GetBuilderName(index); name != "" {
 			return name
 		}
 	}

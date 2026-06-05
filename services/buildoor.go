@@ -211,9 +211,10 @@ func (b *BuildoorInventory) GetBuilderName(builderIndex uint64) string {
 	if b == nil {
 		return ""
 	}
+	rawIdx := builderIndex &^ BuilderIndexFlag
 	b.entriesMutex.RLock()
 	defer b.entriesMutex.RUnlock()
-	if entry := b.entries[builderIndex]; entry != nil {
+	if entry := b.entries[rawIdx]; entry != nil {
 		return entry.name
 	}
 	return ""
@@ -223,9 +224,10 @@ func (b *BuildoorInventory) GetBuilderURL(builderIndex uint64) string {
 	if b == nil {
 		return ""
 	}
+	rawIdx := builderIndex &^ BuilderIndexFlag
 	b.entriesMutex.RLock()
 	defer b.entriesMutex.RUnlock()
-	if entry := b.entries[builderIndex]; entry != nil {
+	if entry := b.entries[rawIdx]; entry != nil {
 		return entry.url
 	}
 	return ""
