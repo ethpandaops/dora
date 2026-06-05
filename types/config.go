@@ -49,6 +49,10 @@ type Config struct {
 		ValidatorNamesRefreshInterval time.Duration `yaml:"validatorNamesRefreshInterval" envconfig:"FRONTEND_VALIDATOR_REFRESH_INTERVAL"`
 		ValidatorNamesResolveInterval time.Duration `yaml:"validatorNamesResolveInterval" envconfig:"FRONTEND_VALIDATOR_RESOLVE_INTERVAL"`
 
+		BuildoorOverviewUrl     string        `yaml:"buildoorOverviewUrl" envconfig:"FRONTEND_BUILDOOR_OVERVIEW_URL"`
+		BuildoorUrls            []string      `yaml:"buildoorUrls" envconfig:"FRONTEND_BUILDOOR_URLS"`
+		BuildoorRefreshInterval time.Duration `yaml:"buildoorRefreshInterval" envconfig:"FRONTEND_BUILDOOR_REFRESH_INTERVAL"`
+
 		PageCallTimeout       time.Duration `yaml:"pageCallTimeout" envconfig:"FRONTEND_PAGE_CALL_TIMEOUT"`
 		MaxConcurrentPages    *int          `yaml:"maxConcurrentPages" envconfig:"FRONTEND_MAX_CONCURRENT_PAGES"`
 		MaxConcurrentPageType *int          `yaml:"maxConcurrentPageType" envconfig:"FRONTEND_MAX_CONCURRENT_PAGE_TYPE"`

@@ -185,6 +185,7 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 		CurrentEpoch:     uint64(currentEpoch),
 		Index:            builderIndex,
 		Name:             services.GlobalBeaconService.GetValidatorName(builderIndex | services.BuilderIndexFlag),
+		BuildoorURL:      services.GlobalBeaconService.GetBuilderURL(builderIndex),
 		PublicKey:        builder.PublicKey[:],
 		Balance:          uint64(builder.Balance),
 		ExecutionAddress: builder.ExecutionAddress[:],

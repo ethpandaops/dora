@@ -54,6 +54,7 @@ type BuilderPageData struct {
 	CurrentEpoch     uint64 `json:"current_epoch"`
 	Index            uint64 `json:"index"`
 	Name             string `json:"name"`
+	BuildoorURL      string `json:"buildoor_url"`
 	PublicKey        []byte `json:"pubkey"`
 	Balance          uint64 `json:"balance"`
 	ExecutionAddress []byte `json:"execution_address"`
