@@ -22,9 +22,9 @@
             <!-- Validator lifecycle -->
             <div class="validator__lifecycle-container">
               <div class="validator__lifecycle-content">
-                <div id="lifecycle-deposited" class="validator__lifecycle-node-container validator__lifecycle-deposited {{ if .ShowEligible }}done{{ else }}active{{ end }}">
+                <div id="lifecycle-deposited" class="validator__lifecycle-node-container validator__lifecycle-deposited {{ .DepositedClass }}">
                   <div class="validator__lifecycle-node-header">Deposited</div>
-                  <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="This will turn green when your deposit has been processed by the beacon chain">
+                  <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="{{ .DepositedTooltip }}">
                     <i class="fas fa-check deposit-success"></i>
                     <i class="fas fa-times fail deposit-fail"></i>
                     <div class="spinner">
@@ -39,13 +39,17 @@
                     <div data-bs-toggle="tooltip" title="The eligible epoch is when your validator is registered by the beacon chain and joins the queue to be activated.">
                       <a href="/epoch/{{ .EligibleEpoch }}">{{ if eq .EligibleEpoch 0 }}genesis{{ else }}{{ .EligibleEpoch }}{{ end }}</a>
                     </div>
+                    {{ else if .ShowDepositEstimate }}
+                    <div data-bs-toggle="tooltip" title="{{ .DepositedTooltip }}">~<a href="/epoch/{{ .DepositEstimateEpoch }}">{{ if eq .DepositEstimateEpoch 0 }}genesis{{ else }}{{ .DepositEstimateEpoch }}{{ end }}</a></div>
+                    {{ else if .ShowDepositProgress }}
+                    <div class="validator__lifecycle-deposit-progress" data-bs-toggle="tooltip" title="{{ .DepositedTooltip }}">{{ .DepositProgressLabel }}</div>
                     {{ end }}
                   </div>
                 </div>
-                <div id="lifecycle-pending" class="validator__lifecycle-node-container validator__lifecycle-pending {{ if .ShowActivation }}{{ if ge .CurrentEpoch .ActivationEpoch }}done{{ else }}active{{ end }}{{ end }}">
+                <div id="lifecycle-pending" class="validator__lifecycle-node-container validator__lifecycle-pending {{ .PendingClass }}">
                   <div class="validator__lifecycle-node-container">
                     <div class="validator__lifecycle-node-header">Pending</div>
-                    <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="After being processed your validator joins a queue to be activated">
+                    <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="{{ .PendingTooltip }}">
                       <i class="fas fa-hourglass-half pending-waiting"></i>
                       <i class="fas fa-check"></i>
                       <div class="spinner">
@@ -58,7 +62,7 @@
                 <div class="validator__lifecycle-progress validator__lifecycle-pending">
                   <div class="validator__lifecycle-progress-epoch">
                     {{ if .ShowActivation }}
-                      <div data-bs-toggle="tooltip" title="The activation epoch is when your validator becomes active.">
+                      <div data-bs-toggle="tooltip" title="{{ .PendingTooltip }}">
                         <a href="/epoch/{{ .ActivationEpoch }}">{{ if eq .ActivationEpoch 0 }}genesis{{ else }}{{ .ActivationEpoch }}{{ end }}</a>
                       </div>
                     {{ end }}
@@ -128,8 +132,12 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the full balance for this validator (Epoch {{ .CurrentEpoch }})">Balance:</span></div>
           <div class="col-md-10">
+            {{ if .BalanceResolved }}
             {{ formatEthFromGwei .Balance }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthFromGwei .Balance }}"></i>
+            {{ else }}
+            <span data-bs-toggle="tooltip" title="Balance not available yet (the validator set is still being loaded).">?</span>
+            {{ end }}
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">

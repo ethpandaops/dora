@@ -145,6 +145,19 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 		} else {
 			cache.valsetCache = cache.valsetCache[:len(validators)]
 		}
+	} else if len(cache.valsetCache) > len(validators) {
+		// The validator set shrank. Real validators only ever grow, so every entry
+		// beyond the new length is a projected (pending-deposit) validator that is no
+		// longer projected — e.g. builder deposits that get onboarded as builders at
+		// the Gloas fork, or a projection that simply produced fewer entries than a
+		// previous one. Drop the excess so stale projected validators don't linger in
+		// the set (and point past the balances array). Their pubkey-cache entries are
+		// left dangling but resolve to nil via the index bound check in
+		// getValidatorByIndex.
+		for i := len(validators); i < len(cache.valsetCache); i++ {
+			cache.valsetCache[i] = nil
+		}
+		cache.valsetCache = cache.valsetCache[:len(validators)]
 	}
 
 	isParentMap := map[phase0.Root]bool{}

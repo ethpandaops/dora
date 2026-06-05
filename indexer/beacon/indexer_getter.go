@@ -460,12 +460,15 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 		for {
 			cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
 			if headEpoch-cEpoch > 2 {
-				return nil
+				// No recent epoch stats are loaded (e.g. just after a restart, before the
+				// vset is refreshed). Stop looking and return the validator without a
+				// balance rather than reporting it as missing.
+				break
 			}
 
 			dependentBlock := indexer.blockCache.getDependentBlock(chainState, canonicalHead, nil)
 			if dependentBlock == nil {
-				return nil
+				break
 			}
 			canonicalHead = dependentBlock
 
@@ -498,7 +501,10 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 	}
 
 	var balance *phase0.Gwei
-	if hasBalances {
+	if hasBalances && int(validatorIndex) < len(epochStats.dependentState.validatorBalances) {
+		// Projected (pending-deposit) validators live past the on-chain balances array
+		// and have a zero balance; leaving balance nil here yields 0 and avoids an
+		// out-of-range panic.
 		balance = &epochStats.dependentState.validatorBalances[validatorIndex]
 	}
 
