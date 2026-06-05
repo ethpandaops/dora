@@ -15,6 +15,7 @@ import (
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -262,6 +263,7 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 
 		validatorData := &models.ValidatorsPageDataValidator{
 			Index:            uint64(validator.Index),
+			ProjectedIndex:   beacon.IsProjectedValidator(validator.Validator),
 			Name:             services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
 			PublicKey:        validator.Validator.PublicKey[:],
 			Balance:          uint64(validator.Balance),

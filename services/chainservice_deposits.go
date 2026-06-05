@@ -459,8 +459,12 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 		go func() {
 			defer wg.Done()
 			for work := range workChan {
-				_, found := bs.beaconIndexer.GetValidatorIndexByPubkey(work.entry.PendingDeposit.Pubkey)
-				if !found {
+				// A pubkey counts as a new validator unless it already maps to a real
+				// on-chain validator. A projected validator (derived from this very
+				// queue) resolves via GetValidatorIndexByPubkey too, so it must still
+				// be counted as new — otherwise TotalNew undercounts.
+				idx, found := bs.beaconIndexer.GetValidatorIndexByPubkey(work.entry.PendingDeposit.Pubkey)
+				if !found || bs.IsProjectedValidatorIndex(idx) {
 					newValidatorsMutex.Lock()
 					_, isNew := newValidators[work.entry.PendingDeposit.Pubkey]
 					if !isNew {

@@ -3,6 +3,7 @@ package beacon
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"sync"
 
 	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
@@ -106,6 +107,8 @@ func (p *pendingValidatorProjector) project(realValidators []*phase0.Validator, 
 		projectedBalances = append(projectedBalances, 0)
 	}
 
+	fmt.Println("projectedValidators", len(projectedValidators))
+
 	return projectedValidators, projectedBalances
 }
 
@@ -123,6 +126,15 @@ type pendingProjectionInput struct {
 // isActiveAtEpoch reports whether a validator is active at the given epoch.
 func isActiveAtEpoch(v *phase0.Validator, epoch phase0.Epoch) bool {
 	return v.ActivationEpoch <= epoch && epoch < v.ExitEpoch
+}
+
+// IsProjectedValidator reports whether a validator entry is a projection of a
+// not-yet-processed pending deposit rather than a real on-chain validator. Such
+// entries carry an unset activation-eligibility epoch together with a set
+// activation epoch (the estimated processing epoch) — a combination a real
+// validator never has, so its index is an estimate, not yet reserved on chain.
+func IsProjectedValidator(v *phase0.Validator) bool {
+	return v != nil && v.ActivationEligibilityEpoch == FarFutureEpoch && v.ActivationEpoch != FarFutureEpoch
 }
 
 // isBuilderWithdrawalCredential reports whether the credentials use the Gloas

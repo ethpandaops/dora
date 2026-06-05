@@ -204,6 +204,7 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 		} else {
 			depositTxData.ValidatorExists = true
 			depositTxData.ValidatorIndex = uint64(validatorIdx)
+			depositTxData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIdx)
 			depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
 
 			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)

@@ -198,6 +198,7 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 			} else {
 				depositTxData.ValidatorExists = true
 				depositTxData.ValidatorIndex = uint64(validatorIndex)
+				depositTxData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIndex)
 				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
@@ -307,6 +308,7 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 			} else {
 				depositData.ValidatorExists = true
 				depositData.ValidatorIndex = uint64(validatorIndex)
+				depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIndex)
 				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
@@ -400,6 +402,7 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				} else {
 					depositData.ValidatorExists = true
 					depositData.ValidatorIndex = uint64(validatorIdx)
+					depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIdx)
 					depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
 
 					validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)

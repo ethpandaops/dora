@@ -131,6 +131,7 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 	pageData := &models.ValidatorPageData{
 		CurrentEpoch:        uint64(chainState.CurrentEpoch()),
 		Index:               uint64(validator.Index),
+		ProjectedIndex:      beacon.IsProjectedValidator(validator.Validator),
 		Name:                services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
 		PublicKey:           validator.Validator.PublicKey[:],
 		Balance:             uint64(validator.Balance),

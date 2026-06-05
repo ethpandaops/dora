@@ -8,6 +8,7 @@ import (
 type ValidatorPageData struct {
 	CurrentEpoch             uint64                                `json:"current_epoch"`
 	Index                    uint64                                `json:"index"`
+	ProjectedIndex           bool                                  `json:"projected_index"`
 	Name                     string                                `json:"name"`
 	PublicKey                []byte                                `json:"pubkey" ssz-size:"48"`
 	Balance                  uint64                                `json:"balance"`

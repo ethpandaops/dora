@@ -23,6 +23,14 @@ func (bs *ChainService) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phas
 	return bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
 }
 
+// IsProjectedValidatorIndex reports whether the given index currently resolves to a
+// validator projected from the pending_deposits queue (not yet on chain), i.e. its
+// index is an estimate. Returns false for real validators and unknown indexes.
+func (bs *ChainService) IsProjectedValidatorIndex(index phase0.ValidatorIndex) bool {
+	validator := bs.GetValidatorByIndex(index, false)
+	return validator != nil && beacon.IsProjectedValidator(validator.Validator)
+}
+
 func (bs *ChainService) StreamActiveValidatorData(activeOnly bool, cb beacon.ValidatorSetStreamer) error {
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead == nil {
@@ -330,7 +338,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 
 		if len(filter.Status) > 0 {
 			var balancePtr *phase0.Gwei
-			if balances != nil {
+			if balances != nil && len(balances) > int(index) {
 				balancePtr = &balances[index]
 			}
 			validatorState := v1.ValidatorToState(validator, balancePtr, currentEpoch, beacon.FarFutureEpoch)
@@ -452,7 +460,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			if matchingCount >= filter.Offset {
 				balance := phase0.Gwei(0)
 				var balancePtr *phase0.Gwei
-				if balances != nil {
+				if balances != nil && len(balances) > int(cachedResults[cachedIndex].Index) {
 					balance = balances[cachedResults[cachedIndex].Index]
 					balancePtr = &balance
 				}
@@ -479,7 +487,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 		if matchingCount >= filter.Offset {
 			balance := phase0.Gwei(0)
 			var balancePtr *phase0.Gwei
-			if balances != nil {
+			if balances != nil && len(balances) > int(validator.ValidatorIndex) {
 				balance = balances[validator.ValidatorIndex]
 				balancePtr = &balance
 			}
@@ -504,13 +512,14 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 	for cachedIndex < len(cachedResults) && (filter.Limit == 0 || resultCount < filter.Limit) {
 		if matchingCount >= filter.Offset {
 			balance := phase0.Gwei(0)
+			index := int(cachedResults[cachedIndex].Index)
 			var balancePtr *phase0.Gwei
-			if balances != nil {
-				balance = balances[cachedResults[cachedIndex].Index]
+			if balances != nil && len(balances) > index {
+				balance = balances[index]
 				balancePtr = &balance
 			}
 			result = append(result, v1.Validator{
-				Index:     phase0.ValidatorIndex(cachedResults[cachedIndex].Index),
+				Index:     phase0.ValidatorIndex(index),
 				Balance:   balance,
 				Status:    v1.ValidatorToState(cachedResults[cachedIndex].Validator, balancePtr, currentEpoch, beacon.FarFutureEpoch),
 				Validator: cachedResults[cachedIndex].Validator,
