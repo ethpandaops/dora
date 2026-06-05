@@ -19,7 +19,7 @@
               {{ if $bid.IsSelfBuilt }}
                 <span class="builder-label builder-index"><i class="fas fa-hard-hat mr-2"></i> Self-built</span>
               {{ else }}
-                {{ formatBuilderWithIndex $bid.BuilderIndex $bid.BuilderName }}
+                {{ formatBuilderWithIndexAndURL $bid.BuilderIndex $bid.BuilderName $bid.BuilderURL }}
               {{ end }}
               {{ if $bid.IsWinning }}<span class="badge bg-success ms-1">Winner</span>{{ end }}
             </td>

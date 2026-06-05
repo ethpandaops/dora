@@ -51,6 +51,10 @@ frontend:
   validatorNamesYaml: ""
   validatorNamesInventory: ""
 
+  buildoorOverviewUrl: ""
+  buildoorUrls: []
+  buildoorRefreshInterval: 5m
+
   # frontend features
   disablePageCache: false
   showSensitivePeerInfos: false

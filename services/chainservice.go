@@ -39,6 +39,7 @@ type ChainService struct {
 	executionPool        *execution.Pool
 	beaconIndexer        *beacon.Indexer
 	validatorNames       *ValidatorNames
+	buildoorInventory    *BuildoorInventory
 	depositIndexer       *syscontracts.DepositIndexer
 	consolidationIndexer *syscontracts.ConsolidationIndexer
 	withdrawalIndexer    *syscontracts.WithdrawalIndexer
@@ -62,6 +63,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	beaconIndexer := beacon.NewIndexer(ctx, logger.WithField("service", "cl-indexer"), consensusPool)
 	chainState := consensusPool.GetChainState()
 	validatorNames := NewValidatorNames(ctx, beaconIndexer, chainState)
+	buildoorInventory := NewBuildoorInventory(ctx, beaconIndexer)
 	mevRelayIndexer := mevrelay.NewMevIndexer(ctx, logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 	snooperManager := snooper.NewSnooperManager(ctx, logger.WithField("service", "snooper-manager"), beaconIndexer)
 
@@ -69,14 +71,15 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	beaconIndexer.SetExecutionTimeProvider(snooper.NewExecutionTimeProvider(snooperManager.GetCache()))
 
 	GlobalBeaconService = &ChainService{
-		ctx:             ctx,
-		logger:          logger,
-		consensusPool:   consensusPool,
-		executionPool:   executionPool,
-		beaconIndexer:   beaconIndexer,
-		validatorNames:  validatorNames,
-		mevRelayIndexer: mevRelayIndexer,
-		snooperManager:  snooperManager,
+		ctx:               ctx,
+		logger:            logger,
+		consensusPool:     consensusPool,
+		executionPool:     executionPool,
+		beaconIndexer:     beaconIndexer,
+		validatorNames:    validatorNames,
+		buildoorInventory: buildoorInventory,
+		mevRelayIndexer:   mevRelayIndexer,
+		snooperManager:    snooperManager,
 	}
 }
 
@@ -324,6 +327,8 @@ func (cs *ChainService) StartService() error {
 		cs.validatorNames.StartUpdater()
 	}()
 
+	cs.buildoorInventory.StartUpdater()
+
 	// start chain indexer
 	cs.beaconIndexer.StartIndexer()
 
@@ -498,7 +503,16 @@ func (bs *ChainService) isCanonicalForkId(forkId uint64, canonicalForkIds []uint
 }
 
 func (bs *ChainService) GetValidatorName(index uint64) string {
+	if index&BuilderIndexFlag != 0 {
+		if name := bs.buildoorInventory.GetBuilderName(index &^ BuilderIndexFlag); name != "" {
+			return name
+		}
+	}
 	return bs.validatorNames.GetValidatorName(index)
+}
+
+func (bs *ChainService) GetBuilderURL(builderIndex uint64) string {
+	return bs.buildoorInventory.GetBuilderURL(builderIndex)
 }
 
 func (bs *ChainService) GetValidatorNamesCount() uint64 {

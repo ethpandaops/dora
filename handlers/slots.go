@@ -318,6 +318,7 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 					slotData.HasBuilder = true
 					slotData.BuilderIndex = uint64(dbSlot.BuilderIndex)
 					slotData.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(dbSlot.BuilderIndex) | services.BuilderIndexFlag)
+					slotData.BuilderURL = services.GlobalBeaconService.GetBuilderURL(uint64(dbSlot.BuilderIndex))
 				}
 			}
 

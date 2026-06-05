@@ -150,6 +150,7 @@ type SlotPagePayloadHeader struct {
 	GasLimit           uint64   `json:"gas_limit"`
 	BuilderIndex       uint64   `json:"builder_index"`
 	BuilderName        string   `json:"builder_name"`
+	BuilderURL         string   `json:"builder_url"`
 	Slot               uint64   `json:"slot"`
 	Value              uint64   `json:"value"`
 	BlobKZGCommitments [][]byte `json:"blob_kzg_commitments"`
@@ -337,6 +338,7 @@ type SlotPageBid struct {
 	GasLimit     uint64 `json:"gas_limit"`
 	BuilderIndex uint64 `json:"builder_index"`
 	BuilderName  string `json:"builder_name"`
+	BuilderURL   string `json:"builder_url"`
 	IsSelfBuilt  bool   `json:"is_self_built"`
 	Slot         uint64 `json:"slot"`
 	Value        uint64 `json:"value"`

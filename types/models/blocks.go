@@ -92,6 +92,7 @@ type BlocksPageDataSlot struct {
 	HasBuilder            bool                       `json:"has_builder"`
 	BuilderIndex          uint64                     `json:"builder_index"`
 	BuilderName           string                     `json:"builder_name"`
+	BuilderURL            string                     `json:"builder_url"`
 }
 
 type BlocksPageDataForkGraph struct {
