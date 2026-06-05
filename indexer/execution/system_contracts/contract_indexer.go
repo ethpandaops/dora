@@ -219,6 +219,10 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 			Addresses: []common.Address{
 				ci.options.contractAddress,
 			},
+			// Match any topic. A nil Topics serializes to "topics": null, which some
+			// execution clients (e.g. ethrex) reject as a missing parameter; a non-nil
+			// empty slice serializes to "topics": [] and is accepted everywhere.
+			Topics: [][]common.Hash{},
 		}
 
 		logs, err := ci.loadFilteredLogs(ctx, client, query)
@@ -450,6 +454,10 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 				Addresses: []common.Address{
 					ci.options.contractAddress,
 				},
+				// Match any topic. A nil Topics serializes to "topics": null, which some
+				// execution clients (e.g. ethrex) reject as a missing parameter; a non-nil
+				// empty slice serializes to "topics": [] and is accepted everywhere.
+				Topics: [][]common.Hash{},
 			}
 
 			logs, reqError = ci.loadFilteredLogs(ctx, client, query)

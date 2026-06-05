@@ -369,10 +369,17 @@ func (s *epochState) tryReplayFromParentState(
 		return nil
 	}
 
-	// Skip replay across fork boundaries — the state version must match the
-	// dependent block's version (fork upgrades during state transition are not
-	// yet implemented).
-	if depBeaconBlock.Version != parentState.Version {
+	// Skip replay across fork boundaries. Fork upgrades (e.g. upgrade_to_gloas, which
+	// onboards builders from the pending_deposits queue) are NOT implemented by the
+	// state transition, so an epoch transition that crosses a fork would silently
+	// produce a wrong, un-migrated state — and since the returned pre-state is not
+	// verified against a target-epoch block, the error would go unnoticed. Detect both
+	// a dependent-block/parent-state version mismatch and a fork change between the
+	// parent epoch and the target epoch, and fall back to loading the full state from
+	// the beacon API for that epoch.
+	chainState := client.indexer.consensusPool.GetChainState()
+	if depBeaconBlock.Version != parentState.Version ||
+		chainState.GetForkVersionAtEpoch(parentEpoch) != chainState.GetForkVersionAtEpoch(s.targetEpoch) {
 		return nil
 	}
 

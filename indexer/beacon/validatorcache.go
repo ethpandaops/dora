@@ -48,6 +48,19 @@ type validatorEntry struct {
 	statusFlags    uint16
 }
 
+// latestPubkey returns the pubkey of the most recently known state for this entry
+// (finalized value if present, otherwise the newest diff). Returns false if the entry
+// has no known validator value yet.
+func (e *validatorEntry) latestPubkey() (phase0.BLSPubKey, bool) {
+	if n := len(e.validatorDiffs); n > 0 {
+		return e.validatorDiffs[n-1].validator.PublicKey, true
+	}
+	if e.finalValidator != nil {
+		return e.finalValidator.PublicKey, true
+	}
+	return phase0.BLSPubKey{}, false
+}
+
 // ValidatorData contains the essential validator state information for active validators
 type ValidatorData struct {
 	ActivationEligibilityEpoch phase0.Epoch
@@ -156,6 +169,16 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 		} else {
 			parentValidator = cachedValidator.finalValidator
 			parentChecksum = cachedValidator.finalChecksum
+
+			// Reconcile the pubkey→index map when the pubkey occupying this index changes.
+			// Real validators never change pubkey, but a projected (pending-deposit)
+			// validator's estimated index shifts as the queue ahead of it is processed or
+			// builder deposits are dropped at the Gloas fork. Without this the pubkey cache
+			// keeps a stale mapping and GetValidatorIndexByPubkey misses the validator, so
+			// it appears "not projected".
+			if existingPubkey, ok := cachedValidator.latestPubkey(); ok && existingPubkey != validators[i].PublicKey {
+				cache.indexer.pubkeyCache.Add(validators[i].PublicKey, phase0.ValidatorIndex(i))
+			}
 		}
 
 		deleteKeys := []int{}

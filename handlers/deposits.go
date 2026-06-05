@@ -199,6 +199,7 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				depositTxData.ValidatorExists = true
 				depositTxData.ValidatorIndex = uint64(validatorIndex)
 				depositTxData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIndex)
+				depositTxData.IsBuilder = false
 				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
@@ -233,10 +234,14 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 		pageData.InitiatedDepositCount = uint64(len(pageData.InitiatedDeposits))
 
 	case "included":
-		// load included deposits
+		// load included deposits. Show all forks (WithOrphaned: 1) like the dedicated
+		// included-deposits page's default view — recent blocks holding freshly included
+		// deposits may not be marked canonical yet, and canonical-only filtering would
+		// hide them on the overview while the filtered page still shows them.
 		depositFilter := &services.CombinedDepositRequestFilter{
 			Filter: &dbtypes.DepositTxFilter{
-				WithOrphaned: 0,
+				WithOrphaned: 1,
+				WithValid:    1, // no signature-validity filter; cached deposits have unknown validity
 			},
 		}
 
@@ -309,6 +314,7 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				depositData.ValidatorExists = true
 				depositData.ValidatorIndex = uint64(validatorIndex)
 				depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIndex)
+				depositData.IsBuilder = false
 				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
@@ -403,6 +409,7 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 					depositData.ValidatorExists = true
 					depositData.ValidatorIndex = uint64(validatorIdx)
 					depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIdx)
+					depositData.IsBuilder = false
 					depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
 
 					validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)

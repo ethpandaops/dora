@@ -133,11 +133,11 @@ func TestProjectGloasBuilderFilter(t *testing.T) {
 
 	// Churn = one deposit per epoch; processing starts at currentEpoch+1 = 101.
 	// So queue position k is processed at epoch 101+k.
-	skA, pkA := testKeyPair(t, 0x0A) // builder, epoch 101 (< fork) -> kept
-	skB, pkB := testKeyPair(t, 0x0B) // builder, epoch 102 (< fork) -> kept
-	skC, pkC := testKeyPair(t, 0x0C) // builder, epoch 103 (>= fork) -> filtered
-	skD, pkD := testKeyPair(t, 0x0D) // builder, epoch 104 (>= fork) -> filtered
-	skE, pkE := testKeyPair(t, 0x0E) // exec,    epoch 105 (>= fork) -> kept (not a builder)
+	skA, pkA := testKeyPair(t, 0x0A) // builder, epoch 101 (< fork) -> kept (validator)
+	skB, pkB := testKeyPair(t, 0x0B) // builder, epoch 102 (< fork) -> kept (validator)
+	skC, pkC := testKeyPair(t, 0x0C) // builder, reaches fork epoch 103 -> onboarded as builder, dropped
+	skD, pkD := testKeyPair(t, 0x0D) // builder, reaches fork epoch 103 -> onboarded as builder, dropped
+	skE, pkE := testKeyPair(t, 0x0E) // exec, processes right after the fork (epoch 103) -> kept (validator)
 
 	deposits := []*electra.PendingDeposit{
 		signedDeposit(skA, pkA, builderWc, amount, domain),
@@ -160,7 +160,9 @@ func TestProjectGloasBuilderFilter(t *testing.T) {
 	validators, _ := p.project(nil, deposits, in)
 
 	wantPubkeys := []phase0.BLSPubKey{pkA, pkB, pkE}
-	wantActivation := []phase0.Epoch{101, 102, 105} // estimated processing epochs
+	// E processes right after the fork: the dropped builders C/D are removed at the
+	// fork and consume no churn, so E is not pushed out to epoch 105.
+	wantActivation := []phase0.Epoch{101, 102, 103}
 	if len(validators) != len(wantPubkeys) {
 		t.Fatalf("projected %d validators, want %d", len(validators), len(wantPubkeys))
 	}

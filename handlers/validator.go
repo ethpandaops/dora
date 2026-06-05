@@ -23,6 +23,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // Validator will return the main "validator" page using a go template
@@ -277,7 +278,7 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 				validatorActivityIdx++
 			}
 
-			validatorStatus := v1.ValidatorToState(validator.Validator, &validator.Balance, epoch, beacon.FarFutureEpoch)
+			validatorStatus := utils.ValidatorToState(validator.Validator, &validator.Balance, epoch, beacon.FarFutureEpoch)
 			if !found && strings.HasPrefix(validatorStatus.String(), "active_") {
 				attestation := &models.ValidatorPageDataAttestation{
 					Epoch:  uint64(epoch),

@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
@@ -501,7 +502,7 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 		balance = &epochStats.dependentState.validatorBalances[validatorIndex]
 	}
 
-	state := v1.ValidatorToState(basicValidator, balance, epoch, FarFutureEpoch)
+	state := utils.ValidatorToState(basicValidator, balance, epoch, FarFutureEpoch)
 
 	validatorData := &v1.Validator{
 		Index:     validatorIndex,

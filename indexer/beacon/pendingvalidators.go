@@ -3,7 +3,6 @@ package beacon
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"sync"
 
 	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
@@ -50,12 +49,6 @@ func (p *pendingValidatorProjector) project(realValidators []*phase0.Validator, 
 
 	domain := depositsig.Domain(in.genesisForkVersion)
 
-	// A Gloas fork that is scheduled but not yet active filters builder (0x03)
-	// deposits: any still queued at the fork is onboarded as a builder
-	// (onboard_builders_from_pending_deposits) and never becomes a validator, so it
-	// only creates a validator if processed before the fork.
-	gloasFilterActive := in.gloasForkEpoch != nil && in.currentEpoch < *in.gloasForkEpoch
-
 	// Pubkeys already in the on-chain registry never create a validator (top-ups).
 	// Sum the active balance in the same pass — it feeds the churn-based processing
 	// epoch estimate below.
@@ -73,10 +66,12 @@ func (p *pendingValidatorProjector) project(realValidators []*phase0.Validator, 
 	// independent of queue order, so the whole set can be resolved as one batch.
 	sigValid := p.resolveSignatures(deposits, known, domain)
 
-	// Estimate the epoch at which each deposit will be processed. It is stored as the
-	// projected validator's activation epoch (see validatorFromDeposit) — the work is
-	// reused rather than discarded, and it also drives the Gloas builder filter.
-	estimator := newDepositProcessingEstimator(in.currentEpoch, in.depositBalanceToConsume, phase0.Gwei(in.churnLimit(uint64(totalActiveBalance))), in.maxPendingDepositsPerEpoch)
+	// Estimate the epoch at which each deposit will be processed. The estimate models
+	// the Gloas fork removing still-queued builder deposits, so it both (a) drives the
+	// builder filter and (b) yields a realistic processing epoch for the normal
+	// deposits queued behind the builders. It is stored as the projected validator's
+	// activation epoch (see validatorFromDeposit) rather than discarded.
+	estimator := newDepositProcessingEstimator(in.currentEpoch, in.depositBalanceToConsume, phase0.Gwei(in.churnLimit(uint64(totalActiveBalance))), in.maxPendingDepositsPerEpoch, in.gloasForkEpoch)
 
 	// Walk the queue in order, creating a validator at the first valid-signature
 	// occurrence of each new pubkey.
@@ -87,7 +82,7 @@ func (p *pendingValidatorProjector) project(realValidators []*phase0.Validator, 
 	for i, deposit := range deposits {
 		// The estimate must advance for every queued deposit (each consumes churn),
 		// so step it before any skip.
-		processingEpoch := estimator.next(deposit.Amount)
+		processingEpoch, onboardedAsBuilder := estimator.next(deposit.Amount, isBuilderWithdrawalCredential(deposit.WithdrawalCredentials))
 
 		if _, ok := known[deposit.Pubkey]; ok {
 			continue // top-up to an existing on-chain validator
@@ -98,16 +93,14 @@ func (p *pendingValidatorProjector) project(realValidators []*phase0.Validator, 
 		if !sigValid[i] {
 			continue // invalid signature: the chain drops it, pubkey stays uncreated
 		}
-		if gloasFilterActive && isBuilderWithdrawalCredential(deposit.WithdrawalCredentials) && processingEpoch >= *in.gloasForkEpoch {
-			continue // onboarded as a builder at the Gloas fork; never becomes a validator
+		if onboardedAsBuilder {
+			continue // builder deposit onboarded as a builder at the Gloas fork; never a validator
 		}
 
 		created[deposit.Pubkey] = struct{}{}
 		projectedValidators = append(projectedValidators, validatorFromDeposit(deposit, processingEpoch))
 		projectedBalances = append(projectedBalances, 0)
 	}
-
-	fmt.Println("projectedValidators", len(projectedValidators))
 
 	return projectedValidators, projectedBalances
 }
@@ -154,9 +147,10 @@ type depositProcessingEstimator struct {
 	churnLimit                 phase0.Gwei
 	maxPendingDepositsPerEpoch uint64
 	countInEpoch               uint64
+	gloasForkEpoch             *phase0.Epoch
 }
 
-func newDepositProcessingEstimator(currentEpoch phase0.Epoch, depositBalanceToConsume phase0.Gwei, churnLimit phase0.Gwei, maxPendingDepositsPerEpoch uint64) *depositProcessingEstimator {
+func newDepositProcessingEstimator(currentEpoch phase0.Epoch, depositBalanceToConsume phase0.Gwei, churnLimit phase0.Gwei, maxPendingDepositsPerEpoch uint64, gloasForkEpoch *phase0.Epoch) *depositProcessingEstimator {
 	if maxPendingDepositsPerEpoch == 0 {
 		maxPendingDepositsPerEpoch = 16
 	}
@@ -165,15 +159,20 @@ func newDepositProcessingEstimator(currentEpoch phase0.Epoch, depositBalanceToCo
 		balance:                    depositBalanceToConsume + churnLimit,
 		churnLimit:                 churnLimit,
 		maxPendingDepositsPerEpoch: maxPendingDepositsPerEpoch,
+		gloasForkEpoch:             gloasForkEpoch,
 	}
 }
 
 // next returns the estimated processing epoch for a deposit of the given amount and
-// advances the estimator. With no churn budget (degenerate empty chain) it returns
-// FarFutureEpoch so dependent cutoffs treat the deposit as never processed.
-func (e *depositProcessingEstimator) next(amount phase0.Gwei) phase0.Epoch {
+// advances the estimator. onboarded is true when the deposit is a builder (0x03) that
+// reaches the Gloas fork unprocessed: at the fork such deposits are onboarded as
+// builders (onboard_builders_from_pending_deposits), removed from the queue, and never
+// become validators — so they consume no further deposit churn, which lets the normal
+// deposits queued behind them process right after the fork rather than far in the
+// future. With no churn budget (degenerate empty chain) it returns FarFutureEpoch.
+func (e *depositProcessingEstimator) next(amount phase0.Gwei, isBuilder bool) (epoch phase0.Epoch, onboarded bool) {
 	if e.churnLimit == 0 {
-		return FarFutureEpoch
+		return FarFutureEpoch, false
 	}
 	if e.countInEpoch >= e.maxPendingDepositsPerEpoch {
 		e.epoch++
@@ -185,9 +184,13 @@ func (e *depositProcessingEstimator) next(amount phase0.Gwei) phase0.Epoch {
 		e.balance += e.churnLimit
 		e.countInEpoch = 0
 	}
+	if isBuilder && e.gloasForkEpoch != nil && e.epoch >= *e.gloasForkEpoch {
+		// onboarded as a builder at the fork; removed from the queue, consumes no churn
+		return e.epoch, true
+	}
 	e.countInEpoch++
 	e.balance -= amount
-	return e.epoch
+	return e.epoch, false
 }
 
 // resolveSignatures returns per-deposit signature validity (indexed like deposits),

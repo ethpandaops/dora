@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/utils"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
@@ -277,6 +278,17 @@ type ValidatorWithIndex struct {
 	Validator *phase0.Validator
 }
 
+// balanceAt returns the balance at the given validator index, or 0 if the index is
+// beyond the balances slice. Projected (pending-deposit) validators live at indexes
+// past the on-chain balances array and always have a zero balance, so falling back to
+// 0 is correct and avoids out-of-range panics.
+func balanceAt(balances []phase0.Gwei, index phase0.ValidatorIndex) phase0.Gwei {
+	if int(index) < len(balances) {
+		return balances[index]
+	}
+	return 0
+}
+
 // getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
 func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
 	var overrideForkId *beacon.ForkKey
@@ -341,7 +353,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			if balances != nil && len(balances) > int(index) {
 				balancePtr = &balances[index]
 			}
-			validatorState := v1.ValidatorToState(validator, balancePtr, currentEpoch, beacon.FarFutureEpoch)
+			validatorState := utils.ValidatorToState(validator, balancePtr, currentEpoch, beacon.FarFutureEpoch)
 			if !slices.Contains(filter.Status, validatorState) {
 				return nil
 			}
@@ -389,10 +401,10 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			}
 		} else {
 			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return balances[valA.Index] < balances[valB.Index]
+				return balanceAt(balances, valA.Index) < balanceAt(balances, valB.Index)
 			}
 			sort.Slice(dbIndexes, func(i, j int) bool {
-				return balances[dbIndexes[i]] < balances[dbIndexes[j]]
+				return balanceAt(balances, phase0.ValidatorIndex(dbIndexes[i])) < balanceAt(balances, phase0.ValidatorIndex(dbIndexes[j]))
 			})
 		}
 	case dbtypes.ValidatorOrderBalanceDesc:
@@ -467,7 +479,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 				result = append(result, v1.Validator{
 					Index:     cachedResults[cachedIndex].Index,
 					Balance:   balance,
-					Status:    v1.ValidatorToState(cachedResults[cachedIndex].Validator, balancePtr, currentEpoch, beacon.FarFutureEpoch),
+					Status:    utils.ValidatorToState(cachedResults[cachedIndex].Validator, balancePtr, currentEpoch, beacon.FarFutureEpoch),
 					Validator: cachedResults[cachedIndex].Validator,
 				})
 				resultCount++
@@ -495,7 +507,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			result = append(result, v1.Validator{
 				Index:     phase0.ValidatorIndex(validator.ValidatorIndex),
 				Balance:   balance,
-				Status:    v1.ValidatorToState(validatorData, balancePtr, currentEpoch, beacon.FarFutureEpoch),
+				Status:    utils.ValidatorToState(validatorData, balancePtr, currentEpoch, beacon.FarFutureEpoch),
 				Validator: validatorData,
 			})
 			resultCount++
@@ -521,7 +533,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			result = append(result, v1.Validator{
 				Index:     phase0.ValidatorIndex(index),
 				Balance:   balance,
-				Status:    v1.ValidatorToState(cachedResults[cachedIndex].Validator, balancePtr, currentEpoch, beacon.FarFutureEpoch),
+				Status:    utils.ValidatorToState(cachedResults[cachedIndex].Validator, balancePtr, currentEpoch, beacon.FarFutureEpoch),
 				Validator: cachedResults[cachedIndex].Validator,
 			})
 			resultCount++

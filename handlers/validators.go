@@ -293,12 +293,12 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 			validatorData.UpcheckMaximum = uint8(3)
 		}
 
-		if validator.Validator.ActivationEpoch < 18446744073709551615 {
+		if validator.Validator.ActivationEligibilityEpoch < beacon.FarFutureEpoch && validator.Validator.ActivationEpoch < beacon.FarFutureEpoch {
 			validatorData.ShowActivation = true
 			validatorData.ActivationEpoch = uint64(validator.Validator.ActivationEpoch)
 			validatorData.ActivationTs = chainState.EpochToTime(validator.Validator.ActivationEpoch)
 		}
-		if validator.Validator.ExitEpoch < 18446744073709551615 {
+		if validator.Validator.ExitEpoch < beacon.FarFutureEpoch {
 			validatorData.ShowExit = true
 			validatorData.ExitEpoch = uint64(validator.Validator.ExitEpoch)
 			validatorData.ExitTs = chainState.EpochToTime(validator.Validator.ExitEpoch)
