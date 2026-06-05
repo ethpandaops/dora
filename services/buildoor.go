@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,9 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
-	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +17,6 @@ var logger_buildoor = logrus.StandardLogger().WithField("module", "buildoor_inve
 
 type BuildoorInventory struct {
 	ctx             context.Context
-	beaconIndexer   *beacon.Indexer
 	overviewUrl     string
 	instanceUrls    []string
 	refreshInterval time.Duration
@@ -47,15 +43,14 @@ type buildoorHostsResponse struct {
 }
 
 type buildoorInstanceOverview struct {
-	BuilderPubkey string `json:"builder_pubkey"`
-	BuilderIndex  uint64 `json:"builder_index"`
+	BuilderIndex uint64 `json:"builder_index"`
+	IsRegistered bool   `json:"is_registered"`
 }
 
-func NewBuildoorInventory(ctx context.Context, beaconIndexer *beacon.Indexer) *BuildoorInventory {
+func NewBuildoorInventory(ctx context.Context) *BuildoorInventory {
 	return &BuildoorInventory{
-		ctx:           ctx,
-		beaconIndexer: beaconIndexer,
-		entries:       map[uint64]*buildoorEntry{},
+		ctx:     ctx,
+		entries: map[uint64]*buildoorEntry{},
 	}
 }
 
@@ -123,20 +118,12 @@ func (b *BuildoorInventory) refresh() error {
 			continue
 		}
 
-		pubkey, err := decodePubkey(overview.BuilderPubkey)
-		if err != nil {
-			logger_buildoor.WithError(err).WithField("buildoor", url).Debug("skipping buildoor instance (bad pubkey)")
-			continue
-		}
-
-		flaggedIdx, found := b.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
-		if !found {
+		if !overview.IsRegistered {
 			unresolvedCount++
 			continue
 		}
 
-		rawIdx := uint64(flaggedIdx) &^ beacon.BuilderIndexFlag
-		newEntries[rawIdx] = &buildoorEntry{
+		newEntries[overview.BuilderIndex] = &buildoorEntry{
 			name: deriveBuilderName(url),
 			url:  url,
 		}
@@ -242,18 +229,6 @@ func (b *BuildoorInventory) GetBuilderURL(builderIndex uint64) string {
 		return entry.url
 	}
 	return ""
-}
-
-func decodePubkey(s string) (phase0.BLSPubKey, error) {
-	var pk phase0.BLSPubKey
-	s = strings.TrimPrefix(s, "0x")
-	if len(s) != 96 {
-		return pk, fmt.Errorf("pubkey hex length %d, want 96", len(s))
-	}
-	if _, err := hex.Decode(pk[:], []byte(s)); err != nil {
-		return pk, err
-	}
-	return pk, nil
 }
 
 func deriveBuilderName(rawUrl string) string {

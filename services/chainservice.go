@@ -63,7 +63,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	beaconIndexer := beacon.NewIndexer(ctx, logger.WithField("service", "cl-indexer"), consensusPool)
 	chainState := consensusPool.GetChainState()
 	validatorNames := NewValidatorNames(ctx, beaconIndexer, chainState)
-	buildoorInventory := NewBuildoorInventory(ctx, beaconIndexer)
+	buildoorInventory := NewBuildoorInventory(ctx)
 	mevRelayIndexer := mevrelay.NewMevIndexer(ctx, logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 	snooperManager := snooper.NewSnooperManager(ctx, logger.WithField("service", "snooper-manager"), beaconIndexer)
 
