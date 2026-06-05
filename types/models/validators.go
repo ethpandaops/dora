@@ -10,6 +10,7 @@ type ValidatorsPageData struct {
 	FilterIndex      string                           `json:"filter_index"`
 	FilterName       string                           `json:"filter_name"`
 	FilterStatus     string                           `json:"filter_status"`
+	FilterWithdrawal string                           `json:"filter_withdrawal"`
 	FilterStatusOpts []ValidatorsPageDataStatusOption `json:"filter_status_opts"`
 
 	Validators       []*ValidatorsPageDataValidator `json:"validators"`
@@ -38,6 +39,7 @@ type ValidatorsPageDataStatusOption struct {
 
 type ValidatorsPageDataValidator struct {
 	Index               uint64    `json:"index"`
+	ProjectedIndex      bool      `json:"projected_index"`
 	Name                string    `json:"name"`
 	PublicKey           []byte    `json:"pubkey" ssz-size:"48"`
 	Balance             uint64    `json:"balance"`

@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -249,7 +250,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 			BlockTime:   blockTime,
 			IsOrphaned:  isOrphaned,
 			IsCanonical: isCanonical,
-			TxIndex:     tx.TxIndex,
+			TxIndex:     uint32(tx.TxUid & 0xFFFF),
 		}
 		pageData.InclusionBlocks = append(pageData.InclusionBlocks, inclusionBlock)
 
@@ -378,7 +379,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 		pageData.TxTypeName = fmt.Sprintf("Type %d", tx.TxType)
 	}
 	pageData.Nonce = tx.Nonce
-	pageData.TxIndex = tx.TxIndex
+	pageData.TxIndex = uint32(tx.TxUid & 0xFFFF)
 
 	// Load full transaction data from selected beacon block (must come before
 	// method resolution so InputData is available for calldata decoding).
@@ -404,13 +405,13 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// Load tab badge counts using lightweight COUNT queries instead of
 	// loading all rows. This avoids multi-second sequential scans for
 	// transactions with many events or internal calls.
-	eventCount, _ := db.GetElEventIndexCountByTxHash(ctx, pageData.TxHash)
+	eventCount, _ := db.GetElEventIndexCountByTxUid(ctx, tx.TxUid)
 	pageData.EventCount = eventCount
 
-	transferCount, _ := db.GetElTokenTransferCountByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+	transferCount, _ := db.GetElTokenTransferCountByTxUid(ctx, tx.TxUid)
 	pageData.TokenTransferCount = transferCount
 
-	internalTxCount, _ := db.GetElTransactionsInternalCountByTxHash(ctx, pageData.TxHash)
+	internalTxCount, _ := db.GetElTransactionsInternalCountByTxUid(ctx, tx.TxUid)
 	pageData.InternalTxCount = internalTxCount
 
 	// Load tab-specific detailed data. Full row data is only loaded for
@@ -418,12 +419,12 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// are loaded from blockdb when available, falling back to DB.
 	switch tabView {
 	case "events":
-		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid)
+		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid, tx.TxUid)
 	case "transfers":
-		transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+		transfers, _ := db.GetElTokenTransfersByTxUid(ctx, tx.TxUid)
 		loadTransactionTransfersFromData(ctx, pageData, transfers)
 	case "internaltxs":
-		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid)
+		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid, tx.TxUid)
 		computeInternalTxIndent(pageData)
 	case "statechanges":
 		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
@@ -724,7 +725,7 @@ func loadTransactionEventsFromIndex(ctx context.Context, pageData *models.Transa
 // loadTransactionEventsFromBlockdb populates the events tab with full event
 // data from blockdb (all topics + data blob). Falls back to loading from
 // the DB event index if blockdb data is unavailable (pruned or not stored).
-func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64, txUid uint64) {
 	if pageData.EventCount == 0 {
 		return
 	}
@@ -773,7 +774,7 @@ func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.Tran
 	}
 
 	// Fallback: load from DB event index (only when blockdb is unavailable)
-	eventIndices, _ := db.GetElEventIndicesByTxHash(ctx, pageData.TxHash)
+	eventIndices, _ := db.GetElEventIndicesByTxUid(ctx, txUid)
 	loadTransactionEventsFromIndex(ctx, pageData, eventIndices)
 }
 
@@ -956,7 +957,7 @@ var callTypeNames = map[uint8]string{
 // loadTransactionInternalTxsFromBlockdb populates the internal transactions tab
 // with rich call trace data from blockdb (depth, input, output, gas, status).
 // Falls back to loading from the DB index if blockdb data is unavailable.
-func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64, txUid uint64) {
 	if pageData.InternalTxCount == 0 {
 		return
 	}
@@ -1003,9 +1004,11 @@ func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models
 		}
 	}
 
-	// Fallback: load from DB index (only when blockdb is unavailable)
-	entries, _ := db.GetElTransactionsInternalByTxHash(ctx, pageData.TxHash)
-	loadTransactionInternalTxsFromDB(ctx, pageData, entries)
+	// No per-call detail in the DB index (it stores per-account aggregates),
+	// so when blockdb is unavailable we have nothing to render. Surface the
+	// "not available" state so the template shows the archive notice.
+	_ = txUid
+	pageData.InternalTxsNotAvailable = true
 }
 
 // buildInternalTxsFromBlockdb converts decoded blockdb call frames to page
@@ -1080,7 +1083,7 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 			isCreate := f.Type == 3 || f.Type == 4
 			precompileInfo := utils.GetPrecompileInfo(f.To[:])
 			sysName, isSysContract := sysContracts[f.To]
-			isNonDepositSys := isSysContract && sysName != "Deposit"
+			isNonDepositSys := isSysContract && sysName != "Deposit Contract"
 
 			if isCreate {
 				itx.MethodName = "deploy"
@@ -1090,9 +1093,9 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 			} else if isNonDepositSys {
 				itx.MethodName = sysName
 				switch sysName {
-				case "Withdrawal Request":
+				case "Withdrawal Request (EIP-7002)":
 					itx.DecodedCalldata = utils.DecodeWithdrawalRequestInput(f.Input)
-				case "Consolidation Request":
+				case "Consolidation Request (EIP-7251)":
 					itx.DecodedCalldata = utils.DecodeConsolidationRequestInput(f.Input)
 				}
 			} else {
@@ -1110,63 +1113,6 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 					}
 				}
 			}
-		}
-
-		pageData.InternalTxs = append(pageData.InternalTxs, itx)
-	}
-}
-
-// loadTransactionInternalTxsFromDB populates internal transactions from DB data
-// only (no depth/input/output trace data).
-func loadTransactionInternalTxsFromDB(ctx context.Context, pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
-	if len(entries) == 0 {
-		return
-	}
-
-	// Collect account IDs for batch lookup
-	accountIDs := make(map[uint64]bool, len(entries)*2)
-	for _, e := range entries {
-		accountIDs[e.FromID] = true
-		accountIDs[e.ToID] = true
-	}
-
-	// Batch lookup accounts
-	accountIDList := make([]uint64, 0, len(accountIDs))
-	for id := range accountIDs {
-		accountIDList = append(accountIDList, id)
-	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
-	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
-			for _, a := range accounts {
-				accountMap[a.ID] = a
-			}
-		}
-	}
-
-	// Build internal tx list
-	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(entries))
-	for _, e := range entries {
-		itx := &models.TransactionPageDataInternalTx{
-			CallIndex: e.TxCallIdx,
-			CallType:  e.CallType,
-			Amount:    e.Value,
-			AmountRaw: e.ValueRaw,
-		}
-
-		if name, ok := callTypeNames[e.CallType]; ok {
-			itx.TypeName = name
-		} else {
-			itx.TypeName = fmt.Sprintf("TYPE_%d", e.CallType)
-		}
-
-		if from, ok := accountMap[e.FromID]; ok {
-			itx.FromAddr = from.Address
-			itx.FromIsContract = from.IsContract
-		}
-		if to, ok := accountMap[e.ToID]; ok {
-			itx.ToAddr = to.Address
-			itx.ToIsContract = to.IsContract
 		}
 
 		pageData.InternalTxs = append(pageData.InternalTxs, itx)
@@ -1295,24 +1241,29 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	defer cancel()
 
 	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(ctx, blockRoot)
-	if err != nil || blockData == nil || blockData.Block == nil {
+	if err != nil || blockData == nil || blockData.Block == nil || blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
 		logrus.WithError(err).Debug("failed to load beacon block for transaction details")
 		return
 	}
 
-	// Get execution transactions from the block
-	execTxs, err := blockData.Block.ExecutionTransactions()
-	if err != nil {
-		logrus.WithError(err).Debug("failed to get execution transactions")
+	// Get execution transactions from the block (or envelope for Gloas+)
+	var execTxs []bellatrix.Transaction
+	if blockData.Payload != nil && blockData.Payload.Message != nil && blockData.Payload.Message.Payload != nil {
+		execTxs = blockData.Payload.Message.Payload.Transactions
+	} else if ep := blockData.Block.Message.Body.ExecutionPayload; ep != nil {
+		execTxs = ep.Transactions
+	} else {
+		logrus.Debug("block has no execution payload")
 		return
 	}
 
-	if int(tx.TxIndex) >= len(execTxs) {
+	txIndex := tx.TxUid & 0xFFFF
+	if int(txIndex) >= len(execTxs) {
 		logrus.Debug("transaction index out of range")
 		return
 	}
 
-	rlpData := execTxs[tx.TxIndex]
+	rlpData := execTxs[txIndex]
 
 	// Store RLP as hex string for copy button
 	pageData.TxRLP = "0x" + hex.EncodeToString(rlpData)
@@ -1352,13 +1303,11 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 
 	// Get KZG commitments from beacon block
 	var kzgCommitments [][]byte
-	if blockData != nil && blockData.Block != nil {
-		commitments, err := blockData.Block.BlobKZGCommitments()
-		if err == nil {
-			// Find the commitments that correspond to this transaction's blobs
-			// by matching versioned hashes
-			kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
-		}
+	if blockData != nil && blockData.Block != nil && blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
+		commitments := utils.BlockBodyBlobCommitments(blockData.Block.Message.Body)
+		// Find the commitments that correspond to this transaction's blobs
+		// by matching versioned hashes
+		kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
 	}
 
 	// Build blob list
@@ -1391,32 +1340,28 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 	}
 
 	// Calculate actual blob gas price from block's excess_blob_gas
-	if blockData != nil && blockData.Block != nil {
-		executionPayload, err := blockData.Block.ExecutionPayload()
-		if err == nil && executionPayload != nil {
-			excessBlobGas, err := executionPayload.ExcessBlobGas()
-			if err == nil {
-				timestamp, _ := executionPayload.Timestamp()
-				executionChainState := services.GlobalBeaconService.GetExecutionChainState()
-				blobSchedule := executionChainState.GetBlobScheduleForTimestamp(time.Unix(int64(timestamp), 0))
+	if blockData != nil && blockData.Block != nil && blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
+		executionPayload := blockData.Block.Message.Body.ExecutionPayload
+		if executionPayload != nil {
+			executionChainState := services.GlobalBeaconService.GetExecutionChainState()
+			blobSchedule := executionChainState.GetBlobScheduleForTimestamp(time.Unix(int64(executionPayload.Timestamp), 0))
 
-				if blobSchedule != nil {
-					blobBaseFee := executionChainState.CalcBaseFeePerBlobGas(excessBlobGas, blobSchedule.BaseFeeUpdateFraction)
+			if blobSchedule != nil {
+				blobBaseFee := executionChainState.CalcBaseFeePerBlobGas(executionPayload.ExcessBlobGas, blobSchedule.BaseFeeUpdateFraction)
 
-					// Convert to Gwei for display
-					blobBaseFeeFloat, _ := new(big.Float).SetInt(blobBaseFee).Float64()
-					pageData.BlobGasPrice = blobBaseFeeFloat / 1e9
+				// Convert to Gwei for display
+				blobBaseFeeFloat, _ := new(big.Float).SetInt(blobBaseFee).Float64()
+				pageData.BlobGasPrice = blobBaseFeeFloat / 1e9
 
-					// Calculate total blob fee in ETH
-					blobFeeWei := new(big.Int).Mul(blobBaseFee, big.NewInt(int64(pageData.BlobGasUsed)))
-					blobFeeFloat, _ := new(big.Float).SetInt(blobFeeWei).Float64()
-					pageData.BlobFee = blobFeeFloat / 1e18
-					pageData.BlobFeeRaw = blobFeeWei.Bytes()
+				// Calculate total blob fee in ETH
+				blobFeeWei := new(big.Int).Mul(blobBaseFee, big.NewInt(int64(pageData.BlobGasUsed)))
+				blobFeeFloat, _ := new(big.Float).SetInt(blobFeeWei).Float64()
+				pageData.BlobFee = blobFeeFloat / 1e18
+				pageData.BlobFeeRaw = blobFeeWei.Bytes()
 
-					// Calculate savings percentage
-					if pageData.BlobGasFeeCap > 0 && pageData.BlobGasPrice > 0 && pageData.BlobGasFeeCap > pageData.BlobGasPrice {
-						pageData.BlobFeeSavings = (pageData.BlobGasFeeCap - pageData.BlobGasPrice) / pageData.BlobGasFeeCap * 100
-					}
+				// Calculate savings percentage
+				if pageData.BlobGasFeeCap > 0 && pageData.BlobGasPrice > 0 && pageData.BlobGasFeeCap > pageData.BlobGasPrice {
+					pageData.BlobFeeSavings = (pageData.BlobGasFeeCap - pageData.BlobGasPrice) / pageData.BlobGasFeeCap * 100
 				}
 			}
 		}

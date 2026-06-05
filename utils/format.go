@@ -33,6 +33,11 @@ func FormatETHFromGweiShort(gwei uint64) string {
 	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9))
 }
 
+func FormatETHFromGweiP(gwei uint64, precision int) string {
+	f := fmt.Sprintf("%%.%df ETH", precision)
+	return fmt.Sprintf(f, float64(gwei)/math.Pow10(9))
+}
+
 func FormatFullEthFromGwei(gwei uint64) string {
 	return fmt.Sprintf("%v ETH", uint64(float64(gwei)/math.Pow10(9)))
 }
@@ -834,6 +839,44 @@ func FormatValidatorNameWithIndex(index uint64, name string) template.HTML {
 	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\">%v</span>", index))
 }
 
+func FormatBuilder(index uint64, name string) template.HTML {
+	return formatBuilder(index, name, "", "fa-hard-hat mr-2", false)
+}
+
+func FormatBuilderWithIndex(index uint64, name string) template.HTML {
+	return formatBuilder(index, name, "", "fa-hard-hat mr-2", true)
+}
+
+func FormatBuilderWithURL(index uint64, name string, externalURL string) template.HTML {
+	return formatBuilder(index, name, externalURL, "fa-hard-hat mr-2", false)
+}
+
+func FormatBuilderWithIndexAndURL(index uint64, name string, externalURL string) template.HTML {
+	return formatBuilder(index, name, externalURL, "fa-hard-hat mr-2", true)
+}
+
+func formatBuilder(index uint64, name string, externalURL string, icon string, withIndex bool) template.HTML {
+	if index == math.MaxUint64 {
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> Self-built</span>", icon))
+	}
+
+	externalLink := ""
+	if externalURL != "" {
+		externalLink = fmt.Sprintf(` <a href="%v" target="_blank" rel="noopener noreferrer" class="builder-external-link text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Open buildoor instance"><i class="fas fa-external-link-alt"></i></a>`, html.EscapeString(externalURL))
+	}
+
+	if name != "" {
+		var nameLabel string
+		if withIndex {
+			nameLabel = fmt.Sprintf("%v (%v)", html.EscapeString(name), index)
+		} else {
+			nameLabel = html.EscapeString(name)
+		}
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, nameLabel, externalLink))
+	}
+	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, index, externalLink))
+}
+
 func FormatRecentTimeShort(ts time.Time) template.HTML {
 	duration := time.Until(ts)
 	var timeStr string
@@ -860,12 +903,71 @@ func FormatGraffiti(graffiti []byte) template.HTML {
 	return template.HTML(fmt.Sprintf("<span class=\"graffiti-label\" data-graffiti=\"%#x\">%s</span>", graffiti, html.EscapeString(string(graffiti))))
 }
 
+// FormatSlotStatusTooltip returns "Block: <X>, Payload: <Y>" for the
+// status pill on slot list views. Accepts the raw enum codes used in
+// dbtypes.SlotStatus / dbtypes.PayloadStatus; widened to any so the
+// same template helper can be called from models that store status as
+// uint8 (filtered views) or uint64 (index page).
+func FormatSlotStatusTooltip(blockStatus, payloadStatus any) string {
+	asInt := func(v any) int64 {
+		switch x := v.(type) {
+		case uint8:
+			return int64(x)
+		case uint16:
+			return int64(x)
+		case uint32:
+			return int64(x)
+		case uint64:
+			return int64(x)
+		case int8:
+			return int64(x)
+		case int16:
+			return int64(x)
+		case int32:
+			return int64(x)
+		case int64:
+			return x
+		case int:
+			return int64(x)
+		}
+		return -1
+	}
+
+	var bs string
+	switch asInt(blockStatus) {
+	case 0:
+		bs = "Missed"
+	case 1:
+		bs = "Canonical"
+	case 2:
+		bs = "Orphaned"
+	default:
+		bs = "Unknown"
+	}
+
+	var ps string
+	switch asInt(payloadStatus) {
+	case 0:
+		ps = "Missing"
+	case 1:
+		ps = "Revealed"
+	case 2:
+		ps = "Orphaned"
+	default:
+		ps = "Unknown"
+	}
+
+	return "Block: " + bs + "<br>Payload: " + ps
+}
+
 func formatWithdrawalHash(hash []byte) template.HTML {
 	var colorClass string
 	if hash[0] == 0x01 {
 		colorClass = "text-success"
 	} else if hash[0] == 0x02 {
 		colorClass = "text-info"
+	} else if hash[0] == 0x03 {
+		colorClass = "text-primary"
 	} else {
 		colorClass = "text-warning"
 	}
@@ -878,8 +980,8 @@ func FormatWithdawalCredentials(hash []byte) template.HTML {
 		return "INVALID CREDENTIALS"
 	}
 
-	// For 0x01 or 0x02 credentials, link to the address
-	if hash[0] == 0x01 || hash[0] == 0x02 {
+	// For 0x01, 0x02 or 0x03 credentials, link to the address
+	if hash[0] == 0x01 || hash[0] == 0x02 || hash[0] == 0x03 {
 		addr := fmt.Sprintf("0x%x", hash[12:])
 
 		// Use local link when execution indexer is enabled
@@ -943,4 +1045,55 @@ func formatAlertNumber(displayText string, value float64, yellowThreshold float6
 	default:
 		return template.HTML(displayText)
 	}
+}
+
+// IsSystemContract checks if an address is a known system contract
+func IsSystemContract(address []byte, systemContracts []*types.SystemContract) bool {
+	addressStr := common.BytesToAddress(address).Hex()
+	for _, sc := range systemContracts {
+		if sc.Address == addressStr {
+			return true
+		}
+	}
+	return false
+}
+
+// GetSystemContractName returns the name of a system contract if it exists
+func GetSystemContractName(address []byte, systemContracts []*types.SystemContract) string {
+	addressStr := common.BytesToAddress(address).Hex()
+	for _, sc := range systemContracts {
+		if sc.Address == addressStr {
+			return sc.Name
+		}
+	}
+	return ""
+}
+
+// CalculateBalanceDiff calculates the difference between two balance byte arrays and returns formatted result
+func CalculateBalanceDiff(current []byte, previous []byte) template.HTML {
+	currentBig := new(big.Int).SetBytes(current)
+	previousBig := new(big.Int).SetBytes(previous)
+
+	diff := new(big.Int).Sub(currentBig, previousBig)
+
+	if diff.Sign() == 0 {
+		return template.HTML("")
+	}
+
+	isPositive := diff.Sign() > 0
+	absDiff := new(big.Int).Abs(diff)
+	formattedDiff := FormatAmount(absDiff, "ETH", 18)
+
+	var class string
+	var sign string
+	if isPositive {
+		class = "positive"
+		sign = "+"
+	} else {
+		class = "negative"
+		sign = "-"
+	}
+
+	return template.HTML(fmt.Sprintf(`<span class="bal-balance-diff %s">(%s%s)</span>`,
+		class, sign, formattedDiff))
 }

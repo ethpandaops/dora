@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	"github.com/mashingan/smapping"
 )
@@ -140,7 +140,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		block.unpruneBlockBody(indexer.ctx)
 
 		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
-			if _, err := block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
+			if _, err := block.EnsureBlock(func() (*all.SignedBeaconBlock, error) {
 				return LoadBeaconBlock(client.getContext(), client, block.Root)
 			}); err != nil {
 				client.logger.Warnf("failed loading finalized block body %v (%v): %v", block.Slot, block.Root.String(), err)
@@ -149,6 +149,15 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			if block.block == nil {
 				return true, fmt.Errorf("missing block body for canonical block %v (%v)", block.Slot, block.Root.String())
 			}
+
+			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+				if _, err := block.EnsureExecutionPayload(func() (*all.SignedExecutionPayloadEnvelope, error) {
+					return LoadExecutionPayload(client.getContext(), client, block.Root)
+				}); err != nil {
+					client.logger.Warnf("failed loading finalized execution payload %v (%v): %v", block.Slot, block.Root.String(), err)
+				}
+			}
+
 			canonicalBlocks = append(canonicalBlocks, block)
 		} else {
 			if block.block == nil {
@@ -204,6 +213,10 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				dependentHead, _ := LoadBeaconHeader(client.getContext(), client, *depRoot)
 				isValid = dependentHead != nil && chainState.EpochOfSlot(dependentHead.Message.Slot) < chainState.EpochOfSlot(firstBlock.Slot)
 			}
+		}
+
+		if firstBlock.Slot == 0 {
+			dependentRoot = phase0.Root{}
 		}
 
 		if !isValid {
@@ -268,7 +281,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
 		if !epochStats.ready {
 			if epochStats.dependentState == nil {
-				indexer.epochCache.addEpochStateRequest(epochStats)
+				indexer.epochCache.ensureEpochDependentState(epochStats)
 			}
 			if epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
 				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", epoch, dependentRoot.String())
@@ -302,16 +315,49 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	canonicalRoots := make([][]byte, len(canonicalBlocks))
-	canonicalBlockHashes := make([][]byte, len(canonicalBlocks))
+	canonicalBlockHashes := make([][]byte, 0, len(canonicalBlocks))
 	finalizedForkIds := map[ForkKey]bool{}
 	for i, block := range canonicalBlocks {
 		canonicalRoots[i] = block.Root[:]
 		if blockIndex := block.GetBlockIndex(indexer.ctx); blockIndex != nil {
-			canonicalBlockHashes[i] = blockIndex.ExecutionHash[:]
+			if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) || block.HasExecutionPayload() {
+				canonicalBlockHashes = append(canonicalBlockHashes, blockIndex.ExecutionHash[:])
+			}
 		}
 
 		block.blockResults = nil // force re-simulation of block results
 		finalizedForkIds[block.GetForkId()] = true
+	}
+
+	// Mark payload as orphaned when next canonical block's bid doesn't reference our committed BlockHash.
+	allCanonicalBlocks := append(canonicalBlocks, nextEpochCanonicalBlocks...)
+	if chainState.IsEip7732Enabled(epoch) {
+		for i, block := range canonicalBlocks {
+			blockIndex := block.GetBlockIndex(indexer.ctx)
+			if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+				continue // no execution commitment (e.g. pre-merge slot)
+			}
+
+			// Find the next canonical block
+			if i+1 >= len(allCanonicalBlocks) {
+				continue
+			}
+
+			nextBlock := allCanonicalBlocks[i+1]
+			if nextBlock == nil {
+				continue
+			}
+
+			nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
+			if nextBlockIndex == nil {
+				continue
+			}
+
+			// Check if next block builds on this block's committed payload
+			if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+				block.isPayloadOrphaned = true
+			}
+		}
 	}
 
 	dependentGroups := map[phase0.Root][]*Block{}
@@ -380,6 +426,33 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				if parentRoot != nil && bytes.Equal((*parentRoot)[:], nextParentRoot[:]) {
 					nextBlocks = append(nextBlocks, block)
 					nextParentRoot = block.Root
+				}
+			}
+
+			allChainBlocks := append(chain, nextBlocks...)
+			for i, block := range chain {
+				if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+					continue
+				}
+
+				blockIndex := block.GetBlockIndex(indexer.ctx)
+				if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+					continue // no execution commitment
+				}
+
+				// Find the next block in this orphaned chain
+				var nextBlock *Block
+				if i+1 < len(allChainBlocks) {
+					nextBlock = allChainBlocks[i+1]
+				}
+
+				if nextBlock != nil {
+					nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
+					if nextBlockIndex != nil {
+						if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+							block.isPayloadOrphaned = true
+						}
+					}
 				}
 			}
 
@@ -528,10 +601,9 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 	t1 = time.Now()
 
-	// update validator cache
-	if len(canonicalBlocks) > 0 {
-		indexer.validatorCache.setFinalizedEpoch(epoch, canonicalBlocks[len(canonicalBlocks)-1].Root)
-	}
+	// update validator & builder cache with the epoch's dependent root (last block of parent epoch)
+	indexer.validatorCache.setFinalizedEpoch(epoch, dependentRoot)
+	indexer.builderCache.setFinalizedEpoch(epoch, dependentRoot)
 
 	// clean fork cache
 	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)

@@ -89,6 +89,11 @@
     formatFloat: function(x) { return formatFloat(x, 2); },
     formatValidator: function(idx, name) { return formatValidator(idx, name); },
     hexstr: function(x) { return "0x" + base64ToHex(x); },
+    slotStatusTooltip: function(status, payloadStatus) {
+      var bs = ["Missed", "Canonical", "Orphaned"][status] || "Unknown";
+      var ps = ["Missing", "Revealed", "Orphaned"][payloadStatus] || "Unknown";
+      return "Block: " + bs + "<br>Payload: " + ps;
+    },
   };
 
   function scheduleLoop() {
@@ -122,7 +127,9 @@
     isRefreshing = true;
 
     try {
-      var pageData = await $.get("/index/data");
+      var jqXHR = $.get("/index/data");
+      var pageData = await jqXHR;
+      window.explorer.updateServerTime(jqXHR.getResponseHeader("X-Server-Time"));
       updateModel(pageData);
 
       //console.log(pageData)
@@ -278,7 +285,7 @@
     
     
     if (timestamp) {
-      var now = Math.floor(Date.now() / 1000);
+      var now = Math.floor(window.explorer.serverNow() / 1000);
       var diff = timestamp - now;
       
       // Only show countdown if time is in the future (for genesis) or future and inactive (for forks)
@@ -312,7 +319,7 @@
         
         // Update countdown every second
         function updateCountdown() {
-          var currentTime = Math.floor(Date.now() / 1000);
+          var currentTime = Math.floor(window.explorer.serverNow() / 1000);
           var remaining = timestamp - currentTime;
           
           if (remaining <= 0) {

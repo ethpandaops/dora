@@ -214,6 +214,7 @@ func startFrontend(router *mux.Router) {
 		router.HandleFunc("/validators/summary", handlers.ValidatorsSummary).Methods("GET")
 	}
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
+	router.HandleFunc("/validators/withdrawal-dashboard", handlers.ValidatorsWithdrawalDashboard).Methods("GET")
 	router.HandleFunc("/validators/offline", handlers.ValidatorsOffline).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
 	router.HandleFunc("/validators/deposits/submit", handlers.SubmitDeposit).Methods("GET", "POST")
@@ -225,6 +226,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validators/slashings", handlers.Slashings).Methods("GET")
 	router.HandleFunc("/validators/el_withdrawals", handlers.ElWithdrawals).Methods("GET")
 	router.HandleFunc("/validators/withdrawals", handlers.Withdrawals).Methods("GET")
+	router.HandleFunc("/validators/withdrawals/filtered", handlers.WithdrawalsList).Methods("GET")
 	router.HandleFunc("/validators/queued_withdrawals", handlers.QueuedWithdrawals).Methods("GET")
 	router.HandleFunc("/validators/consolidations", handlers.Consolidations).Methods("GET")
 	router.HandleFunc("/validators/queued_consolidations", handlers.QueuedConsolidations).Methods("GET")
@@ -233,6 +235,8 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validators/submit_withdrawals", handlers.SubmitWithdrawal).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
+	router.HandleFunc("/builders", handlers.Builders).Methods("GET")
+	router.HandleFunc("/builder/{idxOrPubKey}", handlers.BuilderDetail).Methods("GET")
 
 	if utils.Config.Frontend.Pprof {
 		// add pprof handler
@@ -313,6 +317,11 @@ func startApi(router *mux.Router) {
 		{"/v1/epochs", api.APIEpochsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/epoch/{epoch}", api.ApiEpochV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slot/{slotOrHash}", api.APISlotV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}/bids", api.APISlotBidsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}/block_access_list", api.APISlotBlockAccessListV1, []string{"GET", "OPTIONS"}, 2},
+		{"/v1/slot/{slotOrHash}/ptc_votes", api.APISlotPtcVotesV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}/inclusion_lists", api.APISlotInclusionListsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}/payload_header", api.APISlotPayloadHeaderV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slots", api.APISlotsV1, []string{"GET", "OPTIONS"}, 1},
 
 		// Deposit APIs

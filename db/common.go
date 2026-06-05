@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/glebarez/go-sqlite"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/pressly/goose/v3"
 	"github.com/sirupsen/logrus"
 
@@ -39,12 +39,9 @@ var logger = logrus.StandardLogger().WithField("module", "db")
 func checkDbConn(dbConn *sqlx.DB, dataBaseName string) {
 	// The golang sql driver does not properly implement PingContext
 	// therefore we use a timer to catch db connection timeouts
-	dbConnectionTimeout := time.NewTimer(15 * time.Second)
-
-	go func() {
-		<-dbConnectionTimeout.C
+	dbConnectionTimeout := time.AfterFunc(15*time.Second, func() {
 		logger.Fatalf("timeout while connecting to %s", dataBaseName)
-	}()
+	})
 
 	err := dbConn.Ping()
 	if err != nil {
@@ -66,7 +63,7 @@ func mustInitSqlite(config *types.SqliteDatabaseConfig) (*sqlx.DB, *sqlx.DB) {
 	}
 
 	logger.Infof("initializing sqlite connection to %v with %v/%v conn limit", config.File, config.MaxIdleConns, config.MaxOpenConns)
-	dbConn, err := sqlx.Open("sqlite", fmt.Sprintf("%s?_pragma=journal_mode(WAL)", config.File))
+	dbConn, err := sqlx.Open("sqlite3", fmt.Sprintf("%s?_journal_mode=WAL", config.File))
 	if err != nil {
 		utils.LogFatal(err, "error opening sqlite database", 0)
 	}
@@ -77,7 +74,20 @@ func mustInitSqlite(config *types.SqliteDatabaseConfig) (*sqlx.DB, *sqlx.DB) {
 	dbConn.SetMaxOpenConns(config.MaxOpenConns)
 	dbConn.SetMaxIdleConns(config.MaxIdleConns)
 
+	// WAL journaling allows readers to run during writes.
 	dbConn.MustExec("PRAGMA journal_mode = WAL")
+	// synchronous=NORMAL is durable in WAL mode (only the last committed
+	// transaction is at risk on power loss; DB stays consistent) and is
+	// substantially faster than the default FULL because it skips an fsync
+	// per commit.
+	dbConn.MustExec("PRAGMA synchronous = NORMAL")
+	// 256 MB page cache. Default is ~2 MB, which causes heavy churn on
+	// blocks with many log/tx rows (e.g. high-deposit blocks).
+	dbConn.MustExec("PRAGMA cache_size = -262144")
+	// Keep transient tables/indexes used by query planners in memory.
+	dbConn.MustExec("PRAGMA temp_store = MEMORY")
+	// Wait up to 5s for a competing writer instead of failing immediately.
+	dbConn.MustExec("PRAGMA busy_timeout = 5000")
 
 	return dbConn, dbConn
 }
@@ -130,11 +140,12 @@ func mustInitPgsql(writer *types.PgsqlDatabaseConfig, reader *types.PgsqlDatabas
 }
 
 func MustInitDB(dbcfg *types.DatabaseConfig) {
-	if dbcfg.Engine == "sqlite" {
+	switch dbcfg.Engine {
+	case "sqlite":
 		sqliteConfig := (*types.SqliteDatabaseConfig)(dbcfg.Sqlite)
 		DbEngine = dbtypes.DBEngineSqlite
 		writerDb, ReaderDb = mustInitSqlite(sqliteConfig)
-	} else if dbcfg.Engine == "pgsql" {
+	case "pgsql":
 		readerConfig := (*types.PgsqlDatabaseConfig)(dbcfg.Pgsql)
 		writerConfig := (*types.PgsqlDatabaseConfig)(dbcfg.PgsqlWriter)
 		if writerConfig.Host == "" {
@@ -142,7 +153,7 @@ func MustInitDB(dbcfg *types.DatabaseConfig) {
 		}
 		DbEngine = dbtypes.DBEnginePgsql
 		writerDb, ReaderDb = mustInitPgsql(writerConfig, readerConfig)
-	} else {
+	default:
 		logger.Fatalf("unknown database engine type: %s", dbcfg.Engine)
 	}
 }

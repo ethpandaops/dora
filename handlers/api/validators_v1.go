@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -63,6 +64,7 @@ type APIValidatorInfo struct {
 // @Param index query string false "Filter by validator index"
 // @Param name query string false "Filter by validator name"
 // @Param status query string false "Filter by validator status (comma-separated)"
+// @Param withdrawal query string false "Filter by withdrawal address or withdrawal credentials"
 // @Param order query string false "Sort order: index, index-d, pubkey, pubkey-d, balance, balance-d, activation, activation-d, exit, exit-d"
 // @Success 200 {object} APIValidatorsResponse
 // @Failure 400 {object} map[string]string "Invalid parameters"
@@ -113,6 +115,7 @@ func APIValidatorsV1(w http.ResponseWriter, r *http.Request) {
 	filterIndex := query.Get("index")
 	filterName := query.Get("name")
 	filterStatus := query.Get("status")
+	filterWithdrawal := query.Get("withdrawal")
 	sortOrder := query.Get("order")
 
 	// Build validator filter
@@ -158,6 +161,16 @@ func APIValidatorsV1(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	if filterWithdrawal != "" {
+		withdrawalAddress, withdrawalCreds, err := utils.ParseWithdrawalAddressOrCredentials(filterWithdrawal)
+		if err != nil {
+			http.Error(w, `{"status": "ERROR: invalid withdrawal address or credentials"}`, http.StatusBadRequest)
+			return
+		}
+		validatorFilter.WithdrawalAddress = withdrawalAddress
+		validatorFilter.WithdrawalCreds = withdrawalCreds
 	}
 
 	// Apply sort order

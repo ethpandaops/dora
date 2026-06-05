@@ -13,7 +13,13 @@
         {{ range $i, $exit := .Block.VoluntaryExits }}
           <tr>
             <td>{{ $i }}</td>
-            <td>{{ formatValidatorWithIndex $exit.ValidatorIndex $exit.ValidatorName }}</td>
+            <td>
+              {{ if $exit.IsBuilder }}
+                {{ formatBuilderWithIndex $exit.ValidatorIndex $exit.ValidatorName }}
+              {{ else }}
+                {{ formatValidatorWithIndex $exit.ValidatorIndex $exit.ValidatorName }}
+              {{ end }}
+            </td>
             <td>{{ $exit.Epoch }}</td>
             <td>0x{{ printf "%x" $exit.Signature }}</td>
           </tr>

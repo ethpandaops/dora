@@ -982,6 +982,137 @@ definitions:
       status:
         type: string
     type: object
+  api.APISlotBid:
+    properties:
+      block_hash:
+        type: string
+      builder_index:
+        type: integer
+      builder_name:
+        type: string
+      el_payment:
+        type: integer
+      fee_recipient:
+        type: string
+      gas_limit:
+        type: integer
+      is_self_built:
+        type: boolean
+      is_winning:
+        type: boolean
+      parent_hash:
+        type: string
+      parent_root:
+        type: string
+      slot:
+        type: integer
+      total_value:
+        type: integer
+      value:
+        type: integer
+    type: object
+  api.APISlotBidsData:
+    properties:
+      bids:
+        items:
+          $ref: '#/definitions/api.APISlotBid'
+        type: array
+      block_root:
+        type: string
+      count:
+        type: integer
+      slot:
+        type: integer
+    type: object
+  api.APISlotBidsResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotBidsData'
+      status:
+        type: string
+    type: object
+  api.APISlotBlockAccessListBalance:
+    properties:
+      balance:
+        type: string
+      block_access_index:
+        type: integer
+    type: object
+  api.APISlotBlockAccessListCode:
+    properties:
+      block_access_index:
+        type: integer
+      code:
+        type: string
+    type: object
+  api.APISlotBlockAccessListData:
+    properties:
+      accesses:
+        items:
+          $ref: '#/definitions/api.APISlotBlockAccessListEntry'
+        type: array
+      block_root:
+        type: string
+      count:
+        type: integer
+      slot:
+        type: integer
+    type: object
+  api.APISlotBlockAccessListEntry:
+    properties:
+      address:
+        type: string
+      balance_changes:
+        items:
+          $ref: '#/definitions/api.APISlotBlockAccessListBalance'
+        type: array
+      code_changes:
+        items:
+          $ref: '#/definitions/api.APISlotBlockAccessListCode'
+        type: array
+      nonce_changes:
+        items:
+          $ref: '#/definitions/api.APISlotBlockAccessListNonce'
+        type: array
+      storage_changes:
+        items:
+          $ref: '#/definitions/api.APISlotBlockAccessListStorageGroup'
+        type: array
+      storage_reads:
+        items:
+          type: string
+        type: array
+    type: object
+  api.APISlotBlockAccessListNonce:
+    properties:
+      block_access_index:
+        type: integer
+      nonce:
+        type: integer
+    type: object
+  api.APISlotBlockAccessListResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotBlockAccessListData'
+      status:
+        type: string
+    type: object
+  api.APISlotBlockAccessListStorage:
+    properties:
+      block_access_index:
+        type: integer
+      value:
+        type: string
+    type: object
+  api.APISlotBlockAccessListStorageGroup:
+    properties:
+      changes:
+        items:
+          $ref: '#/definitions/api.APISlotBlockAccessListStorage'
+        type: array
+      slot:
+        type: string
+    type: object
   api.APISlotData:
     properties:
       attestationscount:
@@ -1034,6 +1165,68 @@ definitions:
         type: integer
       withdrawalcount:
         type: integer
+    type: object
+  api.APISlotInclusionList:
+    properties:
+      inclusion_list_committee_root:
+        type: string
+      signature:
+        type: string
+      transactions:
+        items:
+          $ref: '#/definitions/api.APISlotInclusionListTransaction'
+        type: array
+      transactions_count:
+        type: integer
+      validator_index:
+        type: integer
+      validator_name:
+        type: string
+    type: object
+  api.APISlotInclusionListTransaction:
+    properties:
+      data_len:
+        type: integer
+      decode_error:
+        type: string
+      from:
+        type: string
+      gas_limit:
+        type: integer
+      hash:
+        type: string
+      index:
+        type: integer
+      is_included:
+        type: boolean
+      nonce:
+        type: integer
+      to:
+        type: string
+      type:
+        type: integer
+      value:
+        type: string
+    type: object
+  api.APISlotInclusionListsData:
+    properties:
+      block_root:
+        type: string
+      count:
+        type: integer
+      inclusion_lists:
+        items:
+          $ref: '#/definitions/api.APISlotInclusionList'
+        type: array
+      slot:
+        type: integer
+    type: object
+  api.APISlotInclusionListsResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotInclusionListsData'
+      status:
+        type: string
     type: object
   api.APISlotListItem:
     properties:
@@ -1107,6 +1300,110 @@ definitions:
         type: string
       with_eth_block:
         type: boolean
+    type: object
+  api.APISlotPayloadHeaderData:
+    properties:
+      blob_kzg_commitments:
+        items:
+          type: string
+        type: array
+      block_hash:
+        type: string
+      block_root:
+        type: string
+      builder_index:
+        type: integer
+      builder_name:
+        type: string
+      gas_limit:
+        type: integer
+      has_payload_header:
+        type: boolean
+      is_self_built:
+        type: boolean
+      parent_block_hash:
+        type: string
+      parent_block_root:
+        type: string
+      payload_status:
+        type: integer
+      payload_status_name:
+        type: string
+      signature:
+        type: string
+      slot:
+        type: integer
+      value:
+        type: integer
+    type: object
+  api.APISlotPayloadHeaderResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotPayloadHeaderData'
+      status:
+        type: string
+    type: object
+  api.APISlotPtcAggregate:
+    properties:
+      aggregation_bits:
+        type: string
+      blob_data_available:
+        type: boolean
+      payload_present:
+        type: boolean
+      signature:
+        type: string
+      validators:
+        items:
+          $ref: '#/definitions/api.APISlotPtcValidator'
+        type: array
+      vote_count:
+        type: integer
+      vote_percent:
+        type: number
+    type: object
+  api.APISlotPtcValidator:
+    properties:
+      index:
+        type: integer
+      name:
+        type: string
+    type: object
+  api.APISlotPtcVotesData:
+    properties:
+      aggregates:
+        items:
+          $ref: '#/definitions/api.APISlotPtcAggregate'
+        type: array
+      block_root:
+        type: string
+      non_voter_count:
+        type: integer
+      non_voter_percent:
+        type: number
+      non_voters:
+        items:
+          $ref: '#/definitions/api.APISlotPtcValidator'
+        type: array
+      participation:
+        type: number
+      slot:
+        type: integer
+      total_ptc_size:
+        type: integer
+      vote_count:
+        type: integer
+      voted_block_root:
+        type: string
+      voted_slot:
+        type: integer
+    type: object
+  api.APISlotPtcVotesResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotPtcVotesData'
+      status:
+        type: string
     type: object
   api.APISlotResponse:
     properties:
@@ -2322,6 +2619,205 @@ paths:
       summary: Get slot information
       tags:
       - Slot
+  /v1/slot/{slotOrHash}/bids:
+    get:
+      description: Returns the execution payload bids submitted for a slot's parent
+        root (ePBS, gloas+).
+      operationId: getSlotBids
+      parameters:
+      - description: Slot number or block root (0x-prefixed hex)
+        in: path
+        name: slotOrHash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotBidsResponse'
+        "400":
+          description: Invalid slot number or root format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Slot not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get execution payload bids for a slot
+      tags:
+      - Slot
+  /v1/slot/{slotOrHash}/block_access_list:
+    get:
+      description: Returns the EIP-7928 block access list (BAL) decoded for a specific
+        slot.
+      operationId: getSlotBlockAccessList
+      parameters:
+      - description: Slot number or block root (0x-prefixed hex)
+        in: path
+        name: slotOrHash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotBlockAccessListResponse'
+        "400":
+          description: Invalid slot number or root format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Slot not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get block access list for a slot
+      tags:
+      - Slot
+  /v1/slot/{slotOrHash}/inclusion_lists:
+    get:
+      description: |-
+        Returns the cached EIP-7805 inclusion lists for a slot, with each transaction
+        marked as included or not based on whether it appears in the slot's block transactions.
+      operationId: getSlotInclusionLists
+      parameters:
+      - description: Slot number or block root (0x-prefixed hex)
+        in: path
+        name: slotOrHash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotInclusionListsResponse'
+        "400":
+          description: Invalid slot number or root format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Slot not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get inclusion lists for a slot
+      tags:
+      - Slot
+  /v1/slot/{slotOrHash}/payload_header:
+    get:
+      description: |-
+        Returns the gloas+ signed execution payload bid (header) included in a block,
+        plus its observed payload status (canonical / orphaned). Pre-gloas blocks return
+        has_payload_header=false.
+      operationId: getSlotPayloadHeader
+      parameters:
+      - description: Slot number or block root (0x-prefixed hex)
+        in: path
+        name: slotOrHash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotPayloadHeaderResponse'
+        "400":
+          description: Invalid slot number or root format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Slot not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get the execution payload header for a slot
+      tags:
+      - Slot
+  /v1/slot/{slotOrHash}/ptc_votes:
+    get:
+      description: |-
+        Returns the PTC (Payload Timeliness Committee) payload attestations included in a gloas+ block.
+        The attestations target the previous slot, mirroring what is shown on the slot page.
+      operationId: getSlotPtcVotes
+      parameters:
+      - description: Slot number or block root (0x-prefixed hex)
+        in: path
+        name: slotOrHash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotPtcVotesResponse'
+        "400":
+          description: Invalid slot number or root format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Slot not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get PTC votes for a slot
+      tags:
+      - Slot
   /v1/slots:
     get:
       description: Returns a list of slots with various filtering options, sorted
@@ -2733,6 +3229,10 @@ paths:
         in: query
         name: status
         type: string
+      - description: Filter by withdrawal address or withdrawal credentials
+        in: query
+        name: withdrawal
+        type: string
       - description: 'Sort order: index, index-d, pubkey, pubkey-d, balance, balance-d,
           activation, activation-d, exit, exit-d'
         in: query
@@ -2777,11 +3277,12 @@ paths:
         name: page
         type: integer
       - description: 'Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator
-          names (default: 3 if names available, else 1)'
+          names, 4=by withdrawal address (default: 3 if names available, else 1)'
         in: query
         name: group
         type: integer
-      - description: Search term for group names (supports regex)
+      - description: Search term for group names, withdrawal addresses, or withdrawal
+          credentials (supports regex for non-exact address searches)
         in: query
         name: search
         type: string

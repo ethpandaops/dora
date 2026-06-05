@@ -3,10 +3,6 @@ name: Reusable build workflow
 on:
   workflow_call:
     inputs:
-      ref:
-        description: 'The branch, tag or SHA to build'
-        required: true
-        type: string
       release:
         description: 'Release version tag for this build'
         default: ''
@@ -15,7 +11,7 @@ on:
       docker:
         description: 'Build docker images'
         default: false
-        required: true
+        required: false
         type: boolean
       docker_repository:
         description: 'Docker Hub Repository'
@@ -40,31 +36,34 @@ on:
         description: 'Docker Hub Token'
         required: false
 
+permissions:
+  contents: read
+
 # shared build jobs
 jobs:
   build_ui_package:
     name: Build UI package
     runs-on: ubuntu-latest
+    outputs:
+      artifact_id: ${{ steps.upload_ui.outputs.artifact-id }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
 
     # setup node & npm
     - name: Set up node
-      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       with:
         node-version: 22.x
     - name: Cache node-modules for UI package
       id: cache-npm
-      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ./ui-package/node_modules
         key: uipackage-npm-${{ runner.os }}-${{ hashFiles('./ui-package/package-lock.json') }}
         restore-keys: |
           uipackage-npm-${{ runner.os }}-
           uipackage-npm-
-    
+
     # build UI package
     - name: Build UI package
       run: |
@@ -72,7 +71,8 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: ui-package"
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      id: upload_ui
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         path: ./ui-package/dist/*
         name: ui-package
@@ -81,17 +81,17 @@ jobs:
     name: Build linux/amd64 binary
     needs: [build_ui_package]
     runs-on: ubuntu-latest
+    outputs:
+      artifact_id: ${{ steps.upload_binary.outputs.artifact-id }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
       with:
         go-version: 1.25.x
-    
+
     # setup project dependencies
     - name: Get dependencies
       run: |
@@ -101,7 +101,8 @@ jobs:
     - name: Download UI build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: ui-package
+        artifact-ids: ${{ needs.build_ui_package.outputs.artifact_id }}
+        merge-multiple: true
         path: ./ui-package/dist
 
     # build binaries
@@ -113,23 +114,24 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_amd64"
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      id: upload_binary
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         path: ./bin/*
         name: explorer_linux_amd64
-  
+
   build_linux_arm64_binary:
     name: Build linux/arm64 binary
     needs: [build_ui_package]
     runs-on: ubuntu-24.04-arm
+    outputs:
+      artifact_id: ${{ steps.upload_binary.outputs.artifact-id }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
       with:
         go-version: 1.25.x
 
@@ -142,7 +144,8 @@ jobs:
     - name: Download UI build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: ui-package
+        artifact-ids: ${{ needs.build_ui_package.outputs.artifact_id }}
+        merge-multiple: true
         path: ./ui-package/dist
 
     # build binaries
@@ -154,7 +157,8 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_arm64"
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      id: upload_binary
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         path: ./bin/*
         name: explorer_linux_arm64
@@ -165,12 +169,10 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
       with:
         go-version: 1.25.x
 
@@ -183,7 +185,8 @@ jobs:
     - name: Download UI build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: ui-package
+        artifact-ids: ${{ needs.build_ui_package.outputs.artifact_id }}
+        merge-multiple: true
         path: ./ui-package/dist
 
     # build binaries
@@ -195,51 +198,10 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_windows_amd64"
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         path: ./bin/*
         name: explorer_windows_amd64
-
-  build_darwin_amd64_binary:
-    name: Build macos/amd64 binary
-    needs: [build_ui_package]
-    runs-on: macos-15-intel
-    steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
-
-    # setup global dependencies
-    - name: Set up go
-      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
-      with:
-        go-version: 1.25.x
-
-    # setup project dependencies
-    - name: Get dependencies
-      run: |
-        go get -v -t -d ./...
-
-    # download UI build artifacts
-    - name: Download UI build artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-      with:
-        name: ui-package
-        path: ./ui-package/dist
-
-    # build binaries
-    - name: Build macos amd64 binary
-      run: |
-        make build
-      env:
-        RELEASE: ${{ inputs.release }}
-
-    # upload artifacts
-    - name: "Upload artifact: explorer_darwin_amd64"
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-      with:
-        path: ./bin/*
-        name: explorer_darwin_amd64
 
   build_darwin_arm64_binary:
     name: Build macos/arm64 binary
@@ -247,12 +209,10 @@ jobs:
     runs-on: macos-26
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
       with:
         go-version: 1.25.x
 
@@ -265,7 +225,8 @@ jobs:
     - name: Download UI build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: ui-package
+        artifact-ids: ${{ needs.build_ui_package.outputs.artifact_id }}
+        merge-multiple: true
         path: ./ui-package/dist
 
     # build binaries
@@ -277,20 +238,18 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_darwin_arm64"
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         path: ./bin/*
         name: explorer_darwin_arm64
 
   build_amd64_docker_image:
     name: Build amd64 docker image
-    needs: [build_linux_amd64_binary]
+    needs: [build_ui_package, build_linux_amd64_binary]
     if: ${{ inputs.docker }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
 
     - name: Get build version
       id: vars
@@ -298,9 +257,9 @@ jobs:
 
     # prepare docker
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
     - name: Login to Docker Hub
-      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -309,12 +268,14 @@ jobs:
     - name: Download UI build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: ui-package
+        artifact-ids: ${{ needs.build_ui_package.outputs.artifact_id }}
+        merge-multiple: true
         path: ./ui-package/dist
     - name: Download build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: explorer_linux_amd64
+        artifact-ids: ${{ needs.build_linux_amd64_binary.outputs.artifact_id }}
+        merge-multiple: true
         path: ./bin
 
     # prepare environment
@@ -322,7 +283,7 @@ jobs:
       run: |
         chmod +x ./bin/*
         ls -lach ./bin
-    
+
     # build amd64 image
     - name: Build amd64 docker image
       run: |
@@ -334,25 +295,23 @@ jobs:
       run: |
         docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-amd64
         docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64
-  
+
   build_arm64_docker_image:
     name: Build arm64 docker image
-    needs: [build_linux_arm64_binary]
+    needs: [build_ui_package, build_linux_arm64_binary]
     if: ${{ inputs.docker }}
     runs-on: ubuntu-24.04-arm
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
     # prepare docker
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
     - name: Login to Docker Hub
-      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -361,12 +320,14 @@ jobs:
     - name: Download UI build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: ui-package
+        artifact-ids: ${{ needs.build_ui_package.outputs.artifact_id }}
+        merge-multiple: true
         path: ./ui-package/dist
     - name: Download build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: explorer_linux_arm64
+        artifact-ids: ${{ needs.build_linux_arm64_binary.outputs.artifact_id }}
+        merge-multiple: true
         path: ./bin
 
     # prepare environment
@@ -374,7 +335,7 @@ jobs:
       run: |
         chmod +x ./bin/*
         ls -lach ./bin
-    
+
     # build arm64 image
     - name: Build arm64 docker image
       run: |
@@ -394,21 +355,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
     # prepare docker
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
     - name: Login to Docker Hub
-      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
-    
+
     # build multiarch image
     - name: Build multiarch docker manifest
       run: |
@@ -426,21 +385,19 @@ jobs:
         tag: ${{ fromJSON(inputs.additional_tags) }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        ref: ${{ inputs.ref }}
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
     # prepare docker
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
     - name: Login to Docker Hub
-      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
-    
+
     # build multiarch image
     - name: "Build additional docker manifest: ${{ matrix.tag }}"
       run: |

@@ -3,7 +3,7 @@ package beacon
 import (
 	"fmt"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 func (indexer *Indexer) precalcNextEpochStats(epoch phase0.Epoch) error {
@@ -32,7 +32,7 @@ func (indexer *Indexer) precalcNextEpochStats(epoch phase0.Epoch) error {
 	}
 
 	// precompute epoch stats for the epoch if we have the parent epoch stats ready
-	epochStats := indexer.epochCache.createOrGetEpochStats(epoch, dependentBlock.Root, false)
+	epochStats := indexer.epochCache.createOrGetEpochStats(epoch, dependentBlock.Root)
 	if !epochStats.ready {
 		var parentDependentBlock *Block
 		if chainState.EpochOfSlot(dependentBlock.Slot) == epoch-1 {

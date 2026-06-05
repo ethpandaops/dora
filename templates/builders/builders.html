@@ -1,0 +1,303 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-hard-hat mx-2"></i> Builders Overview</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/builders" title="Builders">Builders</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Overview</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div id="header-placeholder" style="height:35px;"></div>
+    <form action="/builders" method="get" id="buildersFilterForm">
+      <input type="hidden" name="f">
+      {{ if not .IsDefaultSorting }}<input type="hidden" name="o" value="{{ .Sorting }}">{{ end }}
+      <div class="card mt-2">
+        <div class="card-header">
+          Builder Filters
+        </div>
+        <div class="card-body p-2">
+          <div class="row">
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    PubKey
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.pubkey" type="text" class="form-control" placeholder="PubKey" aria-label="PubKey" aria-describedby="basic-addon1" value="{{ .FilterPubKey }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Index
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.index" type="number" class="form-control" placeholder="Index" aria-label="Index" aria-describedby="basic-addon1" value="{{ .FilterIndex }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Execution Address
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.execution_addr" type="text" class="form-control" placeholder="0x..." aria-label="Execution Address" aria-describedby="basic-addon1" value="{{ .FilterExecutionAddr }}">
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-4 col-lg-3">
+                    <nobr>Status</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-8 col-lg-7 col-xl-6">
+                    <select name="f.status" multiple="multiple" class="filter-multiselect">
+                      {{ $filterStatusList := .FilterStatus }}
+                      {{ range $i, $option := .FilterStatusOpts }}
+                        <option value="{{ $option.Status }}" {{ if inlist $option.Status $filterStatusList }}selected{{ end }}>{{ $option.Status }}</option>
+                      {{ end }}
+                    </select>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+          <div class="row mt-3">
+            <div class="col-8 col-md-6 table-pagesize">
+              <label class="px-2">
+                <span>Show </span>
+                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm">
+                  <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <span> entries per page</span>
+              </label>
+            </div>
+            <div class="col-4 col-md-6">
+              <div class="container text-end">
+                <button type="submit" class="btn btn-primary">Apply Filter</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+        <div class="table-responsive table-sorting px-0 py-1">
+          <table class="table table-nobr" id="builders">
+            <thead>
+              <tr>
+                <th>
+                  Index
+                  <div class="col-sorting">
+                    <a href="{{ .FilteredPageLink }}&o=index" class="sort-link {{ if eq .Sorting "index" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .FilteredPageLink }}&o=index-d" class="sort-link {{ if eq .Sorting "index-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Public Key
+                  <div class="col-sorting">
+                    <a href="{{ .FilteredPageLink }}&o=pubkey" class="sort-link {{ if eq .Sorting "pubkey" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .FilteredPageLink }}&o=pubkey-d" class="sort-link {{ if eq .Sorting "pubkey-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>Execution Address</th>
+                <th>
+                  Balance
+                  <div class="col-sorting">
+                    <a href="{{ .FilteredPageLink }}&o=balance" class="sort-link {{ if eq .Sorting "balance" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .FilteredPageLink }}&o=balance-d" class="sort-link {{ if eq .Sorting "balance-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>State</th>
+                <th>
+                  Deposit
+                  <div class="col-sorting">
+                    <a href="{{ .FilteredPageLink }}&o=deposit" class="sort-link {{ if eq .Sorting "deposit" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .FilteredPageLink }}&o=deposit-d" class="sort-link {{ if eq .Sorting "deposit-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Withdrawable
+                  <div class="col-sorting">
+                    <a href="{{ .FilteredPageLink }}&o=withdrawable" class="sort-link {{ if eq .Sorting "withdrawable" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .FilteredPageLink }}&o=withdrawable-d" class="sort-link {{ if eq .Sorting "withdrawable-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            {{ if gt .BuilderCount 0 }}
+              <tbody>
+                {{ range $i, $builder := .Builders }}
+                  <tr>
+                    <td><a href="/builder/{{ $builder.Index }}">{{ formatAddCommas $builder.Index }}</a></td>
+                    <td class="text-monospace"><a href="/builder/0x{{ printf "%x" $builder.PublicKey }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $builder.PublicKey }}</a></td>
+                    <td>{{ ethAddressLink .ExecutionAddress }}</td>
+                    <td>{{ formatEthFromGwei $builder.Balance }}</td>
+                    <td>{{ $builder.State }}</td>
+                    <td>
+                      {{- if $builder.ShowDeposit -}}
+                        <span data-timer="{{ $builder.DepositTs.Unix }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $builder.DepositTs }}">{{ formatRecentTimeShort $builder.DepositTs }}</span>
+                        (<a href="/epoch/{{ $builder.DepositEpoch }}">Epoch {{ formatAddCommas $builder.DepositEpoch }}</a>)
+                      {{- else -}}
+                        -
+                      {{- end -}}
+                    </td>
+                    <td>
+                      {{- if $builder.ShowWithdrawable -}}
+                        <span data-timer="{{ $builder.WithdrawableTs.Unix }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $builder.WithdrawableTs }}">{{ formatRecentTimeShort $builder.WithdrawableTs }}</span>
+                        (<a href="/epoch/{{ $builder.WithdrawableEpoch }}">Epoch {{ formatAddCommas $builder.WithdrawableEpoch }}</a>)
+                      {{- else -}}
+                        -
+                      {{- end -}}
+                    </td>
+                  </tr>
+                {{ end }}
+              </tbody>
+            {{ else }}
+              <tbody>
+                <tr style="height: 430px;">
+                  <td class="d-none d-md-table-cell"></td>
+                  <td style="vertical-align: middle;" colspan="6">
+                    <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                      {{ template "professor_svg" }}
+                    </div>
+                  </td>
+                  <td class="d-none d-md-table-cell"></td>
+                </tr>
+              </tbody>
+            {{ end }}
+          </table>
+        </div>
+        {{ if gt .TotalPages 1 }}
+          <div class="row">
+            <div class="col-sm-12 col-md-5 table-metainfo">
+              <div class="px-2">
+                <div class="table-meta" role="status" aria-live="polite">Showing builder {{ .FirstBuilder }} to {{ .LastBuilder }}</div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-7 table-paging">
+              <div class="d-inline-block px-2">
+                <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
+                  <input type="hidden" name="f">
+                  {{ range $key, $value := .UrlParams }}
+                    {{ if ne $key "p" }}
+                      <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                    {{ end }}
+                  {{ end }}
+                  {{ if not .IsDefaultSorting }}
+                    <input type="hidden" name="o" value="{{ .Sorting }}">
+                  {{ end }}
+                  <div class="input-group" style="width: 120px;">
+                    <input type="number" class="form-control" name="p" id="pageJumpInput"
+                           min="1" max="{{ .TotalPages }}" placeholder="Page"
+                           style="height: 38px; font-size: 14px; text-align: center; border-radius: 0.375rem 0 0 0.375rem;">
+                    <button type="submit" class="btn btn-outline-secondary" style="height: 38px; border-radius: 0 0.375rem 0.375rem 0;">
+                      Go
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <div class="d-inline-block px-2">
+                <ul class="pagination">
+                  <li class="first paginate_button page-item {{ if eq .CurrentPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FilteredPageLink }}&{{ if not .IsDefaultSorting }}o={{ .Sorting }}&{{ end }}c={{ .PageSize }}">First</a>
+                  </li>
+                  <li class="previous paginate_button page-item {{ if eq .CurrentPageIndex 1 }}disabled{{ end }}" id="tpg_previous">
+                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="{{ .FilteredPageLink }}&{{ if not .IsDefaultSorting }}o={{ .Sorting }}&{{ end }}p={{ .PrevPageIndex }}&c={{ .PageSize }}"><i class="fas fa-chevron-left"></i></a>
+                  </li>
+                  <li class="page-item disabled">
+                    <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
+                  </li>
+                  <li class="next paginate_button page-item {{ if ge .CurrentPageIndex .LastPageIndex }}disabled{{ end }}" id="tpg_next">
+                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="{{ .FilteredPageLink }}&{{ if not .IsDefaultSorting }}o={{ .Sorting }}&{{ end }}p={{ .NextPageIndex }}&c={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
+                  </li>
+                  <li class="last paginate_button page-item {{ if ge .CurrentPageIndex .LastPageIndex }}disabled{{ end }}" id="tpg_last">
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="{{ .FilteredPageLink }}&{{ if not .IsDefaultSorting }}o={{ .Sorting }}&{{ end }}p={{ .LastPageIndex }}&c={{ .PageSize }}">Last</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        {{ end }}
+      </div>
+      <div id="footer-placeholder" style="height:71px;"></div>
+    </div>
+  </div>
+{{ end }}
+{{ define "js" }}
+<script src="/js/bootstrap-multiselect.js"></script>
+<script type="text/javascript">
+$('#buildersFilterForm').submit(function () {
+  $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
+});
+$(function() {
+  $('#buildersFilterForm .filter-multiselect').each(function() {
+    $(this).multiselect({
+      onInitialized: function() {
+        this.$button.attr("data-bs-toggle", "dropdown");
+        this.$container.addClass("filter-multiselect-container");
+      }
+    });
+  });
+
+  // Page jump functionality
+  $('#pageJumpForm').on('submit', function(e) {
+    var pageInput = $('#pageJumpInput');
+    var pageNum = parseInt(pageInput.val());
+    var maxPages = parseInt(pageInput.attr('max'));
+
+    if (isNaN(pageNum) || pageNum < 1 || pageNum > maxPages) {
+      e.preventDefault();
+      pageInput.addClass('is-invalid');
+      setTimeout(function() {
+        pageInput.removeClass('is-invalid');
+      }, 2000);
+      return false;
+    }
+  });
+
+  // Enter key support for page jump
+  $('#pageJumpInput').on('keypress', function(e) {
+    if (e.which === 13) {
+      $('#pageJumpForm').submit();
+    }
+  });
+});
+</script>
+{{ end }}
+{{ define "css" }}
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
+<style>
+  .filter-multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container.btn-group>.btn {
+    text-align: left;
+  }
+  .filter-multiselect-container .multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label {
+    padding: 4px 8px;
+    width: 100%;
+    white-space: nowrap;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label>input {
+    margin: 0 4px;
+  }
+
+</style>
+{{ end }}

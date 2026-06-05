@@ -3,53 +3,59 @@ package beacon
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
 	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
 // Block represents a beacon block.
 type Block struct {
-	Root              phase0.Root
-	Slot              phase0.Slot
-	BlockUID          uint64
-	dynSsz            *dynssz.DynSsz
-	parentRoot        *phase0.Root
-	dependentRoot     *phase0.Root
-	forkId            ForkKey
-	forkChecked       bool
-	headerMutex       sync.Mutex
-	headerChan        chan bool
-	header            *phase0.SignedBeaconBlockHeader
-	blockMutex        sync.Mutex
-	blockChan         chan bool
-	block             *spec.VersionedSignedBeaconBlock
-	blockIndex        *BlockBodyIndex
-	recvDelay         int32
-	executionTimes    []ExecutionTime // execution times from snooper clients
-	minExecutionTime  uint16
-	maxExecutionTime  uint16
-	execTimeUpdate    *time.Ticker
-	executionTimesMux sync.RWMutex
-	isInFinalizedDb   bool // block is in finalized table (slots)
-	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
-	isDisposed        bool // block is disposed
-	processingStatus  dbtypes.UnfinalizedBlockStatus
-	seenMutex         sync.RWMutex
-	seenMap           map[uint16]*Client
-	processedActivity uint8
-	blockResults      [][]uint8
-	blockResultsMutex sync.Mutex
+	Root                  phase0.Root
+	Slot                  phase0.Slot
+	BlockUID              uint64
+	dynSsz                *dynssz.DynSsz
+	parentRoot            *phase0.Root
+	dependentRoot         *phase0.Root
+	forkId                ForkKey
+	forkChecked           bool
+	headerMutex           sync.Mutex
+	headerChan            chan bool
+	header                *phase0.SignedBeaconBlockHeader
+	blockMutex            sync.Mutex
+	blockChan             chan bool
+	block                 *all.SignedBeaconBlock
+	executionPayloadMutex sync.Mutex
+	executionPayloadChan  chan bool
+	executionPayload      *all.SignedExecutionPayloadEnvelope
+	blockIndex            *BlockBodyIndex
+	recvDelay             int32
+	executionTimes        []ExecutionTime // execution times from snooper clients
+	minExecutionTime      uint16
+	maxExecutionTime      uint16
+	execTimeUpdate        *time.Ticker
+	executionTimesMux     sync.RWMutex
+	isInFinalizedDb       bool // block is in finalized table (slots)
+	isInUnfinalizedDb     bool // block is in unfinalized table (unfinalized_blocks)
+	hasExecutionPayload   bool // block has an execution payload (either in cache or db)
+	isPayloadOrphaned     bool // payload is orphaned (next block doesn't build on it)
+	isDisposed            bool // block is disposed
+	processingStatus      dbtypes.UnfinalizedBlockStatus
+	seenMutex             sync.RWMutex
+	seenMap               map[uint16]*Client
+	processedActivity     uint8
+	blockResults          [][]uint8
+	blockResultsMutex     sync.Mutex
 }
 
 // BlockBodyIndex holds important block properties that are used as index for cache lookups.
@@ -58,10 +64,12 @@ type BlockBodyIndex struct {
 	Graffiti            [32]byte
 	ExecutionExtraData  []byte
 	ExecutionHash       phase0.Hash32
+	ExecutionParentHash phase0.Hash32
 	ExecutionNumber     uint64
 	SyncParticipation   float32
 	EthTransactionCount uint64
 	BlobCount           uint64
+	BuilderIndex        uint64
 	GasUsed             uint64
 	GasLimit            uint64
 	BlockSize           uint64
@@ -69,21 +77,16 @@ type BlockBodyIndex struct {
 
 // newBlock creates a new Block instance.
 func newBlock(dynSsz *dynssz.DynSsz, root phase0.Root, slot phase0.Slot, blockUID uint64) *Block {
-	if blockUID == 0 {
-		// use highest possible block UID as default
-		blockUID = (uint64(slot) << 16) | 0xffff
+	return &Block{
+		Root:                 root,
+		Slot:                 slot,
+		BlockUID:             blockUID,
+		dynSsz:               dynSsz,
+		seenMap:              make(map[uint16]*Client),
+		headerChan:           make(chan bool),
+		blockChan:            make(chan bool),
+		executionPayloadChan: make(chan bool),
 	}
-	block := &Block{
-		Root:       root,
-		Slot:       slot,
-		BlockUID:   blockUID,
-		dynSsz:     dynSsz,
-		seenMap:    make(map[uint16]*Client),
-		headerChan: make(chan bool),
-		blockChan:  make(chan bool),
-	}
-
-	return block
 }
 
 func (block *Block) Dispose() {
@@ -159,8 +162,19 @@ func (block *Block) AwaitHeader(ctx context.Context, timeout time.Duration) *pha
 	return block.header
 }
 
-// GetBlock returns the versioned signed beacon block of this block.
-func (block *Block) GetBlock(ctx context.Context) *spec.VersionedSignedBeaconBlock {
+// GetCachedBlock returns the in-memory fork-agnostic signed beacon block if
+// it is currently held in the block cache. Returns nil if the body would
+// only be available via a database lookup. Use this when a caller wants to
+// operate purely on cached state without triggering disk I/O.
+func (block *Block) GetCachedBlock() *all.SignedBeaconBlock {
+	if block.isDisposed {
+		return nil
+	}
+	return block.block
+}
+
+// GetBlock returns the fork-agnostic signed beacon block of this block.
+func (block *Block) GetBlock(ctx context.Context) *all.SignedBeaconBlock {
 	if block.isDisposed {
 		return nil
 	}
@@ -170,9 +184,9 @@ func (block *Block) GetBlock(ctx context.Context) *spec.VersionedSignedBeaconBlo
 	}
 
 	if block.isInUnfinalizedDb {
-		dbBlock := db.GetUnfinalizedBlock(ctx, block.Root[:])
+		dbBlock := db.GetUnfinalizedBlock(ctx, block.Root[:], false, true, false)
 		if dbBlock != nil {
-			blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+			blockBody, err := UnmarshalSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 			if err == nil {
 				return blockBody
 			}
@@ -182,10 +196,15 @@ func (block *Block) GetBlock(ctx context.Context) *spec.VersionedSignedBeaconBlo
 	return nil
 }
 
-// AwaitBlock waits for the versioned signed beacon block of this block to be available.
-func (block *Block) AwaitBlock(ctx context.Context, timeout time.Duration) *spec.VersionedSignedBeaconBlock {
+// AwaitBlock waits for the fork-agnostic signed beacon block of this block
+// to be available.
+func (block *Block) AwaitBlock(ctx context.Context, timeout time.Duration) *all.SignedBeaconBlock {
 	if block.isDisposed {
 		return nil
+	}
+
+	if block.block != nil {
+		return block.block
 	}
 
 	if ctx == nil {
@@ -199,6 +218,45 @@ func (block *Block) AwaitBlock(ctx context.Context, timeout time.Duration) *spec
 	}
 
 	return block.block
+}
+
+// GetExecutionPayload returns the execution payload of this block.
+func (block *Block) GetExecutionPayload(ctx context.Context) *all.SignedExecutionPayloadEnvelope {
+	if block.executionPayload != nil {
+		return block.executionPayload
+	}
+
+	if block.hasExecutionPayload && block.isInUnfinalizedDb {
+		dbBlock := db.GetUnfinalizedBlock(ctx, block.Root[:], false, false, true)
+		if dbBlock != nil {
+			payload, err := UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
+			if err == nil {
+				return payload
+			}
+		}
+	}
+
+	return nil
+}
+
+// AwaitExecutionPayload waits for the execution payload of this block to be available.
+func (block *Block) AwaitExecutionPayload(ctx context.Context, timeout time.Duration) *all.SignedExecutionPayloadEnvelope {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	select {
+	case <-block.executionPayloadChan:
+	case <-time.After(timeout):
+	case <-ctx.Done():
+	}
+
+	return block.executionPayload
+}
+
+// HasExecutionPayload returns true if this block has an execution payload.
+func (block *Block) HasExecutionPayload() bool {
+	return block.hasExecutionPayload
 }
 
 // GetParentRoot returns the parent root of this block.
@@ -258,13 +316,13 @@ func (block *Block) EnsureHeader(loadHeader func() (*phase0.SignedBeaconBlockHea
 	return nil
 }
 
-// SetBlock sets the versioned signed beacon block of this block.
-func (block *Block) SetBlock(body *spec.VersionedSignedBeaconBlock) {
+// SetBlock sets the fork-agnostic signed beacon block of this block.
+func (block *Block) SetBlock(body *all.SignedBeaconBlock) {
 	if block.isDisposed {
 		return
 	}
 
-	block.setBlockIndex(body)
+	block.setBlockIndex(body, nil)
 	block.block = body
 
 	if block.blockChan != nil {
@@ -273,8 +331,9 @@ func (block *Block) SetBlock(body *spec.VersionedSignedBeaconBlock) {
 	}
 }
 
-// EnsureBlock ensures that the versioned signed beacon block of this block is available.
-func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlock, error)) (bool, error) {
+// EnsureBlock ensures that the fork-agnostic signed beacon block of this
+// block is available.
+func (block *Block) EnsureBlock(loadBlock func() (*all.SignedBeaconBlock, error)) (bool, error) {
 	if block.isDisposed || block.block != nil {
 		return false, nil
 	}
@@ -295,7 +354,7 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 		return false, err
 	}
 
-	block.setBlockIndex(blockBody)
+	block.setBlockIndex(blockBody, nil)
 	block.block = blockBody
 	if block.blockChan != nil {
 		close(block.blockChan)
@@ -305,50 +364,119 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 	return true, nil
 }
 
+// SetExecutionPayload sets the execution payload of this block.
+func (block *Block) SetExecutionPayload(payload *all.SignedExecutionPayloadEnvelope) {
+	block.setBlockIndex(block.block, payload)
+	block.executionPayload = payload
+	block.hasExecutionPayload = true
+
+	if block.executionPayloadChan != nil {
+		close(block.executionPayloadChan)
+		block.executionPayloadChan = nil
+	}
+}
+
+// EnsureExecutionPayload ensures that the execution payload of this block is available.
+func (block *Block) EnsureExecutionPayload(loadExecutionPayload func() (*all.SignedExecutionPayloadEnvelope, error)) (bool, error) {
+	if block.executionPayload != nil {
+		return false, nil
+	}
+
+	if block.hasExecutionPayload {
+		return false, nil
+	}
+
+	block.executionPayloadMutex.Lock()
+	defer block.executionPayloadMutex.Unlock()
+
+	if block.executionPayload != nil {
+		return false, nil
+	}
+
+	payload, err := loadExecutionPayload()
+	if err != nil {
+		return false, err
+	}
+
+	if payload == nil {
+		return false, nil
+	}
+
+	block.setBlockIndex(block.block, payload)
+	block.executionPayload = payload
+	block.hasExecutionPayload = true
+	if block.executionPayloadChan != nil {
+		close(block.executionPayloadChan)
+		block.executionPayloadChan = nil
+	}
+
+	return true, nil
+}
+
 // setBlockIndex sets the block index of this block.
-func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
-	if body == nil {
+func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.SignedExecutionPayloadEnvelope) {
+	if body == nil || body.Message == nil || body.Message.Body == nil {
 		return
 	}
 
-	blockIndex := &BlockBodyIndex{}
-	blockIndex.Graffiti, _ = body.Graffiti()
-
-	executionPayload, _ := body.ExecutionPayload()
-	if executionPayload != nil {
-		blockIndex.ExecutionExtraData, _ = executionPayload.ExtraData()
-		blockIndex.ExecutionHash, _ = executionPayload.BlockHash()
-		blockIndex.ExecutionNumber, _ = executionPayload.BlockNumber()
-
-		// Calculate transaction count
-		executionTransactions, _ := executionPayload.Transactions()
-		blockIndex.EthTransactionCount = uint64(len(executionTransactions))
-
-		// Calculate blob count
-		blobKzgCommitments, _ := body.BlobKZGCommitments()
-		blockIndex.BlobCount = uint64(len(blobKzgCommitments))
-
-		// Get gas used and gas limit
-		gasUsed, _ := executionPayload.GasUsed()
-		blockIndex.GasUsed = gasUsed
-
-		gasLimit, _ := executionPayload.GasLimit()
-		blockIndex.GasLimit = gasLimit
+	if payload == nil && block.executionPayload != nil {
+		payload = block.executionPayload
 	}
 
-	// Calculate block size
-	blockSize, err := getBlockSize(block.dynSsz, body)
-	if err == nil {
+	blockIndex := block.blockIndex
+	if blockIndex == nil {
+		blockIndex = &BlockBodyIndex{}
+	}
+
+	bbody := body.Message.Body
+	blockIndex.Graffiti = bbody.Graffiti
+	blockIndex.BlobCount = uint64(len(utils.BlockBodyBlobCommitments(bbody)))
+
+	if extra, err := getBlockExecutionExtraData(body); err == nil {
+		blockIndex.ExecutionExtraData = extra
+	}
+
+	if builderIndex, err := getBlockPayloadBuilderIndex(body); err == nil {
+		blockIndex.BuilderIndex = uint64(builderIndex)
+	} else {
+		blockIndex.BuilderIndex = math.MaxUint64
+	}
+
+	if parentHash, err := getBlockExecutionParentHash(body); err == nil {
+		blockIndex.ExecutionParentHash = parentHash
+	}
+
+	if blockHash, err := getBlockExecutionBlockHash(body); err == nil {
+		blockIndex.ExecutionHash = blockHash
+	}
+
+	if bbody.ExecutionPayload != nil {
+		ep := bbody.ExecutionPayload
+		blockIndex.ExecutionNumber = ep.BlockNumber
+		blockIndex.EthTransactionCount = uint64(len(ep.Transactions))
+		blockIndex.GasUsed = ep.GasUsed
+		blockIndex.GasLimit = ep.GasLimit
+	}
+
+	if payload != nil && payload.Message != nil && payload.Message.Payload != nil {
+		blockIndex.ExecutionHash = payload.Message.Payload.BlockHash
+		blockIndex.ExecutionNumber = payload.Message.Payload.BlockNumber
+		blockIndex.ExecutionParentHash = payload.Message.Payload.ParentHash
+		blockIndex.EthTransactionCount = uint64(len(payload.Message.Payload.Transactions))
+		blockIndex.GasUsed = payload.Message.Payload.GasUsed
+		blockIndex.GasLimit = payload.Message.Payload.GasLimit
+		blockIndex.ExecutionExtraData = payload.Message.Payload.ExtraData
+	}
+
+	if blockSize, err := getBlockSize(block.dynSsz, body); err == nil {
 		blockIndex.BlockSize = uint64(blockSize)
 	}
 
-	// Calculate sync participation
-	syncAggregate, err := body.SyncAggregate()
-	if err == nil && syncAggregate != nil {
-		assignedCount := len(syncAggregate.SyncCommitteeBits) * 8
+	if sa := bbody.SyncAggregate; sa != nil {
+		assignedCount := len(sa.SyncCommitteeBits) * 8
 		votedCount := 0
 		for i := 0; i < assignedCount; i++ {
-			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+			if utils.BitAtVector(sa.SyncCommitteeBits, i) {
 				votedCount++
 			}
 		}
@@ -372,7 +500,7 @@ func (block *Block) GetBlockIndex(ctx context.Context) *BlockBodyIndex {
 
 	blockBody := block.GetBlock(ctx)
 	if blockBody != nil {
-		block.setBlockIndex(blockBody)
+		block.setBlockIndex(blockBody, block.GetExecutionPayload(ctx))
 	}
 
 	return block.blockIndex
@@ -389,7 +517,7 @@ func (block *Block) buildUnfinalizedBlock(ctx context.Context, compress bool) (*
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(ctx), compress, false)
+	blockVer, blockSSZ, err := MarshalSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(ctx), compress, false)
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
@@ -399,7 +527,7 @@ func (block *Block) buildUnfinalizedBlock(ctx context.Context, compress bool) (*
 		return nil, fmt.Errorf("marshal exec times ssz failed: %v", err)
 	}
 
-	return &dbtypes.UnfinalizedBlock{
+	unfinalizedBlock := &dbtypes.UnfinalizedBlock{
 		Root:        block.Root[:],
 		Slot:        uint64(block.Slot),
 		HeaderVer:   1,
@@ -413,7 +541,18 @@ func (block *Block) buildUnfinalizedBlock(ctx context.Context, compress bool) (*
 		MaxExecTime: uint32(block.maxExecutionTime),
 		ExecTimes:   execTimesSSZ,
 		BlockUid:    block.BlockUID,
-	}, nil
+	}
+
+	if block.executionPayload != nil {
+		payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, compress)
+		if err != nil {
+			return nil, fmt.Errorf("marshal execution payload ssz failed: %v", err)
+		}
+		unfinalizedBlock.PayloadVer = payloadVer
+		unfinalizedBlock.PayloadSSZ = payloadSSZ
+	}
+
+	return unfinalizedBlock, nil
 }
 
 // buildOrphanedBlock builds an orphaned block from the block data.
@@ -427,19 +566,30 @@ func (block *Block) buildOrphanedBlock(ctx context.Context, compress bool) (*dbt
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(ctx), compress, false)
+	blockVer, blockSSZ, err := MarshalSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(ctx), compress, false)
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
 
-	return &dbtypes.OrphanedBlock{
+	orphanedBlock := &dbtypes.OrphanedBlock{
 		Root:      block.Root[:],
 		HeaderVer: 1,
 		HeaderSSZ: headerSSZ,
 		BlockVer:  blockVer,
 		BlockSSZ:  blockSSZ,
 		BlockUid:  block.BlockUID,
-	}, nil
+	}
+
+	if block.executionPayload != nil {
+		payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, compress)
+		if err != nil {
+			return nil, fmt.Errorf("marshal execution payload ssz failed: %v", err)
+		}
+		orphanedBlock.PayloadVer = payloadVer
+		orphanedBlock.PayloadSSZ = payloadSSZ
+	}
+
+	return orphanedBlock, nil
 }
 
 func (block *Block) writeToBlockDb(ctx context.Context) error {
@@ -447,23 +597,48 @@ func (block *Block) writeToBlockDb(ctx context.Context) error {
 		return nil
 	}
 
-	_, err := blockdb.GlobalBlockDb.AddBlockWithCallback(ctx, uint64(block.Slot), block.Root[:], func() (*btypes.BlockData, error) {
+	_, _, err := blockdb.GlobalBlockDb.AddBlockWithCallback(ctx, uint64(block.Slot), block.Root[:], func() (*btypes.BlockData, error) {
 		headerSSZ, err := block.header.MarshalSSZ()
 		if err != nil {
 			return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 		}
 
-		version, ssz, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.block, true, false)
+		version, ssz, err := MarshalSignedBeaconBlockSSZ(block.dynSsz, block.block, true, false)
 		if err != nil {
 			return nil, fmt.Errorf("error marshalling block %v: %v", block.Root.String(), err)
 		}
 
-		return &btypes.BlockData{
+		data := &btypes.BlockData{
 			HeaderVersion: 1,
 			HeaderData:    headerSSZ,
 			BodyVersion:   version,
 			BodyData:      ssz,
-		}, nil
+		}
+
+		// Gloas+: persist the execution payload envelope and the BAL separately.
+		// The BAL is pruned from nodes after a few days, so we store it with a
+		// dedicated version/data pair — the blockdb write guard then protects a
+		// previously stored BAL from being overwritten when the payload is later
+		// re-delivered with an empty BAL.
+		if block.executionPayload != nil {
+			payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, true)
+			if err != nil {
+				return nil, fmt.Errorf("marshal execution payload ssz failed: %v", err)
+			}
+			data.PayloadVersion = payloadVer
+			data.PayloadData = payloadSSZ
+
+			if msg := block.executionPayload.Message; msg != nil && msg.Payload != nil {
+				balVer, balData, err := MarshalBlockAccessList(msg.Payload.BlockAccessList, true)
+				if err != nil {
+					return nil, fmt.Errorf("marshal block access list failed: %v", err)
+				}
+				data.BalVersion = balVer
+				data.BalData = balData
+			}
+		}
+
+		return data, nil
 	})
 	if err != nil {
 		return fmt.Errorf("error adding block %v to blockdb: %v", block.Root.String(), err)
@@ -478,9 +653,12 @@ func (block *Block) unpruneBlockBody(ctx context.Context) {
 		return
 	}
 
-	dbBlock := db.GetUnfinalizedBlock(ctx, block.Root[:])
+	dbBlock := db.GetUnfinalizedBlock(ctx, block.Root[:], false, true, true)
 	if dbBlock != nil {
-		block.block, _ = UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+		block.block, _ = UnmarshalSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+		if len(dbBlock.PayloadSSZ) > 0 {
+			block.executionPayload, _ = UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
+		}
 	}
 }
 
@@ -527,6 +705,15 @@ func (block *Block) GetDbVoluntaryExits(indexer *Indexer, isCanonical bool) []*d
 	}
 
 	return indexer.dbWriter.buildDbVoluntaryExits(block, !isCanonical, nil)
+}
+
+// GetDbWithdrawals returns the database representation of the withdrawals in this block.
+func (block *Block) GetDbWithdrawals(indexer *Indexer, isCanonical bool) []*dbtypes.Withdrawal {
+	if block.isDisposed {
+		return nil
+	}
+
+	return indexer.dbWriter.buildDbWithdrawals(block, !isCanonical, nil, nil, nil)
 }
 
 // GetDbSlashings returns the database representation of the slashings in this block.

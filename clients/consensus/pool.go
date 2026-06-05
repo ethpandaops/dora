@@ -6,9 +6,9 @@ import (
 
 	"math/rand/v2"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/sirupsen/logrus"
 )
 

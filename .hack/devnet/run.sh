@@ -28,17 +28,31 @@ kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data "./genesis.json" | tai
 # Extract network name from config
 NETWORK_NAME=$(grep -E "^\s*network:" "${config_file}" | sed 's/.*network:\s*//' | tr -d '"'\'' ')
 
-# Determine validator names source based on network type
+# Determine validator names + buildoor inventory sources based on network type
 if [[ "$NETWORK_NAME" == *"devnet"* ]]; then
   # Use inventory API for devnet networks
   VALIDATOR_NAMES_CONFIG="validatorNamesInventory: \"https://config.${NETWORK_NAME}.ethpandaops.io/api/v1/nodes/validator-ranges\""
+  BUILDOOR_CONFIG="buildoorOverviewUrl: \"https://buildoor.${NETWORK_NAME}.ethpandaops.io\""
 else
   # Use local validator ranges file for all other networks
   VALIDATOR_NAMES_CONFIG="validatorNamesYaml: \"${__dir}/generated-validator-ranges.yaml\""
+  BUILDOOR_CONFIG=""
 fi
 
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
+
+# Local kurtosis buildoor container, when present, overrides the network-derived URL.
+BUILDOOR_CONTAINER=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
+              -f "label=com.kurtosistech.app-id=kurtosis" \
+              -f "label=com.kurtosistech.id=buildoor" | head -1)
+if [ -n "$BUILDOOR_CONTAINER" ]; then
+  BUILDOOR_PORT=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort }}' "$BUILDOOR_CONTAINER" 2>/dev/null)
+  if [ -n "$BUILDOOR_PORT" ]; then
+    BUILDOOR_CONFIG="buildoorUrls:
+    - \"http://127.0.0.1:${BUILDOOR_PORT}\""
+  fi
+fi
 
 BEACON_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
               -f "label=com.kurtosistech.app-id=kurtosis" \
@@ -47,6 +61,12 @@ BEACON_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
 EXECUTION_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
               -f "label=com.kurtosistech.app-id=kurtosis" \
               -f "label=com.kurtosistech.custom.ethereum-package.client-type=execution" | tac)
+
+TRACOOR_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
+              -f "label=com.kurtosistech.app-id=kurtosis" \
+              -f "label=com.kurtosistech.id=tracoor" | tac)
+
+TRACOOR_PORT=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "7007/tcp") 0).HostPort }}' $TRACOOR_NODES)
 
 cat <<EOF > "${__dir}/generated-dora-config.yaml"
 logging:
@@ -75,6 +95,7 @@ frontend:
   )"
   rainbowkitProjectId: "15fe4ab4d5c0bcb6f0dc7c398301ff0e"
   ${VALIDATOR_NAMES_CONFIG}
+  ${BUILDOOR_CONFIG}
   showSensitivePeerInfos: true
   showSubmitDeposit: true
   showSubmitElRequests: true
@@ -82,6 +103,8 @@ frontend:
   disableDasGuardianCheck: false
   enableDasGuardianMassScan: true
   showValidatorSummary: true
+  tracoorUrl: "http://127.0.0.1:$TRACOOR_PORT"
+  tracoorNetwork: "kurtosis"
 api:
   enabled: true
   corsOrigins:
@@ -147,6 +170,10 @@ indexer:
   cachePersistenceDelay: 8
   disableIndexWriter: false
   syncEpochCooldown: 1
+  stateCache:
+    enabled: true
+    path: "${__dir}/generated-state-cache"
+    maxStates: 5
 executionIndexer:
   enabled: true
   retention: 4368h

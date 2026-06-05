@@ -30,7 +30,7 @@ const SigningData = new ContainerType({
   domain: new ByteVectorType(32),
 });
 
-export type CredentialType = '00' | '01' | '02';
+export type CredentialType = '00' | '01' | '02' | '03';
 
 export interface WithdrawalCredentialConfig {
   type: CredentialType;
@@ -66,10 +66,10 @@ export function validateMnemonicWords(mnemonic: string): boolean {
 
 /**
  * Build withdrawal credentials from type and ETH address
- * @param credType - '01' for execution, '02' for compounding
+ * @param credType - '01' for execution, '02' for compounding, '03' for builder
  * @param address - 20-byte ETH address (0x prefixed)
  */
-export function buildWithdrawalCredentialsFromAddress(credType: '01' | '02', address: string): string {
+export function buildWithdrawalCredentialsFromAddress(credType: '01' | '02' | '03', address: string): string {
   const cleanAddress = address.startsWith('0x') ? address.slice(2) : address;
   if (cleanAddress.length !== 40) {
     throw new Error("Invalid address length");
@@ -113,9 +113,9 @@ export async function buildWithdrawalCredentials(
     return buildBLSWithdrawalCredentials(withdrawalPubkey);
   } else {
     if (!config.address) {
-      throw new Error("Address required for 0x01/0x02 credentials");
+      throw new Error("Address required for 0x01/0x02/0x03 credentials");
     }
-    return buildWithdrawalCredentialsFromAddress(config.type, config.address);
+    return buildWithdrawalCredentialsFromAddress(config.type as '01' | '02' | '03', config.address);
   }
 }
 

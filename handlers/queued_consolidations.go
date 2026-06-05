@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -179,7 +179,9 @@ func buildFilteredQueuedConsolidationsPageData(ctx context.Context, pageIdx uint
 			consolidationData.SourceEffectiveBalance = uint64(queueEntry.SrcValidator.Validator.EffectiveBalance)
 
 			validator := services.GlobalBeaconService.GetValidatorByIndex(queueEntry.SrcValidator.Index, false)
-			if strings.HasPrefix(validator.Status.String(), "pending") {
+			if validator == nil {
+				consolidationData.SourceValidatorStatus = "Unknown"
+			} else if strings.HasPrefix(validator.Status.String(), "pending") {
 				consolidationData.SourceValidatorStatus = "Pending"
 			} else if validator.Status == v1.ValidatorStateActiveOngoing {
 				consolidationData.SourceValidatorStatus = "Active"

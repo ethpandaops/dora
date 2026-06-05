@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -190,7 +190,9 @@ func buildConsolidationsPageData(ctx context.Context, firstEpoch uint64, pageSiz
 				queueData.SourceEffectiveBalance = uint64(queueEntry.SrcValidator.Validator.EffectiveBalance)
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(queueEntry.SrcValidator.Index, false)
-				if strings.HasPrefix(validator.Status.String(), "pending") {
+				if validator == nil {
+					queueData.SourceValidatorStatus = "Unknown"
+				} else if strings.HasPrefix(validator.Status.String(), "pending") {
 					queueData.SourceValidatorStatus = "Pending"
 				} else if validator.Status == v1.ValidatorStateActiveOngoing {
 					queueData.SourceValidatorStatus = "Active"

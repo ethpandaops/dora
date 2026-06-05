@@ -7,9 +7,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 	"github.com/mashingan/smapping"
 )
@@ -117,7 +117,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
 		if epochStats != nil && !epochStats.ready {
 			if epochStats.dependentState == nil {
-				indexer.epochCache.addEpochStateRequest(epochStats)
+				indexer.epochCache.ensureEpochDependentState(epochStats)
 			}
 			if epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
 				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", pruneEpoch, dependentRoot.String())
@@ -166,6 +166,33 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 				if parentRoot != nil && bytes.Equal((*parentRoot)[:], nextParentRoot[:]) {
 					nextBlocks = append(nextBlocks, block)
 					nextParentRoot = block.Root
+				}
+			}
+
+			allChainBlocks := append(chain, nextBlocks...)
+			for i, block := range chain {
+				if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+					continue
+				}
+
+				blockIndex := block.GetBlockIndex(indexer.ctx)
+				if blockIndex == nil || bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+					continue // no execution commitment
+				}
+
+				// Find the next block in this chain
+				var nextBlock *Block
+				if i+1 < len(allChainBlocks) {
+					nextBlock = allChainBlocks[i+1]
+				}
+
+				if nextBlock != nil {
+					nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
+					if nextBlockIndex != nil {
+						if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+							block.isPayloadOrphaned = true
+						}
+					}
 				}
 			}
 
@@ -257,8 +284,9 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 	for _, block := range pruningBlocks {
 		block.isInFinalizedDb = true
 		block.processingStatus = dbtypes.UnfinalizedBlockStatusPruned
-		block.setBlockIndex(block.block)
+		block.setBlockIndex(block.block, block.executionPayload)
 		block.block = nil
+		block.executionPayload = nil
 		block.blockResults = nil
 	}
 

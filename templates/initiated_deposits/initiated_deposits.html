@@ -166,7 +166,11 @@
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                           {{ if $deposit.ValidatorExists }}
-                            {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                            {{ if $deposit.IsBuilder }}
+                              {{ formatBuilderWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                            {{ else }}
+                              {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}{{ if $deposit.ProjectedIndex }} <i class="fas fa-exclamation-circle text-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="This deposit has not been processed yet — the validator index is projected (estimated) and not yet reserved on-chain."></i>{{ end }}
+                            {{ end }}
                           {{ else }}
                             0x{{ printf "%x" $deposit.PublicKey }}
                           {{ end }}

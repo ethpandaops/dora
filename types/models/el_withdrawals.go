@@ -6,6 +6,7 @@ import (
 
 // ElWithdrawalsPageData is a struct to hold info for the el_withdrawals page
 type ElWithdrawalsPageData struct {
+	FilterEntity        string `json:"filter_entity"` // "all", "validator", or "builder"
 	FilterMinSlot       uint64 `json:"filter_mins"`
 	FilterMaxSlot       uint64 `json:"filter_maxs"`
 	FilterAddress       string `json:"filter_address"`
@@ -51,6 +52,7 @@ type ElWithdrawalsPageDataWithdrawal struct {
 	ValidatorValid    bool      `json:"vvalid"`
 	ValidatorIndex    uint64    `json:"vindex"`
 	ValidatorName     string    `json:"vname"`
+	IsBuilder         bool      `json:"is_builder"`
 	PublicKey         []byte    `json:"pubkey"`
 	LinkedTransaction bool      `json:"linked_tx"`
 	TransactionHash   []byte    `json:"tx_hash"`

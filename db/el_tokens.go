@@ -193,12 +193,9 @@ func GetElTokensByContracts(ctx context.Context, contracts [][]byte) (map[string
 
 	fmt.Fprint(&sql, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE contract IN (")
 	for i, contract := range contracts {
-		if i > 0 {
-			fmt.Fprint(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%d", i+1)
 		args[i] = contract
 	}
+	appendDollarPlaceholders(&sql, 1, len(contracts), ", ")
 	fmt.Fprint(&sql, ")")
 
 	tokens := []*dbtypes.ElToken{}
@@ -211,9 +208,7 @@ func GetElTokensByContracts(ctx context.Context, contracts [][]byte) (map[string
 	// Build map from contract to token
 	result := make(map[string]*dbtypes.ElToken, len(tokens))
 	for _, token := range tokens {
-		// Use hex string of contract address as key for efficient lookup
-		key := fmt.Sprintf("%x", token.Contract)
-		result[key] = token
+		result[byteSliceMapKey(token.Contract)] = token
 	}
 	return result, nil
 }
@@ -229,12 +224,9 @@ func GetElTokensByIDs(ctx context.Context, ids []uint64) ([]*dbtypes.ElToken, er
 
 	fmt.Fprint(&sql, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE id IN (")
 	for i, id := range ids {
-		if i > 0 {
-			fmt.Fprint(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%d", i+1)
 		args[i] = id
 	}
+	appendDollarPlaceholders(&sql, 1, len(ids), ", ")
 	fmt.Fprint(&sql, ")")
 
 	tokens := []*dbtypes.ElToken{}

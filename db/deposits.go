@@ -111,42 +111,31 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 		filterOp = "AND"
 	}
 
-	if filter.WithOrphaned != 1 {
-		forkIdStr := make([]string, len(canonicalForkIds))
-		for i, forkId := range canonicalForkIds {
-			forkIdStr[i] = fmt.Sprintf("%v", forkId)
-		}
-		if len(forkIdStr) == 0 {
-			forkIdStr = append(forkIdStr, "0")
-		}
-
-		if filter.WithOrphaned == 0 {
-			fmt.Fprintf(&sql, " %v deposits.fork_id IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		} else if filter.WithOrphaned == 2 {
-			fmt.Fprintf(&sql, " %v deposits.fork_id NOT IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		}
-	}
+	appendWithOrphanedFilter(&sql, &args, &filterOp, filter.WithOrphaned, canonicalForkIds, "deposits.fork_id")
 
 	if txFilter != nil {
-		if txFilter.WithValid == 0 {
+		switch txFilter.WithValid {
+		case 0:
 			fmt.Fprintf(&sql, " %v deposit_txs.valid_signature IN (1, 2)", filterOp)
 			filterOp = "AND"
-		} else if txFilter.WithValid == 2 {
+		case 2:
 			fmt.Fprintf(&sql, " %v deposit_txs.valid_signature = 0", filterOp)
 			filterOp = "AND"
 		}
 
 		if len(txFilter.WithdrawalAddress) > 0 {
+			// 0x01 = ETH1, 0x02 = compounding, 0x03 = builder deposit
 			wdcreds1 := make([]byte, 32)
 			wdcreds1[0] = 0x01
 			copy(wdcreds1[12:], txFilter.WithdrawalAddress)
 			wdcreds2 := make([]byte, 32)
 			wdcreds2[0] = 0x02
 			copy(wdcreds2[12:], txFilter.WithdrawalAddress)
-			args = append(args, wdcreds1, wdcreds2)
-			fmt.Fprintf(&sql, " %v (deposits.withdrawalcredentials = $%v OR deposits.withdrawalcredentials = $%v)", filterOp, len(args)-1, len(args))
+			wdcreds3 := make([]byte, 32)
+			wdcreds3[0] = 0x03
+			copy(wdcreds3[12:], txFilter.WithdrawalAddress)
+			args = append(args, wdcreds1, wdcreds2, wdcreds3)
+			fmt.Fprintf(&sql, " %v (deposits.withdrawalcredentials = $%v OR deposits.withdrawalcredentials = $%v OR deposits.withdrawalcredentials = $%v)", filterOp, len(args)-2, len(args)-1, len(args))
 			filterOp = "AND"
 		}
 

@@ -49,6 +49,10 @@ type Config struct {
 		ValidatorNamesRefreshInterval time.Duration `yaml:"validatorNamesRefreshInterval" envconfig:"FRONTEND_VALIDATOR_REFRESH_INTERVAL"`
 		ValidatorNamesResolveInterval time.Duration `yaml:"validatorNamesResolveInterval" envconfig:"FRONTEND_VALIDATOR_RESOLVE_INTERVAL"`
 
+		BuildoorOverviewUrl     string        `yaml:"buildoorOverviewUrl" envconfig:"FRONTEND_BUILDOOR_OVERVIEW_URL"`
+		BuildoorUrls            []string      `yaml:"buildoorUrls" envconfig:"FRONTEND_BUILDOOR_URLS"`
+		BuildoorRefreshInterval time.Duration `yaml:"buildoorRefreshInterval" envconfig:"FRONTEND_BUILDOOR_REFRESH_INTERVAL"`
+
 		PageCallTimeout       time.Duration `yaml:"pageCallTimeout" envconfig:"FRONTEND_PAGE_CALL_TIMEOUT"`
 		MaxConcurrentPages    *int          `yaml:"maxConcurrentPages" envconfig:"FRONTEND_MAX_CONCURRENT_PAGES"`
 		MaxConcurrentPageType *int          `yaml:"maxConcurrentPageType" envconfig:"FRONTEND_MAX_CONCURRENT_PAGE_TYPE"`
@@ -97,6 +101,7 @@ type Config struct {
 		Endpoint     string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
 		Endpoints    []EndpointConfig `yaml:"endpoints"`
 		EndpointsURL string           `yaml:"endpointsUrl" envconfig:"BEACONAPI_ENDPOINTS_URL"`
+		ClientIndex  *int             `yaml:"clientIndex" envconfig:"BEACONAPI_CLIENT_INDEX"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		SkipFinalAssignments bool   `yaml:"skipFinalAssignments" envconfig:"BEACONAPI_SKIP_FINAL_ASSIGNMENTS"`
@@ -129,6 +134,12 @@ type Config struct {
 		PubkeyCachePath                 string `yaml:"pubkeyCachePath" envconfig:"INDEXER_PUBKEY_CACHE_PATH"`
 
 		BadChainRoots []string `yaml:"badChainRoots" envconfig:"INDEXER_BAD_CHAIN_ROOTS"`
+
+		StateCache struct {
+			Enabled   *bool  `yaml:"enabled" envconfig:"INDEXER_STATE_CACHE_ENABLED"`
+			Path      string `yaml:"path" envconfig:"INDEXER_STATE_CACHE_PATH"`
+			MaxStates uint   `yaml:"maxStates" envconfig:"INDEXER_STATE_CACHE_MAX_STATES"`
+		} `yaml:"stateCache"`
 	} `yaml:"indexer"`
 
 	TxSignature struct {
@@ -162,9 +173,10 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 
 	BlockDb struct {
-		Engine string              `yaml:"engine" envconfig:"BLOCKDB_ENGINE"`
+		Engine string              `yaml:"engine" envconfig:"BLOCKDB_ENGINE"` // "pebble", "s3", or "tiered"
 		Pebble PebbleBlockDBConfig `yaml:"pebble"`
 		S3     S3BlockDBConfig     `yaml:"s3"`
+		Tiered TieredBlockDBConfig `yaml:"tiered"` // For tiered storage (Pebble cache + S3 backend)
 	} `yaml:"blockDb"`
 
 	KillSwitch struct {
@@ -257,19 +269,45 @@ type PgsqlWriterDatabaseConfig struct {
 	MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
 }
 
-type PebbleBlockDBConfig struct {
-	Path      string `yaml:"path" envconfig:"BLOCKDB_ROCKSDB_PATH"`
-	CacheSize int    `yaml:"cacheSize" envconfig:"BLOCKDB_ROCKSDB_CACHE_SIZE"`
+// BlockDbRetentionConfig configures per-object-type retention behavior.
+type BlockDbRetentionConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	RetentionTime time.Duration `yaml:"retentionTime"` // For age-based cleanup
+	MaxSize       int64         `yaml:"maxSize"`       // Size limit in MB (0 = unlimited)
+	CleanupMode   string        `yaml:"cleanupMode"`   // "age" or "lru"
 }
 
+// PebbleBlockDBConfig configures the Pebble (local) storage engine.
+type PebbleBlockDBConfig struct {
+	Path      string `yaml:"path" envconfig:"BLOCKDB_PEBBLE_PATH"`
+	CacheSize int    `yaml:"cacheSize" envconfig:"BLOCKDB_PEBBLE_CACHE_SIZE"` // Pebble internal cache in MB
+
+	// Per-object-type retention configuration (used in tiered mode)
+	HeaderRetention  BlockDbRetentionConfig `yaml:"headerRetention"`
+	BodyRetention    BlockDbRetentionConfig `yaml:"bodyRetention"`
+	PayloadRetention BlockDbRetentionConfig `yaml:"payloadRetention"`
+	BalRetention     BlockDbRetentionConfig `yaml:"balRetention"`
+
+	// Cleanup configuration
+	CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"BLOCKDB_PEBBLE_CLEANUP_INTERVAL"`
+}
+
+// S3BlockDBConfig configures the S3 (remote) storage engine.
 type S3BlockDBConfig struct {
-	Endpoint  string   `yaml:"endpoint" envconfig:"BLOCKDB_S3_ENDPOINT"`
-	Secure    YamlBool `yaml:"secure" envconfig:"BLOCKDB_S3_SECURE"`
-	Bucket    string   `yaml:"bucket" envconfig:"BLOCKDB_S3_BUCKET"`
-	Region    string   `yaml:"region" envconfig:"BLOCKDB_S3_REGION"`
-	AccessKey string   `yaml:"accessKey" envconfig:"BLOCKDB_S3_ACCESS_KEY"`
-	SecretKey string   `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
-	Path      string   `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
+	Endpoint            string   `yaml:"endpoint" envconfig:"BLOCKDB_S3_ENDPOINT"`
+	Secure              YamlBool `yaml:"secure" envconfig:"BLOCKDB_S3_SECURE"`
+	Bucket              string   `yaml:"bucket" envconfig:"BLOCKDB_S3_BUCKET"`
+	Region              string   `yaml:"region" envconfig:"BLOCKDB_S3_REGION"`
+	AccessKey           string   `yaml:"accessKey" envconfig:"BLOCKDB_S3_ACCESS_KEY"`
+	SecretKey           string   `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
+	Path                string   `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
+	EnableRangeRequests bool     `yaml:"enableRangeRequests" envconfig:"BLOCKDB_S3_ENABLE_RANGE_REQUESTS"` // Use HTTP Range requests for selective loading
+}
+
+// TieredBlockDBConfig configures tiered storage (Pebble cache + S3 backend).
+type TieredBlockDBConfig struct {
+	Pebble PebbleBlockDBConfig `yaml:"pebble"`
+	S3     S3BlockDBConfig     `yaml:"s3"`
 }
 
 // YamlBool is a bool type that can be unmarshalled from both

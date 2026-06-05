@@ -6,20 +6,31 @@ import (
 
 // ValidatorPageData is a struct to hold info for the validator page
 type ValidatorPageData struct {
-	CurrentEpoch             uint64                                `json:"current_epoch"`
-	Index                    uint64                                `json:"index"`
-	Name                     string                                `json:"name"`
-	PublicKey                []byte                                `json:"pubkey" ssz-size:"48"`
-	Balance                  uint64                                `json:"balance"`
-	EffectiveBalance         uint64                                `json:"eff_balance"`
-	State                    string                                `json:"state"`
-	BeaconState              string                                `json:"beacon_state"`
-	ShowEligible             bool                                  `json:"show_eligible"`
-	EligibleTs               time.Time                             `json:"eligible_ts"`
-	EligibleEpoch            uint64                                `json:"eligible_epoch"`
-	ShowActivation           bool                                  `json:"show_activation"`
-	ActivationTs             time.Time                             `json:"activation_ts"`
-	ActivationEpoch          uint64                                `json:"activation_epoch"`
+	CurrentEpoch     uint64    `json:"current_epoch"`
+	Index            uint64    `json:"index"`
+	ProjectedIndex   bool      `json:"projected_index"`
+	Name             string    `json:"name"`
+	PublicKey        []byte    `json:"pubkey" ssz-size:"48"`
+	Balance          uint64    `json:"balance"`
+	BalanceResolved  bool      `json:"balance_resolved"`
+	EffectiveBalance uint64    `json:"eff_balance"`
+	State            string    `json:"state"`
+	BeaconState      string    `json:"beacon_state"`
+	ShowEligible     bool      `json:"show_eligible"`
+	EligibleTs       time.Time `json:"eligible_ts"`
+	EligibleEpoch    uint64    `json:"eligible_epoch"`
+	ShowActivation   bool      `json:"show_activation"`
+	ActivationTs     time.Time `json:"activation_ts"`
+	ActivationEpoch  uint64    `json:"activation_epoch"`
+	// Lifecycle timeline node states (computed; unified pre/post-Electra).
+	DepositedClass           string                                `json:"deposited_class"`
+	DepositedTooltip         string                                `json:"deposited_tooltip"`
+	PendingClass             string                                `json:"pending_class"`
+	PendingTooltip           string                                `json:"pending_tooltip"`
+	ShowDepositProgress      bool                                  `json:"show_deposit_progress"`
+	DepositProgressLabel     string                                `json:"deposit_progress_label"`
+	ShowDepositEstimate      bool                                  `json:"show_deposit_estimate"`
+	DepositEstimateEpoch     uint64                                `json:"deposit_estimate_epoch"`
 	IsActive                 bool                                  `json:"is_active"`
 	WasActive                bool                                  `json:"was_active"`
 	UpcheckActivity          uint8                                 `json:"upcheck_act"`
@@ -49,20 +60,23 @@ type ValidatorPageData struct {
 	TabView         string `json:"tab_view"`
 	ElectraIsActive bool   `json:"electra_is_active"`
 
-	RecentBlocks                        []*ValidatorPageDataBlock         `json:"recent_blocks"`
-	RecentBlockCount                    uint64                            `json:"recent_block_count"`
-	RecentAttestations                  []*ValidatorPageDataAttestation   `json:"recent_attestations"`
-	RecentAttestationCount              uint64                            `json:"recent_attestation_count"`
-	RecentDeposits                      []*ValidatorPageDataDeposit       `json:"recent_deposits"`
-	RecentDepositCount                  uint64                            `json:"recent_deposit_count"`
-	AdditionalInitiatedDepositCount     uint64                            `json:"additional_initiated_deposit_count"`
-	AdditionalIncludedDepositCount      uint64                            `json:"additional_included_deposit_count"`
-	ConsolidationRequests               []*ValidatorPageDataConsolidation `json:"consolidation_requests"`
-	ConsolidationRequestCount           uint64                            `json:"consolidation_request_count"`
-	AdditionalConsolidationRequestCount uint64                            `json:"additional_consolidation_request_count"`
-	WithdrawalRequests                  []*ValidatorPageDataWithdrawal    `json:"withdrawal_requests"`
-	WithdrawalRequestCount              uint64                            `json:"withdrawal_request_count"`
-	AdditionalWithdrawalRequestCount    uint64                            `json:"additional_withdrawal_request_count"`
+	RecentBlocks                        []*ValidatorPageDataBlock            `json:"recent_blocks"`
+	RecentBlockCount                    uint64                               `json:"recent_block_count"`
+	RecentAttestations                  []*ValidatorPageDataAttestation      `json:"recent_attestations"`
+	RecentAttestationCount              uint64                               `json:"recent_attestation_count"`
+	RecentDeposits                      []*ValidatorPageDataDeposit          `json:"recent_deposits"`
+	RecentDepositCount                  uint64                               `json:"recent_deposit_count"`
+	AdditionalInitiatedDepositCount     uint64                               `json:"additional_initiated_deposit_count"`
+	AdditionalIncludedDepositCount      uint64                               `json:"additional_included_deposit_count"`
+	ConsolidationRequests               []*ValidatorPageDataConsolidation    `json:"consolidation_requests"`
+	ConsolidationRequestCount           uint64                               `json:"consolidation_request_count"`
+	AdditionalConsolidationRequestCount uint64                               `json:"additional_consolidation_request_count"`
+	WithdrawalRequests                  []*ValidatorPageDataWithdrawal       `json:"withdrawal_requests"`
+	WithdrawalRequestCount              uint64                               `json:"withdrawal_request_count"`
+	AdditionalWithdrawalRequestCount    uint64                               `json:"additional_withdrawal_request_count"`
+	Withdrawals                         []*ValidatorPageDataBeaconWithdrawal `json:"withdrawals"`
+	WithdrawalCount                     uint64                               `json:"withdrawal_count"`
+	AdditionalWithdrawalCount           uint64                               `json:"additional_withdrawal_count"`
 }
 
 type ValidatorPageDataBlock struct {
@@ -182,4 +196,18 @@ type ValidatorPageDataWithdrawalTxDetails struct {
 	TxOrigin    string `json:"tx_origin"`
 	TxTarget    string `json:"tx_target"`
 	TxHash      string `json:"tx_hash"`
+}
+
+// ValidatorPageDataBeaconWithdrawal represents a beacon chain withdrawal on the validator page.
+type ValidatorPageDataBeaconWithdrawal struct {
+	SlotNumber  uint64    `json:"slot"`
+	BlockRoot   []byte    `json:"block_root" ssz-size:"32"`
+	BlockNumber uint64    `json:"block_number"`
+	Time        time.Time `json:"time"`
+	Orphaned    bool      `json:"orphaned"`
+	Type        uint8     `json:"type"`
+	Address     []byte    `json:"address" ssz-size:"20"`
+	Amount      uint64    `json:"amount"`
+	RefSlot     uint64    `json:"ref_slot"`
+	RefSlotRoot []byte    `json:"ref_slot_root" ssz-size:"32"`
 }

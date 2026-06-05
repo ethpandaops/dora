@@ -1,0 +1,85 @@
+{{ define "recentDeposits" }}
+<div class="card block-card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-nobr" id="recent-deposits">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Slot</th>
+            <th data-timecol="duration">Time</th>
+            <th>Amount</th>
+            <th class="d-none d-md-table-cell">Depositor</th>
+            <th class="d-none d-md-table-cell">Transaction</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt (len .RecentDeposits) 0 }}
+            {{ range $i, $deposit := .RecentDeposits }}
+              <tr>
+                <td>
+                  {{ if eq $deposit.Type "exit" }}
+                    <span class="badge rounded-pill text-bg-warning">Voluntary Exit</span>
+                  {{ else if eq $deposit.Type "deposit" }}
+                    <span class="badge rounded-pill text-bg-success">Deposit</span>
+                  {{ else }}
+                    <span class="badge rounded-pill text-bg-info">{{ $deposit.Type }}</span>
+                  {{ end }}
+                </td>
+                {{ if $deposit.Orphaned }}
+                <td><a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
+                {{ else }}
+                <td><a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
+                {{ end }}
+                <td data-timer="{{ $deposit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span></td>
+                <td>{{ formatFullEthFromGwei $deposit.Amount }}</td>
+                <td class="d-none d-md-table-cell">
+                  {{ if $deposit.DepositorAddress }}
+                    {{ ethAddressLink $deposit.DepositorAddress }}
+                    <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $deposit.DepositorAddress }}"></i>
+                  {{ else }}
+                    ?
+                  {{ end }}
+                </td>
+                <td class="d-none d-md-table-cell">
+                  {{- if $deposit.HasTransaction }}
+                  <div class="d-flex">
+                    <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $deposit.TransactionHash 0 }}</span>
+                    <div>
+                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.TransactionHash }}"></i>
+                    </div>
+                    <div>
+                      <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $deposit.TransactionDetails true }}"></i>
+                    </div>
+                  </div>
+                  {{- else }}
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding deposit transaction has not been indexed yet.">?</span>
+                  {{- end }}
+                </td>
+                <td>
+                  {{ if $deposit.Orphaned }}
+                    <span class="badge rounded-pill text-bg-secondary">Orphaned</span>
+                  {{ else }}
+                    <span class="badge rounded-pill text-bg-success">Included</span>
+                  {{ end }}
+                </td>
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr style="height: 430px;">
+              <td></td>
+              <td style="vertical-align: middle;" colspan="5">
+                <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                  {{ template "timeline_svg" }}
+                </div>
+              </td>
+              <td></td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{ end }}

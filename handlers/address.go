@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -236,9 +236,17 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 			pageData.HasInternalTxs = true
 		}
 
-		// Check if address has any system deposits (for tab visibility)
-		if has, err := db.HasElWithdrawalsByAccountID(ctx, account.ID); err == nil && has {
-			pageData.HasSystemDeposits = true
+		// Check if address has any withdrawals (for tab visibility) - use combined accessor to include cached blocks
+		if _, count := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, &dbtypes.WithdrawalFilter{
+			AccountID:    &account.ID,
+			WithOrphaned: 1,
+		}, 0, 1); count > 0 {
+			pageData.HasWithdrawals = true
+		}
+
+		// Check if address has any block fees (for tab visibility)
+		if has, err := db.HasBlockFeesByAccountID(ctx, account.ID); err == nil && has {
+			pageData.HasBlockFees = true
 		}
 
 		offset := (pageIdx - 1) * pageSize
@@ -253,8 +261,10 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 			loadNFTTransfersTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		case "internaltxs":
 			loadInternalTxsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
-		case "system":
-			loadSystemDepositsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		case "withdrawals":
+			loadWithdrawalsTab(ctx, pageData, account, chainState, uint32(pageSize), pageIdx)
+		case "blockfees":
+			loadBlockFeesTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		default:
 			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		}
@@ -424,21 +434,28 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 		tokenTypes = []uint8{tokenTypeERC721, tokenTypeERC1155}
 	}
 
-	// Get token transfers using combined query (sorted by block_uid DESC, tx_pos DESC, tx_idx DESC)
+	// Get token transfers using combined query (sorted by tx_uid DESC, tx_idx DESC)
 	dbTransfers, totalCount, countCapped, _ := db.GetElTokenTransfersByAccountIDCombined(ctx, account.ID, tokenTypes, offset, limit)
 
 	// Collect IDs for batch lookup
 	accountIDs := make(map[uint64]bool, len(dbTransfers)*2)
 	tokenIDs := make(map[uint64]bool, len(dbTransfers))
-	blockUids := make([]uint64, 0, len(dbTransfers))
 	blockUidSet := make(map[uint64]bool, len(dbTransfers))
+	blockUids := make([]uint64, 0, len(dbTransfers))
+	txUidSet := make(map[uint64]bool, len(dbTransfers))
+	txUids := make([]uint64, 0, len(dbTransfers))
 	for _, t := range dbTransfers {
 		accountIDs[t.FromID] = true
 		accountIDs[t.ToID] = true
 		tokenIDs[t.TokenID] = true
-		if !blockUidSet[t.BlockUid] {
-			blockUidSet[t.BlockUid] = true
-			blockUids = append(blockUids, t.BlockUid)
+		blockUid := t.TxUid >> 16
+		if !blockUidSet[blockUid] {
+			blockUidSet[blockUid] = true
+			blockUids = append(blockUids, blockUid)
+		}
+		if !txUidSet[t.TxUid] {
+			txUidSet[t.TxUid] = true
+			txUids = append(txUids, t.TxUid)
 		}
 	}
 
@@ -485,29 +502,18 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 		}
 	}
 
-	// Collect unique transaction hashes for method signature lookup
-	txHashSet := make(map[string]bool)
-	for _, t := range dbTransfers {
-		txHashKey := string(t.TxHash)
-		txHashSet[txHashKey] = true
-	}
-
-	// Look up transaction method IDs for method signatures
-	txHashList := make([][]byte, 0, len(txHashSet))
-	for txHashKey := range txHashSet {
-		txHashList = append(txHashList, []byte(txHashKey))
-	}
-
-	// Batch fetch transaction data for signature lookup
+	// Batch fetch transaction data by tx_uid for tx_hash and method signature lookup
 	type txInfo struct {
+		TxHash   []byte
 		MethodID []byte
 		ToID     uint64
 	}
-	txInfoMap := make(map[string]*txInfo, len(txHashList))
-	if len(txHashList) > 0 {
-		if txs, err := db.GetElTransactionsByHashes(ctx, txHashList); err == nil {
+	txInfoMap := make(map[uint64]*txInfo, len(txUids))
+	if len(txUids) > 0 {
+		if txs, err := db.GetElTransactionsByTxUids(ctx, txUids); err == nil {
 			for _, tx := range txs {
-				txInfoMap[string(tx.TxHash)] = &txInfo{
+				txInfoMap[tx.TxUid] = &txInfo{
+					TxHash:   tx.TxHash,
 					MethodID: tx.MethodID,
 					ToID:     tx.ToID,
 				}
@@ -533,11 +539,11 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 	// Collect function signatures for batch lookup
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
 	sigLookupBytes := []types.TxSignatureBytes{}
-	sigLookupMap := make(map[types.TxSignatureBytes][]string) // signature -> tx_hashes
-	methodNameMap := make(map[string]string)                  // tx_hash -> method_name
-	for txHashKey, info := range txInfoMap {
+	sigLookupMap := make(map[types.TxSignatureBytes][]uint64) // signature -> tx_uids
+	methodNameMap := make(map[uint64]string)                  // tx_uid -> method_name
+	for txUid, info := range txInfoMap {
 		if len(info.MethodID) < 4 {
-			methodNameMap[txHashKey] = "transfer"
+			methodNameMap[txUid] = "transfer"
 			continue
 		}
 
@@ -550,17 +556,17 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 
 		// Skip fn signature lookup for deployments, precompiles, and system contracts
 		if skip, altName := utils.ShouldSkipSignatureLookup(toAddr, isCreate, sysContracts); skip {
-			methodNameMap[txHashKey] = altName
+			methodNameMap[txUid] = altName
 			continue
 		}
 
 		var sigBytes types.TxSignatureBytes
 		copy(sigBytes[:], info.MethodID[0:4])
 		if sigLookupMap[sigBytes] == nil {
-			sigLookupMap[sigBytes] = []string{txHashKey}
+			sigLookupMap[sigBytes] = []uint64{txUid}
 			sigLookupBytes = append(sigLookupBytes, sigBytes)
 		} else {
-			sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txHashKey)
+			sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txUid)
 		}
 	}
 
@@ -572,8 +578,8 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 			if sigLookup.Status == types.TxSigStatusFound {
 				methodName = sigLookup.Name
 			}
-			for _, txHashKey := range sigLookupMap[sigBytes] {
-				methodNameMap[txHashKey] = methodName
+			for _, txUid := range sigLookupMap[sigBytes] {
+				methodNameMap[txUid] = methodName
 			}
 		}
 	}
@@ -581,12 +587,18 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 	// Build transfer list
 	transfers := make([]*models.AddressPageDataTokenTransfer, 0, len(dbTransfers))
 	for _, t := range dbTransfers {
-		slot := t.BlockUid >> 16
+		blockUid := t.TxUid >> 16
+		slot := t.TxUid >> 32
 		blockTime := chainState.SlotToTime(phase0.Slot(slot))
 
+		var txHash []byte
+		if info, ok := txInfoMap[t.TxUid]; ok {
+			txHash = info.TxHash
+		}
+
 		transfer := &models.AddressPageDataTokenTransfer{
-			TxHash:     t.TxHash,
-			BlockUid:   t.BlockUid,
+			TxHash:     txHash,
+			BlockUid:   blockUid,
 			BlockTime:  blockTime,
 			FromID:     t.FromID,
 			ToID:       t.ToID,
@@ -596,11 +608,11 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 			TokenIndex: t.TokenIndex,
 			Amount:     t.Amount,
 			AmountRaw:  t.AmountRaw,
-			MethodName: methodNameMap[string(t.TxHash)],
+			MethodName: methodNameMap[t.TxUid],
 		}
 
 		// Set block root and orphaned status from block lookup
-		if blockInfo, ok := blockMap[t.BlockUid]; ok && blockInfo.Block != nil {
+		if blockInfo, ok := blockMap[blockUid]; ok && blockInfo.Block != nil {
 			transfer.BlockRoot = blockInfo.Block.Root
 			transfer.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
 			if blockInfo.Block.EthBlockNumber != nil {
@@ -687,7 +699,7 @@ func calculateTxHashRowspans(transfers []*models.AddressPageDataTokenTransfer) {
 }
 
 func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	// Get internal transactions for this account
+	// Get per-tx aggregate rows where this account was involved
 	dbEntries, totalCount, _ := db.GetElTransactionsInternalByAccount(ctx, account.ID, offset, limit)
 
 	pageData.InternalTxCount = totalCount
@@ -697,30 +709,20 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 	pageData.InternalTxFirstItem = (pageIdx-1)*uint64(limit) + 1
 	pageData.InternalTxLastItem = min(pageIdx*uint64(limit), totalCount)
 
-	// Collect account IDs and block UIDs for batch lookup
-	accountIDs := make(map[uint64]bool, len(dbEntries)*2)
-	blockUids := make([]uint64, 0, len(dbEntries))
+	// Collect block UIDs and tx UIDs for batch lookup (account_id is implicit = page address)
 	blockUidSet := make(map[uint64]bool, len(dbEntries))
+	blockUids := make([]uint64, 0, len(dbEntries))
+	txUidSet := make(map[uint64]bool, len(dbEntries))
+	txUids := make([]uint64, 0, len(dbEntries))
 	for _, e := range dbEntries {
-		accountIDs[e.FromID] = true
-		accountIDs[e.ToID] = true
-		if !blockUidSet[e.BlockUid] {
-			blockUidSet[e.BlockUid] = true
-			blockUids = append(blockUids, e.BlockUid)
+		blockUid := e.TxUid >> 16
+		if !blockUidSet[blockUid] {
+			blockUidSet[blockUid] = true
+			blockUids = append(blockUids, blockUid)
 		}
-	}
-
-	// Batch lookup accounts
-	accountIDList := make([]uint64, 0, len(accountIDs))
-	for id := range accountIDs {
-		accountIDList = append(accountIDList, id)
-	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
-	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
-			for _, a := range accounts {
-				accountMap[a.ID] = a
-			}
+		if !txUidSet[e.TxUid] {
+			txUidSet[e.TxUid] = true
+			txUids = append(txUids, e.TxUid)
 		}
 	}
 
@@ -739,43 +741,36 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 		}
 	}
 
-	// Call type names
-	callTypeNames := map[uint8]string{
-		0: "CALL",
-		1: "STATICCALL",
-		2: "DELEGATECALL",
-		3: "CREATE",
-		4: "CREATE2",
-		5: "SELFDESTRUCT",
+	// Batch lookup tx_hash from el_transactions by tx_uid
+	txHashMap := make(map[uint64][]byte, len(txUids))
+	if len(txUids) > 0 {
+		if txs, err := db.GetElTransactionsByTxUids(ctx, txUids); err == nil {
+			for _, tx := range txs {
+				txHashMap[tx.TxUid] = tx.TxHash
+			}
+		}
 	}
 
 	// Build internal transaction list
 	pageData.InternalTxs = make([]*models.AddressPageDataInternalTransaction, 0, len(dbEntries))
 	for _, e := range dbEntries {
-		slot := e.BlockUid >> 16
+		blockUid := e.TxUid >> 16
+		slot := e.TxUid >> 32
 		blockTime := chainState.SlotToTime(phase0.Slot(slot))
 
 		itx := &models.AddressPageDataInternalTransaction{
-			TxHash:     e.TxHash,
-			BlockUid:   e.BlockUid,
-			BlockTime:  blockTime,
-			CallIndex:  e.TxCallIdx,
-			CallType:   e.CallType,
-			FromID:     e.FromID,
-			ToID:       e.ToID,
-			IsOutgoing: e.FromID == account.ID,
-			Amount:     e.Value,
-			AmountRaw:  e.ValueRaw,
+			TxHash:    txHashMap[e.TxUid],
+			BlockUid:  blockUid,
+			BlockTime: blockTime,
+			InCount:   e.InCount,
+			OutCount:  e.OutCount,
+			CallTypes: expandCallTypeMask(e.CallTypeMask),
+			ValueIn:   e.ValueIn,
+			ValueOut:  e.ValueOut,
+			GasUsed:   e.GasUsed,
 		}
 
-		if name, ok := callTypeNames[e.CallType]; ok {
-			itx.TypeName = name
-		} else {
-			itx.TypeName = fmt.Sprintf("TYPE_%d", e.CallType)
-		}
-
-		// Set block info
-		if blockInfo, ok := blockMap[e.BlockUid]; ok && blockInfo.Block != nil {
+		if blockInfo, ok := blockMap[blockUid]; ok && blockInfo.Block != nil {
 			itx.BlockRoot = blockInfo.Block.Root
 			itx.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
 			if blockInfo.Block.EthBlockNumber != nil {
@@ -783,76 +778,71 @@ func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, a
 			}
 		}
 
-		// Set addresses
-		if from, ok := accountMap[e.FromID]; ok {
-			itx.FromAddr = from.Address
-			itx.FromIsContract = from.IsContract
-		}
-		if to, ok := accountMap[e.ToID]; ok {
-			itx.ToAddr = to.Address
-			itx.ToIsContract = to.IsContract
-		}
-
 		pageData.InternalTxs = append(pageData.InternalTxs, itx)
 	}
-
-	// Calculate TxHashRowspan for consecutive internal txs with same txhash
-	calculateInternalTxHashRowspans(pageData.InternalTxs)
 }
 
-// calculateInternalTxHashRowspans sets TxHashRowspan for consecutive internal txs with the same txhash.
-// The first occurrence gets the rowspan count, subsequent occurrences get 0 (meaning skip rendering the cell).
-func calculateInternalTxHashRowspans(txs []*models.AddressPageDataInternalTransaction) {
-	if len(txs) == 0 {
-		return
-	}
-
-	i := len(txs) - 1
-	for i >= 0 {
-		currentTxHash := txs[i].TxHash
-		groupStart := i
-
-		for groupStart > 0 && bytes.Equal(txs[groupStart-1].TxHash, currentTxHash) {
-			groupStart--
-		}
-
-		rowspan := i - groupStart + 1
-		txs[groupStart].TxHashRowspan = rowspan
-		for j := groupStart + 1; j <= i; j++ {
-			txs[j].TxHashRowspan = 0
-		}
-
-		i = groupStart - 1
-	}
+// callTypeBitNames maps a CallTypeMask bit position to its display name. Keep
+// in sync with exerpc.CallTypeFromString.
+var callTypeBitNames = []string{
+	"CALL",         // 0
+	"STATICCALL",   // 1
+	"DELEGATECALL", // 2
+	"CREATE",       // 3
+	"CREATE2",      // 4
+	"SELFDESTRUCT", // 5
 }
 
-func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	// Get system deposits (withdrawals and fee recipient rewards)
-	dbDeposits, totalCount, _ := db.GetElWithdrawalsByAccountID(ctx, account.ID, offset, limit)
+func expandCallTypeMask(mask uint16) []models.AddressPageDataInternalTransactionCallType {
+	if mask == 0 {
+		return nil
+	}
+	types := make([]models.AddressPageDataInternalTransactionCallType, 0, 4)
+	for bit := uint8(0); bit < 16; bit++ {
+		if mask&(1<<bit) == 0 {
+			continue
+		}
+		name := fmt.Sprintf("TYPE_%d", bit)
+		if int(bit) < len(callTypeBitNames) {
+			name = callTypeBitNames[bit]
+		}
+		types = append(types, models.AddressPageDataInternalTransactionCallType{
+			Type: bit,
+			Name: name,
+		})
+	}
+	return types
+}
 
-	pageData.SystemDepositCount = totalCount
-	pageData.SystemPageIndex = pageIdx
-	pageData.SystemPageSize = uint64(limit)
-	pageData.SystemTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-	pageData.SystemFirstItem = (pageIdx-1)*uint64(limit) + 1
-	pageData.SystemLastItem = min(pageIdx*uint64(limit), totalCount)
+func loadWithdrawalsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, limit uint32, pageIdx uint64) {
+	withdrawalFilter := &dbtypes.WithdrawalFilter{
+		AccountID:    &account.ID,
+		WithOrphaned: 1,
+	}
+	dbWithdrawals, totalCount := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, pageIdx-1, limit)
+
+	pageData.WithdrawalCount = totalCount
+	pageData.WdPageIndex = pageIdx
+	pageData.WdPageSize = uint64(limit)
+	pageData.WdTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
+	pageData.WdFirstItem = (pageIdx-1)*uint64(limit) + 1
+	pageData.WdLastItem = min(pageIdx*uint64(limit), totalCount)
 
 	// Collect block UIDs for batch lookup
-	blockUids := make([]uint64, 0, len(dbDeposits))
-	blockUidSet := make(map[uint64]bool, len(dbDeposits))
-	for _, deposit := range dbDeposits {
-		if !blockUidSet[deposit.BlockUid] {
-			blockUidSet[deposit.BlockUid] = true
-			blockUids = append(blockUids, deposit.BlockUid)
+	blockUids := make([]uint64, 0, len(dbWithdrawals))
+	blockUidSet := make(map[uint64]bool, len(dbWithdrawals))
+	for _, w := range dbWithdrawals {
+		if !blockUidSet[w.BlockUid] {
+			blockUidSet[w.BlockUid] = true
+			blockUids = append(blockUids, w.BlockUid)
 		}
 	}
 
-	// Batch lookup blocks using GetDbBlocksByFilter (includes cached blocks)
 	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
 	if len(blockUids) > 0 {
 		filter := &dbtypes.BlockFilter{
 			BlockUids:    blockUids,
-			WithOrphaned: 1, // Include both canonical and orphaned
+			WithOrphaned: 1,
 		}
 		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
 		for _, b := range blocks {
@@ -862,30 +852,83 @@ func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData
 		}
 	}
 
-	// Build system deposits list
-	pageData.SystemDeposits = make([]*models.AddressPageDataSystemDeposit, 0, len(dbDeposits))
-	for _, deposit := range dbDeposits {
-		slot := deposit.BlockUid >> 16
-		blockTime := chainState.SlotToTime(phase0.Slot(slot))
-
-		systemDeposit := &models.AddressPageDataSystemDeposit{
-			BlockUid:  deposit.BlockUid,
-			BlockTime: blockTime,
-			Type:      deposit.Type,
-			Amount:    deposit.Amount,
-			AmountRaw: deposit.AmountRaw,
-			Validator: deposit.Validator,
+	pageData.Withdrawals = make([]*models.AddressPageDataWithdrawal, 0, len(dbWithdrawals))
+	for _, w := range dbWithdrawals {
+		slot := w.BlockUid >> 16
+		entry := &models.AddressPageDataWithdrawal{
+			BlockUid:      w.BlockUid,
+			BlockTime:     chainState.SlotToTime(phase0.Slot(slot)),
+			Type:          w.Type,
+			Amount:        w.Amount,
+			ValidatorName: services.GlobalBeaconService.GetValidatorName(w.Validator),
+		}
+		if w.Validator&services.BuilderIndexFlag != 0 {
+			entry.IsBuilder = true
+			entry.ValidatorIndex = w.Validator &^ services.BuilderIndexFlag
+		} else {
+			entry.ValidatorIndex = w.Validator
 		}
 
-		// Set block info from block lookup
-		if blockInfo, ok := blockMap[deposit.BlockUid]; ok && blockInfo.Block != nil {
-			systemDeposit.BlockRoot = blockInfo.Block.Root
-			systemDeposit.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
+		if blockInfo, ok := blockMap[w.BlockUid]; ok && blockInfo.Block != nil {
+			entry.BlockRoot = blockInfo.Block.Root
+			entry.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
 			if blockInfo.Block.EthBlockNumber != nil {
-				systemDeposit.BlockNumber = *blockInfo.Block.EthBlockNumber
+				entry.BlockNumber = *blockInfo.Block.EthBlockNumber
 			}
 		}
 
-		pageData.SystemDeposits = append(pageData.SystemDeposits, systemDeposit)
+		pageData.Withdrawals = append(pageData.Withdrawals, entry)
+	}
+}
+
+func loadBlockFeesTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+	dbBlocks, totalCount, _ := db.GetBlockFeesByAccountID(ctx, account.ID, offset, limit)
+
+	pageData.BlockFeeCount = totalCount
+	pageData.BfPageIndex = pageIdx
+	pageData.BfPageSize = uint64(limit)
+	pageData.BfTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
+	pageData.BfFirstItem = (pageIdx-1)*uint64(limit) + 1
+	pageData.BfLastItem = min(pageIdx*uint64(limit), totalCount)
+
+	// Collect block UIDs for batch lookup (to get roots)
+	blockUids := make([]uint64, 0, len(dbBlocks))
+	for _, b := range dbBlocks {
+		blockUids = append(blockUids, b.BlockUid)
+	}
+
+	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+	if len(blockUids) > 0 {
+		filter := &dbtypes.BlockFilter{
+			BlockUids:    blockUids,
+			WithOrphaned: 1,
+		}
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
+		for _, b := range blocks {
+			if b.Block != nil {
+				blockMap[b.Block.BlockUid] = b
+			}
+		}
+	}
+
+	pageData.BlockFees = make([]*models.AddressPageDataBlockFee, 0, len(dbBlocks))
+	for _, elBlock := range dbBlocks {
+		slot := elBlock.BlockUid >> 16
+		entry := &models.AddressPageDataBlockFee{
+			BlockUid:  elBlock.BlockUid,
+			BlockTime: chainState.SlotToTime(phase0.Slot(slot)),
+			Amount:    elBlock.FeeAmount,
+			AmountRaw: elBlock.FeeAmountRaw,
+		}
+
+		if blockInfo, ok := blockMap[elBlock.BlockUid]; ok && blockInfo.Block != nil {
+			entry.BlockRoot = blockInfo.Block.Root
+			entry.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
+			if blockInfo.Block.EthBlockNumber != nil {
+				entry.BlockNumber = *blockInfo.Block.EthBlockNumber
+			}
+		}
+
+		pageData.BlockFees = append(pageData.BlockFees, entry)
 	}
 }

@@ -3,6 +3,9 @@ package pebble
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
+	"math"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/ethpandaops/dora/blockdb/types"
@@ -14,12 +17,18 @@ const (
 )
 
 const (
-	BlockTypeHeader uint16 = 1
-	BlockTypeBody   uint16 = 2
+	BlockTypeHeader  uint16 = 1
+	BlockTypeBody    uint16 = 2
+	BlockTypePayload uint16 = 3
+	BlockTypeBal     uint16 = 4
 )
 
+// Value format: [version (8 bytes)] [timestamp (8 bytes)] [data]
+const valueHeaderSize = 16
+
 type PebbleEngine struct {
-	db *pebble.DB
+	db     *pebble.DB
+	config dtypes.PebbleBlockDBConfig
 }
 
 func NewPebbleEngine(config dtypes.PebbleBlockDBConfig) (types.BlockDbEngine, error) {
@@ -34,7 +43,8 @@ func NewPebbleEngine(config dtypes.PebbleBlockDBConfig) (types.BlockDbEngine, er
 	}
 
 	return &PebbleEngine{
-		db: db,
+		db:     db,
+		config: config,
 	}, nil
 }
 
@@ -44,148 +54,259 @@ func (e *PebbleEngine) GetDB() *pebble.DB {
 }
 
 func (e *PebbleEngine) Close() error {
-	err := e.db.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return e.db.Close()
 }
 
-func (e *PebbleEngine) getBlockHeader(root []byte) ([]byte, uint64, error) {
+// makeKey creates a key for the given root and block type.
+func makeKey(root []byte, blockType uint16) []byte {
 	key := make([]byte, 2+len(root)+2)
 	binary.BigEndian.PutUint16(key[:2], KeyNamespaceBlock)
 	copy(key[2:], root)
-	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypeHeader)
+	binary.BigEndian.PutUint16(key[2+len(root):], blockType)
+	return key
+}
+
+func makeKeyRange(root []byte) ([]byte, []byte) {
+	start := makeKey(root, 0)
+	end := makeKey(root, math.MaxUint16)
+	return start, end
+}
+
+// getComponent retrieves a single component from the database.
+// Returns (data, version, timestamp, error). Returns nil data if not found.
+func (e *PebbleEngine) getComponent(root []byte, blockType uint16) ([]byte, uint64, time.Time, error) {
+	key := makeKey(root, blockType)
 
 	res, closer, err := e.db.Get(key)
-	if err != nil && err != pebble.ErrNotFound {
-		return nil, 0, err
+	if err == pebble.ErrNotFound {
+		return nil, 0, time.Time{}, nil
+	}
+	if err != nil {
+		return nil, 0, time.Time{}, err
 	}
 	defer closer.Close()
 
-	if err == pebble.ErrNotFound || len(res) == 0 {
-		return nil, 0, nil
+	if len(res) < valueHeaderSize {
+		return nil, 0, time.Time{}, nil
 	}
 
 	version := binary.BigEndian.Uint64(res[:8])
-	header := make([]byte, len(res)-8)
-	copy(header, res[8:])
+	timestamp := time.Unix(0, int64(binary.BigEndian.Uint64(res[8:16])))
 
-	return header, version, nil
+	data := make([]byte, len(res)-valueHeaderSize)
+	copy(data, res[valueHeaderSize:])
+
+	return data, version, timestamp, nil
 }
 
-func (e *PebbleEngine) getBlockBody(root []byte, parser func(uint64, []byte) (interface{}, error)) (interface{}, uint64, error) {
-	key := make([]byte, 2+len(root)+2)
-	binary.BigEndian.PutUint16(key[:2], KeyNamespaceBlock)
-	copy(key[2:], root)
-	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypeBody)
+// encodeComponentValue serializes a block component with its version and write timestamp.
+func encodeComponentValue(version uint64, data []byte) []byte {
+	value := make([]byte, valueHeaderSize+len(data))
+	binary.BigEndian.PutUint64(value[:8], version)
+	binary.BigEndian.PutUint64(value[8:16], uint64(time.Now().UnixNano()))
+	copy(value[valueHeaderSize:], data)
 
-	res, closer, err := e.db.Get(key)
-	if err != nil && err != pebble.ErrNotFound {
-		return nil, 0, err
-	}
-	defer closer.Close()
-
-	if err == pebble.ErrNotFound || len(res) == 0 {
-		return nil, 0, nil
-	}
-
-	version := binary.BigEndian.Uint64(res[:8])
-	block := res[8:]
-
-	body, err := parser(version, block)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return body, version, nil
+	return value
 }
 
-func (e *PebbleEngine) GetBlock(_ context.Context, _ uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
-	header, header_ver, err := e.getBlockHeader(root)
+// getStoredComponents scans the component key range for a block and returns the stored flags.
+func (e *PebbleEngine) getStoredComponents(root []byte) (types.BlockDataFlags, error) {
+	lowerBound, upperBound := makeKeyRange(root)
+
+	iter, err := e.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
+	defer iter.Close()
 
-	blockData := &types.BlockData{
-		HeaderVersion: header_ver,
-		HeaderData:    header,
-	}
+	var flags types.BlockDataFlags
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < 4 || len(iter.Value()) < valueHeaderSize {
+			continue
+		}
 
-	if parseBlock == nil {
-		parseBlock = func(version uint64, block []byte) (interface{}, error) {
-			blockData.BodyData = make([]byte, len(block))
-			copy(blockData.BodyData, block)
-			return nil, nil
+		switch binary.BigEndian.Uint16(key[len(key)-2:]) {
+		case BlockTypeHeader:
+			flags |= types.BlockDataFlagHeader
+		case BlockTypeBody:
+			flags |= types.BlockDataFlagBody
+		case BlockTypePayload:
+			flags |= types.BlockDataFlagPayload
+		case BlockTypeBal:
+			flags |= types.BlockDataFlagBal
+		}
+
+		if flags == types.BlockDataFlagAll {
+			break
 		}
 	}
 
-	body, body_ver, err := e.getBlockBody(root, parseBlock)
-	if err != nil {
-		return nil, err
+	return flags, iter.Error()
+}
+
+// GetStoredComponents returns which components exist for a block.
+func (e *PebbleEngine) GetStoredComponents(_ context.Context, _ uint64, root []byte) (types.BlockDataFlags, error) {
+	return e.getStoredComponents(root)
+}
+
+// GetBlock retrieves block data with selective loading based on flags.
+// Note: LRU access tracking should be done by the caller via CacheCleanup.RecordAccess()
+// to avoid expensive read-modify-write operations on every access.
+func (e *PebbleEngine) GetBlock(
+	_ context.Context,
+	_ uint64,
+	root []byte,
+	flags types.BlockDataFlags,
+	parseBlock func(uint64, []byte) (any, error),
+	parsePayload func(uint64, []byte) (any, error),
+) (*types.BlockData, error) {
+	blockData := &types.BlockData{}
+
+	// Load header if requested
+	if flags.Has(types.BlockDataFlagHeader) {
+		data, version, _, err := e.getComponent(root, BlockTypeHeader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get header: %w", err)
+		}
+		if data != nil {
+			blockData.HeaderVersion = version
+			blockData.HeaderData = data
+		}
 	}
 
-	blockData.Body = body
-	blockData.BodyVersion = body_ver
+	// Load body if requested
+	if flags.Has(types.BlockDataFlagBody) {
+		data, version, _, err := e.getComponent(root, BlockTypeBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get body: %w", err)
+		}
+
+		if data != nil {
+			blockData.BodyVersion = version
+			if parseBlock != nil {
+				body, err := parseBlock(version, data)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse body: %w", err)
+				}
+				blockData.Body = body
+			} else {
+				blockData.BodyData = data
+			}
+		}
+	}
+
+	// Load payload if requested
+	if flags.Has(types.BlockDataFlagPayload) {
+		data, version, _, err := e.getComponent(root, BlockTypePayload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get payload: %w", err)
+		}
+
+		if data != nil {
+			blockData.PayloadVersion = version
+			if parsePayload != nil {
+				payload, err := parsePayload(version, data)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse payload: %w", err)
+				}
+				blockData.Payload = payload
+			} else {
+				blockData.PayloadData = data
+			}
+		}
+	}
+
+	// Load BAL if requested
+	if flags.Has(types.BlockDataFlagBal) {
+		data, version, _, err := e.getComponent(root, BlockTypeBal)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get BAL: %w", err)
+		}
+
+		if data != nil {
+			blockData.BalVersion = version
+			blockData.BalData = data
+		}
+	}
 
 	return blockData, nil
 }
 
-func (e *PebbleEngine) checkBlock(key []byte) bool {
-	res, closer, err := e.db.Get(key)
-	if err == nil && len(res) > 0 {
-		closer.Close()
-		return true
+// AddBlock stores block data. Returns (added, updated, error).
+// - added: true if a new block was created
+// - updated: true if an existing block was updated with new components
+func (e *PebbleEngine) AddBlock(
+	_ context.Context,
+	_ uint64,
+	root []byte,
+	dataCb func() (*types.BlockData, error),
+) (bool, bool, error) {
+	// Check what components already exist
+	existingFlags, err := e.getStoredComponents(root)
+	if err != nil {
+		return false, false, fmt.Errorf("failed to check existing components: %w", err)
 	}
 
-	return false
-}
-
-func (e *PebbleEngine) addBlockHeader(key []byte, version uint64, header []byte) error {
-	data := make([]byte, 8+len(header))
-	binary.BigEndian.PutUint64(data[:8], version)
-
-	return e.db.Set(key, data, nil)
-}
-
-func (e *PebbleEngine) addBlockBody(root []byte, version uint64, block []byte) error {
-	key := make([]byte, 2+len(root)+2)
-	binary.BigEndian.PutUint16(key[:2], KeyNamespaceBlock)
-	copy(key[2:], root)
-	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypeBody)
-
-	data := make([]byte, 8+len(block))
-	binary.BigEndian.PutUint64(data[:8], version)
-	copy(data[8:], block)
-
-	return e.db.Set(key, data, nil)
-}
-
-func (e *PebbleEngine) AddBlock(_ context.Context, _ uint64, root []byte, dataCb func() (*types.BlockData, error)) (bool, error) {
-	key := make([]byte, 2+len(root)+2)
-	binary.BigEndian.PutUint16(key[:2], KeyNamespaceBlock)
-	copy(key[2:], root)
-	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypeHeader)
-
-	if e.checkBlock(key) {
-		return false, nil
-	}
-
+	// Get the new data
 	blockData, err := dataCb()
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
-	err = e.addBlockHeader(key, blockData.HeaderVersion, blockData.HeaderData)
-	if err != nil {
-		return false, err
+	// Determine what new components we have
+	newFlags := types.StoredFlagsFromBlockData(blockData)
+
+	// Calculate components to add (new components not in existing)
+	toAdd := newFlags &^ existingFlags
+
+	if toAdd == 0 {
+		// Nothing new to add
+		return false, false, nil
 	}
 
-	err = e.addBlockBody(root, blockData.BodyVersion, blockData.BodyData)
-	if err != nil {
-		return false, err
+	isNew := existingFlags == 0
+	isUpdated := !isNew
+
+	batch := e.db.NewBatch()
+	defer batch.Close()
+
+	// Store new components
+	if toAdd.Has(types.BlockDataFlagHeader) {
+		if err := batch.Set(makeKey(root, BlockTypeHeader), encodeComponentValue(blockData.HeaderVersion, blockData.HeaderData), nil); err != nil {
+			return false, false, fmt.Errorf("failed to store header: %w", err)
+		}
 	}
 
-	return true, nil
+	if toAdd.Has(types.BlockDataFlagBody) {
+		if err := batch.Set(makeKey(root, BlockTypeBody), encodeComponentValue(blockData.BodyVersion, blockData.BodyData), nil); err != nil {
+			return false, false, fmt.Errorf("failed to store body: %w", err)
+		}
+	}
+
+	if toAdd.Has(types.BlockDataFlagPayload) {
+		if err := batch.Set(makeKey(root, BlockTypePayload), encodeComponentValue(blockData.PayloadVersion, blockData.PayloadData), nil); err != nil {
+			return false, false, fmt.Errorf("failed to store payload: %w", err)
+		}
+	}
+
+	if toAdd.Has(types.BlockDataFlagBal) {
+		if err := batch.Set(makeKey(root, BlockTypeBal), encodeComponentValue(blockData.BalVersion, blockData.BalData), nil); err != nil {
+			return false, false, fmt.Errorf("failed to store BAL: %w", err)
+		}
+	}
+
+	if err := batch.Commit(nil); err != nil {
+		return false, false, fmt.Errorf("failed to commit block components: %w", err)
+	}
+
+	return isNew, isUpdated, nil
+}
+
+// GetConfig returns the engine configuration.
+func (e *PebbleEngine) GetConfig() dtypes.PebbleBlockDBConfig {
+	return e.config
 }

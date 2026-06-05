@@ -1,4 +1,4 @@
-{{ define "systemDeposits" }}
+{{ define "addressWithdrawals" }}
 <div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -8,13 +8,13 @@
             <th>Block</th>
             <th data-timecol="duration">Age</th>
             <th>Type</th>
+            <th>Validator</th>
             <th>Amount</th>
-            <th>Details</th>
           </tr>
         </thead>
         <tbody>
-          {{ if gt .SystemDepositCount 0 }}
-            {{ range .SystemDeposits }}
+          {{ if gt .WithdrawalCount 0 }}
+            {{ range .Withdrawals }}
             <tr>
               <td>
                 {{ if .BlockOrphaned }}
@@ -27,69 +27,157 @@
                 <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
               </td>
               <td>
-                {{ if eq .Type 0 }}
-                  <span class="badge text-bg-success">
-                    <i class="fas fa-arrow-down me-1"></i>Withdrawal
+                {{ if eq .Type 1 }}
+                  <span class="badge text-bg-primary">
+                    <i class="fas fa-arrow-down me-1"></i>Full
                   </span>
-                {{ else if eq .Type 1 }}
+                {{ else if eq .Type 2 }}
+                  <span class="badge text-bg-success">
+                    <i class="fas fa-broom me-1"></i>Sweep
+                  </span>
+                {{ else if eq .Type 3 }}
+                  <span class="badge text-bg-warning">
+                    <i class="fas fa-hand-holding me-1"></i>Requested
+                  </span>
+                {{ else if eq .Type 4 }}
+                  <span class="badge text-bg-primary">
+                    <i class="fas fa-building me-1"></i>Builder Withdrawal
+                  </span>
+                {{ else if eq .Type 5 }}
                   <span class="badge text-bg-info">
-                    <i class="fas fa-coins me-1"></i>Fee Reward
+                    <i class="fas fa-building me-1"></i>Builder Payment
+                  </span>
+                {{ else if eq .Type 6 }}
+                  <span class="badge text-bg-secondary">
+                    <i class="fas fa-building me-1"></i>Builder Delayed
                   </span>
                 {{ else }}
                   <span class="badge text-bg-secondary">Unknown</span>
                 {{ end }}
               </td>
-              <td class="text-monospace">
-                {{ formatFloat .Amount 6 }} ETH
-              </td>
               <td>
-                {{ if eq .Type 0 }}
-                  {{ if .Validator }}
-                    from Validator <a href="/validator/{{ .Validator }}">{{ .Validator }}</a>
-                  {{ else }}
-                    Beacon Chain Withdrawal
-                  {{ end }}
-                {{ else if eq .Type 1 }}
-                  from Block <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                {{ if .IsBuilder }}
+                  {{ formatBuilderWithIndex .ValidatorIndex .ValidatorName }}
+                {{ else }}
+                  {{ formatValidatorWithIndex .ValidatorIndex .ValidatorName }}
                 {{ end }}
+              </td>
+              <td class="text-monospace">
+                {{ formatEthFromGweiP .Amount 6 }}
               </td>
             </tr>
             {{ end }}
           {{ else }}
             <tr>
               <td colspan="5" class="text-center py-4 text-muted">
-                <i class="fas fa-university fa-2x mb-2"></i>
-                <br>No system deposits found
+                <i class="fas fa-arrow-down fa-2x mb-2"></i>
+                <br>No withdrawals found
               </td>
             </tr>
           {{ end }}
         </tbody>
       </table>
     </div>
-    {{ if gt .SystemTotalPages 1 }}
+    {{ if gt .WdTotalPages 1 }}
     <div class="card-footer d-flex justify-content-between align-items-center">
       <div>
-        Showing {{ formatAddCommas .SystemFirstItem }} - {{ formatAddCommas .SystemLastItem }} of {{ formatAddCommas .SystemDepositCount }}
+        Showing {{ formatAddCommas .WdFirstItem }} - {{ formatAddCommas .WdLastItem }} of {{ formatAddCommas .WithdrawalCount }}
       </div>
-      <nav aria-label="System deposits pagination">
+      <nav aria-label="Withdrawals pagination">
         <ul class="pagination pagination-sm mb-0">
-          {{ if gt .SystemPageIndex 1 }}
+          {{ if gt .WdPageIndex 1 }}
             <li class="page-item">
-              <a class="page-link" href="?v=system&p=1&c={{ .SystemPageSize }}">&laquo;</a>
+              <a class="page-link" href="?v=withdrawals&p=1&c={{ .WdPageSize }}">&laquo;</a>
             </li>
             <li class="page-item">
-              <a class="page-link" href="?v=system&p={{ subUI64 .SystemPageIndex 1 }}&c={{ .SystemPageSize }}">&lsaquo;</a>
+              <a class="page-link" href="?v=withdrawals&p={{ subUI64 .WdPageIndex 1 }}&c={{ .WdPageSize }}">&lsaquo;</a>
             </li>
           {{ end }}
           <li class="page-item disabled">
-            <span class="page-link">{{ .SystemPageIndex }} / {{ .SystemTotalPages }}</span>
+            <span class="page-link">{{ .WdPageIndex }} / {{ .WdTotalPages }}</span>
           </li>
-          {{ if lt .SystemPageIndex .SystemTotalPages }}
+          {{ if lt .WdPageIndex .WdTotalPages }}
             <li class="page-item">
-              <a class="page-link" href="?v=system&p={{ addUI64 .SystemPageIndex 1 }}&c={{ .SystemPageSize }}">&rsaquo;</a>
+              <a class="page-link" href="?v=withdrawals&p={{ addUI64 .WdPageIndex 1 }}&c={{ .WdPageSize }}">&rsaquo;</a>
             </li>
             <li class="page-item">
-              <a class="page-link" href="?v=system&p={{ .SystemTotalPages }}&c={{ .SystemPageSize }}">&raquo;</a>
+              <a class="page-link" href="?v=withdrawals&p={{ .WdTotalPages }}&c={{ .WdPageSize }}">&raquo;</a>
+            </li>
+          {{ end }}
+        </ul>
+      </nav>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}
+
+{{ define "blockFees" }}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 el-data-table">
+        <thead>
+          <tr>
+            <th>Block</th>
+            <th data-timecol="duration">Age</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt .BlockFeeCount 0 }}
+            {{ range .BlockFees }}
+            <tr>
+              <td>
+                {{ if .BlockOrphaned }}
+                  <span class="badge text-bg-warning">Orphaned</span>
+                {{ else }}
+                  <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                {{ end }}
+              </td>
+              <td data-timer="{{ .BlockTime.Unix }}">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+              </td>
+              <td class="text-monospace">
+                {{ formatFloat .Amount 6 }} ETH
+              </td>
+            </tr>
+            {{ end }}
+          {{ else }}
+            <tr>
+              <td colspan="3" class="text-center py-4 text-muted">
+                <i class="fas fa-coins fa-2x mb-2"></i>
+                <br>No block fees found
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ if gt .BfTotalPages 1 }}
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <div>
+        Showing {{ formatAddCommas .BfFirstItem }} - {{ formatAddCommas .BfLastItem }} of {{ formatAddCommas .BlockFeeCount }}
+      </div>
+      <nav aria-label="Block fees pagination">
+        <ul class="pagination pagination-sm mb-0">
+          {{ if gt .BfPageIndex 1 }}
+            <li class="page-item">
+              <a class="page-link" href="?v=blockfees&p=1&c={{ .BfPageSize }}">&laquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=blockfees&p={{ subUI64 .BfPageIndex 1 }}&c={{ .BfPageSize }}">&lsaquo;</a>
+            </li>
+          {{ end }}
+          <li class="page-item disabled">
+            <span class="page-link">{{ .BfPageIndex }} / {{ .BfTotalPages }}</span>
+          </li>
+          {{ if lt .BfPageIndex .BfTotalPages }}
+            <li class="page-item">
+              <a class="page-link" href="?v=blockfees&p={{ addUI64 .BfPageIndex 1 }}&c={{ .BfPageSize }}">&rsaquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=blockfees&p={{ .BfTotalPages }}&c={{ .BfPageSize }}">&raquo;</a>
             </li>
           {{ end }}
         </ul>

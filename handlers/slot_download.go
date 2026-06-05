@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/attestantio/go-eth2-client/spec/bellatrix"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/dora/blockdb"
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
-	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/golang/snappy"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -44,7 +46,7 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
 
 		dynSsz := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ()
-		_, blockSSZ, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockData.Block, false, true)
+		blockSSZ, err := dynSsz.MarshalSSZ(blockData.Block)
 		if err != nil {
 			return fmt.Errorf("error serializing block: %v", err)
 		}
@@ -55,7 +57,7 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
 
-		_, jsonRes, err := beacon.MarshalVersionedSignedBeaconBlockJson(blockData.Block)
+		jsonRes, err := blockData.Block.MarshalJSON()
 		if err != nil {
 			return fmt.Errorf("error serializing block: %v", err)
 		}
@@ -87,6 +89,56 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 
 	case "block-body-json":
 		return handleBlockBodyDownload(w, blockData)
+
+	case "payload-ssz":
+		if blockData.Payload == nil {
+			return fmt.Errorf("block has no execution payload envelope")
+		}
+		dynSsz := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ()
+		ssz, err := dynSsz.MarshalSSZ(blockData.Payload)
+		if err != nil {
+			return fmt.Errorf("error serializing payload envelope: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=payload-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
+		_, _ = w.Write(ssz)
+		return nil
+
+	case "payload-json":
+		if blockData.Payload == nil {
+			return fmt.Errorf("block has no execution payload envelope")
+		}
+		jsonRes, err := blockData.Payload.MarshalJSON()
+		if err != nil {
+			return fmt.Errorf("error serializing payload envelope: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=payload-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
+		_, _ = w.Write(jsonRes)
+		return nil
+
+	case "bal-rlp":
+		if len(blockData.BlockAccessList) == 0 {
+			return fmt.Errorf("block has no block access list")
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=bal-%d-%x.rlp", blockData.Header.Message.Slot, blockData.Root[:]))
+		_, _ = w.Write(blockData.BlockAccessList)
+		return nil
+
+	case "bal-json":
+		if len(blockData.BlockAccessList) == 0 {
+			return fmt.Errorf("block has no block access list")
+		}
+		accesses, err := utils.DecodeBlockAccessList(blockData.BlockAccessList)
+		if err != nil {
+			return fmt.Errorf("error decoding block access list: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=bal-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(balToJSON(accesses))
 
 	default:
 		return fmt.Errorf("unknown download type: %s", downloadType)
@@ -126,65 +178,76 @@ type withdrawalJSON struct {
 	Amount         string `json:"amount"`
 }
 
+// resolveExecutionPayload returns the block's fork-agnostic execution payload,
+// transparently reconstructing it from the Gloas+ signed execution payload
+// envelope when the beacon block no longer carries the payload inline
+// (EIP-7732).
+func resolveExecutionPayload(blockData *services.CombinedBlockResponse) (*all.ExecutionPayload, error) {
+	if blockData.Block == nil || blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
+		return nil, fmt.Errorf("block has no body")
+	}
+
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		if blockData.Payload == nil || blockData.Payload.Message == nil || blockData.Payload.Message.Payload == nil {
+			return nil, fmt.Errorf("block has no execution payload")
+		}
+		return blockData.Payload.Message.Payload, nil
+	}
+
+	executionPayload := blockData.Block.Message.Body.ExecutionPayload
+	if executionPayload == nil {
+		return nil, fmt.Errorf("block has no execution payload")
+	}
+	return executionPayload, nil
+}
+
 // handleBlockBodyDownload builds and returns the execution block in
 // eth_getBlockByHash JSON format, reconstructed from the beacon block's
 // execution payload.
 func handleBlockBodyDownload(w http.ResponseWriter, blockData *services.CombinedBlockResponse) error {
-	executionPayload, err := blockData.Block.ExecutionPayload()
-	if err != nil || executionPayload == nil {
-		return fmt.Errorf("block has no execution payload")
+	executionPayload, err := resolveExecutionPayload(blockData)
+	if err != nil {
+		return err
 	}
 
-	blockHash, _ := executionPayload.BlockHash()
-	blockNumber, _ := executionPayload.BlockNumber()
-	parentHash, _ := executionPayload.ParentHash()
-	feeRecipient, _ := executionPayload.FeeRecipient()
-	stateRoot, _ := executionPayload.StateRoot()
-	receiptsRoot, _ := executionPayload.ReceiptsRoot()
-	logsBloom, _ := executionPayload.LogsBloom()
-	prevRandao, _ := executionPayload.PrevRandao()
-	gasLimit, _ := executionPayload.GasLimit()
-	gasUsed, _ := executionPayload.GasUsed()
-	timestamp, _ := executionPayload.Timestamp()
-	extraData, _ := executionPayload.ExtraData()
-	baseFeePerGas, _ := executionPayload.BaseFeePerGas()
+	blockHashHex := fmt.Sprintf("0x%x", executionPayload.BlockHash[:])
+	blockNumberHex := fmt.Sprintf("0x%x", executionPayload.BlockNumber)
 
-	blockHashHex := fmt.Sprintf("0x%x", blockHash[:])
-	blockNumberHex := fmt.Sprintf("0x%x", uint64(blockNumber))
+	var baseFeeHex string
+	if executionPayload.BaseFeePerGas != nil {
+		baseFeeHex = fmt.Sprintf("0x%x", executionPayload.BaseFeePerGas.ToBig())
+	} else {
+		baseFeeHex = fmt.Sprintf("0x%x", utils.GetBaseFeeAsUint64(executionPayload.BaseFeePerGasLE))
+	}
 
 	block := &execBlockJSON{
 		Number:        blockNumberHex,
 		Hash:          blockHashHex,
-		ParentHash:    fmt.Sprintf("0x%x", parentHash[:]),
+		ParentHash:    fmt.Sprintf("0x%x", executionPayload.ParentHash[:]),
 		Nonce:         "0x0000000000000000",
 		Sha3Uncles:    "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
-		LogsBloom:     fmt.Sprintf("0x%x", logsBloom[:]),
-		StateRoot:     fmt.Sprintf("0x%x", stateRoot[:]),
-		ReceiptsRoot:  fmt.Sprintf("0x%x", receiptsRoot[:]),
-		Miner:         fmt.Sprintf("0x%x", feeRecipient[:]),
+		LogsBloom:     fmt.Sprintf("0x%x", executionPayload.LogsBloom[:]),
+		StateRoot:     fmt.Sprintf("0x%x", executionPayload.StateRoot[:]),
+		ReceiptsRoot:  fmt.Sprintf("0x%x", executionPayload.ReceiptsRoot[:]),
+		Miner:         fmt.Sprintf("0x%x", executionPayload.FeeRecipient[:]),
 		Difficulty:    "0x0",
-		ExtraData:     fmt.Sprintf("0x%x", extraData),
-		GasLimit:      fmt.Sprintf("0x%x", gasLimit),
-		GasUsed:       fmt.Sprintf("0x%x", gasUsed),
-		Timestamp:     fmt.Sprintf("0x%x", timestamp),
-		MixHash:       fmt.Sprintf("0x%x", prevRandao[:]),
-		BaseFeePerGas: fmt.Sprintf("0x%x", baseFeePerGas.ToBig()),
+		ExtraData:     fmt.Sprintf("0x%x", executionPayload.ExtraData),
+		GasLimit:      fmt.Sprintf("0x%x", executionPayload.GasLimit),
+		GasUsed:       fmt.Sprintf("0x%x", executionPayload.GasUsed),
+		Timestamp:     fmt.Sprintf("0x%x", executionPayload.Timestamp),
+		MixHash:       fmt.Sprintf("0x%x", executionPayload.PrevRandao[:]),
+		BaseFeePerGas: baseFeeHex,
 		Uncles:        []string{},
 	}
 
 	// Deneb+ blob gas fields.
-	if excessBlobGas, err := executionPayload.ExcessBlobGas(); err == nil {
-		block.ExcessBlobGas = fmt.Sprintf("0x%x", excessBlobGas)
-	}
-	if blobGasUsed, err := executionPayload.BlobGasUsed(); err == nil {
-		block.BlobGasUsed = fmt.Sprintf("0x%x", blobGasUsed)
+	if executionPayload.Version >= spec.DataVersionDeneb {
+		block.ExcessBlobGas = fmt.Sprintf("0x%x", executionPayload.ExcessBlobGas)
+		block.BlobGasUsed = fmt.Sprintf("0x%x", executionPayload.BlobGasUsed)
 	}
 
 	// Decode and serialize transactions.
-	transactions, err := executionPayload.Transactions()
-	if err != nil {
-		return fmt.Errorf("failed to get transactions: %w", err)
-	}
+	transactions := executionPayload.Transactions
 
 	block.Transactions = make([]json.RawMessage, 0, len(transactions))
 	for i, txBytes := range transactions {
@@ -225,7 +288,7 @@ func handleBlockBodyDownload(w http.ResponseWriter, blockData *services.Combined
 	}
 
 	// Withdrawals (Capella+).
-	if withdrawals, err := executionPayload.Withdrawals(); err == nil && len(withdrawals) > 0 {
+	if withdrawals := executionPayload.Withdrawals; len(withdrawals) > 0 {
 		block.Withdrawals = make([]*withdrawalJSON, len(withdrawals))
 		for i, w := range withdrawals {
 			block.Withdrawals[i] = &withdrawalJSON{
@@ -293,18 +356,15 @@ func handleReceiptsDownload(ctx context.Context, w http.ResponseWriter, blockDat
 	slot := uint64(blockData.Header.Message.Slot)
 	blockRoot := blockData.Root[:]
 
-	executionPayload, err := blockData.Block.ExecutionPayload()
-	if err != nil || executionPayload == nil {
-		return fmt.Errorf("block has no execution payload")
-	}
-
-	blockHash, _ := executionPayload.BlockHash()
-	blockNumber, _ := executionPayload.BlockNumber()
-
-	transactions, err := executionPayload.Transactions()
+	executionPayload, err := resolveExecutionPayload(blockData)
 	if err != nil {
-		return fmt.Errorf("failed to get transactions: %w", err)
+		return err
 	}
+
+	blockHash := executionPayload.BlockHash
+	blockNumber := executionPayload.BlockNumber
+
+	transactions := executionPayload.Transactions
 
 	blockHashHex := fmt.Sprintf("0x%x", blockHash[:])
 	blockNumberHex := fmt.Sprintf("0x%x", uint64(blockNumber))
@@ -512,4 +572,108 @@ func buildSingleReceipt(
 	}
 
 	return receipt, nil
+}
+
+// balAccountJSON is the download-friendly JSON shape for one EIP-7928 account
+// entry. Uses hex strings for all byte fields so the dump is readable and
+// stable across tooling.
+type balAccountJSON struct {
+	Address        string                 `json:"address"`
+	StorageWrites  []balSlotWritesJSON    `json:"storage_writes,omitempty"`
+	StorageReads   []string               `json:"storage_reads,omitempty"`
+	BalanceChanges []balBalanceChangeJSON `json:"balance_changes,omitempty"`
+	NonceChanges   []balNonceChangeJSON   `json:"nonce_changes,omitempty"`
+	CodeChanges    []balCodeChangeJSON    `json:"code_changes,omitempty"`
+}
+
+type balSlotWritesJSON struct {
+	Slot     string                `json:"slot"`
+	Accesses []balStorageWriteJSON `json:"accesses"`
+}
+
+type balStorageWriteJSON struct {
+	TxIndex    uint16 `json:"tx_index"`
+	ValueAfter string `json:"value_after"`
+}
+
+type balBalanceChangeJSON struct {
+	TxIndex uint16 `json:"tx_index"`
+	Balance string `json:"balance"`
+}
+
+type balNonceChangeJSON struct {
+	TxIndex uint16 `json:"tx_index"`
+	Nonce   uint64 `json:"nonce"`
+}
+
+type balCodeChangeJSON struct {
+	TxIndex uint16 `json:"tx_index"`
+	Code    string `json:"code"`
+}
+
+// balToJSON converts the RLP-decoded BAL structure into the download JSON shape.
+func balToJSON(accesses []utils.BALAccountAccess) []balAccountJSON {
+	result := make([]balAccountJSON, len(accesses))
+	for i, entry := range accesses {
+		out := balAccountJSON{
+			Address: fmt.Sprintf("0x%x", entry.Address[:]),
+		}
+
+		if len(entry.StorageWrites) > 0 {
+			out.StorageWrites = make([]balSlotWritesJSON, len(entry.StorageWrites))
+			for j, sw := range entry.StorageWrites {
+				writes := make([]balStorageWriteJSON, len(sw.Accesses))
+				for k, w := range sw.Accesses {
+					writes[k] = balStorageWriteJSON{
+						TxIndex:    w.TxIdx,
+						ValueAfter: fmt.Sprintf("0x%x", w.ValueAfter),
+					}
+				}
+				out.StorageWrites[j] = balSlotWritesJSON{
+					Slot:     fmt.Sprintf("0x%x", sw.Slot),
+					Accesses: writes,
+				}
+			}
+		}
+
+		if len(entry.StorageReads) > 0 {
+			out.StorageReads = make([]string, len(entry.StorageReads))
+			for j, r := range entry.StorageReads {
+				out.StorageReads[j] = fmt.Sprintf("0x%x", r)
+			}
+		}
+
+		if len(entry.BalanceChanges) > 0 {
+			out.BalanceChanges = make([]balBalanceChangeJSON, len(entry.BalanceChanges))
+			for j, b := range entry.BalanceChanges {
+				out.BalanceChanges[j] = balBalanceChangeJSON{
+					TxIndex: b.TxIdx,
+					Balance: fmt.Sprintf("0x%x", b.Balance),
+				}
+			}
+		}
+
+		if len(entry.NonceChanges) > 0 {
+			out.NonceChanges = make([]balNonceChangeJSON, len(entry.NonceChanges))
+			for j, n := range entry.NonceChanges {
+				out.NonceChanges[j] = balNonceChangeJSON{
+					TxIndex: n.TxIdx,
+					Nonce:   n.Nonce,
+				}
+			}
+		}
+
+		if len(entry.CodeChanges) > 0 {
+			out.CodeChanges = make([]balCodeChangeJSON, len(entry.CodeChanges))
+			for j, c := range entry.CodeChanges {
+				out.CodeChanges[j] = balCodeChangeJSON{
+					TxIndex: c.TxIndex,
+					Code:    fmt.Sprintf("0x%x", c.Code),
+				}
+			}
+		}
+
+		result[i] = out
+	}
+	return result
 }

@@ -7,11 +7,11 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	dasguardian "github.com/probe-lab/eth-das-guardian"
-	"github.com/probe-lab/eth-das-guardian/api"
+	dasguardian "github.com/ethpandaops/eth-das-guardian"
+	"github.com/ethpandaops/eth-das-guardian/api"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -106,9 +106,14 @@ func (d *DasGuardian) ScanNodeWithCallback(ctx context.Context, nodeEnr string, 
 				continue
 			}
 
+			versionedBlock, err := beaconBlock.Block.ToVersioned()
+			if err != nil {
+				return nil, fmt.Errorf("convert beacon block at slot %d: %w", slot, err)
+			}
+
 			sampleableSlots = append(sampleableSlots, dasguardian.SampleableSlot{
 				Slot:        slot,
-				BeaconBlock: beaconBlock.Block,
+				BeaconBlock: versionedBlock,
 			})
 		}
 
@@ -131,10 +136,13 @@ func (d *dasGuardianAPI) Init(ctx context.Context) error {
 }
 
 func (d *dasGuardianAPI) GetStateVersion() string {
-	fuluForkEpoch := d.GetFuluForkEpoch()
 	currentEpoch := GlobalBeaconService.GetChainState().CurrentEpoch()
 
-	if currentEpoch >= phase0.Epoch(fuluForkEpoch) {
+	if currentEpoch >= phase0.Epoch(d.GetGloasForkEpoch()) {
+		return "gloas"
+	}
+
+	if currentEpoch >= phase0.Epoch(d.GetFuluForkEpoch()) {
 		return "fulu"
 	}
 
@@ -172,6 +180,19 @@ func (d *dasGuardianAPI) GetFuluForkEpoch() uint64 {
 	}
 
 	return *specs.FuluForkEpoch
+}
+
+func (d *dasGuardianAPI) GetGloasForkEpoch() uint64 {
+	specs := GlobalBeaconService.GetChainState().GetSpecs()
+	if specs == nil {
+		return 0
+	}
+
+	if specs.GloasForkEpoch == nil {
+		return math.MaxInt64
+	}
+
+	return *specs.GloasForkEpoch
 }
 
 func (d *dasGuardianAPI) GetNodeIdentity(ctx context.Context) (*api.NodeIdentity, error) {
@@ -252,7 +273,7 @@ func (d *dasGuardianAPI) GetBeaconBlock(ctx context.Context, slot any) (*spec.Ve
 		return nil, fmt.Errorf("block not found for slot %d", slotNum)
 	}
 
-	return block.Block, nil
+	return block.Block.ToVersioned()
 }
 
 func (d *dasGuardianAPI) ReadSpecParameter(key string) (any, bool) {

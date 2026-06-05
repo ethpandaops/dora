@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/ethpandaops/dora/blockdb"
@@ -39,6 +39,7 @@ type ChainService struct {
 	executionPool        *execution.Pool
 	beaconIndexer        *beacon.Indexer
 	validatorNames       *ValidatorNames
+	buildoorInventory    *BuildoorInventory
 	depositIndexer       *syscontracts.DepositIndexer
 	consolidationIndexer *syscontracts.ConsolidationIndexer
 	withdrawalIndexer    *syscontracts.WithdrawalIndexer
@@ -62,6 +63,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	beaconIndexer := beacon.NewIndexer(ctx, logger.WithField("service", "cl-indexer"), consensusPool)
 	chainState := consensusPool.GetChainState()
 	validatorNames := NewValidatorNames(ctx, beaconIndexer, chainState)
+	buildoorInventory := NewBuildoorInventory(ctx)
 	mevRelayIndexer := mevrelay.NewMevIndexer(ctx, logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 	snooperManager := snooper.NewSnooperManager(ctx, logger.WithField("service", "snooper-manager"), beaconIndexer)
 
@@ -69,14 +71,15 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	beaconIndexer.SetExecutionTimeProvider(snooper.NewExecutionTimeProvider(snooperManager.GetCache()))
 
 	GlobalBeaconService = &ChainService{
-		ctx:             ctx,
-		logger:          logger,
-		consensusPool:   consensusPool,
-		executionPool:   executionPool,
-		beaconIndexer:   beaconIndexer,
-		validatorNames:  validatorNames,
-		mevRelayIndexer: mevRelayIndexer,
-		snooperManager:  snooperManager,
+		ctx:               ctx,
+		logger:            logger,
+		consensusPool:     consensusPool,
+		executionPool:     executionPool,
+		beaconIndexer:     beaconIndexer,
+		validatorNames:    validatorNames,
+		buildoorInventory: buildoorInventory,
+		mevRelayIndexer:   mevRelayIndexer,
+		snooperManager:    snooperManager,
 	}
 }
 
@@ -265,6 +268,13 @@ func (cs *ChainService) StartService() error {
 			return fmt.Errorf("failed initializing s3 blockdb: %v", err)
 		}
 		cs.logger.Infof("S3 blockdb initialized at %v", utils.Config.BlockDb.S3.Bucket)
+	case "tiered":
+		err := blockdb.InitWithTiered(utils.Config.BlockDb.Tiered, cs.logger)
+		if err != nil {
+			return fmt.Errorf("failed initializing tiered blockdb: %v", err)
+		}
+		cs.logger.Infof("Tiered blockdb initialized (Pebble cache: %v, S3: %v)",
+			utils.Config.BlockDb.Tiered.Pebble.Path, utils.Config.BlockDb.Tiered.S3.Bucket)
 	default:
 		cs.logger.Infof("Blockdb disabled")
 	}
@@ -316,6 +326,8 @@ func (cs *ChainService) StartService() error {
 		cs.validatorNames.UpdateDb(cs.ctx)
 		cs.validatorNames.StartUpdater()
 	}()
+
+	cs.buildoorInventory.StartUpdater()
 
 	// start chain indexer
 	cs.beaconIndexer.StartIndexer()
@@ -417,24 +429,30 @@ func (bs *ChainService) GetSystemContractAddress(systemContract string) common.A
 }
 
 // GetSystemContractAddresses returns a map of all known system contract
-// addresses to their human-readable names. Includes deposit, withdrawal
-// request, and consolidation request contracts.
+// addresses to their human-readable labels (with EIP tags). Includes
+// deposit, withdrawal request, consolidation request, beacon roots, and
+// block hash history contracts.
 func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
-	result := make(map[common.Address]string, 4)
+	result := make(map[common.Address]string, 5)
+
+	labels := map[string]string{
+		exerpc.WithdrawalRequestContract:    "Withdrawal Request (EIP-7002)",
+		exerpc.ConsolidationRequestContract: "Consolidation Request (EIP-7251)",
+		exerpc.BeaconRootsContract:          "Beacon Roots (EIP-4788)",
+		exerpc.HistoryStorageContract:       "Block Hash History (EIP-2935)",
+	}
 
 	execChainState := bs.GetExecutionChainState()
 	if execChainState != nil {
-		withdrawalAddr := execChainState.GetSystemContractAddress(exerpc.WithdrawalRequestContract)
-		consolidationAddr := execChainState.GetSystemContractAddress(exerpc.ConsolidationRequestContract)
-		result[withdrawalAddr] = "Withdrawal Request"
-		result[consolidationAddr] = "Consolidation Request"
+		for name, label := range labels {
+			if addr := execChainState.GetSystemContractAddress(name); addr != (common.Address{}) {
+				result[addr] = label
+			}
+		}
 	} else {
 		for name, addr := range execution.DefaultSystemContractAddresses {
-			switch name {
-			case exerpc.WithdrawalRequestContract:
-				result[addr] = "Withdrawal Request"
-			case exerpc.ConsolidationRequestContract:
-				result[addr] = "Consolidation Request"
+			if label, ok := labels[name]; ok {
+				result[addr] = label
 			}
 		}
 	}
@@ -446,7 +464,7 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 		if specs != nil && len(specs.DepositContractAddress) == 20 {
 			var depositAddr common.Address
 			copy(depositAddr[:], specs.DepositContractAddress)
-			result[depositAddr] = "Deposit"
+			result[depositAddr] = "Deposit Contract"
 		}
 	}
 
@@ -485,7 +503,16 @@ func (bs *ChainService) isCanonicalForkId(forkId uint64, canonicalForkIds []uint
 }
 
 func (bs *ChainService) GetValidatorName(index uint64) string {
+	if index&BuilderIndexFlag != 0 {
+		if name := bs.buildoorInventory.GetBuilderName(index); name != "" {
+			return name
+		}
+	}
 	return bs.validatorNames.GetValidatorName(index)
+}
+
+func (bs *ChainService) GetBuilderURL(builderIndex uint64) string {
+	return bs.buildoorInventory.GetBuilderURL(builderIndex)
 }
 
 func (bs *ChainService) GetValidatorNamesCount() uint64 {

@@ -77,15 +77,15 @@ func ResolveCallTargetAndMethod(
 	if len(toAddr) == 20 {
 		var addr common.Address
 		copy(addr[:], toAddr)
-		if sysName, ok := sysContracts[addr]; ok && sysName != "Deposit" {
+		if sysName, ok := sysContracts[addr]; ok && sysName != "Deposit Contract" {
 			res.CallType = "system"
 			res.CallName = sysName
 			res.MethodName = sysName
 			if len(inputData) > 0 {
 				switch sysName {
-				case "Withdrawal Request":
+				case "Withdrawal Request (EIP-7002)":
 					res.DecodedCalldata = DecodeWithdrawalRequestInput(inputData)
-				case "Consolidation Request":
+				case "Consolidation Request (EIP-7251)":
 					res.DecodedCalldata = DecodeConsolidationRequestInput(inputData)
 				}
 			}
@@ -165,7 +165,7 @@ func ShouldSkipSignatureLookup(toAddr []byte, isCreate bool, sysContracts map[co
 		var addr common.Address
 		copy(addr[:], toAddr)
 
-		if sysName, ok := sysContracts[addr]; ok && sysName != "Deposit" {
+		if sysName, ok := sysContracts[addr]; ok && sysName != "Deposit Contract" {
 			return true, sysName
 		}
 	}

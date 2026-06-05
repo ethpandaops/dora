@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -8,15 +9,20 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/bellatrix"
-	"github.com/attestantio/go-eth2-client/spec/electra"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -38,6 +44,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/overview.html",
 		"slot/transactions.html",
 		"slot/attestations.html",
+		"slot/proofs.html",
 		"slot/deposits.html",
 		"slot/withdrawals.html",
 		"slot/voluntary_exits.html",
@@ -46,6 +53,10 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/deposit_requests.html",
 		"slot/withdrawal_requests.html",
 		"slot/consolidation_requests.html",
+		"slot/bids.html",
+		"slot/ptc_votes.html",
+		"slot/inclusion_lists.html",
+		"slot/block_access_list.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -76,6 +87,14 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	urlArgs := r.URL.Query()
 	if urlArgs.Has("download") {
 		if err := handleSlotDownload(r.Context(), w, blockSlot, blockRootHash, urlArgs.Get("download")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		return
+	}
+
+	if urlArgs.Get("action") == "parse-access-list" {
+		if err := handleSlotParseAccessList(w, r); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -143,13 +162,13 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 
 	// Get the block to retrieve the KZG commitment
 	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), phase0.Root(blockRoot))
-	if err != nil || blockData == nil || blockData.Block == nil {
+	if err != nil || blockData == nil || blockData.Block == nil || blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
 		http.Error(w, "Block not found", http.StatusNotFound)
 		return
 	}
 
-	commitments, err := blockData.Block.BlobKZGCommitments()
-	if err != nil || int(blobIndex) >= len(commitments) {
+	commitments := utils.BlockBodyBlobCommitments(blockData.Block.Message.Body)
+	if int(blobIndex) >= len(commitments) {
 		http.Error(w, "Blob index out of range", http.StatusBadRequest)
 		return
 	}
@@ -298,6 +317,11 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		}
 		pageData.Block = getSlotPageBlockData(ctx, blockData, epochStatsValues, blockUid)
 
+		// Expose block transactions to the access-list UI via a stable field.
+		if pageData.Block != nil && pageData.Block.Transactions != nil {
+			pageData.TransactionDetails = pageData.Block.Transactions
+		}
+
 		// check mev block
 		if pageData.Block.ExecutionData != nil {
 			mevBlock := db.GetMevBlockByBlockHash(ctx, pageData.Block.ExecutionData.BlockHash)
@@ -317,6 +341,17 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 					ClassName:   "text-bg-warning",
 				})
 			}
+		}
+	}
+
+	// Collect system contract addresses for the access-list UI to label.
+	if contracts := services.GlobalBeaconService.GetSystemContractAddresses(); len(contracts) > 0 {
+		pageData.SystemContracts = make([]*types.SystemContract, 0, len(contracts))
+		for addr, name := range contracts {
+			pageData.SystemContracts = append(pageData.SystemContracts, &types.SystemContract{
+				Address: addr.Hex(),
+				Name:    name,
+			})
 		}
 	}
 
@@ -399,19 +434,27 @@ func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byt
 func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues, blockUid uint64) *models.SlotPageBlockData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
-	graffiti, _ := blockData.Block.Graffiti()
-	randaoReveal, _ := blockData.Block.RandaoReveal()
-	eth1Data, _ := blockData.Block.ETH1Data()
-	attestations, _ := blockData.Block.Attestations()
-	deposits, _ := blockData.Block.Deposits()
-	voluntaryExits, _ := blockData.Block.VoluntaryExits()
-	attesterSlashings, _ := blockData.Block.AttesterSlashings()
-	proposerSlashings, _ := blockData.Block.ProposerSlashings()
-	blsToExecChanges, _ := blockData.Block.BLSToExecutionChanges()
-	syncAggregate, _ := blockData.Block.SyncAggregate()
-	executionWithdrawals, _ := blockData.Block.Withdrawals()
-	blobKzgCommitments, _ := blockData.Block.BlobKZGCommitments()
-	//consolidations, _ := blockData.Block.Consolidations()
+
+	if blockData.Block == nil || blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
+		return nil
+	}
+
+	body := blockData.Block.Message.Body
+	graffiti := body.Graffiti
+	randaoReveal := body.RANDAOReveal
+	eth1Data := body.ETH1Data
+	attestations := body.Attestations
+	deposits := body.Deposits
+	voluntaryExits := body.VoluntaryExits
+	attesterSlashings := body.AttesterSlashings
+	proposerSlashings := body.ProposerSlashings
+	blsToExecChanges := body.BLSToExecutionChanges
+	syncAggregate := body.SyncAggregate
+	blobKzgCommitments := utils.BlockBodyBlobCommitments(body)
+	var executionWithdrawals []*capella.Withdrawal
+	if body.ExecutionPayload != nil {
+		executionWithdrawals = body.ExecutionPayload.Withdrawals
+	}
 
 	pageData := &models.SlotPageBlockData{
 		BlockRoot:              blockData.Root[:],
@@ -456,21 +499,14 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	attHeadBlocks := make(map[phase0.Root]phase0.Slot)
 
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
-	for i, attVersioned := range attestations {
-		attData, _ := attVersioned.Data()
-		if attData == nil {
+	for i, att := range attestations {
+		if att == nil || att.Data == nil {
 			continue
 		}
 
-		attSignature, err := attVersioned.Signature()
-		if err != nil {
-			continue
-		}
-
-		attAggregationBits, err := attVersioned.AggregationBits()
-		if err != nil {
-			continue
-		}
+		attData := att.Data
+		attSignature := att.Signature
+		attAggregationBits := att.AggregationBits
 
 		totalActiveValidators := uint64(0)
 
@@ -530,15 +566,17 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		includedValidators := []uint64{}
 		attEpochStatsValues := assignmentsMap[attEpoch]
 
-		if attVersioned.Version >= spec.DataVersionElectra {
+		if att.Version >= spec.DataVersionGloas {
+			payloadStatus := uint64(attData.Index)
+			attPageData.PayloadStatus = &payloadStatus
+		}
+
+		if att.Version >= spec.DataVersionElectra {
 			// EIP-7549 attestation
 			attAssignments = []uint64{}
 			attPageData.CommitteeIndex = []uint64{}
 
-			committeeBits, err := attVersioned.CommitteeBits()
-			if err != nil {
-				continue
-			}
+			committeeBits := att.CommitteeBits
 
 			attBitsOffset := uint64(0)
 			for _, committee := range committeeBits.BitIndices() {
@@ -614,9 +652,16 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	pageData.VoluntaryExits = make([]*models.SlotPageVoluntaryExit, pageData.VoluntaryExitsCount)
 	for i, exit := range voluntaryExits {
+		validatorIndex := uint64(exit.Message.ValidatorIndex)
+		isBuilder := validatorIndex&services.BuilderIndexFlag != 0
+		displayIndex := validatorIndex
+		if isBuilder {
+			displayIndex = validatorIndex &^ services.BuilderIndexFlag
+		}
 		pageData.VoluntaryExits[i] = &models.SlotPageVoluntaryExit{
-			ValidatorIndex: uint64(exit.Message.ValidatorIndex),
-			ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(exit.Message.ValidatorIndex)),
+			ValidatorIndex: displayIndex,
+			ValidatorName:  services.GlobalBeaconService.GetValidatorName(validatorIndex),
+			IsBuilder:      isBuilder,
 			Epoch:          uint64(exit.Message.Epoch),
 			Signature:      exit.Signature[:],
 		}
@@ -624,27 +669,24 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	pageData.AttesterSlashings = make([]*models.SlotPageAttesterSlashing, pageData.AttesterSlashingsCount)
 	for i, slashing := range attesterSlashings {
-		att1, _ := slashing.Attestation1()
-		att2, _ := slashing.Attestation2()
-		if att1 == nil || att2 == nil {
+		if slashing == nil || slashing.Attestation1 == nil || slashing.Attestation2 == nil {
 			continue
 		}
 
-		att1AttestingIndices, _ := att1.AttestingIndices()
-		att2AttestingIndices, _ := att2.AttestingIndices()
+		att1, att2 := slashing.Attestation1, slashing.Attestation2
+
+		att1AttestingIndices := att1.AttestingIndices
+		att2AttestingIndices := att2.AttestingIndices
 		if att1AttestingIndices == nil || att2AttestingIndices == nil {
 			continue
 		}
 
-		att1Signature, err1 := att1.Signature()
-		att2Signature, err2 := att2.Signature()
-		if err1 != nil || err2 != nil {
-			continue
-		}
+		att1Signature := att1.Signature
+		att2Signature := att2.Signature
 
-		att1Data, err1 := att1.Data()
-		att2Data, err2 := att2.Data()
-		if err1 != nil || err2 != nil {
+		att1Data := att1.Data
+		att2Data := att2.Data
+		if att1Data == nil || att2Data == nil {
 			continue
 		}
 
@@ -732,67 +774,94 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits, specs.SyncCommitteeSize)
 	}
 
-	if executionPayload, _ := blockData.Block.ExecutionPayload(); executionPayload != nil {
-		pageData.ExecutionData = &models.SlotPageExecutionData{}
-
-		if parentHash, err := executionPayload.ParentHash(); err == nil {
-			pageData.ExecutionData.ParentHash = parentHash[:]
+	if signedBid := body.SignedExecutionPayloadBid; signedBid != nil && signedBid.Message != nil {
+		bid := signedBid.Message
+		blobKzgCommitments := bid.BlobKZGCommitments
+		commitments := make([][]byte, len(blobKzgCommitments))
+		for i := range blobKzgCommitments {
+			commitments[i] = blobKzgCommitments[i][:]
 		}
 
-		if feeRecipient, err := executionPayload.FeeRecipient(); err == nil {
-			pageData.ExecutionData.FeeRecipient = feeRecipient[:]
+		pageData.PayloadHeader = &models.SlotPagePayloadHeader{
+			PayloadStatus:      uint16(0),
+			ParentBlockHash:    bid.ParentBlockHash[:],
+			ParentBlockRoot:    bid.ParentBlockRoot[:],
+			BlockHash:          bid.BlockHash[:],
+			GasLimit:           bid.GasLimit,
+			BuilderIndex:       uint64(bid.BuilderIndex),
+			BuilderName:        services.GlobalBeaconService.GetValidatorName(uint64(bid.BuilderIndex) | services.BuilderIndexFlag),
+			BuilderURL:         services.GlobalBeaconService.GetBuilderURL(uint64(bid.BuilderIndex)),
+			Slot:               uint64(bid.Slot),
+			Value:              uint64(bid.Value),
+			BlobKZGCommitments: commitments,
+			Signature:          signedBid.Signature[:],
+		}
+	}
+
+	// Source the execution payload either from the in-block payload (pre-EIP-7732)
+	// or from the separately-delivered envelope (Gloas+). Both share the same
+	// fork-specific fields exposed via the agnostic ExecutionPayload struct.
+	var executionPayload *all.ExecutionPayload
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil && blockData.Payload.Message != nil {
+		executionPayload = blockData.Payload.Message.Payload
+
+		// Determine payload status by checking if any canonical child
+		// builds on this block's execution payload.
+		pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusCanonical)
+		childSlots := services.GlobalBeaconService.GetDbBlocksByParentRoot(ctx, blockData.Root)
+		hasCanonicalChild := false
+		payloadIncluded := false
+
+		for _, child := range childSlots {
+			if child.Status != dbtypes.Canonical {
+				continue
+			}
+
+			hasCanonicalChild = true
+
+			if bytes.Equal(child.EthBlockParentHash, pageData.PayloadHeader.BlockHash) {
+				payloadIncluded = true
+
+				break
+			}
 		}
 
-		if stateRoot, err := executionPayload.StateRoot(); err == nil {
-			pageData.ExecutionData.StateRoot = stateRoot[:]
+		if hasCanonicalChild && !payloadIncluded {
+			pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusOrphaned)
+		}
+	} else {
+		executionPayload = body.ExecutionPayload
+	}
+
+	if executionPayload != nil {
+		pageData.ExecutionData = &models.SlotPageExecutionData{
+			ParentHash:   executionPayload.ParentHash[:],
+			FeeRecipient: executionPayload.FeeRecipient[:],
+			StateRoot:    executionPayload.StateRoot[:],
+			ReceiptsRoot: executionPayload.ReceiptsRoot[:],
+			LogsBloom:    executionPayload.LogsBloom[:],
+			Random:       executionPayload.PrevRandao[:],
+			GasLimit:     executionPayload.GasLimit,
+			GasUsed:      executionPayload.GasUsed,
+			Timestamp:    executionPayload.Timestamp,
+			Time:         time.Unix(int64(executionPayload.Timestamp), 0),
+			ExtraData:    executionPayload.ExtraData,
+			BlockHash:    executionPayload.BlockHash[:],
+			BlockNumber:  executionPayload.BlockNumber,
 		}
 
-		if receiptsRoot, err := executionPayload.ReceiptsRoot(); err == nil {
-			pageData.ExecutionData.ReceiptsRoot = receiptsRoot[:]
+		// BaseFeePerGas: post-Deneb is *uint256.Int, Bellatrix/Capella store the
+		// little-endian byte representation in BaseFeePerGasLE.
+		if executionPayload.BaseFeePerGas != nil {
+			pageData.ExecutionData.BaseFeePerGas = executionPayload.BaseFeePerGas.Uint64()
+		} else {
+			pageData.ExecutionData.BaseFeePerGas = utils.GetBaseFeeAsUint64(executionPayload.BaseFeePerGasLE)
 		}
 
-		if logsBloom, err := executionPayload.LogsBloom(); err == nil {
-			pageData.ExecutionData.LogsBloom = logsBloom[:]
-		}
-
-		if random, err := executionPayload.PrevRandao(); err == nil {
-			pageData.ExecutionData.Random = random[:]
-		}
-
-		if gasLimit, err := executionPayload.GasLimit(); err == nil {
-			pageData.ExecutionData.GasLimit = uint64(gasLimit)
-		}
-
-		if gasUsed, err := executionPayload.GasUsed(); err == nil {
-			pageData.ExecutionData.GasUsed = uint64(gasUsed)
-		}
-
-		if timestamp, err := executionPayload.Timestamp(); err == nil {
-			pageData.ExecutionData.Timestamp = uint64(timestamp)
-			pageData.ExecutionData.Time = time.Unix(int64(timestamp), 0)
-		}
-
-		if extraData, err := executionPayload.ExtraData(); err == nil {
-			pageData.ExecutionData.ExtraData = extraData
-		}
-
-		if baseFeePerGas, err := executionPayload.BaseFeePerGas(); err == nil {
-			pageData.ExecutionData.BaseFeePerGas = baseFeePerGas.Uint64()
-		}
-
-		if blockHash, err := executionPayload.BlockHash(); err == nil {
-			pageData.ExecutionData.BlockHash = blockHash[:]
-		}
-
-		if blockNumber, err := executionPayload.BlockNumber(); err == nil {
-			pageData.ExecutionData.BlockNumber = uint64(blockNumber)
-		}
-
-		if excessBlobGas, err := executionPayload.ExcessBlobGas(); err == nil {
+		if executionPayload.Version >= spec.DataVersionDeneb {
+			excessBlobGas := executionPayload.ExcessBlobGas
 			pageData.ExecutionData.ExcessBlobGas = &excessBlobGas
-		}
-
-		if blobGasUsed, err := executionPayload.BlobGasUsed(); err == nil {
+			blobGasUsed := executionPayload.BlobGasUsed
 			pageData.ExecutionData.BlobGasUsed = &blobGasUsed
 		}
 
@@ -819,8 +888,20 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			}
 		}
 
-		if transactions, err := executionPayload.Transactions(); err == nil {
-			getSlotPageTransactions(ctx, pageData, transactions, blockUid)
+		if len(executionPayload.Transactions) > 0 {
+			getSlotPageTransactions(ctx, pageData, executionPayload.Transactions, blockUid)
+		}
+
+		// EIP-7928 Block Access List — the chainservice sources the bytes
+		// either from the envelope (fresh from the node) or from blockdb
+		// (preserved after the node pruned it).
+		if len(blockData.BlockAccessList) > 0 {
+			accesses, err := utils.DecodeBlockAccessList(blockData.BlockAccessList)
+			if err != nil {
+				logrus.Errorf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
+			} else {
+				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
+			}
 		}
 
 		// Check if execution data exists in blockdb for receipt downloads
@@ -831,6 +912,36 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 				blockData.Root[:],
 			)
 			pageData.ExecutionData.HasExecData = hasExecData
+		}
+	}
+
+	if specs.DenebForkEpoch != nil && uint64(epoch) >= *specs.DenebForkEpoch {
+		pageData.BlobsCount = uint64(len(blobKzgCommitments))
+		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
+		for i := range blobKzgCommitments {
+			blobData := &models.SlotPageBlob{
+				Index:         uint64(i),
+				KzgCommitment: blobKzgCommitments[i][:],
+			}
+			pageData.Blobs[i] = blobData
+		}
+	}
+
+	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
+		var requests *electra.ExecutionRequests
+		if blockData.Block.Version >= spec.DataVersionGloas {
+			if blockData.Payload != nil {
+				requests = blockData.Payload.Message.ExecutionRequests
+				executionWithdrawals = blockData.Payload.Message.Payload.Withdrawals
+			}
+		} else {
+			requests = body.ExecutionRequests
+		}
+
+		if requests != nil {
+			getSlotPageDepositRequests(pageData, requests.Deposits)
+			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
+			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
 		}
 	}
 
@@ -849,33 +960,91 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		pageData.WithdrawalsCount = uint64(len(executionWithdrawals))
 		pageData.Withdrawals = make([]*models.SlotPageWithdrawal, pageData.WithdrawalsCount)
+
+		// Try to get enriched withdrawal data (type + ref slot) from the chain service.
+		// This works for both cached (unfinalized) and DB (finalized) blocks.
+		var enrichedWithdrawals []*dbtypes.Withdrawal
+		if cacheBlock := services.GlobalBeaconService.GetBeaconIndexer().GetBlockByRoot(blockData.Root); cacheBlock != nil {
+			isCanonical := slices.Contains(services.GlobalBeaconService.GetCanonicalForkKeys(), cacheBlock.GetForkId())
+			enrichedWithdrawals = cacheBlock.GetDbWithdrawals(services.GlobalBeaconService.GetBeaconIndexer(), isCanonical)
+		}
+		if len(enrichedWithdrawals) == 0 {
+			dbWithdrawals, _ := db.GetWithdrawalsByBlockUid(ctx, blockUid)
+			enrichedWithdrawals = dbWithdrawals
+		}
+
+		// Build a lookup map by block index for enrichment
+		enrichedMap := make(map[int16]*dbtypes.Withdrawal, len(enrichedWithdrawals))
+		for _, ew := range enrichedWithdrawals {
+			enrichedMap[ew.BlockIdx] = ew
+		}
+
+		// Batch resolve ref slot block roots
+		refBlockUids := make([]uint64, 0)
+		refBlockUidSet := make(map[uint64]bool)
+		for _, ew := range enrichedWithdrawals {
+			if ew.RefSlot != nil && !refBlockUidSet[*ew.RefSlot] {
+				refBlockUidSet[*ew.RefSlot] = true
+				refBlockUids = append(refBlockUids, *ew.RefSlot)
+			}
+		}
+		refBlockMap := make(map[uint64]*dbtypes.AssignedSlot, len(refBlockUids))
+		if len(refBlockUids) > 0 {
+			refFilter := &dbtypes.BlockFilter{
+				BlockUids:    refBlockUids,
+				WithOrphaned: 1,
+			}
+			refBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, refFilter, 0, uint32(len(refBlockUids)), 0)
+			for _, b := range refBlocks {
+				if b.Block != nil {
+					refBlockMap[b.Block.BlockUid] = b
+				}
+			}
+		}
+
 		for i, withdrawal := range executionWithdrawals {
-			pageData.Withdrawals[i] = &models.SlotPageWithdrawal{
+			validatorIndex := uint64(withdrawal.ValidatorIndex)
+			isBuilder := validatorIndex&services.BuilderIndexFlag != 0
+			displayIndex := validatorIndex
+			if isBuilder {
+				displayIndex = validatorIndex &^ services.BuilderIndexFlag
+			}
+			wd := &models.SlotPageWithdrawal{
 				Index:          uint64(withdrawal.Index),
-				ValidatorIndex: uint64(withdrawal.ValidatorIndex),
-				ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(withdrawal.ValidatorIndex)),
+				ValidatorIndex: displayIndex,
+				ValidatorName:  services.GlobalBeaconService.GetValidatorName(validatorIndex),
+				IsBuilder:      isBuilder,
 				Address:        withdrawal.Address[:],
 				Amount:         uint64(withdrawal.Amount),
 			}
-		}
-	}
 
-	if specs.DenebForkEpoch != nil && uint64(epoch) >= *specs.DenebForkEpoch {
-		pageData.BlobsCount = uint64(len(blobKzgCommitments))
-		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
-		for i := range blobKzgCommitments {
-			blobData := &models.SlotPageBlob{
-				Index:         uint64(i),
-				KzgCommitment: blobKzgCommitments[i][:],
+			// Enrich with type and ref slot from chain service data
+			if enriched, ok := enrichedMap[int16(i)]; ok {
+				wd.Type = enriched.Type
+				if enriched.RefSlot != nil {
+					wd.RefSlot = *enriched.RefSlot >> 16
+					if refBlock, ok := refBlockMap[*enriched.RefSlot]; ok && refBlock.Block != nil {
+						wd.RefSlotRoot = refBlock.Block.Root
+					}
+				}
 			}
-			pageData.Blobs[i] = blobData
+
+			pageData.Withdrawals[i] = wd
 		}
 	}
 
-	if requests, err := blockData.Block.ExecutionRequests(); err == nil && requests != nil {
-		getSlotPageDepositRequests(pageData, requests.Deposits)
-		getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
-		getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+	// Fetch execution proofs for this block
+	getSlotPageExecutionProofs(pageData, blockData.Root, uint64(blockData.Header.Message.Slot))
+
+	// Load execution payload bids for ePBS (gloas+) blocks
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		getSlotPageBids(pageData, blockData.Header.Message.Slot)
+		getSlotPagePtcVotes(pageData, blockData, blockData.Header.Message.Slot)
+	}
+
+	// Load inclusion lists for EIP-7805 (heze+) slots
+	if services.GlobalBeaconService.GetChainState().IsEip7805Enabled(epoch) {
+		getSlotPageInclusionLists(pageData, blockData.Header.Message.Slot)
 	}
 
 	return pageData
@@ -1028,8 +1197,14 @@ func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositReque
 
 		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositRequest.Pubkey)); found {
 			receiptData.Exists = true
-			receiptData.ValidatorIndex = uint64(validatorIdx)
-			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(receiptData.ValidatorIndex)
+			rawIndex := uint64(validatorIdx)
+			if rawIndex&services.BuilderIndexFlag != 0 {
+				receiptData.IsBuilder = true
+				receiptData.ValidatorIndex = rawIndex &^ services.BuilderIndexFlag
+			} else {
+				receiptData.ValidatorIndex = rawIndex
+			}
+			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(rawIndex)
 		}
 
 		pageData.DepositRequests = append(pageData.DepositRequests, receiptData)
@@ -1050,8 +1225,14 @@ func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawa
 
 		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(withdrawalRequest.ValidatorPubkey)); found {
 			requestData.Exists = true
-			requestData.ValidatorIndex = uint64(validatorIdx)
-			requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(requestData.ValidatorIndex)
+			fullIndex := uint64(validatorIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				requestData.IsBuilder = true
+				requestData.ValidatorIndex = fullIndex &^ services.BuilderIndexFlag
+			} else {
+				requestData.ValidatorIndex = fullIndex
+			}
+			requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(fullIndex)
 		}
 
 		pageData.WithdrawalRequests = append(pageData.WithdrawalRequests, requestData)
@@ -1072,18 +1253,513 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 
 		if sourceValidatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(consolidationRequest.SourcePubkey)); found {
 			requestData.SourceFound = true
-			requestData.SourceIndex = uint64(sourceValidatorIdx)
-			requestData.SourceName = services.GlobalBeaconService.GetValidatorName(requestData.SourceIndex)
+			fullIndex := uint64(sourceValidatorIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				requestData.SourceIsBuilder = true
+				requestData.SourceIndex = fullIndex &^ services.BuilderIndexFlag
+			} else {
+				requestData.SourceIndex = fullIndex
+			}
+			requestData.SourceName = services.GlobalBeaconService.GetValidatorName(fullIndex)
 		}
 
 		if targetValidatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(consolidationRequest.TargetPubkey)); found {
 			requestData.TargetFound = true
-			requestData.TargetIndex = uint64(targetValidatorIdx)
-			requestData.TargetName = services.GlobalBeaconService.GetValidatorName(requestData.TargetIndex)
+			fullIndex := uint64(targetValidatorIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				requestData.TargetIsBuilder = true
+				requestData.TargetIndex = fullIndex &^ services.BuilderIndexFlag
+			} else {
+				requestData.TargetIndex = fullIndex
+			}
+			requestData.TargetName = services.GlobalBeaconService.GetValidatorName(fullIndex)
 		}
 
 		pageData.ConsolidationRequests = append(pageData.ConsolidationRequests, requestData)
 	}
 
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
+}
+
+func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot phase0.Root, slot uint64) {
+	// Get a ready beacon client to fetch execution proofs
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	client := beaconIndexer.GetReadyClient(false)
+	if client == nil {
+		// No client available, return empty proofs
+		pageData.ExecutionProofsCount = 0
+		pageData.ExecutionProofs = []*models.SlotPageExecutionProof{}
+		return
+	}
+
+	// Fetch execution proofs from the beacon node
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	proofsResponse, err := client.GetClient().GetRPCClient().GetExecutionProofsByBlockroot(ctx, blockRoot[:])
+	if err != nil {
+		// Error fetching proofs, return empty list
+		logrus.WithError(err).WithField("blockRoot", fmt.Sprintf("0x%x", blockRoot)).Info("Error fetching execution proofs")
+		pageData.ExecutionProofsCount = 0
+		pageData.ExecutionProofs = []*models.SlotPageExecutionProof{}
+		return
+	}
+
+	// Block hash is sourced from the execution payload on the page itself,
+	// since the Lighthouse execution_proofs response does not include it.
+	var blockHash []byte
+	if pageData.ExecutionData != nil {
+		blockHash = pageData.ExecutionData.BlockHash
+	}
+
+	pageData.ExecutionProofs = make([]*models.SlotPageExecutionProof, 0, len(proofsResponse.Data))
+	for _, proof := range proofsResponse.Data {
+		proofData, err := hex.DecodeString(strings.TrimPrefix(proof.Message.ProofData, "0x"))
+		if err != nil {
+			logrus.WithError(err).WithField("proofType", proof.Message.ProofType).Warn("Error decoding proof data")
+			continue
+		}
+
+		pageData.ExecutionProofs = append(pageData.ExecutionProofs, &models.SlotPageExecutionProof{
+			ProofId:   proof.Message.ProofType,
+			Slot:      slot,
+			BlockHash: blockHash,
+			BlockRoot: blockRoot[:],
+			ProofData: proofData,
+		})
+	}
+	pageData.ExecutionProofsCount = uint64(len(pageData.ExecutionProofs))
+}
+
+func getSlotPageBids(pageData *models.SlotPageBlockData, blockSlot phase0.Slot) {
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot), blockSlot)
+
+	pageData.Bids = make([]*models.SlotPageBid, 0, len(bids))
+
+	// Get the winning block hash for comparison
+	var winningBlockHash []byte
+	if pageData.ExecutionData != nil {
+		winningBlockHash = pageData.ExecutionData.BlockHash
+	}
+
+	for _, bid := range bids {
+		bidData := &models.SlotPageBid{
+			ParentRoot:   bid.ParentRoot,
+			ParentHash:   bid.ParentHash,
+			BlockHash:    bid.BlockHash,
+			FeeRecipient: bid.FeeRecipient,
+			GasLimit:     bid.GasLimit,
+			BuilderIndex: uint64(bid.BuilderIndex),
+			BuilderName:  services.GlobalBeaconService.GetValidatorName(uint64(bid.BuilderIndex) | services.BuilderIndexFlag),
+			BuilderURL:   services.GlobalBeaconService.GetBuilderURL(uint64(bid.BuilderIndex)),
+			IsSelfBuilt:  bid.BuilderIndex < 0,
+			Slot:         bid.Slot,
+			Value:        bid.Value,
+			ElPayment:    bid.ElPayment,
+			TotalValue:   bid.Value + bid.ElPayment,
+		}
+
+		// Check if this is the winning bid
+		if winningBlockHash != nil && len(bid.BlockHash) == len(winningBlockHash) {
+			isWinning := true
+			for i := range bid.BlockHash {
+				if bid.BlockHash[i] != winningBlockHash[i] {
+					isWinning = false
+					break
+				}
+			}
+			bidData.IsWinning = isWinning
+		}
+
+		pageData.Bids = append(pageData.Bids, bidData)
+	}
+
+	// Sort by total value (value + el_payment) descending
+	for i := 0; i < len(pageData.Bids)-1; i++ {
+		for j := i + 1; j < len(pageData.Bids); j++ {
+			if pageData.Bids[j].TotalValue > pageData.Bids[i].TotalValue {
+				pageData.Bids[i], pageData.Bids[j] = pageData.Bids[j], pageData.Bids[i]
+			}
+		}
+	}
+
+	pageData.BidsCount = uint64(len(pageData.Bids))
+}
+
+// getSlotPagePtcVotes extracts PTC (Payload Timeliness Committee) votes from a Gloas block.
+// PTC votes are included in blocks as payload attestations for the PREVIOUS slot.
+func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services.CombinedBlockResponse, blockSlot phase0.Slot) {
+	// Only Gloas+ blocks have payload attestations
+	if blockData.Block.Version < spec.DataVersionGloas {
+		return
+	}
+
+	if blockData.Block.Message == nil || blockData.Block.Message.Body == nil {
+		return
+	}
+
+	payloadAttestations := blockData.Block.Message.Body.PayloadAttestations
+	if len(payloadAttestations) == 0 {
+		return
+	}
+
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+
+	// PTC votes are for the previous slot
+	votedSlot := blockSlot - 1
+	votedEpoch := chainState.EpochOfSlot(votedSlot)
+
+	// Get epoch stats for the voted slot to retrieve PTC duties
+	var ptcDuties []phase0.ValidatorIndex
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	epochStats := beaconIndexer.GetEpochStatsByEpoch(votedEpoch)
+	for _, es := range epochStats {
+		values := es.GetValues(true)
+		if values != nil && values.PtcDuties != nil {
+			slotInEpoch := uint64(votedSlot) % specs.SlotsPerEpoch
+			if slotInEpoch < uint64(len(values.PtcDuties)) && values.PtcDuties[slotInEpoch] != nil {
+				// Convert from active indice indices to validator indices
+				ptcDuties = make([]phase0.ValidatorIndex, len(values.PtcDuties[slotInEpoch]))
+				for i, activeIdx := range values.PtcDuties[slotInEpoch] {
+					if int(activeIdx) < len(values.ActiveIndices) {
+						ptcDuties[i] = values.ActiveIndices[activeIdx]
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// PTC_SIZE is a spec constant (512). The Bitvector is always PTC_SIZE bits.
+	// On small validator sets, validators appear multiple times in PTC duties
+	// via weighted selection, but voting is tracked by bit position.
+	ptcSize := specs.PtcSize
+
+	// Build PTC votes structure
+	ptcVotes := &models.SlotPagePtcVotes{
+		VotedSlot:    uint64(votedSlot),
+		TotalPtcSize: ptcSize,
+		Aggregates:   make([]*models.SlotPagePtcAggregate, 0, len(payloadAttestations)),
+	}
+
+	// Track voted bit positions across all aggregates
+	votedPositions := make(map[uint64]bool, ptcSize)
+	totalVotes := uint64(0)
+
+	for _, pa := range payloadAttestations {
+		if pa == nil || pa.Data == nil {
+			continue
+		}
+
+		// Set voted block root from first attestation
+		if ptcVotes.VotedBlockRoot == nil {
+			ptcVotes.VotedBlockRoot = pa.Data.BeaconBlockRoot[:]
+		}
+
+		aggregate := &models.SlotPagePtcAggregate{
+			PayloadPresent:    pa.Data.PayloadPresent,
+			BlobDataAvailable: pa.Data.BlobDataAvailable,
+			AggregationBits:   pa.AggregationBits,
+			Signature:         pa.Signature[:],
+			Validators:        make([]types.NamedValidator, 0),
+		}
+
+		// Count votes from raw aggregation bits, then enrich with validator
+		// names when PTC duties are available. Vote count must not depend on
+		// duty availability — duties may be missing for pruned/unloaded epochs.
+		bitCount := min(uint64(len(pa.AggregationBits))*8, ptcSize)
+		aggValidatorSet := make(map[uint64]bool)
+		bitVoteCount := uint64(0)
+		for i := uint64(0); i < bitCount; i++ {
+			if (pa.AggregationBits[i/8]>>(i%8))&1 != 1 {
+				continue
+			}
+			votedPositions[i] = true
+			bitVoteCount++
+			if int(i) >= len(ptcDuties) {
+				continue
+			}
+			vidx := uint64(ptcDuties[i])
+			if aggValidatorSet[vidx] {
+				continue
+			}
+			aggValidatorSet[vidx] = true
+			aggregate.Validators = append(aggregate.Validators, types.NamedValidator{
+				Index: vidx,
+				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+			})
+		}
+
+		aggregate.VoteCount = bitVoteCount
+		totalVotes += aggregate.VoteCount
+
+		ptcVotes.Aggregates = append(ptcVotes.Aggregates, aggregate)
+	}
+
+	// Calculate participation by unique validators, not bit positions.
+	// On small validator sets, the same validator occupies multiple PTC positions.
+	// A validator votes at their first PTC position only (ptc.index()), leaving
+	// duplicate positions unset. Count unique voters/non-voters for display.
+	voterSet := make(map[uint64]bool)
+	if len(ptcDuties) > 0 {
+		for i := range ptcDuties {
+			if votedPositions[uint64(i)] {
+				voterSet[uint64(ptcDuties[i])] = true
+			}
+		}
+
+		// Non-voters: unique validators with NO voted position at all
+		nonVoterSet := make(map[uint64]bool)
+		for _, vidx := range ptcDuties {
+			v := uint64(vidx)
+			if !voterSet[v] {
+				nonVoterSet[v] = true
+			}
+		}
+		nonVoters := make([]types.NamedValidator, 0, len(nonVoterSet))
+		for vidx := range nonVoterSet {
+			nonVoters = append(nonVoters, types.NamedValidator{
+				Index: vidx,
+				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+			})
+		}
+		ptcVotes.NonVoters = nonVoters
+		ptcVotes.NonVoterCount = uint64(len(nonVoters))
+	}
+
+	// Calculate participation rate based on unique validators
+	totalUniqueValidators := uint64(len(voterSet)) + ptcVotes.NonVoterCount
+	if totalUniqueValidators > 0 {
+		ptcVotes.TotalPtcSize = totalUniqueValidators
+		ptcVotes.Participation = float64(len(voterSet)) / float64(totalUniqueValidators)
+		ptcVotes.NonVoterPercent = float64(ptcVotes.NonVoterCount) / float64(totalUniqueValidators) * 100
+
+		// Recalculate aggregate vote percentages based on unique validators
+		for _, agg := range ptcVotes.Aggregates {
+			agg.VotePercent = float64(agg.VoteCount) / float64(totalUniqueValidators) * 100
+		}
+	} else if ptcSize > 0 {
+		// No duties available, use bit positions as approximation
+		totalVoted := uint64(len(votedPositions))
+		ptcVotes.NonVoterCount = ptcSize - totalVoted
+		ptcVotes.Participation = float64(totalVoted) / float64(ptcSize)
+		ptcVotes.NonVoterPercent = float64(ptcVotes.NonVoterCount) / float64(ptcSize) * 100
+
+		for _, agg := range ptcVotes.Aggregates {
+			agg.VotePercent = float64(agg.VoteCount) / float64(ptcSize) * 100
+		}
+	}
+
+	pageData.PtcVotes = ptcVotes
+	pageData.PtcVotesCount = totalVotes
+}
+
+// getSlotPageInclusionLists fetches cached inclusion lists for the slot and decodes their transactions.
+func getSlotPageInclusionLists(pageData *models.SlotPageBlockData, slot phase0.Slot) {
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	inclusionLists := beaconIndexer.GetInclusionListsBySlot(slot)
+	if len(inclusionLists) == 0 {
+		return
+	}
+
+	// Build a set of block transaction hashes for inclusion checking
+	blockTxHashes := make(map[string]bool, len(pageData.Transactions))
+	for _, tx := range pageData.Transactions {
+		blockTxHashes[string(tx.Hash)] = true
+	}
+
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+
+	pageData.InclusionLists = make([]*models.SlotPageInclusionList, 0, len(inclusionLists))
+	for _, il := range inclusionLists {
+		ilData := &models.SlotPageInclusionList{
+			Validator: types.NamedValidator{
+				Index: uint64(il.Message.ValidatorIndex),
+				Name:  services.GlobalBeaconService.GetValidatorName(uint64(il.Message.ValidatorIndex)),
+			},
+			InclusionListCommitteeRoot: il.Message.InclusionListCommitteeRoot[:],
+			Signature:                  il.Signature[:],
+		}
+
+		ilData.Transactions = decodeInclusionListTransactions(il, sysContracts)
+		ilData.TransactionsCount = uint64(len(ilData.Transactions))
+
+		// Check which IL transactions are included in the block
+		ilData.TransactionsIncluded = make([]bool, len(ilData.Transactions))
+		for i, tx := range ilData.Transactions {
+			ilData.TransactionsIncluded[i] = blockTxHashes[string(tx.Hash)]
+		}
+
+		pageData.InclusionLists = append(pageData.InclusionLists, ilData)
+	}
+
+	pageData.InclusionListsCount = uint64(len(pageData.InclusionLists))
+}
+
+// decodeInclusionListTransactions decodes the raw transactions from an inclusion list.
+func decodeInclusionListTransactions(il *v1.SignedInclusionList, sysContracts map[common.Address]string) []*models.SlotPageTransaction {
+	txList := make([]*models.SlotPageTransaction, 0, len(il.Message.Transactions))
+
+	for idx, txBytes := range il.Message.Transactions {
+		var tx ethtypes.Transaction
+
+		err := tx.UnmarshalBinary(txBytes)
+		if err != nil {
+			logrus.Warnf("error decoding inclusion list transaction %v.%v: %v", il.Message.ValidatorIndex, idx, err)
+			continue
+		}
+
+		txHash := tx.Hash()
+		txBigFloat := new(big.Float).SetInt(tx.Value())
+		txBigFloat.Quo(txBigFloat, new(big.Float).SetInt(utils.ETH))
+		txValue, _ := txBigFloat.Float64()
+
+		txType := uint8(tx.Type())
+		typeName := slotTxTypeNames[txType]
+		if typeName == "" {
+			typeName = fmt.Sprintf("Type %d", txType)
+		}
+
+		txData := &models.SlotPageTransaction{
+			Index:    uint64(idx),
+			Hash:     txHash[:],
+			Value:    txValue,
+			Data:     tx.Data(),
+			Type:     uint64(txType),
+			TypeName: typeName,
+			GasLimit: tx.Gas(),
+		}
+		txData.DataLen = uint64(len(txData.Data))
+
+		chainId := tx.ChainId()
+		if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
+			chainId = nil
+		}
+		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainId), &tx)
+		if err == nil {
+			txData.From = txFrom.Bytes()
+		}
+		txTo := tx.To()
+		if txTo != nil {
+			txData.To = txTo.Bytes()
+		}
+
+		// Check call fn signature
+		isCreate := txTo == nil
+		if txData.DataLen >= 4 {
+			if skip, altName := utils.ShouldSkipSignatureLookup(txData.To, isCreate, sysContracts); skip {
+				txData.FuncSigStatus = 10
+				txData.FuncName = altName
+			} else {
+				txData.FuncBytes = fmt.Sprintf("0x%x", txData.Data[0:4])
+				txData.FuncName = txData.FuncBytes
+				txData.FuncSigStatus = 0
+			}
+		} else {
+			txData.FuncSigStatus = 10
+			txData.FuncName = "transfer"
+		}
+
+		txList = append(txList, txData)
+	}
+
+	return txList
+}
+
+// handleSlotParseAccessList accepts RLP-encoded BAL bytes and returns the
+// decoded, UI-ready representation as JSON. Used by the BAL inspector UI
+// to preview arbitrary access lists pasted by the user.
+func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		return fmt.Errorf("method not allowed")
+	}
+
+	rlpHex := r.PostFormValue("rlp")
+	if rlpHex == "" {
+		return fmt.Errorf("missing rlp parameter")
+	}
+
+	rlpHex = strings.TrimPrefix(rlpHex, "0x")
+
+	rlpBytes, err := hex.DecodeString(rlpHex)
+	if err != nil {
+		return fmt.Errorf("invalid hex: %v", err)
+	}
+
+	accesses, err := utils.DecodeBlockAccessList(rlpBytes)
+	if err != nil {
+		return fmt.Errorf("invalid access list RLP: %v", err)
+	}
+
+	return json.NewEncoder(w).Encode(convertBALToModel(accesses))
+}
+
+// convertBALToModel converts decoded EIP-7928 BAL entries to the UI model.
+func convertBALToModel(accesses []utils.BALAccountAccess) []*models.SlotPageBlockAccessListEntry {
+	result := make([]*models.SlotPageBlockAccessListEntry, len(accesses))
+	for i, entry := range accesses {
+		balEntry := &models.SlotPageBlockAccessListEntry{
+			Address: entry.Address[:],
+		}
+
+		if len(entry.StorageWrites) > 0 {
+			balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageWrites))
+			for j, storageChange := range entry.StorageWrites {
+				changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
+				for k, write := range storageChange.Accesses {
+					changes[k] = &models.SlotPageBlockBALStorageSlotChange{
+						BlockAccessIndex: write.TxIdx,
+						Value:            write.ValueAfter,
+					}
+				}
+				balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
+					Slot:    storageChange.Slot,
+					Changes: changes,
+				}
+			}
+		}
+
+		if len(entry.StorageReads) > 0 {
+			balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
+			copy(balEntry.StorageReads, entry.StorageReads)
+		}
+
+		if len(entry.BalanceChanges) > 0 {
+			balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
+			for j, balanceChange := range entry.BalanceChanges {
+				balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
+					BlockAccessIndex: balanceChange.TxIdx,
+					Balance:          balanceChange.Balance,
+				}
+			}
+		}
+
+		if len(entry.NonceChanges) > 0 {
+			balEntry.NonceChanges = make([]*models.SlotPageBlockBALNonceChange, len(entry.NonceChanges))
+			for j, nonceChange := range entry.NonceChanges {
+				balEntry.NonceChanges[j] = &models.SlotPageBlockBALNonceChange{
+					BlockAccessIndex: nonceChange.TxIdx,
+					Nonce:            nonceChange.Nonce,
+				}
+			}
+		}
+
+		if len(entry.CodeChanges) > 0 {
+			balEntry.CodeChanges = make([]*models.SlotPageBlockBALCodeChange, len(entry.CodeChanges))
+			for j, codeChange := range entry.CodeChanges {
+				balEntry.CodeChanges[j] = &models.SlotPageBlockBALCodeChange{
+					BlockAccessIndex: codeChange.TxIndex,
+					Code:             codeChange.Code,
+				}
+			}
+		}
+
+		result[i] = balEntry
+	}
+
+	return result
 }

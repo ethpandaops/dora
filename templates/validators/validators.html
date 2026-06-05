@@ -47,6 +47,14 @@
                     <input name="f.name" type="text" class="form-control" placeholder="Name" aria-label="Name" aria-describedby="basic-addon1" value="{{ .FilterName }}">
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    W/address
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.withdrawal" type="text" class="form-control" placeholder="Withdrawal address or credentials" aria-label="Withdrawal address or credentials" value="{{ .FilterWithdrawal }}">
+                  </div>
+                </div>
               </div>
             </div>
             <div class="col-sm-12 col-md-6">
@@ -142,7 +150,7 @@
               <tbody>
                 {{ range $i, $validator := .Validators }}
                   <tr>
-                    <td><a href="/validator/{{ $validator.Index }}">{{ formatValidatorNameWithIndex $validator.Index $validator.Name }}</a></td>
+                    <td><a href="/validator/{{ $validator.Index }}">{{ formatValidatorNameWithIndex $validator.Index $validator.Name }}</a>{{ if $validator.ProjectedIndex }} <i class="fas fa-exclamation-circle text-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="This deposit has not been processed yet — the validator index is projected (estimated) and not yet reserved on-chain."></i>{{ end }}</td>
                     <td class="text-monospace"><a href="/validator/0x{{ printf "%x" $validator.PublicKey }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $validator.PublicKey }}</a></td>
                     <td>{{ formatEthFromGwei $validator.Balance }} ({{ formatEthAddCommasFromGwei $validator.EffectiveBalance }} ETH)</td>
                     <td>

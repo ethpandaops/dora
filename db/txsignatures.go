@@ -19,16 +19,11 @@ func GetTxFunctionSignaturesByBytes(ctx context.Context, sigBytes []types.TxSign
 		signature, bytes, name
 	FROM tx_function_signatures
 	WHERE bytes IN (`)
-	argIdx := 0
 	args := make([]any, len(sigBytes))
 	for i := range sigBytes {
-		if i > 0 {
-			fmt.Fprintf(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%v", argIdx+1)
-		args[argIdx] = sigBytes[i][:]
-		argIdx += 1
+		args[i] = sigBytes[i][:]
 	}
+	appendDollarPlaceholders(&sql, 1, len(sigBytes), ", ")
 	fmt.Fprintf(&sql, ")")
 
 	err := ReaderDb.SelectContext(ctx, &fnSigs, sql.String(), args...)
@@ -69,16 +64,11 @@ func GetUnknownFunctionSignatures(ctx context.Context, sigBytes []types.TxSignat
 		bytes, lastcheck
 	FROM tx_unknown_signatures
 	WHERE bytes in (`)
-	argIdx := 0
 	args := make([]any, len(sigBytes))
 	for i := range sigBytes {
-		if i > 0 {
-			fmt.Fprintf(&sql, ", ")
-		}
-		fmt.Fprintf(&sql, "$%v", argIdx+1)
-		args[argIdx] = sigBytes[i][:]
-		argIdx += 1
+		args[i] = sigBytes[i][:]
 	}
+	appendDollarPlaceholders(&sql, 1, len(sigBytes), ", ")
 	fmt.Fprintf(&sql, ")")
 	err := ReaderDb.SelectContext(ctx, &unknownFnSigs, sql.String(), args...)
 	if err != nil {

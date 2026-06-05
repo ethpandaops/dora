@@ -1,6 +1,6 @@
 package models
 
-import "github.com/attestantio/go-eth2-client/spec/phase0"
+import "github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 // SearchBlockResult is a struct to hold the search block result with a given graffiti
 type SearchBlockResult struct {

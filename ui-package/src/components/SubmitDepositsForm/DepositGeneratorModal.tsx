@@ -30,8 +30,8 @@ interface IValidatorOverrideState {
   useCustomAmount: boolean;
   // Credential override fields
   credentialInputMode: CredentialInputMode;
-  credentialType: CredentialType; // '00', '01', '02'
-  withdrawalAddress: string; // For 0x01/0x02
+  credentialType: CredentialType; // '00', '01', '02', '03'
+  withdrawalAddress: string; // For 0x01/0x02/0x03
   rawCredentials: string; // For raw mode
   useCustomCredentials: boolean;
 }
@@ -403,6 +403,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                         <option value="00">0x00 - BLS (derived)</option>
                         <option value="01">0x01 - Execution</option>
                         <option value="02">0x02 - Compounding</option>
+                        <option value="03">0x03 - Builder</option>
                       </select>
                     </div>
                     {credentialType !== '00' && (
@@ -534,8 +535,9 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                                       <option value="00">0x00</option>
                                       <option value="01">0x01</option>
                                       <option value="02">0x02</option>
+                                      <option value="03">0x03</option>
                                     </select>
-                                    {/* Address input (only for 0x01/0x02) */}
+                                    {/* Address input (only for 0x01/0x02/0x03) */}
                                     {override.credentialType !== '00' && (
                                       <input
                                         type="text"

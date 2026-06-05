@@ -28,7 +28,11 @@
             </td>
             <td>
               {{- if $consolidationreq.SourceFound }}
-                {{ formatValidatorWithIndex $consolidationreq.SourceIndex $consolidationreq.SourceName }}
+                {{- if $consolidationreq.SourceIsBuilder }}
+                  {{ formatBuilderWithIndex $consolidationreq.SourceIndex $consolidationreq.SourceName }}
+                {{- else }}
+                  {{ formatValidatorWithIndex $consolidationreq.SourceIndex $consolidationreq.SourceName }}
+                {{- end }}
               {{- else }}
                 ?
               {{- end }}
@@ -41,7 +45,11 @@
             </td>
             <td>
               {{- if $consolidationreq.TargetFound }}
-                {{ formatValidatorWithIndex $consolidationreq.TargetIndex $consolidationreq.TargetName }}
+                {{- if $consolidationreq.TargetIsBuilder }}
+                  {{ formatBuilderWithIndex $consolidationreq.TargetIndex $consolidationreq.TargetName }}
+                {{- else }}
+                  {{ formatValidatorWithIndex $consolidationreq.TargetIndex $consolidationreq.TargetName }}
+                {{- end }}
               {{- else }}
                 ?
               {{- end }}

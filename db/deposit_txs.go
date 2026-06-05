@@ -100,27 +100,40 @@ func GetDepositTxsByIndexes(ctx context.Context, indexes []uint64) []*dbtypes.De
 		return depositTxs
 	}
 
-	var sql strings.Builder
-	args := []interface{}{}
+	// SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999 (32766 in newer
+	// builds). Chunk to stay well below that on every supported build,
+	// otherwise high-deposit-volume queries fail with
+	// "too many SQL variables".
+	const maxParams = 900
 
-	fmt.Fprint(&sql, `SELECT deposit_txs.*
-		FROM deposit_txs
-		WHERE deposit_index IN (
-	`)
-
-	for idx, index := range indexes {
-		if idx > 0 {
-			fmt.Fprintf(&sql, ", ")
+	for start := 0; start < len(indexes); start += maxParams {
+		end := start + maxParams
+		if end > len(indexes) {
+			end = len(indexes)
 		}
-		args = append(args, index)
-		fmt.Fprintf(&sql, "$%v", len(args))
-	}
-	fmt.Fprintf(&sql, ")")
+		chunk := indexes[start:end]
 
-	err := ReaderDb.SelectContext(ctx, &depositTxs, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching deposit txs by indexes: %v", err)
-		return nil
+		var sql strings.Builder
+		args := make([]any, len(chunk))
+
+		fmt.Fprint(&sql, `SELECT deposit_txs.*
+			FROM deposit_txs
+			WHERE deposit_index IN (
+		`)
+
+		for idx, index := range chunk {
+			args[idx] = index
+		}
+		appendDollarPlaceholders(&sql, 1, len(chunk), ", ")
+		fmt.Fprintf(&sql, ")")
+
+		var chunkResult []*dbtypes.DepositTx
+		err := ReaderDb.SelectContext(ctx, &chunkResult, sql.String(), args...)
+		if err != nil {
+			logger.Errorf("Error while fetching deposit txs by indexes: %v", err)
+			return nil
+		}
+		depositTxs = append(depositTxs, chunkResult...)
 	}
 
 	return depositTxs
@@ -164,13 +177,11 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 	}
 	if len(filter.PublicKeys) > 0 {
 		fmt.Fprintf(&sql, " %v publickey IN (", filterOp)
-		for i, pubKey := range filter.PublicKeys {
-			if i > 0 {
-				fmt.Fprintf(&sql, ", ")
-			}
+		start := len(args) + 1
+		for _, pubKey := range filter.PublicKeys {
 			args = append(args, pubKey)
-			fmt.Fprintf(&sql, "$%v", len(args))
 		}
+		appendDollarPlaceholders(&sql, start, len(filter.PublicKeys), ", ")
 		fmt.Fprintf(&sql, ")")
 		filterOp = "AND"
 	}
@@ -196,23 +207,7 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 		filterOp = "AND"
 	}
 
-	if filter.WithOrphaned != 1 {
-		forkIdStr := make([]string, len(canonicalForkIds))
-		for i, forkId := range canonicalForkIds {
-			forkIdStr[i] = fmt.Sprintf("%v", forkId)
-		}
-		if len(forkIdStr) == 0 {
-			forkIdStr = append(forkIdStr, "0")
-		}
-
-		if filter.WithOrphaned == 0 {
-			fmt.Fprintf(&sql, " %v fork_id IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		} else if filter.WithOrphaned == 2 {
-			fmt.Fprintf(&sql, " %v fork_id NOT IN (%v)", filterOp, strings.Join(forkIdStr, ","))
-			filterOp = "AND"
-		}
-	}
+	appendWithOrphanedFilter(&sql, &args, &filterOp, filter.WithOrphaned, canonicalForkIds, "fork_id")
 
 	if filter.WithValid == 0 {
 		fmt.Fprintf(&sql, " %v valid_signature IN (1, 2)", filterOp)

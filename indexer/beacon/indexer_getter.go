@@ -7,11 +7,14 @@ import (
 	"slices"
 	"sort"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/electra"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
@@ -213,7 +216,7 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 		return nil, fmt.Errorf("failed unmarshal orphaned block header [%x] from db: %v", orphanedBlock.Root, err)
 	}
 
-	blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
+	blockBody, err := UnmarshalSignedBeaconBlockSSZ(indexer.dynSsz, orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
 	if err != nil {
 		return nil, fmt.Errorf("could not restore orphaned block body %v [%x] from db: %v", header.Message.Slot, orphanedBlock.Root, err)
 	}
@@ -221,6 +224,14 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 	block := newBlock(indexer.dynSsz, blockRoot, header.Message.Slot, orphanedBlock.BlockUid)
 	block.SetHeader(header)
 	block.SetBlock(blockBody)
+
+	if len(orphanedBlock.PayloadSSZ) > 0 {
+		payload, err := UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(indexer.dynSsz, orphanedBlock.PayloadVer, orphanedBlock.PayloadSSZ)
+		if err != nil {
+			return nil, fmt.Errorf("could not restore orphaned block payload %v [%x] from db: %v", header.Message.Slot, orphanedBlock.Root, err)
+		}
+		block.SetExecutionPayload(payload)
+	}
 
 	return block, nil
 }
@@ -449,12 +460,15 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 		for {
 			cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
 			if headEpoch-cEpoch > 2 {
-				return nil
+				// No recent epoch stats are loaded (e.g. just after a restart, before the
+				// vset is refreshed). Stop looking and return the validator without a
+				// balance rather than reporting it as missing.
+				break
 			}
 
 			dependentBlock := indexer.blockCache.getDependentBlock(chainState, canonicalHead, nil)
 			if dependentBlock == nil {
-				return nil
+				break
 			}
 			canonicalHead = dependentBlock
 
@@ -487,11 +501,14 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 	}
 
 	var balance *phase0.Gwei
-	if hasBalances {
+	if hasBalances && int(validatorIndex) < len(epochStats.dependentState.validatorBalances) {
+		// Projected (pending-deposit) validators live past the on-chain balances array
+		// and have a zero balance; leaving balance nil here yields 0 and avoids an
+		// out-of-range panic.
 		balance = &epochStats.dependentState.validatorBalances[validatorIndex]
 	}
 
-	state := v1.ValidatorToState(basicValidator, balance, epoch, FarFutureEpoch)
+	state := utils.ValidatorToState(basicValidator, balance, epoch, FarFutureEpoch)
 
 	validatorData := &v1.Validator{
 		Index:     validatorIndex,
@@ -504,4 +521,186 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 	}
 
 	return validatorData
+}
+
+// GetInclusionListsBySlot returns the cached inclusion lists for a given slot.
+func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedInclusionList {
+	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
+}
+
+// GetBlockBids returns the execution payload bids for a given parent block root and slot.
+// It first checks the in-memory cache, then falls back to the database.
+// Filtering by slot is required because orphaned/skipped predecessor slots share
+// the same parent root as the canonical block that ends up replacing them.
+func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root, slot phase0.Slot) []*dbtypes.BlockBid {
+	// First check the in-memory cache
+	bids := indexer.blockBidCache.GetBidsForBlockRoot(parentBlockRoot, slot)
+	if len(bids) > 0 {
+		return bids
+	}
+
+	// Fall back to database
+	return db.GetBidsForBlockRoot(indexer.ctx, parentBlockRoot[:], uint64(slot))
+}
+
+// StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.
+func (indexer *Indexer) StreamActiveBuilderDataForRoot(blockRoot phase0.Root, activeOnly bool, epoch *phase0.Epoch, cb BuilderSetStreamer) error {
+	return indexer.builderCache.streamBuilderSetForRoot(blockRoot, activeOnly, epoch, cb)
+}
+
+// GetBuilderSetSize returns the size of the builder set cache.
+func (indexer *Indexer) GetBuilderSetSize() uint64 {
+	return indexer.builderCache.getBuilderSetSize()
+}
+
+// GetBuilderByIndex returns the builder by index for the canonical head.
+func (indexer *Indexer) GetBuilderByIndex(index gloas.BuilderIndex, overrideForkId *ForkKey) *gloas.Builder {
+	return indexer.builderCache.getBuilderByIndex(index, overrideForkId)
+}
+
+// GetRecentBuilderBalances returns the most recent builder balances for the given fork.
+// Starts with epoch-boundary balances and replays in-epoch blocks to reflect live state:
+// builder withdrawals/payments are deducted and builder deposits are credited.
+func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phase0.Gwei {
+	chainState := indexer.consensusPool.GetChainState()
+
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+
+	var epochStats *EpochStats
+	var statsEpoch phase0.Epoch
+	for {
+		cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+		if headEpoch-cEpoch > 2 {
+			return nil
+		}
+
+		dependentBlock := indexer.blockCache.getDependentBlock(chainState, canonicalHead, nil)
+		if dependentBlock == nil {
+			return nil
+		}
+		canonicalHead = dependentBlock
+
+		stats := indexer.epochCache.getEpochStats(cEpoch, dependentBlock.Root)
+		if cEpoch > 0 && (stats == nil || stats.dependentState == nil || stats.dependentState.loadingStatus != 2) {
+			continue // retry previous state
+		}
+
+		epochStats = stats
+		statsEpoch = cEpoch
+		break
+	}
+
+	if epochStats == nil || epochStats.dependentState == nil {
+		return nil
+	}
+
+	// Copy epoch-boundary balances so we can mutate them.
+	src := epochStats.dependentState.builderBalances
+	balances := make([]phase0.Gwei, len(src))
+	copy(balances, src)
+
+	// Walk the canonical chain from head back to epoch start, collecting blocks to replay.
+	epochStartSlot := chainState.EpochToSlot(statsEpoch)
+	head := indexer.GetCanonicalHead(overrideForkId)
+
+	var epochBlocks []*Block
+	for block := head; block != nil && block.Slot >= epochStartSlot; {
+		epochBlocks = append(epochBlocks, block)
+		parentRoot := block.GetParentRoot()
+		if parentRoot == nil {
+			break
+		}
+		block = indexer.blockCache.getBlockByRoot(*parentRoot)
+	}
+
+	// Replay in slot order (reverse the collected list).
+	isEip7732 := chainState.IsEip7732Enabled(chainState.EpochOfSlot(epochStartSlot))
+	for i := len(epochBlocks) - 1; i >= 0; i-- {
+		block := epochBlocks[i]
+		indexer.applyBuilderBalanceChanges(block, balances, isEip7732)
+	}
+
+	return balances
+}
+
+// applyBuilderBalanceChanges extracts withdrawals and deposit requests from a
+// cached block body and applies the corresponding builder balance changes.
+func (indexer *Indexer) applyBuilderBalanceChanges(block *Block, balances []phase0.Gwei, isEip7732 bool) {
+	// Apply withdrawals (decrease builder balances).
+	if isEip7732 {
+		payload := block.GetExecutionPayload(indexer.ctx)
+		if payload != nil && payload.Message != nil && payload.Message.Payload != nil {
+			for _, w := range payload.Message.Payload.Withdrawals {
+				if uint64(w.ValidatorIndex)&BuilderIndexFlag == 0 {
+					continue
+				}
+				builderIdx := uint64(w.ValidatorIndex) &^ BuilderIndexFlag
+				if builderIdx < uint64(len(balances)) {
+					if balances[builderIdx] >= w.Amount {
+						balances[builderIdx] -= w.Amount
+					} else {
+						balances[builderIdx] = 0
+					}
+				}
+			}
+
+			// Apply deposit requests (increase builder balances).
+			if payload.Message.ExecutionRequests != nil {
+				for _, deposit := range payload.Message.ExecutionRequests.Deposits {
+					if validatorIdx, found := indexer.pubkeyCache.Get(deposit.Pubkey); found {
+						idx := uint64(validatorIdx)
+						if idx&BuilderIndexFlag != 0 {
+							builderIdx := idx &^ BuilderIndexFlag
+							if builderIdx < uint64(len(balances)) {
+								balances[builderIdx] += phase0.Gwei(deposit.Amount)
+							}
+						}
+					}
+				}
+			}
+		}
+	} else {
+		blockBody := block.GetBlock(indexer.ctx)
+		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
+			return
+		}
+
+		body := blockBody.Message.Body
+
+		if body.ExecutionPayload != nil {
+			for _, w := range body.ExecutionPayload.Withdrawals {
+				if uint64(w.ValidatorIndex)&BuilderIndexFlag == 0 {
+					continue
+				}
+				builderIdx := uint64(w.ValidatorIndex) &^ BuilderIndexFlag
+				if builderIdx < uint64(len(balances)) {
+					if balances[builderIdx] >= w.Amount {
+						balances[builderIdx] -= w.Amount
+					} else {
+						balances[builderIdx] = 0
+					}
+				}
+			}
+		}
+
+		// Apply deposit requests (increase builder balances).
+		if body.ExecutionRequests != nil {
+			for _, deposit := range body.ExecutionRequests.Deposits {
+				if validatorIdx, found := indexer.pubkeyCache.Get(deposit.Pubkey); found {
+					idx := uint64(validatorIdx)
+					if idx&BuilderIndexFlag != 0 {
+						builderIdx := idx &^ BuilderIndexFlag
+						if builderIdx < uint64(len(balances)) {
+							balances[builderIdx] += phase0.Gwei(deposit.Amount)
+						}
+					}
+				}
+			}
+		}
+	}
 }

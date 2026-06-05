@@ -3,10 +3,10 @@ package s3
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/minio/minio-go/v7"
@@ -17,7 +17,7 @@ import (
 // getExecDataKey builds the S3 object key for execution data.
 // Format: {pathPrefix}/{slot/10000}/{slot_padded}_{blockRootHex}_exec
 func (e *S3Engine) getExecDataKey(slot uint64, blockRoot []byte) string {
-	rootHex := hex.EncodeToString(blockRoot[:4])
+	rootHex := encodeRootPrefix(blockRoot)
 	return path.Join(
 		e.pathPrefix,
 		fmt.Sprintf("%06d", slot/10000),
@@ -282,19 +282,17 @@ func isNotFound(err error) bool {
 // Expected format: .../NNNNNNNNNN_HHHHHHHH[_exec]
 // Returns 0 if parsing fails (safe default - won't match any pruning threshold).
 func parseSlotFromKey(key string) uint64 {
-	parts := strings.Split(key, "/")
-	if len(parts) == 0 {
-		return 0
+	filenameStart := strings.LastIndexByte(key, '/')
+	if filenameStart >= 0 {
+		key = key[filenameStart+1:]
 	}
-	filename := parts[len(parts)-1]
 
-	underscoreIdx := strings.Index(filename, "_")
+	underscoreIdx := strings.IndexByte(key, '_')
 	if underscoreIdx <= 0 {
 		return 0
 	}
 
-	var slot uint64
-	_, err := fmt.Sscanf(filename[:underscoreIdx], "%d", &slot)
+	slot, err := strconv.ParseUint(key[:underscoreIdx], 10, 64)
 	if err != nil {
 		return 0
 	}

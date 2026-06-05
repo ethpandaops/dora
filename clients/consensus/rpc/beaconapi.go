@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	eth2client "github.com/attestantio/go-eth2-client"
-	"github.com/attestantio/go-eth2-client/api"
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"github.com/attestantio/go-eth2-client/http"
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/capella"
-	"github.com/attestantio/go-eth2-client/spec/deneb"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	eth2client "github.com/ethpandaops/go-eth2-client"
+	"github.com/ethpandaops/go-eth2-client/api"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/http"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/deneb"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
@@ -383,13 +383,13 @@ func (bc *BeaconClient) GetBlockHeaderBySlot(ctx context.Context, slot phase0.Sl
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetBlockBodyByBlockroot(ctx context.Context, blockroot phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
+func (bc *BeaconClient) GetBlockBodyByBlockroot(ctx context.Context, blockroot phase0.Root) (*all.SignedBeaconBlock, error) {
 	provider, isProvider := bc.clientSvc.(eth2client.SignedBeaconBlockProvider)
 	if !isProvider {
 		return nil, fmt.Errorf("get signed beacon block not supported")
 	}
 
-	result, err := provider.SignedBeaconBlock(ctx, &api.SignedBeaconBlockOpts{
+	result, err := provider.AgnosticSignedBeaconBlock(ctx, &api.SignedBeaconBlockOpts{
 		Block: fmt.Sprintf("0x%x", blockroot),
 		Common: api.CommonOpts{
 			Timeout: 0,
@@ -406,13 +406,29 @@ func (bc *BeaconClient) GetBlockBodyByBlockroot(ctx context.Context, blockroot p
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetState(ctx context.Context, stateRef string) (*spec.VersionedBeaconState, error) {
+func (bc *BeaconClient) GetExecutionPayloadByBlockroot(ctx context.Context, blockroot phase0.Root) (*all.SignedExecutionPayloadEnvelope, error) {
+	provider, isProvider := bc.clientSvc.(eth2client.ExecutionPayloadProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get execution payload not supported")
+	}
+
+	result, err := provider.AgnosticSignedExecutionPayloadEnvelope(ctx, &api.SignedExecutionPayloadEnvelopeOpts{
+		Block: fmt.Sprintf("0x%x", blockroot),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Data, nil
+}
+
+func (bc *BeaconClient) GetState(ctx context.Context, stateRef string) (*all.BeaconState, error) {
 	provider, isProvider := bc.clientSvc.(eth2client.BeaconStateProvider)
 	if !isProvider {
 		return nil, fmt.Errorf("get beacon state not supported")
 	}
 
-	result, err := provider.BeaconState(ctx, &api.BeaconStateOpts{
+	result, err := provider.AgnosticBeaconState(ctx, &api.BeaconStateOpts{
 		State: stateRef,
 		Common: api.CommonOpts{
 			Timeout: 0,
@@ -437,6 +453,50 @@ func (bc *BeaconClient) GetBlobSidecarsByBlockroot(ctx context.Context, blockroo
 		return nil, err
 	}
 	return result.Data, nil
+}
+
+func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, blockroot []byte) (*ExecutionProofsResponse, error) {
+	// Make a direct HTTP request since this is a custom Lighthouse endpoint
+	// not part of the standard eth2 API
+	url := fmt.Sprintf("%s/eth/v1/beacon/execution_proofs/0x%x", bc.endpoint, blockroot)
+
+	req, err := nethttp.NewRequestWithContext(ctx, "GET", url, nethttp.NoBody)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add custom headers
+	for headerKey, headerVal := range bc.headers {
+		req.Header.Set(headerKey, headerVal)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	client := &nethttp.Client{Timeout: time.Second * 300}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		// If endpoint doesn't exist or block has no proofs, return empty response
+		if resp.StatusCode == nethttp.StatusNotFound {
+			return &ExecutionProofsResponse{
+				Data:                []ExecutionProof{},
+				ExecutionOptimistic: false,
+				Finalized:           false,
+			}, nil
+		}
+		data, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("url: %v, status: %d, error: %s", url, resp.StatusCode, data)
+	}
+
+	var response ExecutionProofsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("error parsing json response: %v", err)
+	}
+
+	return &response, nil
 }
 
 func (bc *BeaconClient) GetBlobsByBlockroot(ctx context.Context, blockroot []byte) ([]*deneb.Blob, error) {

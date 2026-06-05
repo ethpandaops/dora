@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 // BeaconHeaderRequestTimeout is the timeout duration for beacon header requests.
@@ -17,6 +17,9 @@ const beaconBodyRequestTimeout time.Duration = 30 * time.Second
 
 // BeaconStateRequestTimeout is the timeout duration for beacon state requests.
 const beaconStateRequestTimeout time.Duration = 600 * time.Second
+
+// ExecutionPayloadRequestTimeout is the timeout duration for execution payload requests.
+const executionPayloadRequestTimeout time.Duration = 30 * time.Second
 
 const beaconStateRetryCount = 10
 const beaconStateHighPriorityRetryCount uint64 = 3
@@ -51,8 +54,9 @@ func LoadBeaconHeaderBySlot(ctx context.Context, client *Client, slot phase0.Slo
 	return header.Header, header.Root, !header.Canonical, nil
 }
 
-// LoadBeaconBlock loads the block body from the RPC client.
-func LoadBeaconBlock(ctx context.Context, client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
+// LoadBeaconBlock loads the block body from the RPC client as a fork-agnostic
+// *all.SignedBeaconBlock.
+func LoadBeaconBlock(ctx context.Context, client *Client, root phase0.Root) (*all.SignedBeaconBlock, error) {
 	ctx, cancel := context.WithTimeout(ctx, beaconBodyRequestTimeout)
 	defer cancel()
 
@@ -64,15 +68,35 @@ func LoadBeaconBlock(ctx context.Context, client *Client, root phase0.Root) (*sp
 	return body, nil
 }
 
-// LoadBeaconState loads the beacon state from the client.
-func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*spec.VersionedBeaconState, error) {
+// LoadBeaconState loads the beacon state from the client as a fork-agnostic
+// *all.BeaconState.
+func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*all.BeaconState, error) {
 	ctx, cancel := context.WithTimeout(ctx, beaconStateRequestTimeout)
 	defer cancel()
 
-	resState, err := client.client.GetRPCClient().GetState(ctx, fmt.Sprintf("0x%x", root[:]))
+	stateRef := fmt.Sprintf("0x%x", root[:])
+	nullRoot := phase0.Root{}
+	if root == nullRoot {
+		stateRef = "genesis"
+	}
+
+	resState, err := client.client.GetRPCClient().GetState(ctx, stateRef)
 	if err != nil {
 		return nil, err
 	}
 
 	return resState, nil
+}
+
+// LoadExecutionPayload loads the execution payload from the client.
+func LoadExecutionPayload(ctx context.Context, client *Client, root phase0.Root) (*all.SignedExecutionPayloadEnvelope, error) {
+	ctx, cancel := context.WithTimeout(ctx, executionPayloadRequestTimeout)
+	defer cancel()
+
+	payload, err := client.client.GetRPCClient().GetExecutionPayloadByBlockroot(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+
+	return payload, nil
 }
