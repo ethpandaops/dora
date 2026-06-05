@@ -1265,7 +1265,10 @@ func (ctx *txProcessingContext) processCallTrace(
 			gasUsed := selfGas
 
 			var value float64
-			if frame.Value.Sign() > 0 {
+			// DELEGATECALL executes the callee's code in the caller's context and
+			// never transfers value; the callTracer reports the inherited parent
+			// msg.value on the frame, so it must not be counted as transferred value.
+			if callType != bdbtypes.CallTypeDelegateCall && frame.Value.Sign() > 0 {
 				value = weiToFloat(frame.Value.ToBig(), 18)
 			}
 
