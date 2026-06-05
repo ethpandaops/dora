@@ -154,8 +154,7 @@ func GetMevBlocksByBlockHashes(ctx context.Context, blockHashes [][]byte) map[st
 	FROM mev_blocks
 	WHERE block_hash IN (`)
 	appendDollarPlaceholders(&sql, 1, len(blockHashes), ", ")
-	fmt.Fprint(&sql, `
-	`)
+	fmt.Fprint(&sql, ")")
 
 	mevBlocks := []*dbtypes.MevBlock{}
 	err := ReaderDb.SelectContext(ctx, &mevBlocks, sql.String(), queryArgs...)
