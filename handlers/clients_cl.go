@@ -500,7 +500,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		if cgcHex, ok := enrValues["cgc"]; ok {
 			val, err := strconv.ParseUint(cgcHex.(string), 0, 64)
 			if err != nil {
-				logrus.WithFields(logrus.Fields{"node": v.Alias, "peer_id": v.PeerID, "cgc": cgcHex.(string)}).Error("failed to decode cgc. ", err)
+				logrus.WithFields(logrus.Fields{"node": v.Alias, "peer_id": v.PeerID, "cgc": cgcHex.(string)}).Warn("failed to decode cgc. ", err)
 			} else {
 				custodySubnetCount = val
 			}
