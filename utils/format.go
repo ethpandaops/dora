@@ -872,7 +872,7 @@ func formatBuilder(index uint64, name string, externalURL string, icon string, w
 		} else {
 			nameLabel = html.EscapeString(name)
 		}
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", index, icon, index, nameLabel, externalLink))
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, nameLabel, externalLink))
 	}
 	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, index, externalLink))
 }
