@@ -370,7 +370,7 @@
                     {{- if $g.DisplayBuilder }}
                       <td>{{ if not (eq $slot.Status 0) }}
                         {{ if $slot.HasBuilder }}
-                          {{ formatBuilder $slot.BuilderIndex $slot.BuilderName }}
+                          {{ formatBuilderWithURL $slot.BuilderIndex $slot.BuilderName $slot.BuilderURL }}
                         {{ end }}
                       {{ end }}</td>
                     {{- end }}

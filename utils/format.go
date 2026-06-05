@@ -840,26 +840,41 @@ func FormatValidatorNameWithIndex(index uint64, name string) template.HTML {
 }
 
 func FormatBuilder(index uint64, name string) template.HTML {
-	return formatBuilder(index, name, "fa-hard-hat mr-2", false)
+	return formatBuilder(index, name, "", "fa-hard-hat mr-2", false)
 }
 
 func FormatBuilderWithIndex(index uint64, name string) template.HTML {
-	return formatBuilder(index, name, "fa-hard-hat mr-2", true)
+	return formatBuilder(index, name, "", "fa-hard-hat mr-2", true)
 }
 
-func formatBuilder(index uint64, name string, icon string, withIndex bool) template.HTML {
+func FormatBuilderWithURL(index uint64, name string, externalURL string) template.HTML {
+	return formatBuilder(index, name, externalURL, "fa-hard-hat mr-2", false)
+}
+
+func FormatBuilderWithIndexAndURL(index uint64, name string, externalURL string) template.HTML {
+	return formatBuilder(index, name, externalURL, "fa-hard-hat mr-2", true)
+}
+
+func formatBuilder(index uint64, name string, externalURL string, icon string, withIndex bool) template.HTML {
 	if index == math.MaxUint64 {
 		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> Self-built</span>", icon))
-	} else if name != "" {
+	}
+
+	externalLink := ""
+	if externalURL != "" {
+		externalLink = fmt.Sprintf(` <a href="%v" target="_blank" rel="noopener noreferrer" class="builder-external-link text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Open buildoor instance"><i class="fas fa-external-link-alt"></i></a>`, html.EscapeString(externalURL))
+	}
+
+	if name != "" {
 		var nameLabel string
 		if withIndex {
 			nameLabel = fmt.Sprintf("%v (%v)", html.EscapeString(name), index)
 		} else {
 			nameLabel = html.EscapeString(name)
 		}
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", index, icon, index, nameLabel))
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", index, icon, index, nameLabel, externalLink))
 	}
-	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", icon, index, index))
+	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, index, externalLink))
 }
 
 func FormatRecentTimeShort(ts time.Time) template.HTML {
