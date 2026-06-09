@@ -340,11 +340,16 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 	// long-term block db in a single request. This works even when no connected client
 	// still has the block (e.g. after all nodes checkpoint-synced past it). When no
 	// client could serve the header the canonical block root is resolved from our own db.
-	if blockdb.GlobalBlockDb != nil {
+	// Only attempt this when something is actually missing to avoid extra lookups for
+	// blocks that already loaded fully from cache or clients.
+	needsBlockDb := result == nil ||
+		(result.Block != nil && result.Block.Version >= spec.DataVersionGloas && result.Payload == nil)
+	if blockdb.GlobalBlockDb != nil && needsBlockDb {
 		if (blockRoot == phase0.Root{}) {
-			for _, dbBlock := range bs.GetDbBlocksForSlots(ctx, uint64(slot), 0, false, false) {
-				if dbBlock.Status == dbtypes.Canonical && len(dbBlock.Root) == 32 {
-					blockRoot = phase0.Root(dbBlock.Root)
+			slotNum := uint64(slot)
+			for _, dbBlock := range bs.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{Slot: &slotNum, WithOrphaned: 1}, 0, 10, 0) {
+				if dbBlock.Block != nil && dbBlock.Block.Status == dbtypes.Canonical && len(dbBlock.Block.Root) == 32 {
+					blockRoot = phase0.Root(dbBlock.Block.Root)
 					break
 				}
 			}
