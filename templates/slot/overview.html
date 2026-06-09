@@ -71,6 +71,8 @@
             <span class="badge rounded-pill text-bg-success" style="font-size: 12px; font-weight: 500;">Proposed</span>
           {{ else if eq .Status 2 }}
             <span class="badge rounded-pill text-bg-info" style="font-size: 12px; font-weight: 500;">Missed (Orphaned)</span>
+          {{ else if eq .Status 3 }}
+            <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="A canonical block was proposed for this slot, but its contents are currently unavailable from any connected client or the block store.">Proposed <i class="fas fa-question-circle ms-1"></i> Data Unavailable</span>
           {{ end }}
 
           {{ if .EpochFinalized }}
@@ -215,7 +217,9 @@
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block Number, the height, not the slot">Payload Status:</span></div>
                   <div class="col-md-10 text-monospace text-break">
-                    {{ if eq .PayloadStatus 0 }}
+                    {{ if $block.PayloadDataUnavailable }}
+                      <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="The execution payload envelope could not be loaded from any connected client or the block store. It may exist but is currently unavailable.">Data Unavailable</span>
+                    {{ else if eq .PayloadStatus 0 }}
                       <span class="badge rounded-pill text-bg-warning">Missing</span>
                     {{ else if eq .PayloadStatus 1 }}
                       <span class="badge rounded-pill text-bg-success">Revealed</span>

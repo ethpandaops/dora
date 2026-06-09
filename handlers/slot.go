@@ -286,6 +286,15 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 
 	if blockData == nil {
 		pageData.Status = uint16(models.SlotStatusMissed)
+		// A canonical block is indexed for this slot but its contents could not be
+		// loaded from any client or the block db (e.g. all nodes checkpoint-synced
+		// past it). Surface this as "data unavailable" rather than "missed".
+		for _, sb := range slotBlocks {
+			if sb.Status == uint16(models.SlotStatusFound) && len(sb.BlockRoot) == 32 {
+				pageData.Status = uint16(models.SlotStatusDataUnavailable)
+				break
+			}
+		}
 		pageData.Proposer = math.MaxInt64
 		if epochStatsValues != nil {
 			if slotIndex := int(chainState.SlotToSlotIndex(slot)); slotIndex < len(epochStatsValues.ProposerDuties) {
@@ -831,6 +840,13 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		}
 	} else {
 		executionPayload = body.ExecutionPayload
+	}
+
+	// Gloas+ block whose execution payload envelope couldn't be loaded from any
+	// client or the block db: mark the payload as unavailable (it may exist but we
+	// don't have it) rather than letting it render as a genuinely missing payload.
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload == nil {
+		pageData.PayloadDataUnavailable = true
 	}
 
 	if executionPayload != nil {
