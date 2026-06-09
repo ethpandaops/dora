@@ -599,6 +599,7 @@ const (
 	WithdrawalTypeBuilderFullWithdrawal = 4 // Builder sweep (full balance withdrawal)
 	WithdrawalTypeBuilderPayment        = 5 // Builder direct payment (payload delivered)
 	WithdrawalTypeBuilderDelayedPayment = 6 // Builder delayed/quorum payment (missed payload)
+	WithdrawalTypeBuilderUnknownPayment = 7 // Builder unknown payment (dora tracking is not accurate under terrible network conditions)
 )
 
 type Withdrawal struct {

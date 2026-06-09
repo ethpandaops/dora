@@ -907,7 +907,7 @@ func (dbw *dbWriter) classifyWithdrawalType(idx int, simResult *withdrawalSimRes
 	isBuilder := uint64(validatorIndex)&BuilderIndexFlag != 0
 
 	// First N withdrawals are builder payments — type and ref slot from sim
-	if idx < simResult.BuilderPaymentCount {
+	if uint64(idx) < simResult.BuilderPaymentCount {
 		if idx < len(simResult.BuilderPayments) {
 			bp := simResult.BuilderPayments[idx]
 			return bp.Type, bp.RefSlot
@@ -916,7 +916,7 @@ func (dbw *dbWriter) classifyWithdrawalType(idx int, simResult *withdrawalSimRes
 	}
 
 	// Next M withdrawals are from pending partial withdrawals (EIP-7002 requested)
-	if idx < simResult.BuilderPaymentCount+simResult.PartialCount {
+	if uint64(idx) < simResult.BuilderPaymentCount+uint64(simResult.PartialCount) {
 		return dbtypes.WithdrawalTypeRequestedWithdrawal, nil
 	}
 

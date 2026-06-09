@@ -43,6 +43,7 @@ type epochState struct {
 	delayedBuilderPaymentCount uint32 // number of delayed payments at the tail of builderPendingWithdrawals
 	pendingConsolidations      []*electra.PendingConsolidation
 	proposerLookahead          []phase0.ValidatorIndex
+	latestExecutionHash        phase0.Hash32
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
@@ -315,6 +316,9 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 
 	if state.Version >= spec.DataVersionGloas {
 		s.builderPendingWithdrawals = state.BuilderPendingWithdrawals
+		s.latestExecutionHash = state.LatestExecutionPayloadBid.ParentBlockHash
+	} else {
+		s.latestExecutionHash = state.LatestExecutionPayloadHeader.BlockHash
 	}
 
 	s.proposerLookahead = state.ProposerLookahead

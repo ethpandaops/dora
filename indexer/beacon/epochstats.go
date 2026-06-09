@@ -47,6 +47,7 @@ type EpochStats struct {
 type EpochStatsValues struct {
 	RandaoMix                  phase0.Hash32
 	NextRandaoMix              phase0.Hash32
+	DependentExecutionHash     phase0.Hash32
 	ActiveIndices              []phase0.ValidatorIndex
 	EffectiveBalances          []uint32 // effective balance in full ETH of last epoch for pre-fulu stats, effective balance in full ETH of current epoch for fulu+ stats
 	ProposerDuties             []phase0.ValidatorIndex
@@ -76,6 +77,7 @@ type EpochStatsPacked struct {
 	SyncCommitteeDuties        []phase0.ValidatorIndex     `ssz-max:"10000"`
 	RandaoMix                  phase0.Hash32               `ssz-size:"32"`
 	NextRandaoMix              phase0.Hash32               `ssz-size:"32"`
+	DependentExecutionHash     phase0.Hash32               `ssz-size:"32"`
 	TotalBalance               phase0.Gwei
 	ActiveBalance              phase0.Gwei
 	FirstDepositIndex          uint64
@@ -177,6 +179,7 @@ func (es *EpochStats) buildPackedSSZ() ([]byte, error) {
 		SyncCommitteeDuties:        es.values.SyncCommitteeDuties,
 		RandaoMix:                  es.values.RandaoMix,
 		NextRandaoMix:              es.values.NextRandaoMix,
+		DependentExecutionHash:     es.values.DependentExecutionHash,
 		TotalBalance:               es.values.TotalBalance,
 		ActiveBalance:              es.values.ActiveBalance,
 		FirstDepositIndex:          es.values.FirstDepositIndex,
@@ -228,6 +231,7 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 	values := &EpochStatsValues{
 		RandaoMix:                  packedValues.RandaoMix,
 		NextRandaoMix:              packedValues.NextRandaoMix,
+		DependentExecutionHash:     packedValues.DependentExecutionHash,
 		ActiveIndices:              make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
 		EffectiveBalances:          make([]uint32, len(packedValues.ActiveValidators)),
 		ProposerDuties:             packedValues.ProposerDuties,
@@ -312,20 +316,21 @@ func (es *EpochStats) pruneValues() {
 	}
 
 	es.prunedValues = &EpochStatsValues{
-		RandaoMix:             es.values.RandaoMix,
-		NextRandaoMix:         es.values.NextRandaoMix,
-		EffectiveBalances:     nil, // prune
-		ProposerDuties:        es.values.ProposerDuties,
-		AttesterDuties:        nil, // prune
-		SyncCommitteeDuties:   es.values.SyncCommitteeDuties,
-		PtcDuties:             nil, // prune - only needed for recent epochs
-		ActiveValidators:      es.values.ActiveValidators,
-		TotalBalance:          es.values.TotalBalance,
-		ActiveBalance:         es.values.ActiveBalance,
-		EffectiveBalance:      es.values.EffectiveBalance,
-		FirstDepositIndex:     es.values.FirstDepositIndex,
-		PendingWithdrawals:    nil, // prune
-		PendingConsolidations: nil, // prune
+		RandaoMix:              es.values.RandaoMix,
+		NextRandaoMix:          es.values.NextRandaoMix,
+		DependentExecutionHash: es.values.DependentExecutionHash,
+		EffectiveBalances:      nil, // prune
+		ProposerDuties:         es.values.ProposerDuties,
+		AttesterDuties:         nil, // prune
+		SyncCommitteeDuties:    es.values.SyncCommitteeDuties,
+		PtcDuties:              nil, // prune - only needed for recent epochs
+		ActiveValidators:       es.values.ActiveValidators,
+		TotalBalance:           es.values.TotalBalance,
+		ActiveBalance:          es.values.ActiveBalance,
+		EffectiveBalance:       es.values.EffectiveBalance,
+		FirstDepositIndex:      es.values.FirstDepositIndex,
+		PendingWithdrawals:     nil, // prune
+		PendingConsolidations:  nil, // prune
 	}
 
 	es.values = nil
@@ -376,15 +381,16 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 
 	chainState := indexer.consensusPool.GetChainState()
 	values := &EpochStatsValues{
-		ActiveIndices:         make([]phase0.ValidatorIndex, 0),
-		EffectiveBalances:     make([]uint32, 0),
-		SyncCommitteeDuties:   dependentState.syncCommittee,
-		TotalBalance:          0,
-		ActiveBalance:         0,
-		EffectiveBalance:      0,
-		FirstDepositIndex:     dependentState.depositIndex,
-		PendingWithdrawals:    make([]electra.PendingPartialWithdrawal, len(dependentState.pendingPartialWithdrawals)),
-		PendingConsolidations: make([]electra.PendingConsolidation, len(dependentState.pendingConsolidations)),
+		DependentExecutionHash: dependentState.latestExecutionHash,
+		ActiveIndices:          make([]phase0.ValidatorIndex, 0),
+		EffectiveBalances:      make([]uint32, 0),
+		SyncCommitteeDuties:    dependentState.syncCommittee,
+		TotalBalance:           0,
+		ActiveBalance:          0,
+		EffectiveBalance:       0,
+		FirstDepositIndex:      dependentState.depositIndex,
+		PendingWithdrawals:     make([]electra.PendingPartialWithdrawal, len(dependentState.pendingPartialWithdrawals)),
+		PendingConsolidations:  make([]electra.PendingConsolidation, len(dependentState.pendingConsolidations)),
 	}
 
 	for i, pendingPartialWithdrawal := range dependentState.pendingPartialWithdrawals {
@@ -541,7 +547,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 }
 
 // precomputeFromParentState precomputes the EpochStats values based on the parent state.
-func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *EpochStats) error {
+func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *EpochStats, dependentExecutionHash phase0.Hash32) error {
 	es.precalcBaseRoot = parentState.dependentRoot
 
 	return indexer.epochCache.withPrecomputeLock(func() error {
@@ -568,13 +574,14 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		}
 
 		values := &EpochStatsValues{
-			ActiveIndices:       parentStatsValues.ActiveIndices,
-			RandaoMix:           parentStatsValues.NextRandaoMix,
-			EffectiveBalances:   parentStatsValues.EffectiveBalances,
-			SyncCommitteeDuties: parentStatsValues.SyncCommitteeDuties,
-			TotalBalance:        parentStatsValues.TotalBalance,
-			ActiveBalance:       parentStatsValues.ActiveBalance,
-			EffectiveBalance:    parentStatsValues.EffectiveBalance,
+			DependentExecutionHash: dependentExecutionHash,
+			ActiveIndices:          parentStatsValues.ActiveIndices,
+			RandaoMix:              parentStatsValues.NextRandaoMix,
+			EffectiveBalances:      parentStatsValues.EffectiveBalances,
+			SyncCommitteeDuties:    parentStatsValues.SyncCommitteeDuties,
+			TotalBalance:           parentStatsValues.TotalBalance,
+			ActiveBalance:          parentStatsValues.ActiveBalance,
+			EffectiveBalance:       parentStatsValues.EffectiveBalance,
 		}
 
 		// update active validators from validator cache
