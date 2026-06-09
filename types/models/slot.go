@@ -44,9 +44,10 @@ type SlotPageBlockBadge struct {
 type SlotStatus uint16
 
 const (
-	SlotStatusMissed   SlotStatus = 0
-	SlotStatusFound    SlotStatus = 1
-	SlotStatusOrphaned SlotStatus = 2
+	SlotStatusMissed          SlotStatus = 0
+	SlotStatusFound           SlotStatus = 1
+	SlotStatusOrphaned        SlotStatus = 2
+	SlotStatusDataUnavailable SlotStatus = 3
 )
 
 type SlotPageBlockData struct {
@@ -86,8 +87,9 @@ type SlotPageBlockData struct {
 	TargetCommitteeSize  uint64 `json:"target_committee_size"`
 	MaxCommitteesPerSlot uint64 `json:"max_committees_per_slot"`
 
-	PayloadHeader *SlotPagePayloadHeader `json:"payload_header"`
-	ExecutionData *SlotPageExecutionData `json:"execution_data"`
+	PayloadHeader          *SlotPagePayloadHeader `json:"payload_header"`
+	ExecutionData          *SlotPageExecutionData `json:"execution_data"`
+	PayloadDataUnavailable bool                   `json:"payload_data_unavailable"`
 
 	Attestations          []*SlotPageAttestation          `json:"attestations"`           // Attestations included in this block
 	Deposits              []*SlotPageDeposit              `json:"deposits"`               // Deposits included in this block

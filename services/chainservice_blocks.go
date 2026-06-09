@@ -129,79 +129,83 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 	}
 
 	// try loading from connected clients
+	// A header-load failure here is not fatal: no connected client has the block
+	// (e.g. after a checkpoint sync). We fall through to the block db below.
 	if result == nil {
-		err := loadBlockHeader()
-		if err != nil {
-			return nil, err
+		if err := loadBlockHeader(); err != nil {
+			logrus.WithError(err).Debugf("could not load block header for root 0x%x from clients", blockroot)
 		}
 
-		var block *all.SignedBeaconBlock
-		var payload *all.SignedExecutionPayloadEnvelope
-		bodyRetry := 0
-		for ; bodyRetry < 3; bodyRetry++ {
-			client := clients[bodyRetry%len(clients)]
-			if block == nil {
-				block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
-				if err != nil {
-					log := logrus.WithError(err)
-					if client != nil {
-						log = log.WithField("client", client.GetClient().GetName())
+		if header != nil {
+			var err error
+			var block *all.SignedBeaconBlock
+			var payload *all.SignedExecutionPayloadEnvelope
+			bodyRetry := 0
+			for ; bodyRetry < 3; bodyRetry++ {
+				client := clients[bodyRetry%len(clients)]
+				if block == nil {
+					block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
+					if err != nil {
+						log := logrus.WithError(err)
+						if client != nil {
+							log = log.WithField("client", client.GetClient().GetName())
+						}
+						log.Warnf("Error loading block body for root 0x%x", blockroot)
 					}
-					log.Warnf("Error loading block body for root 0x%x", blockroot)
 				}
-			}
 
-			if block != nil && block.Version >= spec.DataVersionGloas {
-				payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
-				if payload != nil {
+				if block != nil && block.Version >= spec.DataVersionGloas {
+					payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
+					if payload != nil {
+						break
+					} else if err != nil {
+						log := logrus.WithError(err)
+						if client != nil {
+							log = log.WithField("client", client.GetClient().GetName())
+						}
+						log.Warnf("Error loading block payload for root 0x%x", blockroot)
+					}
+				} else if block != nil {
 					break
-				} else if err != nil {
-					log := logrus.WithError(err)
-					if client != nil {
-						log = log.WithField("client", client.GetClient().GetName())
-					}
-					log.Warnf("Error loading block payload for root 0x%x", blockroot)
 				}
-			} else if block != nil {
-				break
 			}
-		}
-		if err == nil && block != nil {
-			result = &CombinedBlockResponse{
-				Root:     blockroot,
-				Header:   header,
-				Block:    block,
-				Payload:  payload,
-				Orphaned: false,
+			if err == nil && block != nil {
+				result = &CombinedBlockResponse{
+					Root:     blockroot,
+					Header:   header,
+					Block:    block,
+					Payload:  payload,
+					Orphaned: false,
+				}
 			}
 		}
 	}
 
-	// try loading from block db
-	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
-		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(header.Message.Slot), blockroot[:],
-			btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload|btypes.BlockDataFlagBal,
-			func(version uint64, block []byte) (any, error) {
-				return beacon.UnmarshalSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
-			}, func(version uint64, payload []byte) (any, error) {
-				return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
-			})
-		if err == nil && blockData != nil && blockData.Body != nil {
-			resp := &CombinedBlockResponse{
-				Root:     blockroot,
-				Header:   header,
-				Block:    blockData.Body.(*all.SignedBeaconBlock),
-				Orphaned: false,
+	// fill any missing components (the whole block, or just the payload/BAL) from the
+	// long-term block db in a single request. This works even when no connected client
+	// still has the block (e.g. after all nodes checkpoint-synced past it). The slot
+	// needed to build the block db key is taken from the header when available,
+	// otherwise from our own db.
+	if blockdb.GlobalBlockDb != nil {
+		blockSlot := phase0.Slot(0)
+		haveSlot := false
+		switch {
+		case header != nil:
+			blockSlot, haveSlot = header.Message.Slot, true
+		case result != nil && result.Header != nil:
+			blockSlot, haveSlot = result.Header.Message.Slot, true
+		default:
+			if dbBlock := db.GetBlockHeadByRoot(ctx, blockroot[:]); dbBlock != nil {
+				blockSlot, haveSlot = phase0.Slot(dbBlock.Slot), true
 			}
-			if blockData.Payload != nil {
-				resp.Payload = blockData.Payload.(*all.SignedExecutionPayloadEnvelope)
+		}
+
+		if haveSlot {
+			completed, err := bs.completeBlockFromBlockDb(ctx, blockSlot, blockroot, header, result)
+			if err != nil {
+				return nil, err
 			}
-			if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
-				if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {
-					resp.BlockAccessList = bal
-				}
-			}
-			result = resp
+			result = completed
 		}
 	}
 
@@ -280,90 +284,174 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 	}
 
 	// try loading from connected clients
+	// A header-load failure here is not fatal: no connected client has the block
+	// (e.g. after a checkpoint sync). We fall through to the block db below.
 	if result == nil {
 		if header == nil {
-			err := loadBlockHeader()
-			if err != nil {
-				return nil, err
+			if err := loadBlockHeader(); err != nil {
+				logrus.WithError(err).Debugf("could not load block header for slot %v from clients", slot)
 			}
 		}
 
-		var err error
-		var block *all.SignedBeaconBlock
-		var payload *all.SignedExecutionPayloadEnvelope
-		bodyRetry := 0
-		for ; bodyRetry < 3; bodyRetry++ {
-			client := clients[bodyRetry%len(clients)]
-			block, err = beacon.LoadBeaconBlock(ctx, client, blockRoot)
-			if err != nil {
-				log := logrus.WithError(err)
-				if client != nil {
-					log = log.WithField("client", client.GetClient().GetName())
-				}
-				log.Warnf("Error loading block body for slot %v", slot)
-			}
-
-			if block != nil && block.Version >= spec.DataVersionGloas {
-				payload, err = beacon.LoadExecutionPayload(ctx, client, blockRoot)
-				if payload != nil {
-					break
-				} else if err != nil {
+		if header != nil {
+			var err error
+			var block *all.SignedBeaconBlock
+			var payload *all.SignedExecutionPayloadEnvelope
+			bodyRetry := 0
+			for ; bodyRetry < 3; bodyRetry++ {
+				client := clients[bodyRetry%len(clients)]
+				block, err = beacon.LoadBeaconBlock(ctx, client, blockRoot)
+				if err != nil {
 					log := logrus.WithError(err)
 					if client != nil {
 						log = log.WithField("client", client.GetClient().GetName())
 					}
-					log.Warnf("Error loading block payload for root 0x%x", blockRoot)
+					log.Warnf("Error loading block body for slot %v", slot)
 				}
-			} else if block != nil {
-				break
+
+				if block != nil && block.Version >= spec.DataVersionGloas {
+					payload, err = beacon.LoadExecutionPayload(ctx, client, blockRoot)
+					if payload != nil {
+						break
+					} else if err != nil {
+						log := logrus.WithError(err)
+						if client != nil {
+							log = log.WithField("client", client.GetClient().GetName())
+						}
+						log.Warnf("Error loading block payload for root 0x%x", blockRoot)
+					}
+				} else if block != nil {
+					break
+				}
 			}
-		}
-		if err == nil && block != nil {
-			result = &CombinedBlockResponse{
-				Root:     blockRoot,
-				Header:   header,
-				Block:    block,
-				Payload:  payload,
-				Orphaned: orphaned,
+			if err == nil && block != nil {
+				result = &CombinedBlockResponse{
+					Root:     blockRoot,
+					Header:   header,
+					Block:    block,
+					Payload:  payload,
+					Orphaned: orphaned,
+				}
 			}
 		}
 	}
 
-	// try loading from block db
-	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
-		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockRoot[:],
-			btypes.BlockDataFlagHeader|btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload|btypes.BlockDataFlagBal,
-			func(version uint64, block []byte) (any, error) {
-				return beacon.UnmarshalSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
-			}, func(version uint64, payload []byte) (any, error) {
-				return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
-			})
-		if err == nil && blockData != nil && blockData.Body != nil {
-			header := &phase0.SignedBeaconBlockHeader{}
-			err = header.UnmarshalSSZ(blockData.HeaderData)
+	// fill any missing components (the whole block, or just the payload/BAL) from the
+	// long-term block db in a single request. This works even when no connected client
+	// still has the block (e.g. after all nodes checkpoint-synced past it). When no
+	// client could serve the header the canonical block root is resolved from our own db.
+	// Only attempt this when something is actually missing to avoid extra lookups for
+	// blocks that already loaded fully from cache or clients.
+	needsBlockDb := result == nil ||
+		(result.Block != nil && result.Block.Version >= spec.DataVersionGloas && result.Payload == nil)
+	if blockdb.GlobalBlockDb != nil && needsBlockDb {
+		if (blockRoot == phase0.Root{}) {
+			slotNum := uint64(slot)
+			for _, dbBlock := range bs.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{Slot: &slotNum, WithOrphaned: 1}, 0, 10, 0) {
+				if dbBlock.Block != nil && dbBlock.Block.Status == dbtypes.Canonical && len(dbBlock.Block.Root) == 32 {
+					blockRoot = phase0.Root(dbBlock.Block.Root)
+					break
+				}
+			}
+		}
+
+		if (blockRoot != phase0.Root{}) {
+			wasNil := result == nil
+			completed, err := bs.completeBlockFromBlockDb(ctx, slot, blockRoot, header, result)
 			if err != nil {
 				return nil, err
 			}
-
-			resp := &CombinedBlockResponse{
-				Root:     blockRoot,
-				Header:   header,
-				Block:    blockData.Body.(*all.SignedBeaconBlock),
-				Orphaned: false,
+			if wasNil && completed != nil {
+				completed.Orphaned = orphaned
 			}
-			if blockData.Payload != nil {
-				resp.Payload = blockData.Payload.(*all.SignedExecutionPayloadEnvelope)
-			}
-			if blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
-				if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {
-					resp.BlockAccessList = bal
-				}
-			}
-			result = resp
+			result = completed
 		}
 	}
 
 	bs.populateBlockAccessList(ctx, result)
+
+	return result, nil
+}
+
+// completeBlockFromBlockDb fills any block components still missing in result from
+// the long-term block db (e.g. S3) using a single GetBlock request. When result is
+// nil it builds the whole response (header, body, payload and BAL) - this works even
+// when no connected client still has the block, e.g. after all nodes checkpoint-synced
+// past it. When result already holds a Gloas+ block whose execution payload could not
+// be loaded from any client, it fetches the payload (and BAL) in the same request.
+// slot and blockroot identify the block; header is used as the response header when
+// available, otherwise it is reconstructed from the header stored alongside the block.
+// Returns the (possibly newly created) result; result is left unchanged when the block
+// db is not configured or has nothing to add.
+func (bs *ChainService) completeBlockFromBlockDb(ctx context.Context, slot phase0.Slot, blockroot phase0.Root, header *phase0.SignedBeaconBlockHeader, result *CombinedBlockResponse) (*CombinedBlockResponse, error) {
+	if blockdb.GlobalBlockDb == nil {
+		return result, nil
+	}
+
+	// Determine which components are still missing and request them all at once.
+	var flags btypes.BlockDataFlags
+	if result == nil {
+		flags = btypes.BlockDataFlagHeader | btypes.BlockDataFlagBody | btypes.BlockDataFlagPayload | btypes.BlockDataFlagBal
+	} else if result.Block != nil && result.Block.Version >= spec.DataVersionGloas && result.Payload == nil {
+		// We have the block but its payload (and possibly the BAL stored with it)
+		// couldn't be loaded from a client.
+		flags = btypes.BlockDataFlagPayload | btypes.BlockDataFlagBal
+	}
+	if flags == 0 {
+		return result, nil
+	}
+
+	blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockroot[:], flags,
+		func(version uint64, block []byte) (any, error) {
+			return beacon.UnmarshalSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+		}, func(version uint64, payload []byte) (any, error) {
+			return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
+		})
+	if err != nil || blockData == nil {
+		return result, err
+	}
+
+	// Build the response when no client had the block.
+	if result == nil {
+		if blockData.Body == nil {
+			return nil, nil
+		}
+
+		block, ok := blockData.Body.(*all.SignedBeaconBlock)
+		if !ok {
+			return nil, fmt.Errorf("unexpected block type %T loaded from blockdb", blockData.Body)
+		}
+
+		if header == nil && len(blockData.HeaderData) > 0 {
+			header = &phase0.SignedBeaconBlockHeader{}
+			if err := header.UnmarshalSSZ(blockData.HeaderData); err != nil {
+				return nil, fmt.Errorf("failed to decode block header from blockdb: %w", err)
+			}
+		}
+
+		result = &CombinedBlockResponse{
+			Root:     blockroot,
+			Header:   header,
+			Block:    block,
+			Orphaned: false,
+		}
+	}
+
+	// Fill in the payload if we received one and don't have it yet.
+	if result.Payload == nil && blockData.Payload != nil {
+		payload, ok := blockData.Payload.(*all.SignedExecutionPayloadEnvelope)
+		if !ok {
+			return result, fmt.Errorf("unexpected payload type %T loaded from blockdb", blockData.Payload)
+		}
+		result.Payload = payload
+	}
+
+	// Fill in the BAL if we received one and don't have it yet.
+	if len(result.BlockAccessList) == 0 && blockData.BalVersion != 0 && len(blockData.BalData) > 0 {
+		if bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData); err == nil {
+			result.BlockAccessList = bal
+		}
+	}
 
 	return result, nil
 }

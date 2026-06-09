@@ -20,7 +20,7 @@ else
 fi
 
 # Get validator ranges
-kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | tail -n +2 > "${__dir}/generated-validator-ranges.yaml"
+kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | tail -n +1 > "${__dir}/generated-validator-ranges.yaml"
 
 # Get el genesis config
 kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data "./genesis.json" | tail -n +1 > "${__dir}/generated-el-genesis.json"
