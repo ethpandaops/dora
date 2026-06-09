@@ -111,9 +111,8 @@ func encodeRootPrefix(root []byte) string {
 // GetStoredComponents returns which components exist for a block by reading metadata.
 func (e *S3Engine) GetStoredComponents(ctx context.Context, slot uint64, root []byte) (types.BlockDataFlags, error) {
 	key := e.getObjectKey(root, slot)
-	e.getCount.Add(1)
 
-	// Read just the metadata
+	// Read just the metadata (readMetadata accounts for the GET request)
 	meta, err := e.readMetadata(ctx, key)
 	if err != nil {
 		return 0, err
@@ -136,6 +135,8 @@ func (e *S3Engine) readMetadata(ctx context.Context, key string) (*objectMetadat
 	}
 
 	// Full read fallback
+	e.getCount.Add(1)
+
 	obj, err := e.client.GetObject(ctx, e.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		errResp := minio.ToErrorResponse(err)
@@ -152,6 +153,7 @@ func (e *S3Engine) readMetadata(ctx context.Context, key string) (*objectMetadat
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 
+	e.getBytes.Add(int64(n))
 	return readObjectMetadata(buf[:n])
 }
 
@@ -161,6 +163,8 @@ func (e *S3Engine) readMetadataWithRange(ctx context.Context, key string) (*obje
 	if err := opts.SetRange(0, int64(maxMetadataSize-1)); err != nil {
 		return nil, err
 	}
+
+	e.getCount.Add(1)
 
 	obj, err := e.client.GetObject(ctx, e.bucket, key, opts)
 	if err != nil {
@@ -178,6 +182,7 @@ func (e *S3Engine) readMetadataWithRange(ctx context.Context, key string) (*obje
 		return nil, fmt.Errorf("failed to read range: %w", err)
 	}
 
+	e.getBytes.Add(int64(n))
 	return readObjectMetadata(buf[:n])
 }
 
@@ -241,6 +246,8 @@ func (e *S3Engine) getBlockWithRanges(
 		return nil, err
 	}
 
+	e.getCount.Add(1)
+
 	obj, err := e.client.GetObject(ctx, e.bucket, key, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object range: %w", err)
@@ -251,6 +258,8 @@ func (e *S3Engine) getBlockWithRanges(
 	if err != nil {
 		return nil, fmt.Errorf("failed to read object range: %w", err)
 	}
+
+	e.getBytes.Add(int64(len(data)))
 
 	// Extract requested components from the fetched data
 	return e.extractComponents(meta, flags, data, rangeStart, parseBlock, parsePayload)
@@ -337,6 +346,8 @@ func (e *S3Engine) getBlockFull(
 	parseBlock func(uint64, []byte) (any, error),
 	parsePayload func(uint64, []byte) (any, error),
 ) (*types.BlockData, error) {
+	e.getCount.Add(1)
+
 	obj, err := e.client.GetObject(ctx, e.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		errResp := minio.ToErrorResponse(err)
@@ -352,6 +363,8 @@ func (e *S3Engine) getBlockFull(
 	if err != nil {
 		return nil, fmt.Errorf("failed to read object: %w", err)
 	}
+
+	e.getBytes.Add(int64(len(data)))
 
 	// Parse metadata
 	meta, err := readObjectMetadata(data)

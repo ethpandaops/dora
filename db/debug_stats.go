@@ -36,11 +36,79 @@ func getTableNames() ([]string, error) {
 	return tables, nil
 }
 
-// GetTableStats returns row counts and sizes for all known tables.
+// GetTableStats returns estimated row counts and sizes for all known tables.
+// For PostgreSQL it uses catalog statistics (pg_class.reltuples) to avoid
+// expensive full table scans. For SQLite it batches the dbstat query.
 func GetTableStats() ([]*TableStats, error) {
+	switch DbEngine {
+	case dbtypes.DBEnginePgsql:
+		return getTableStatsPgsql()
+	case dbtypes.DBEngineSqlite:
+		return getTableStatsSqlite()
+	default:
+		return nil, fmt.Errorf("unknown database engine")
+	}
+}
+
+// getTableStatsPgsql fetches table stats from PostgreSQL catalog in a single
+// query. reltuples is an estimate maintained by ANALYZE/autovacuum.
+func getTableStatsPgsql() ([]*TableStats, error) {
+	type pgTableRow struct {
+		Name     string `db:"name"`
+		RowCount int64  `db:"row_count"`
+		Size     int64  `db:"size"`
+	}
+
+	var rows []pgTableRow
+	err := ReaderDb.Select(&rows, `
+		SELECT
+			c.relname AS name,
+			GREATEST(c.reltuples, 0)::bigint AS row_count,
+			pg_total_relation_size(c.oid) AS size
+		FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'public' AND c.relkind = 'r'
+		ORDER BY c.relname
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pg_class: %w", err)
+	}
+
+	results := make([]*TableStats, 0, len(rows))
+	for i := range rows {
+		results = append(results, &TableStats{
+			Name:     rows[i].Name,
+			RowCount: rows[i].RowCount,
+			Size:     rows[i].Size,
+		})
+	}
+
+	return results, nil
+}
+
+// getTableStatsSqlite fetches table stats for SQLite, batching the dbstat
+// size lookup into a single query and using individual COUNT(*) per table.
+func getTableStatsSqlite() ([]*TableStats, error) {
 	tables, err := getTableNames()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tables: %w", err)
+	}
+
+	// Batch-fetch sizes for all tables in a single dbstat query.
+	type sizeRow struct {
+		Name string `db:"name"`
+		Size int64  `db:"size"`
+	}
+
+	var sizeRows []sizeRow
+	sizeMap := make(map[string]int64, len(tables))
+
+	err = ReaderDb.Select(&sizeRows,
+		"SELECT name, COALESCE(SUM(pgsize), 0) AS size FROM dbstat GROUP BY name")
+	if err == nil {
+		for i := range sizeRows {
+			sizeMap[sizeRows[i].Name] = sizeRows[i].Size
+		}
 	}
 
 	results := make([]*TableStats, 0, len(tables))
@@ -51,25 +119,14 @@ func GetTableStats() ([]*TableStats, error) {
 		}
 
 		var count int64
-		err := ReaderDb.Get(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)) //nolint:gosec // table names are hardcoded
+		err := ReaderDb.Get(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)) //nolint:gosec // table names come from sqlite_master
 		if err != nil {
 			continue
 		}
 		stats.RowCount = count
 
-		switch DbEngine {
-		case dbtypes.DBEnginePgsql:
-			var size int64
-			err = ReaderDb.Get(&size, "SELECT pg_total_relation_size($1)", table)
-			if err == nil {
-				stats.Size = size
-			}
-		case dbtypes.DBEngineSqlite:
-			var size int64
-			err = ReaderDb.Get(&size, "SELECT COALESCE(SUM(pgsize), 0) FROM dbstat WHERE name = $1", table)
-			if err == nil {
-				stats.Size = size
-			}
+		if size, ok := sizeMap[table]; ok {
+			stats.Size = size
 		}
 
 		results = append(results, stats)
