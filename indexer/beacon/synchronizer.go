@@ -449,9 +449,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		if nextBlock != nil {
 			nextBlockIndex := nextBlock.GetBlockIndex(s.indexer.ctx)
 			if nextBlockIndex != nil {
-				if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
-					block.isPayloadOrphaned = true
-				}
+				block.isPayloadOrphaned = !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:])
 			}
 		}
 	}

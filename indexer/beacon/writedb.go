@@ -108,7 +108,7 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 	}
 
 	// Apply payload orphaned status from block flag (set during finalization/sync)
-	if block.isPayloadOrphaned {
+	if block.isPayloadOrphaned && dbBlock.PayloadStatus == dbtypes.PayloadStatusCanonical {
 		dbBlock.PayloadStatus = dbtypes.PayloadStatusOrphaned
 	}
 

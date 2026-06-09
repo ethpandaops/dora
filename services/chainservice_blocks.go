@@ -537,7 +537,10 @@ func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Bloc
 	}
 
 	if hasCanonicalChild {
-		return dbtypes.PayloadStatusOrphaned
+		if block.HasExecutionPayload() {
+			return dbtypes.PayloadStatusOrphaned
+		}
+		return dbtypes.PayloadStatusMissing
 	}
 	return dbtypes.PayloadStatusCanonical
 }
