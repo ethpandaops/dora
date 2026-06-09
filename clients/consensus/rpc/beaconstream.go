@@ -348,10 +348,18 @@ func (bs *BeaconStream) processExecutionPayloadAvailableEvent(evt eventstream.St
 }
 
 func (bs *BeaconStream) processExecutionPayloadBidEvent(evt eventstream.StreamEvent) {
-	var parsed gloas.SignedExecutionPayloadBid
+	// the event is wrapped in a versioned envelope: {"version":"gloas","data":{...}}
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
 
-	err := json.Unmarshal([]byte(evt.Data()), &parsed)
-	if err != nil {
+	if err := json.Unmarshal([]byte(evt.Data()), &envelope); err != nil {
+		bs.logger.Warnf("beacon block stream failed to decode execution_payload_bid event: %v", err)
+		return
+	}
+
+	var parsed gloas.SignedExecutionPayloadBid
+	if err := json.Unmarshal(envelope.Data, &parsed); err != nil {
 		bs.logger.Warnf("beacon block stream failed to decode execution_payload_bid event: %v", err)
 		return
 	}
