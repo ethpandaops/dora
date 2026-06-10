@@ -87,11 +87,9 @@ func (st *StateTransition) PrepareEpochPreState(state *all.BeaconState, epoch ph
 // need for downstream processing. Pass a non-nil pointer to PrepareEpochPreState
 // to receive this information; pass nil if not needed.
 type TransitionInfo struct {
-	// DelayedBuilderPayments is the number of delayed builder payments appended
-	// to BuilderPendingWithdrawals by the last epoch transition's
-	// process_builder_pending_payments. This tells the state simulator how many
-	// entries at the tail of the queue are delayed (vs direct payments from block payloads).
-	DelayedBuilderPayments uint32
+	// DelayedBuilderPayments is a list of slots that the state transition appended delayed builder payments for.
+	// This tells the state simulator which slots to reference delayed builder payments in the BuilderPendingWithdrawals list.
+	DelayedBuilderPayments []uint16
 }
 
 // processSlots advances the state from its current slot to targetSlot, applying
@@ -195,9 +193,9 @@ func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 
 	// Gloas-only: process builder pending payments
 	if s.Version >= spec.DataVersionGloas {
-		delayedCount := processBuilderPendingPayments(s)
+		delayedSlots := processBuilderPendingPayments(s)
 		if info != nil {
-			info.DelayedBuilderPayments = delayedCount
+			info.DelayedBuilderPayments = delayedSlots
 		}
 	}
 

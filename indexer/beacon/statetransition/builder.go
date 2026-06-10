@@ -19,7 +19,7 @@ const (
 // New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_builder_pending_payments
 // processBuilderPendingPayments returns the number of delayed payments appended to
 // BuilderPendingWithdrawals.
-func processBuilderPendingPayments(s *stateAccessor) uint32 {
+func processBuilderPendingPayments(s *stateAccessor) []uint16 {
 	slotsPerEpoch := s.specs.SlotsPerEpoch
 	quorum := getBuilderPaymentQuorumThreshold(s)
 
@@ -29,7 +29,7 @@ func processBuilderPendingPayments(s *stateAccessor) uint32 {
 		limit = uint64(len(s.BuilderPendingPayments))
 	}
 
-	count := uint32(0)
+	delayedSlots := make([]uint16, 0)
 	for i := uint64(0); i < limit; i++ {
 		payment := s.BuilderPendingPayments[i]
 		if payment == nil || payment.Withdrawal == nil {
@@ -37,7 +37,7 @@ func processBuilderPendingPayments(s *stateAccessor) uint32 {
 		}
 		if uint64(payment.Weight) >= quorum {
 			s.BuilderPendingWithdrawals = append(s.BuilderPendingWithdrawals, payment.Withdrawal)
-			count++
+			delayedSlots = append(delayedSlots, uint16(i))
 		}
 	}
 
@@ -49,7 +49,7 @@ func processBuilderPendingPayments(s *stateAccessor) uint32 {
 		}
 	}
 
-	return count
+	return delayedSlots
 }
 
 // getBuilderPaymentQuorumThreshold computes the quorum threshold for builder payments.

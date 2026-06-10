@@ -29,21 +29,21 @@ type epochState struct {
 	readyChan      chan bool
 	highPriority   bool
 
-	stateSlot                  phase0.Slot
-	sourceBlockUid             uint64 // block UID of the source block (before epoch transition)
-	validatorBalances          []phase0.Gwei
-	builderBalances            []phase0.Gwei
-	randaoMixes                []phase0.Root
-	depositIndex               uint64
-	syncCommittee              []phase0.ValidatorIndex
-	depositBalanceToConsume    phase0.Gwei
-	pendingDeposits            []*electra.PendingDeposit
-	pendingPartialWithdrawals  []*electra.PendingPartialWithdrawal
-	builderPendingWithdrawals  []*gloas.BuilderPendingWithdrawal
-	delayedBuilderPaymentCount uint32 // number of delayed payments at the tail of builderPendingWithdrawals
-	pendingConsolidations      []*electra.PendingConsolidation
-	proposerLookahead          []phase0.ValidatorIndex
-	latestExecutionHash        phase0.Hash32
+	stateSlot                 phase0.Slot
+	sourceBlockUid            uint64 // block UID of the source block (before epoch transition)
+	validatorBalances         []phase0.Gwei
+	builderBalances           []phase0.Gwei
+	randaoMixes               []phase0.Root
+	depositIndex              uint64
+	syncCommittee             []phase0.ValidatorIndex
+	depositBalanceToConsume   phase0.Gwei
+	pendingDeposits           []*electra.PendingDeposit
+	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
+	builderPendingWithdrawals []*gloas.BuilderPendingWithdrawal
+	delayedBuilderPaymentRefs []uint16 // references to the slots of the delayed builder payments
+	pendingConsolidations     []*electra.PendingConsolidation
+	proposerLookahead         []phase0.ValidatorIndex
+	latestExecutionHash       phase0.Hash32
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
@@ -185,7 +185,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 				return nil, fmt.Errorf("error applying epoch transition for epoch %v: %w", s.targetEpoch, err)
 			}
 			epochTransitionDur = time.Since(epochStart)
-			s.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
+			s.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
 		}
 
 		client.logger.Infof("loaded epoch %v state from beacon API in %v + epoch transition %v",
@@ -457,7 +457,7 @@ func (s *epochState) tryReplayFromParentState(
 			return nil
 		}
 		epochTransitionDur = time.Since(epochStart)
-		s.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
+		s.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
 	}
 
 	client.logger.Infof(

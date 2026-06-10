@@ -547,7 +547,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 					cache.indexer.logger.Errorf("error advancing state to epoch %v: %v", entry.epochState.targetEpoch, err)
 					continue
 				}
-				entry.epochState.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
+				entry.epochState.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
 
 				// Extract values from the advanced state.
 				if err := entry.epochState.processState(state, cache); err != nil {

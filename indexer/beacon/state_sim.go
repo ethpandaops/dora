@@ -142,8 +142,8 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 	}
 	// Epoch boundary layout: [direct from prev epoch's unconsumed payloads..., delayed from
 	// process_builder_pending_payments at the tail]. The split point is given by
-	// DelayedBuilderPaymentCount.
-	delayedCount := int(sim.epochStatsValues.DelayedBuilderPaymentCount)
+	// DelayedBuilderPaymentRefs.
+	delayedCount := len(sim.epochStatsValues.DelayedBuilderPaymentRefs)
 	directCount := len(rawBuilderWithdrawals) - delayedCount
 	trackedWithdrawals := make([]trackedBuilderWithdrawal, len(rawBuilderWithdrawals))
 	for i := range rawBuilderWithdrawals {
@@ -193,8 +193,16 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 	if directCount > 0 {
 		sim.resolveInitialDirectRefs(state, directCount)
 	}
-	if delayedCount > 0 {
-		sim.resolveInitialDelayedRefs(state, delayedCount)
+	if delayedCount > 0 && sim.epochStats.epoch > 1 {
+		delayedPaymentBlockMap := sim.resolveDelayedPaymentBlocks()
+
+		pendingIndex := len(state.builderPendingWithdrawals) - 1
+		for i := len(sim.epochStatsValues.DelayedBuilderPaymentRefs) - 1; i >= 0; i-- {
+			if uid, ok := delayedPaymentBlockMap[phase0.Slot(sim.epochStatsValues.DelayedBuilderPaymentRefs[i])]; ok {
+				state.builderPendingWithdrawals[pendingIndex].RefBlockUID = &uid
+			}
+			pendingIndex--
+		}
 	}
 
 	return state
@@ -368,12 +376,11 @@ func (sim *stateSimulator) resolveInitialDirectRefs(state *stateSimulatorState, 
 	}
 }
 
-// resolveInitialDelayedRefs populates RefBlockUID for the delayed payment entries
-// in the builder pending withdrawals queue. These are delayed payments from epoch
-// n-2 missed payloads, appended to the queue by the state transition
-func (sim *stateSimulator) resolveInitialDelayedRefs(state *stateSimulatorState, delayedCount int) {
+// resolveDelayedPaymentBlocks returns a map of slot to block UID for the delayed payments
+func (sim *stateSimulator) resolveDelayedPaymentBlocks() map[phase0.Slot]uint64 {
+	res := make(map[phase0.Slot]uint64)
 	if sim.epochStats.epoch <= 1 {
-		return
+		return res
 	}
 
 	prevEpoch := sim.epochStats.epoch - 1
@@ -381,7 +388,6 @@ func (sim *stateSimulator) resolveInitialDelayedRefs(state *stateSimulatorState,
 	chainState := sim.indexer.consensusPool.GetChainState()
 
 	sourceHeadRoot := dependentRoot
-	sourcePayloadHash := sim.epochStatsValues.DependentExecutionHash
 	dbMaxSlot := chainState.EpochToSlot(sim.epochStats.epoch)
 
 	_, prunedEpoch := sim.indexer.GetBlockCacheState()
@@ -393,9 +399,6 @@ func (sim *stateSimulator) resolveInitialDelayedRefs(state *stateSimulatorState,
 					break
 				}
 
-				if index := curBlock.GetBlockIndex(sim.indexer.ctx); index != nil {
-					sourcePayloadHash = index.ExecutionParentHash
-				}
 				dbMaxSlot = curBlock.Slot
 
 				parentRoot := curBlock.GetParentRoot()
@@ -413,29 +416,16 @@ func (sim *stateSimulator) resolveInitialDelayedRefs(state *stateSimulatorState,
 		}
 	}
 
-	type blockWithMissedPayload struct {
-		slot    phase0.Slot
-		builder gloas.BuilderIndex
-	}
-	blocksWithMissedPayload := []blockWithMissedPayload{}
-
 	sourceEpoch := prevEpoch - 2
+	sourceOffset := chainState.EpochToSlot(sourceEpoch)
+
 	if sourceEpoch >= prunedEpoch {
 		for curBlock := sim.indexer.blockCache.getBlockByRoot(sourceHeadRoot); curBlock != nil; {
 			if chainState.EpochOfSlot(curBlock.Slot) < sourceEpoch {
 				break
 			}
 
-			blockIndex := curBlock.GetBlockIndex(sim.indexer.ctx)
-			if blockIndex == nil {
-				break
-			}
-			if !bytes.Equal(blockIndex.ExecutionHash[:], sourcePayloadHash[:]) && blockIndex.BuilderIndex != math.MaxUint64 {
-				blocksWithMissedPayload = append(blocksWithMissedPayload, blockWithMissedPayload{
-					slot:    curBlock.Slot,
-					builder: gloas.BuilderIndex(blockIndex.BuilderIndex),
-				})
-			}
+			res[phase0.Slot(curBlock.Slot-sourceOffset)] = curBlock.BlockUID
 
 			parentRoot := curBlock.GetParentRoot()
 			if parentRoot == nil {
@@ -449,10 +439,10 @@ func (sim *stateSimulator) resolveInitialDelayedRefs(state *stateSimulatorState,
 		}
 	} else {
 		prevStart := chainState.EpochToSlot(sourceEpoch)
-		dbSlots := db.GetSlotsRange(sim.indexer.ctx, uint64(dbMaxSlot-1), uint64(prevStart), false, true)
-		dbSlotsMap := make(map[phase0.Root]*dbtypes.Slot)
+		dbSlots := db.GetBlockHeadBySlotRange(sim.indexer.ctx, uint64(prevStart), uint64(dbMaxSlot-1))
+		dbSlotsMap := make(map[phase0.Root]*dbtypes.BlockHead)
 		for _, slot := range dbSlots {
-			dbSlotsMap[phase0.Root(slot.Block.Root)] = slot.Block
+			dbSlotsMap[phase0.Root(slot.Root)] = slot
 		}
 
 		if prevEpoch < prunedEpoch {
@@ -461,9 +451,6 @@ func (sim *stateSimulator) resolveInitialDelayedRefs(state *stateSimulatorState,
 					break
 				}
 
-				if bytes.Equal(curSlot.EthBlockHash[:], sourcePayloadHash[:]) {
-					sourcePayloadHash = phase0.Hash32(curSlot.EthBlockParentHash)
-				}
 				sourceHeadRoot = phase0.Root(curSlot.ParentRoot)
 			}
 		}
@@ -473,32 +460,11 @@ func (sim *stateSimulator) resolveInitialDelayedRefs(state *stateSimulatorState,
 				break
 			}
 
-			if !bytes.Equal(curSlot.EthBlockHash[:], sourcePayloadHash[:]) && curSlot.BuilderIndex != math.MaxInt64 {
-				blocksWithMissedPayload = append(blocksWithMissedPayload, blockWithMissedPayload{
-					slot:    phase0.Slot(curSlot.Slot),
-					builder: gloas.BuilderIndex(curSlot.BuilderIndex),
-				})
-			}
-
-			if bytes.Equal(curSlot.EthBlockHash[:], sourcePayloadHash[:]) {
-				sourcePayloadHash = phase0.Hash32(curSlot.EthBlockParentHash)
-			}
+			res[phase0.Slot(curSlot.Slot)-sourceOffset] = curSlot.BlockUid
 		}
-
 	}
 
-	// match the delayed payments with blocksWithMissedPayload, starting at the end, leaving unknown items at the beginning
-	pendingIndex := len(state.builderPendingWithdrawals) - 1
-
-	for i := 0; i < len(blocksWithMissedPayload) && i < delayedCount; i++ {
-		if state.builderPendingWithdrawals[pendingIndex].BuilderIndex != blocksWithMissedPayload[i].builder {
-			continue
-		}
-
-		uid := uint64(blocksWithMissedPayload[i].slot)
-		state.builderPendingWithdrawals[pendingIndex].RefBlockUID = &uid
-		pendingIndex--
-	}
+	return res
 }
 
 func (sim *stateSimulator) getValidator(index phase0.ValidatorIndex) *phase0.Validator {
