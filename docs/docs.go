@@ -930,7 +930,7 @@ const docTemplate = `{
         },
         "/v1/network/overview": {
             "get": {
-                "description": "Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, and fork information",
+                "description": "Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, fork information and a health snapshot with finality status, validator counts and provenance-aware participation data",
                 "consumes": [
                     "application/json"
                 ],
@@ -950,12 +950,9 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Server Error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -3682,11 +3679,38 @@ const docTemplate = `{
         "api.APINetworkOverviewData": {
             "type": "object",
             "properties": {
+                "active_validator_count": {
+                    "type": "integer"
+                },
                 "checkpoints": {
                     "$ref": "#/definitions/api.APICheckpoints"
                 },
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "current_slot": {
+                    "type": "integer"
+                },
                 "current_state": {
                     "$ref": "#/definitions/api.APICurrentState"
+                },
+                "data_quality_warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "epochs_since_finality": {
+                    "type": "integer"
+                },
+                "exited_validator_count": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "finalizing": {
+                    "type": "boolean"
                 },
                 "forks": {
                     "type": "array",
@@ -3697,14 +3721,37 @@ const docTemplate = `{
                 "is_synced": {
                     "type": "boolean"
                 },
+                "metadata": {
+                    "$ref": "#/definitions/api.APINetworkOverviewMetadata"
+                },
                 "network_info": {
                     "$ref": "#/definitions/api.APINetworkInfo"
+                },
+                "participation": {
+                    "$ref": "#/definitions/api.APINetworkParticipation"
+                },
+                "pending_validator_count": {
+                    "type": "integer"
                 },
                 "queue_stats": {
                     "$ref": "#/definitions/api.APIQueueStats"
                 },
+                "raw_aggregates": {
+                    "$ref": "#/definitions/api.APINetworkRawAggregates"
+                },
+                "total_validator_count": {
+                    "type": "integer"
+                },
                 "validator_stats": {
                     "$ref": "#/definitions/api.APIValidatorStats"
+                }
+            }
+        },
+        "api.APINetworkOverviewMetadata": {
+            "type": "object",
+            "properties": {
+                "slots_per_epoch": {
+                    "type": "integer"
                 }
             }
         },
@@ -3716,6 +3763,55 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "api.APINetworkParticipation": {
+            "type": "object",
+            "properties": {
+                "complete": {
+                    "type": "boolean"
+                },
+                "expected_slots": {
+                    "type": "integer"
+                },
+                "indexed_slots": {
+                    "type": "integer"
+                },
+                "rate": {
+                    "type": "number"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "warning": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkRawAggregates": {
+            "type": "object",
+            "properties": {
+                "attestations_indexed": {
+                    "type": "integer"
+                },
+                "complete": {
+                    "type": "boolean"
+                },
+                "expected_slots": {
+                    "type": "integer"
+                },
+                "globalparticipationrate": {
+                    "type": "number"
+                },
+                "indexed_slots": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "vote_participation": {
+                    "type": "number"
                 }
             }
         },

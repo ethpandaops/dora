@@ -14,25 +14,47 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/utils"
+	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	networkOverviewFinalizingThreshold   = uint64(2)
+	networkOverviewParticipationQuorum   = 67.0
+	networkOverviewParticipationSource   = "attestation_index"
+	networkOverviewRawAggregateSource    = "epoch_vote_index"
+	networkOverviewParticipationWarnText = "attestation index incomplete; participation omitted"
 )
 
 // APINetworkOverviewResponse represents the response structure for network overview
 type APINetworkOverviewResponse struct {
 	Status string                  `json:"status"`
-	Data   *APINetworkOverviewData `json:"data"`
+	Data   *APINetworkOverviewData `json:"data,omitempty"`
 }
 
 // APINetworkOverviewData contains comprehensive network state information
 type APINetworkOverviewData struct {
-	NetworkInfo    *APINetworkInfo       `json:"network_info"`
-	CurrentState   *APICurrentState      `json:"current_state"`
-	Checkpoints    *APICheckpoints       `json:"checkpoints"`
-	ValidatorStats *APIValidatorStats    `json:"validator_stats"`
-	QueueStats     *APIQueueStats        `json:"queue_stats,omitempty"`
-	Forks          []*APINetworkForkInfo `json:"forks"`
-	IsSynced       bool                  `json:"is_synced"`
+	NetworkInfo           *APINetworkInfo            `json:"network_info"`
+	CurrentState          *APICurrentState           `json:"current_state"`
+	Checkpoints           *APICheckpoints            `json:"checkpoints"`
+	ValidatorStats        *APIValidatorStats         `json:"validator_stats"`
+	QueueStats            *APIQueueStats             `json:"queue_stats,omitempty"`
+	Forks                 []*APINetworkForkInfo      `json:"forks"`
+	IsSynced              bool                       `json:"is_synced"`
+	CurrentSlot           uint64                     `json:"current_slot"`
+	CurrentEpoch          uint64                     `json:"current_epoch"`
+	FinalizedEpoch        uint64                     `json:"finalized_epoch"`
+	EpochsSinceFinality   uint64                     `json:"epochs_since_finality"`
+	Finalizing            bool                       `json:"finalizing"`
+	ActiveValidatorCount  uint64                     `json:"active_validator_count"`
+	TotalValidatorCount   uint64                     `json:"total_validator_count"`
+	PendingValidatorCount uint64                     `json:"pending_validator_count"`
+	ExitedValidatorCount  uint64                     `json:"exited_validator_count"`
+	DataQualityWarnings   []string                   `json:"data_quality_warnings"`
+	Participation         *APINetworkParticipation   `json:"participation,omitempty"`
+	RawAggregates         *APINetworkRawAggregates   `json:"raw_aggregates,omitempty"`
+	Metadata              APINetworkOverviewMetadata `json:"metadata"`
 }
 
 // APINetworkInfo contains basic network information
@@ -84,14 +106,49 @@ type APIQueueStats struct {
 	ExitEstimatedTimeToProcess    uint64 `json:"exit_estimated_time"`
 }
 
+// APINetworkOverviewMetadata contains metadata for interpreting the overview values
+type APINetworkOverviewMetadata struct {
+	SlotsPerEpoch uint64 `json:"slots_per_epoch"`
+}
+
+// APINetworkParticipation contains provenance-aware participation data
+type APINetworkParticipation struct {
+	Rate          *float64 `json:"rate"`
+	Source        string   `json:"source"`
+	Complete      bool     `json:"complete"`
+	IndexedSlots  uint64   `json:"indexed_slots"`
+	ExpectedSlots uint64   `json:"expected_slots"`
+	Warning       string   `json:"warning,omitempty"`
+}
+
+// APINetworkRawAggregates contains raw aggregate values from the epoch vote index
+type APINetworkRawAggregates struct {
+	GlobalParticipationRate float64 `json:"globalparticipationrate"`
+	VoteParticipation       float64 `json:"vote_participation"`
+	AttestationsIndexed     uint64  `json:"attestations_indexed"`
+	IndexedSlots            uint64  `json:"indexed_slots"`
+	ExpectedSlots           uint64  `json:"expected_slots"`
+	Source                  string  `json:"source"`
+	Complete                bool    `json:"complete"`
+}
+
+type networkOverviewRawAggregate struct {
+	GlobalParticipationRate float64
+	VoteParticipation       float64
+	AttestationsIndexed     uint64
+	IndexedSlots            uint64
+	ExpectedSlots           uint64
+	Complete                bool
+}
+
 // APINetworkOverviewV1 returns comprehensive network state overview
 // @Summary Get network overview
-// @Description Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, and fork information
+// @Description Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, fork information and a health snapshot with finality status, validator counts and provenance-aware participation data
 // @Tags network
 // @Accept json
 // @Produce json
 // @Success 200 {object} APINetworkOverviewResponse
-// @Failure 500 {object} map[string]string "Internal server error"
+// @Failure 500 {object} ApiResponse "Server Error"
 // @Router /v1/network/overview [get]
 // @ID getNetworkOverview
 func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +165,7 @@ func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
 
 	if pageErr != nil {
 		logrus.WithError(pageErr).Error("failed to process network overview page")
-		http.Error(w, `{"status": "ERROR: failed to process network overview"}`, http.StatusInternalServerError)
+		sendServerErrorResponse(w, r.URL.String(), "failed to process network overview")
 		return
 	}
 
@@ -119,7 +176,7 @@ func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pageData == nil {
-		http.Error(w, `{"status": "ERROR: failed to build network overview"}`, http.StatusInternalServerError)
+		sendServerErrorResponse(w, r.URL.String(), "failed to build network overview")
 		return
 	}
 
@@ -130,7 +187,7 @@ func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		logrus.WithError(err).Error("failed to encode network overview response")
-		http.Error(w, `{"status": "ERROR: failed to encode response"}`, http.StatusInternalServerError)
+		sendServerErrorResponse(w, r.URL.String(), "failed to encode response")
 		return
 	}
 }
@@ -269,16 +326,138 @@ func buildNetworkOverviewData(ctx context.Context) (*APINetworkOverviewData, tim
 	// Fork information (reuse from network forks API)
 	forks := buildNetworkForks(chainState)
 
+	// Health snapshot based on the indexer's canonical head (may lag behind wall clock)
+	headSlot := currentSlot
+	if canonicalHead := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil); canonicalHead != nil {
+		headSlot = canonicalHead.Slot
+	}
+	headEpoch := chainState.EpochOfSlot(headSlot)
+
+	warnings := []string{}
+	epochsSinceFinality := uint64(0)
+	if headEpoch >= finalizedEpoch {
+		epochsSinceFinality = uint64(headEpoch - finalizedEpoch)
+	} else {
+		warnings = append(warnings, fmt.Sprintf("finalized_epoch %d is ahead of current_epoch %d", finalizedEpoch, headEpoch))
+	}
+	finalizing := epochsSinceFinality <= networkOverviewFinalizingThreshold
+
+	activeCount, pendingCount, exitedCount, totalCount := summarizeValidatorStatuses(services.GlobalBeaconService.GetValidatorStatusMap())
+
+	// Participation from the epoch vote index, with provenance & completeness info
+	var participation *APINetworkParticipation
+	var rawAggregates *APINetworkRawAggregates
+	if dbEpochs := services.GlobalBeaconService.GetDbEpochs(ctx, uint64(headEpoch), 1); len(dbEpochs) > 0 {
+		if rawAggregate := buildNetworkOverviewRawAggregate(dbEpochs[0], specs.SlotsPerEpoch); rawAggregate != nil {
+			rawAggregates = &APINetworkRawAggregates{
+				GlobalParticipationRate: rawAggregate.GlobalParticipationRate,
+				VoteParticipation:       rawAggregate.VoteParticipation,
+				AttestationsIndexed:     rawAggregate.AttestationsIndexed,
+				IndexedSlots:            rawAggregate.IndexedSlots,
+				ExpectedSlots:           rawAggregate.ExpectedSlots,
+				Source:                  networkOverviewRawAggregateSource,
+				Complete:                rawAggregate.Complete,
+			}
+
+			var participationWarning string
+			participation, participationWarning = buildNetworkOverviewParticipation(rawAggregate, finalizing, epochsSinceFinality)
+			if participationWarning != "" {
+				warnings = append(warnings, participationWarning)
+			}
+		}
+	}
+
 	data := &APINetworkOverviewData{
-		NetworkInfo:    networkInfo,
-		CurrentState:   currentState,
-		Checkpoints:    checkpoints,
-		ValidatorStats: validatorStats,
-		QueueStats:     queueStats,
-		Forks:          forks,
-		IsSynced:       isSynced,
+		NetworkInfo:           networkInfo,
+		CurrentState:          currentState,
+		Checkpoints:           checkpoints,
+		ValidatorStats:        validatorStats,
+		QueueStats:            queueStats,
+		Forks:                 forks,
+		IsSynced:              isSynced,
+		CurrentSlot:           uint64(headSlot),
+		CurrentEpoch:          uint64(headEpoch),
+		FinalizedEpoch:        uint64(finalizedEpoch),
+		EpochsSinceFinality:   epochsSinceFinality,
+		Finalizing:            finalizing,
+		ActiveValidatorCount:  activeCount,
+		TotalValidatorCount:   totalCount,
+		PendingValidatorCount: pendingCount,
+		ExitedValidatorCount:  exitedCount,
+		DataQualityWarnings:   warnings,
+		Participation:         participation,
+		RawAggregates:         rawAggregates,
+		Metadata: APINetworkOverviewMetadata{
+			SlotsPerEpoch: specs.SlotsPerEpoch,
+		},
 	}
 
 	cacheTimeout := time.Duration(specs.SlotDurationMs) * time.Millisecond
 	return data, cacheTimeout
+}
+
+func summarizeValidatorStatuses(statuses map[v1.ValidatorState]uint64) (active uint64, pending uint64, exited uint64, total uint64) {
+	for status, count := range statuses {
+		total += count
+
+		switch status {
+		case v1.ValidatorStatePendingInitialized, v1.ValidatorStatePendingQueued:
+			pending += count
+		case v1.ValidatorStateActiveOngoing, v1.ValidatorStateActiveExiting, v1.ValidatorStateActiveSlashed:
+			active += count
+		case v1.ValidatorStateExitedUnslashed, v1.ValidatorStateExitedSlashed, v1.ValidatorStateWithdrawalPossible, v1.ValidatorStateWithdrawalDone:
+			exited += count
+		}
+	}
+
+	return active, pending, exited, total
+}
+
+// buildNetworkOverviewParticipation derives the participation info from the raw vote aggregate.
+// The rate is only exposed when the aggregate is complete and doesn't contradict the finality state;
+// otherwise a warning explaining the omission is returned alongside.
+func buildNetworkOverviewParticipation(raw *networkOverviewRawAggregate, finalizing bool, epochsSinceFinality uint64) (*APINetworkParticipation, string) {
+	var warning string
+	if finalizing && raw.GlobalParticipationRate < networkOverviewParticipationQuorum {
+		warning = fmt.Sprintf(
+			"vote participation aggregate reports %.1f%% while finalized_epoch is only %d epochs behind current_epoch; aggregate is likely incomplete",
+			raw.GlobalParticipationRate,
+			epochsSinceFinality,
+		)
+	}
+
+	participation := &APINetworkParticipation{
+		Source:        networkOverviewParticipationSource,
+		Complete:      raw.Complete && warning == "",
+		IndexedSlots:  raw.IndexedSlots,
+		ExpectedSlots: raw.ExpectedSlots,
+	}
+
+	if participation.Complete {
+		rate := raw.GlobalParticipationRate
+		participation.Rate = &rate
+	} else if warning != "" {
+		participation.Warning = warning
+	} else {
+		participation.Warning = networkOverviewParticipationWarnText
+	}
+
+	return participation, warning
+}
+
+func buildNetworkOverviewRawAggregate(dbEpoch *dbtypes.Epoch, slotsPerEpoch uint64) *networkOverviewRawAggregate {
+	if dbEpoch == nil || dbEpoch.Eligible == 0 || slotsPerEpoch == 0 {
+		return nil
+	}
+
+	indexedSlots := uint64(dbEpoch.BlockCount)
+
+	return &networkOverviewRawAggregate{
+		GlobalParticipationRate: float64(dbEpoch.VotedTarget) * 100 / float64(dbEpoch.Eligible),
+		VoteParticipation:       float64(dbEpoch.VotedTotal) * 100 / float64(dbEpoch.Eligible),
+		AttestationsIndexed:     dbEpoch.AttestationCount,
+		IndexedSlots:            indexedSlots,
+		ExpectedSlots:           slotsPerEpoch,
+		Complete:                indexedSlots >= slotsPerEpoch,
+	}
 }
