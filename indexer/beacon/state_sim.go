@@ -36,9 +36,17 @@ type stateSimulatorBlock struct {
 	payloadIncluded bool
 }
 
+// parentPayloadRef identifies the payload block a block's bid builds on - the settle
+// target of the spec's process_parent_execution_payload at this block.
+type parentPayloadRef struct {
+	slot phase0.Slot
+	root phase0.Root
+}
+
 type stateSimulatorState struct {
 	epochRoot                 phase0.Root
 	block                     *Block
+	blockPayloadApplied       bool // applyPayload flag the last applied block was processed with
 	pendingWithdrawals        []electra.PendingPartialWithdrawal
 	builderPendingWithdrawals []trackedBuilderWithdrawal
 	additionalWithdrawals     []phase0.ValidatorIndex
@@ -211,22 +219,24 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 // resolveParentDirectEntry constructs a trackedBuilderWithdrawal for the parent of `block`
 // if the parent had a delivered (canonical, non-orphaned) payload — i.e., the conditions
 // under which the spec's process_parent_execution_payload would settle the parent's payment
-// into BuilderPendingWithdrawals. Returns nil if the parent is unknown, has no payload, was
-// orphaned, or wasn't built by a registered builder.
-func (sim *stateSimulator) resolveParentDirectEntry(block *Block) *trackedBuilderWithdrawal {
+// into BuilderPendingWithdrawals. The entry is nil if the parent is unknown, has no payload,
+// was orphaned, wasn't built by a registered builder or bid zero. The returned ref identifies
+// the resolved payload block (the settle target) even when no entry is created, or nil if it
+// couldn't be resolved.
+func (sim *stateSimulator) resolveParentDirectEntry(block *Block) (*trackedBuilderWithdrawal, *parentPayloadRef) {
 	parentRoot := block.GetParentRoot()
 	if parentRoot == nil {
-		return nil
+		return nil, nil
 	}
 
 	blockIndex := block.GetBlockIndex(sim.indexer.ctx)
 	if blockIndex == nil {
-		return nil
+		return nil, nil
 	}
 
 	blockParentPayload := blockIndex.ExecutionParentHash
 	if bytes.Equal(blockParentPayload[:], zeroHash[:]) {
-		return nil
+		return nil, nil
 	}
 
 	// Cache lookup
@@ -240,19 +250,26 @@ func (sim *stateSimulator) resolveParentDirectEntry(block *Block) *trackedBuilde
 		}
 
 		if parentPayloadBlock != nil {
+			ref := &parentPayloadRef{
+				slot: parentPayloadBlock.Slot,
+				root: parentPayloadBlock.Root,
+			}
+
 			blockIndex := parentPayloadBlock.GetBlockIndex(sim.indexer.ctx)
-			if blockIndex == nil || blockIndex.BuilderIndex == math.MaxUint64 {
-				return nil
+			if blockIndex == nil || blockIndex.BuilderIndex == math.MaxUint64 || blockIndex.BidValue == 0 {
+				// settle_builder_payment only appends an entry when the bid value is > 0
+				return nil, ref
 			}
 
 			uid := parentPayloadBlock.BlockUID
 			return &trackedBuilderWithdrawal{
 				BuilderPendingWithdrawal: gloas.BuilderPendingWithdrawal{
 					BuilderIndex: gloas.BuilderIndex(blockIndex.BuilderIndex),
+					Amount:       phase0.Gwei(blockIndex.BidValue),
 				},
 				Type:        dbtypes.WithdrawalTypeBuilderPayment,
 				RefBlockUID: &uid,
-			}
+			}, ref
 		}
 	}
 
@@ -264,7 +281,7 @@ func (sim *stateSimulator) resolveParentDirectEntry(block *Block) *trackedBuilde
 		// determinate correct block by parent hash links (small hop count)
 		parentRoot := block.GetParentRoot()
 		if parentRoot == nil {
-			return nil
+			return nil, nil
 		}
 
 		minSlot := parentSlots[0].Slot
@@ -275,7 +292,7 @@ func (sim *stateSimulator) resolveParentDirectEntry(block *Block) *trackedBuilde
 			}
 		}
 
-		slots := db.GetSlotsRange(sim.indexer.ctx, uint64(minSlot), uint64(maxSlot), false, true)
+		slots := db.GetSlotsRange(sim.indexer.ctx, uint64(maxSlot), uint64(minSlot), false, true)
 		slotsMap := make(map[phase0.Root]*dbtypes.Slot)
 		for _, slot := range slots {
 			slotsMap[phase0.Root(slot.Block.Root)] = slot.Block
@@ -295,20 +312,47 @@ func (sim *stateSimulator) resolveParentDirectEntry(block *Block) *trackedBuilde
 	}
 
 	if parentPayloadSlot == nil {
-		return nil
+		return nil, nil
 	}
-	if parentPayloadSlot.BuilderIndex < 0 {
-		return nil
+
+	ref := &parentPayloadRef{
+		slot: phase0.Slot(parentPayloadSlot.Slot),
+		root: phase0.Root(parentPayloadSlot.Root),
+	}
+
+	if parentPayloadSlot.BuilderIndex < 0 || parentPayloadSlot.EthBidValue == 0 {
+		// settle_builder_payment only appends an entry when the bid value is > 0
+		return nil, ref
 	}
 
 	uid := parentPayloadSlot.BlockUid
 	return &trackedBuilderWithdrawal{
 		BuilderPendingWithdrawal: gloas.BuilderPendingWithdrawal{
 			BuilderIndex: gloas.BuilderIndex(parentPayloadSlot.BuilderIndex),
+			Amount:       phase0.Gwei(parentPayloadSlot.EthBidValue),
 		},
 		Type:        dbtypes.WithdrawalTypeBuilderPayment,
 		RefBlockUID: &uid,
+	}, ref
+}
+
+// isPreEpochSettle returns true when the resolved settle target lies before the epoch's
+// dependent block. In that case the spec's gated process_withdrawals for this payload
+// chain link ran at a block in a previous epoch, and its settle, drain and partial sweep
+// are already reflected in the epoch state.
+func (sim *stateSimulator) isPreEpochSettle(parentRef *parentPayloadRef) bool {
+	if parentRef == nil {
+		return false
 	}
+
+	chainState := sim.indexer.consensusPool.GetChainState()
+	if parentRef.slot >= chainState.EpochToSlot(sim.epochStats.epoch) {
+		return false
+	}
+
+	dependentRoot := sim.epochStats.GetDependentRoot()
+
+	return !bytes.Equal(parentRef.root[:], dependentRoot[:])
 }
 
 // resolveInitialDirectRefs populates RefBlockUID for the first directCount entries
@@ -322,7 +366,11 @@ func (sim *stateSimulator) resolveInitialDirectRefs(state *stateSimulatorState, 
 	}
 
 	prevEpoch := sim.epochStats.epoch - 1
-	blockUIDsWithCanonicalPayload := []uint64{}
+	type settledPayment struct {
+		blockUID uint64
+		amount   phase0.Gwei
+	}
+	settledPayments := []settledPayment{}
 	dependentRoot := sim.epochStats.GetDependentRoot()
 	curPayloadHash := sim.epochStatsValues.DependentExecutionHash
 
@@ -335,7 +383,14 @@ func (sim *stateSimulator) resolveInitialDirectRefs(state *stateSimulatorState, 
 				break
 			}
 			if bytes.Equal(curBlockIndex.ExecutionHash[:], curPayloadHash[:]) {
-				blockUIDsWithCanonicalPayload = append(blockUIDsWithCanonicalPayload, curBlock.BlockUID)
+				// zero-value bids (incl. self-builds) are part of the payload chain,
+				// but settle_builder_payment never queued a payment for them
+				if curBlockIndex.BuilderIndex != math.MaxUint64 && curBlockIndex.BidValue > 0 {
+					settledPayments = append(settledPayments, settledPayment{
+						blockUID: curBlock.BlockUID,
+						amount:   phase0.Gwei(curBlockIndex.BidValue),
+					})
+				}
 				curPayloadHash = curBlockIndex.ExecutionParentHash
 			}
 
@@ -360,16 +415,28 @@ func (sim *stateSimulator) resolveInitialDirectRefs(state *stateSimulatorState, 
 
 		for curSlot := dbSlotsMap[dependentRoot]; curSlot != nil; curSlot = dbSlotsMap[phase0.Root(curSlot.ParentRoot)] {
 			if bytes.Equal(curSlot.EthBlockHash[:], curPayloadHash[:]) {
-				blockUIDsWithCanonicalPayload = append(blockUIDsWithCanonicalPayload, curSlot.BlockUid)
+				if curSlot.BuilderIndex >= 0 && curSlot.EthBidValue > 0 {
+					settledPayments = append(settledPayments, settledPayment{
+						blockUID: curSlot.BlockUid,
+						amount:   phase0.Gwei(curSlot.EthBidValue),
+					})
+				}
 				curPayloadHash = phase0.Hash32(curSlot.EthBlockParentHash)
 			}
 		}
 	}
 
-	// match the first directCount withdrawals with blocksWithCanonicalPayload, starting at the end, leaving unknown items at the beginning
-	for i := 0; i < len(blockUIDsWithCanonicalPayload) && i < directCount; i++ {
-		uid := blockUIDsWithCanonicalPayload[i]
+	// match the first directCount withdrawals with the settled payments, starting at the end,
+	// leaving unknown items at the beginning
+	for i := 0; i < len(settledPayments) && i < directCount; i++ {
+		uid := settledPayments[i].blockUID
 		pendingIndex := directCount - i - 1
+
+		if state.builderPendingWithdrawals[pendingIndex].Amount != settledPayments[i].amount {
+			// alignment broken (e.g. bid value missing for pre-migration db rows) -
+			// stop matching, remaining entries stay unknown
+			break
+		}
 
 		state.builderPendingWithdrawals[pendingIndex].RefBlockUID = &uid
 		state.builderPendingWithdrawals[pendingIndex].Type = dbtypes.WithdrawalTypeBuilderPayment // direct payment
@@ -416,7 +483,11 @@ func (sim *stateSimulator) resolveDelayedPaymentBlocks() map[phase0.Slot]uint64 
 		}
 	}
 
-	sourceEpoch := prevEpoch - 2
+	// Delayed payments processed at the transition into epoch E originate from epoch E-2:
+	// written to the second half of builder_pending_payments during E-2, shifted to the
+	// first half at the E-1 boundary, processed by process_builder_pending_payments at
+	// the E boundary. The refs are slot offsets relative to E-2's first slot.
+	sourceEpoch := sim.epochStats.epoch - 2
 	sourceOffset := chainState.EpochToSlot(sourceEpoch)
 
 	if sourceEpoch >= prunedEpoch {
@@ -691,42 +762,49 @@ func (sim *stateSimulator) applyBlock(block *Block, applyPayload bool) [][]uint8
 
 	if applyPayload {
 		// resolve parent direct payment
-		if entry := sim.resolveParentDirectEntry(block); entry != nil {
-			sim.prevState.builderPendingWithdrawals = append(sim.prevState.builderPendingWithdrawals, *entry)
-		}
-
-		// process_withdrawals drains the builder withdrawal queue (up to MAX_WITHDRAWALS_PER_PAYLOAD-1 per spec).
-		if uint64(len(sim.prevState.builderPendingWithdrawals)) > chainSpec.MaxWithdrawalsPerPayload-1 {
-			sim.prevState.builderPendingWithdrawals = sim.prevState.builderPendingWithdrawals[chainSpec.MaxWithdrawalsPerPayload-1:]
-		} else if len(sim.prevState.builderPendingWithdrawals) > 0 {
-			sim.prevState.builderPendingWithdrawals = sim.prevState.builderPendingWithdrawals[:0]
-		}
-
-		// process pending partial withdrawals
-		processedWithdrawals := uint64(0)
-		skippedWithdrawals := uint64(0)
-		for _, pendingWithdrawal := range sim.prevState.pendingWithdrawals {
-			if pendingWithdrawal.WithdrawableEpoch > sim.epochStats.epoch {
-				break
+		// When the settle target lies before the dependent block, the gated
+		// process_withdrawals ran at a block in a previous epoch - its settle, drain and
+		// partial sweep are already reflected in the epoch state and the spec
+		// early-returns at this block (empty parent), so skip all withdrawal processing.
+		entry, parentRef := sim.resolveParentDirectEntry(block)
+		if !sim.isPreEpochSettle(parentRef) {
+			if entry != nil {
+				sim.prevState.builderPendingWithdrawals = append(sim.prevState.builderPendingWithdrawals, *entry)
 			}
 
-			srcValidator := sim.getValidator(pendingWithdrawal.ValidatorIndex)
-			if srcValidator == nil {
-				return nil
+			// process_withdrawals drains the builder withdrawal queue (up to MAX_WITHDRAWALS_PER_PAYLOAD-1 per spec).
+			if uint64(len(sim.prevState.builderPendingWithdrawals)) > chainSpec.MaxWithdrawalsPerPayload-1 {
+				sim.prevState.builderPendingWithdrawals = sim.prevState.builderPendingWithdrawals[chainSpec.MaxWithdrawalsPerPayload-1:]
+			} else if len(sim.prevState.builderPendingWithdrawals) > 0 {
+				sim.prevState.builderPendingWithdrawals = sim.prevState.builderPendingWithdrawals[:0]
 			}
 
-			if srcValidator.ExitEpoch != FarFutureEpoch || srcValidator.EffectiveBalance < phase0.Gwei(chainSpec.MinActivationBalance) {
-				skippedWithdrawals++
-				continue
-			}
+			// process pending partial withdrawals
+			processedWithdrawals := uint64(0)
+			skippedWithdrawals := uint64(0)
+			for _, pendingWithdrawal := range sim.prevState.pendingWithdrawals {
+				if pendingWithdrawal.WithdrawableEpoch > sim.epochStats.epoch {
+					break
+				}
 
-			processedWithdrawals++
-			if processedWithdrawals >= chainSpec.MaxPendingPartialsPerWithdrawalsSweep {
-				break
+				srcValidator := sim.getValidator(pendingWithdrawal.ValidatorIndex)
+				if srcValidator == nil {
+					return nil
+				}
+
+				if srcValidator.ExitEpoch != FarFutureEpoch || srcValidator.EffectiveBalance < phase0.Gwei(chainSpec.MinActivationBalance) {
+					skippedWithdrawals++
+					continue
+				}
+
+				processedWithdrawals++
+				if processedWithdrawals >= chainSpec.MaxPendingPartialsPerWithdrawalsSweep {
+					break
+				}
 			}
-		}
-		if processedWithdrawals+skippedWithdrawals > 0 {
-			sim.prevState.pendingWithdrawals = sim.prevState.pendingWithdrawals[processedWithdrawals+skippedWithdrawals:]
+			if processedWithdrawals+skippedWithdrawals > 0 {
+				sim.prevState.pendingWithdrawals = sim.prevState.pendingWithdrawals[processedWithdrawals+skippedWithdrawals:]
+			}
 		}
 	}
 
@@ -810,6 +888,7 @@ func (sim *stateSimulator) applyBlock(block *Block, applyPayload bool) [][]uint8
 	}
 
 	sim.prevState.block = block
+	sim.prevState.blockPayloadApplied = applyPayload
 
 	return results
 }
@@ -837,7 +916,11 @@ func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {
 		} else if sim.prevState.block.Slot < block.Slot {
 			for _, parentBlock := range parentBlocks {
 				if parentBlock.block.Slot == sim.prevState.block.Slot {
-					canReuseParentState = bytes.Equal(parentBlock.block.Root[:], sim.prevState.block.Root[:])
+					// Only reuse if the block was applied with the same payload-inclusion
+					// flag the current chain walk demands - the drained withdrawal queue
+					// and applied execution requests differ otherwise.
+					canReuseParentState = bytes.Equal(parentBlock.block.Root[:], sim.prevState.block.Root[:]) &&
+						parentBlock.payloadIncluded == sim.prevState.blockPayloadApplied
 					break
 				}
 			}
@@ -905,7 +988,20 @@ func (sim *stateSimulator) replayWithdrawalState(block *Block) *withdrawalSimRes
 	}
 
 	// apply parent block direct payment
-	if entry := sim.resolveParentDirectEntry(block); entry != nil {
+	entry, parentRef := sim.resolveParentDirectEntry(block)
+	carryOver := sim.isPreEpochSettle(parentRef)
+	if carryOver {
+		// The spec computed this block's payload withdrawals at a gated block in a
+		// previous epoch (process_withdrawals early-returns on empty parents and
+		// payload_expected_withdrawals carries over) - classify them with a simulator
+		// of that epoch at the gated block.
+		if carryOverResult := sim.replayCarryOverWithdrawalState(block, parentRef); carryOverResult != nil {
+			return carryOverResult
+		}
+		// gated epoch state unavailable - fall through with unknown classifications
+	}
+
+	if entry != nil {
 		sim.prevState.builderPendingWithdrawals = append(sim.prevState.builderPendingWithdrawals, *entry)
 	}
 
@@ -917,9 +1013,16 @@ func (sim *stateSimulator) replayWithdrawalState(block *Block) *withdrawalSimRes
 		builderPayments := sim.prevState.builderPendingWithdrawals[:builderCount]
 		result.BuilderPayments = make([]builderPaymentClassification, len(builderPayments))
 		for i, payment := range builderPayments {
-			result.BuilderPayments[i] = builderPaymentClassification{
-				Type:    payment.Type,
-				RefSlot: payment.RefBlockUID,
+			if carryOver {
+				// local queue doesn't reflect the actual withdrawal source state
+				result.BuilderPayments[i] = builderPaymentClassification{
+					Type: dbtypes.WithdrawalTypeBuilderUnknownPayment,
+				}
+			} else {
+				result.BuilderPayments[i] = builderPaymentClassification{
+					Type:    payment.Type,
+					RefSlot: payment.RefBlockUID,
+				}
 			}
 		}
 	}
@@ -943,4 +1046,47 @@ func (sim *stateSimulator) replayWithdrawalState(block *Block) *withdrawalSimRes
 	}
 
 	return result
+}
+
+// replayCarryOverWithdrawalState classifies the withdrawals of a block whose expected
+// withdrawals were computed at a gated block in a previous epoch. process_withdrawals
+// early-returns on empty parents and payload_expected_withdrawals carries over, so the
+// withdrawals in this block's payload equal those computed at the chain child of the
+// payload block it builds on. Returns nil if the gated block or its epoch state is
+// unavailable.
+func (sim *stateSimulator) replayCarryOverWithdrawalState(block *Block, parentRef *parentPayloadRef) *withdrawalSimResult {
+	// find the gated block: the chain child of the payload block this block builds on
+	var gatedBlock *Block
+	for curBlock := block; curBlock != nil; {
+		parentRoot := curBlock.GetParentRoot()
+		if parentRoot == nil {
+			return nil
+		}
+		if bytes.Equal(parentRoot[:], parentRef.root[:]) {
+			gatedBlock = curBlock
+			break
+		}
+		curBlock = sim.indexer.blockCache.getBlockByRoot(*parentRoot)
+	}
+	if gatedBlock == nil || bytes.Equal(gatedBlock.Root[:], block.Root[:]) {
+		return nil
+	}
+
+	chainState := sim.indexer.consensusPool.GetChainState()
+	gatedEpoch := chainState.EpochOfSlot(gatedBlock.Slot)
+	if gatedEpoch >= sim.epochStats.epoch {
+		return nil
+	}
+
+	gatedEpochStats := sim.indexer.epochCache.getEpochStatsByEpochAndRoot(gatedEpoch, gatedBlock.Root)
+	if gatedEpochStats == nil {
+		return nil
+	}
+
+	subSim := newStateSimulator(sim.indexer, gatedEpochStats)
+	if subSim == nil {
+		return nil
+	}
+
+	return subSim.replayWithdrawalState(gatedBlock)
 }

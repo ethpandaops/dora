@@ -236,6 +236,25 @@ func getBlockPayloadBuilderIndex(b *all.SignedBeaconBlock) (gloas.BuilderIndex, 
 	return bid.Message.BuilderIndex, nil
 }
 
+// getBlockPayloadBidValue returns the bid value from the in-block execution
+// payload bid. Only Gloas+ blocks carry one; self-builds always bid 0.
+func getBlockPayloadBidValue(b *all.SignedBeaconBlock) (phase0.Gwei, error) {
+	if b == nil || b.Message == nil || b.Message.Body == nil {
+		return 0, errors.New("nil block body")
+	}
+
+	if b.Version < spec.DataVersionGloas {
+		return 0, errors.New("no payload bid in pre-gloas block")
+	}
+
+	bid := b.Message.Body.SignedExecutionPayloadBid
+	if bid == nil || bid.Message == nil {
+		return 0, errors.New("no payload bid")
+	}
+
+	return bid.Message.Value, nil
+}
+
 // getBlockExecutionParentHash returns the parent block hash for the
 // execution payload referenced by this block. For Bellatrix..Electra blocks
 // the payload is in-block; for Gloas+ it is referenced via the payload bid.

@@ -338,12 +338,14 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	// Get builder index from block, default to -1 (self-built/MaxUint64)
 	var builderIndexInt64 int64 = -1
+	var bidValue uint64
 	if blockIndex := block.GetBlockIndex(dbw.indexer.ctx); blockIndex != nil {
 		if blockIndex.BuilderIndex == math.MaxUint64 {
 			builderIndexInt64 = -1
 		} else {
 			builderIndexInt64 = int64(blockIndex.BuilderIndex)
 		}
+		bidValue = blockIndex.BidValue
 	}
 
 	// Extract execution payload bid from Gloas/Heze blocks and add to bid cache.
@@ -373,6 +375,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		PayloadStatus:         payloadStatus,
 		BlockUid:              block.BlockUID,
 		BuilderIndex:          builderIndexInt64,
+		EthBidValue:           bidValue,
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)

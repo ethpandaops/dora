@@ -70,6 +70,7 @@ type Slot struct {
 	PayloadStatus         PayloadStatus `db:"payload_status"`
 	BlockUid              uint64        `db:"block_uid"`
 	BuilderIndex          int64         `db:"builder_index"` // Builder index, -1 for self-built blocks (MaxUint64)
+	EthBidValue           uint64        `db:"eth_bid_value"` // Bid value in Gwei (0 for self-builds and pre-gloas blocks)
 }
 
 type Epoch struct {
