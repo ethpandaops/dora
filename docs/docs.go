@@ -930,7 +930,7 @@ const docTemplate = `{
         },
         "/v1/network/overview": {
             "get": {
-                "description": "Returns the existing network overview data plus a safe health snapshot with current head slot, finality, validator counts, metadata, and provenance-aware aggregate data when available.",
+                "description": "Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, fork information and a health snapshot with finality status, validator counts and provenance-aware participation data",
                 "consumes": [
                     "application/json"
                 ],
