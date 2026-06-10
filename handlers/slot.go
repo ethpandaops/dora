@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -811,42 +810,41 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	// or from the separately-delivered envelope (Gloas+). Both share the same
 	// fork-specific fields exposed via the agnostic ExecutionPayload struct.
 	var executionPayload *all.ExecutionPayload
-	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil && blockData.Payload.Message != nil {
-		executionPayload = blockData.Payload.Message.Payload
-
-		// Determine payload status by checking if any canonical child
-		// builds on this block's execution payload.
-		pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusCanonical)
-		childSlots := services.GlobalBeaconService.GetDbBlocksByParentRoot(ctx, blockData.Root)
-		hasCanonicalChild := false
-		payloadIncluded := false
-
-		for _, child := range childSlots {
-			if child.Status != dbtypes.Canonical {
-				continue
-			}
-
-			hasCanonicalChild = true
-
-			if bytes.Equal(child.EthBlockParentHash, pageData.PayloadHeader.BlockHash) {
-				payloadIncluded = true
-
-				break
-			}
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		havePayload := blockData.Payload != nil && blockData.Payload.Message != nil
+		if havePayload {
+			executionPayload = blockData.Payload.Message.Payload
 		}
 
-		if hasCanonicalChild && !payloadIncluded {
+		// The payload is canonical if a canonical successor builds on top of it -
+		// i.e. some canonical slot has its execution parent hash set to this block's
+		// committed block hash. A single indexed, canonical-only lookup answers that.
+		payloadIncluded := false
+		if pageData.PayloadHeader != nil {
+			builtOn := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
+				EthBlockParentHash: pageData.PayloadHeader.BlockHash,
+				WithOrphaned:       0, // canonical successors only
+			}, 0, 1, 0)
+			payloadIncluded = len(builtOn) > 0
+		}
+
+		switch {
+		case payloadIncluded:
+			// A canonical successor builds on this payload.
+			pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusCanonical)
+
+			if !havePayload {
+				// It existed and is part of the chain, we just don't have the envelope.
+				pageData.PayloadDataUnavailable = true
+			}
+		case havePayload:
+			// We hold the payload but no canonical successor builds on it -> orphaned.
 			pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusOrphaned)
+		default:
+			// No payload and nothing builds on it -> missing (status stays 0).
 		}
 	} else {
 		executionPayload = body.ExecutionPayload
-	}
-
-	// Gloas+ block whose execution payload envelope couldn't be loaded from any
-	// client or the block db: mark the payload as unavailable (it may exist but we
-	// don't have it) rather than letting it render as a genuinely missing payload.
-	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload == nil {
-		pageData.PayloadDataUnavailable = true
 	}
 
 	if executionPayload != nil {

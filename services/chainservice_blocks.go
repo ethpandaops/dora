@@ -203,9 +203,18 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		if haveSlot {
 			completed, err := bs.completeBlockFromBlockDb(ctx, blockSlot, blockroot, header, result)
 			if err != nil {
-				return nil, err
+				if result == nil {
+					return nil, err
+				}
+				// We already have a usable block from cache/clients. A block db error
+				// while fetching a supplementary (and possibly genuinely missing)
+				// payload/BAL must not discard it - otherwise e.g. a Gloas block with a
+				// withheld payload would surface as "not found" rather than rendering
+				// with its payload marked missing/unavailable.
+				logrus.WithError(err).Debugf("could not complete block for root 0x%x from blockdb", blockroot)
+			} else {
+				result = completed
 			}
-			result = completed
 		}
 	}
 
@@ -359,12 +368,21 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			wasNil := result == nil
 			completed, err := bs.completeBlockFromBlockDb(ctx, slot, blockRoot, header, result)
 			if err != nil {
-				return nil, err
+				if wasNil {
+					return nil, err
+				}
+				// We already have a usable block from cache/clients. A block db error
+				// while fetching a supplementary (and possibly genuinely missing)
+				// payload/BAL must not discard it - otherwise e.g. a Gloas block with a
+				// withheld payload would surface as "not found" rather than rendering
+				// with its payload marked missing/unavailable.
+				logrus.WithError(err).Debugf("could not complete block for slot %v from blockdb", slot)
+			} else {
+				if wasNil && completed != nil {
+					completed.Orphaned = orphaned
+				}
+				result = completed
 			}
-			if wasNil && completed != nil {
-				completed.Orphaned = orphaned
-			}
-			result = completed
 		}
 	}
 
