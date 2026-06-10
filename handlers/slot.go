@@ -828,6 +828,18 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			payloadIncluded = len(builtOn) > 0
 		}
 
+		// Distinguish a genuinely orphaned payload from the chain tip: a canonical
+		// block at the head has no successor yet that could reference its payload.
+		hasCanonicalChild := false
+		if !payloadIncluded && !blockData.Orphaned {
+			for _, child := range services.GlobalBeaconService.GetDbBlocksByParentRoot(ctx, blockData.Root) {
+				if child.Status == dbtypes.Canonical {
+					hasCanonicalChild = true
+					break
+				}
+			}
+		}
+
 		switch {
 		case payloadIncluded:
 			// A canonical successor builds on this payload.
@@ -837,8 +849,13 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 				// It existed and is part of the chain, we just don't have the envelope.
 				pageData.PayloadDataUnavailable = true
 			}
+		case havePayload && !blockData.Orphaned && !hasCanonicalChild:
+			// Chain tip: no canonical successor exists yet - treat the payload as
+			// canonical (pending) instead of orphaned.
+			pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusCanonical)
 		case havePayload:
-			// We hold the payload but no canonical successor builds on it -> orphaned.
+			// We hold the payload but a canonical successor builds on something else
+			// (or the block itself is orphaned) -> orphaned.
 			pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusOrphaned)
 		default:
 			// No payload and nothing builds on it -> missing (status stays 0).

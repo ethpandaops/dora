@@ -526,8 +526,9 @@ func (bs *ChainService) GetBlobSidecarsByBlockRoot(ctx context.Context, blockroo
 
 // getPayloadStatus returns the payload status for a Gloas+ block, comparing
 // the committed BlockHash (from the bid) against the next canonical child's
-// bid.parent_block_hash. canonicalHead is the head as seen by the caller.
-func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Block, canonicalHead *beacon.Block) dbtypes.PayloadStatus {
+// bid.parent_block_hash. canonicalHead is the head as seen by the caller,
+// isCanonical indicates whether the block itself is canonical relative to it.
+func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Block, canonicalHead *beacon.Block, isCanonical bool) dbtypes.PayloadStatus {
 	chainState := bs.consensusPool.GetChainState()
 	if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 		return dbtypes.PayloadStatusCanonical
@@ -554,13 +555,19 @@ func (bs *ChainService) getPayloadStatus(ctx context.Context, block *beacon.Bloc
 		}
 	}
 
-	if hasCanonicalChild {
+	if !hasCanonicalChild && isCanonical {
+		// chain tip: no canonical successor exists yet that could reference the
+		// payload - treat a present payload as canonical (pending)
 		if block.HasExecutionPayload() {
-			return dbtypes.PayloadStatusOrphaned
+			return dbtypes.PayloadStatusCanonical
 		}
 		return dbtypes.PayloadStatusMissing
 	}
-	return dbtypes.PayloadStatusCanonical
+
+	if block.HasExecutionPayload() {
+		return dbtypes.PayloadStatusOrphaned
+	}
+	return dbtypes.PayloadStatusMissing
 }
 
 // GetDbBlocksForSlots retrieves blocks for a range of slots from cache & database.
@@ -633,7 +640,7 @@ func (bs *ChainService) GetDbBlocksForSlots(ctx context.Context, firstSlot uint6
 			blocks := bs.beaconIndexer.GetBlocksBySlot(slot)
 			for _, block := range blocks {
 				isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
-				payloadStatus := bs.getPayloadStatus(ctx, block, lastCanonicalBlock)
+				payloadStatus := bs.getPayloadStatus(ctx, block, lastCanonicalBlock, isCanonical)
 				if isCanonical {
 					lastCanonicalBlock = block
 				}
@@ -705,7 +712,7 @@ func (bs *ChainService) GetDbBlocksForSlots(ctx context.Context, firstSlot uint6
 				}
 
 				isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
-				payloadStatus := bs.getPayloadStatus(ctx, block, lastCanonicalBlock)
+				payloadStatus := bs.getPayloadStatus(ctx, block, lastCanonicalBlock, isCanonical)
 				if isCanonical {
 					lastCanonicalBlock = block
 				}
@@ -982,7 +989,7 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 			}
 
 			isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
-			payloadStatus := bs.getPayloadStatus(ctx, block, lastCanonicalBlock)
+			payloadStatus := bs.getPayloadStatus(ctx, block, lastCanonicalBlock, isCanonical)
 
 			if isCanonical {
 				lastCanonicalBlock = block
