@@ -341,6 +341,11 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 		if filter.WithdrawalCreds != nil && !bytes.Equal(validator.WithdrawalCredentials, filter.WithdrawalCreds) {
 			return nil
 		}
+		if len(filter.WithdrawalCredTypes) > 0 {
+			if len(validator.WithdrawalCredentials) == 0 || !slices.Contains(filter.WithdrawalCredTypes, validator.WithdrawalCredentials[0]) {
+				return nil
+			}
+		}
 		if filter.ValidatorName != "" {
 			vname := bs.validatorNames.GetValidatorName(uint64(index))
 			if !strings.Contains(vname, filter.ValidatorName) {

@@ -222,14 +222,15 @@ const (
 )
 
 type ValidatorFilter struct {
-	MinIndex          *uint64
-	MaxIndex          *uint64
-	Indices           []phase0.ValidatorIndex
-	PubKey            []byte
-	WithdrawalAddress []byte
-	WithdrawalCreds   []byte
-	ValidatorName     string
-	Status            []v1.ValidatorState
+	MinIndex            *uint64
+	MaxIndex            *uint64
+	Indices             []phase0.ValidatorIndex
+	PubKey              []byte
+	WithdrawalAddress   []byte
+	WithdrawalCreds     []byte
+	WithdrawalCredTypes []uint8
+	ValidatorName       string
+	Status              []v1.ValidatorState
 
 	OrderBy ValidatorOrder
 	Limit   uint64

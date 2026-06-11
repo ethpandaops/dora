@@ -840,6 +840,7 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) (bool, error) {
 			ActivationEpoch:            db.ConvertUint64ToInt64(uint64(entry.finalValidator.ActivationEpoch)),
 			ExitEpoch:                  db.ConvertUint64ToInt64(uint64(entry.finalValidator.ExitEpoch)),
 			WithdrawableEpoch:          db.ConvertUint64ToInt64(uint64(entry.finalValidator.WithdrawableEpoch)),
+			CredType:                   withdrawalCredType(entry.finalValidator.WithdrawalCredentials),
 		}
 
 		batch = append(batch, dbVal)
