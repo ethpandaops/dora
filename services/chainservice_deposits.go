@@ -402,6 +402,10 @@ type IndexedDepositQueue struct {
 }
 
 func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *beacon.Block) *IndexedDepositQueue {
+	if headBlock == nil {
+		return nil
+	}
+
 	forkId := headBlock.GetForkId()
 	queueBlockRoot, queueSlot, queueBalance, queue := bs.beaconIndexer.GetLatestDepositQueueByBlockRoot(headBlock.Root)
 

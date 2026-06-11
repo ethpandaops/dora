@@ -13,6 +13,18 @@ CREATE INDEX IF NOT EXISTS "deposits_cred_type_slot_number_idx"
     ON "deposits"
     ("cred_type" ASC, "slot_number" ASC);
 
+ALTER TABLE "validators"
+ADD "cred_type" INTEGER NOT NULL DEFAULT 0;
+
+UPDATE "validators"
+SET "cred_type" = (instr('123456789ABCDEF', substr(hex("withdrawal_credentials"), 1, 1)) * 16)
+    + instr('123456789ABCDEF', substr(hex("withdrawal_credentials"), 2, 1))
+WHERE length("withdrawal_credentials") > 0;
+
+CREATE INDEX IF NOT EXISTS "validators_cred_type_validator_index_idx"
+    ON "validators"
+    ("cred_type" ASC, "validator_index" ASC);
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin
