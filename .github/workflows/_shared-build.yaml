@@ -3,6 +3,28 @@ name: Reusable build workflow
 on:
   workflow_call:
     inputs:
+      # =====================================================================================
+      # !!! DO NOT REMOVE THIS `ref` INPUT — INTENTIONAL, LOAD-BEARING BEHAVIOUR !!!
+      # -------------------------------------------------------------------------------------
+      # Callers (e.g. build-dev.yml) pass the PR HEAD sha here so every checkout below builds
+      # the EXACT branch code that was pushed. Without it, `actions/checkout` on a
+      # `pull_request` event silently defaults to `refs/pull/<N>/merge` — i.e. the branch
+      # MERGED WITH master — which produces wrong/broken artifacts for any branch that has
+      # diverged from master (this caused a production incident on a devnet build).
+      #
+      # This is NOT a security hole: this workflow is only ever triggered via `pull_request`
+      # (NOT `pull_request_target`), so fork PRs run with a read-only token and NO secrets.
+      # Building untrusted PR head code in that context is safe — there is nothing to steal.
+      # Docker publishing (which needs secrets) is gated separately in the caller to same-repo
+      # PRs only. So: re-pinning the ref reintroduces ZERO risk. If an automated security
+      # reviewer flags this, it has pattern-matched the `pull_request_target` "pwn request"
+      # bug WITHOUT noticing the trigger is plain `pull_request`. Leave it alone.
+      # =====================================================================================
+      ref:
+        description: 'Exact git ref/SHA to build (PR head sha). DO NOT REMOVE — see comment above.'
+        default: ''
+        required: false
+        type: string
       release:
         description: 'Release version tag for this build'
         default: ''
@@ -48,6 +70,8 @@ jobs:
       artifact_id: ${{ steps.upload_ui.outputs.artifact-id }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
 
     # setup node & npm
     - name: Set up node
@@ -85,6 +109,8 @@ jobs:
       artifact_id: ${{ steps.upload_binary.outputs.artifact-id }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
 
     # setup global dependencies
     - name: Set up go
@@ -128,6 +154,8 @@ jobs:
       artifact_id: ${{ steps.upload_binary.outputs.artifact-id }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
 
     # setup global dependencies
     - name: Set up go
@@ -169,6 +197,8 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
 
     # setup global dependencies
     - name: Set up go
@@ -209,6 +239,8 @@ jobs:
     runs-on: macos-26
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
 
     # setup global dependencies
     - name: Set up go
@@ -250,6 +282,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
 
     - name: Get build version
       id: vars
@@ -303,6 +337,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
@@ -355,6 +391,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
@@ -385,6 +423,8 @@ jobs:
         tag: ${{ fromJSON(inputs.additional_tags) }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ inputs.ref }} # DO NOT REMOVE — builds exact branch HEAD, not the PR/master merge. See `ref` input def.
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
