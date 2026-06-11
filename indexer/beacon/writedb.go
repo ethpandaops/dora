@@ -634,6 +634,13 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 	return &dbEpoch
 }
 
+func withdrawalCredType(withdrawalCredentials []byte) uint8 {
+	if len(withdrawalCredentials) == 0 {
+		return 0
+	}
+	return withdrawalCredentials[0]
+}
+
 func (dbw *dbWriter) persistBlockDeposits(tx *sqlx.Tx, block *Block, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) error {
 	// insert deposits
 	dbDeposits := dbw.buildDbDeposits(block, depositIndex, orphaned, overrideForkId)
@@ -672,6 +679,7 @@ func (dbw *dbWriter) buildDbDeposits(block *Block, depositIndex *uint64, orphane
 			PublicKey:             deposit.Data.PublicKey[:],
 			WithdrawalCredentials: deposit.Data.WithdrawalCredentials,
 			Amount:                uint64(deposit.Data.Amount),
+			CredType:              withdrawalCredType(deposit.Data.WithdrawalCredentials),
 		}
 		if depositIndex != nil {
 			cDepIdx := *depositIndex
@@ -744,6 +752,7 @@ func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrid
 			PublicKey:             deposit.Pubkey[:],
 			WithdrawalCredentials: deposit.WithdrawalCredentials,
 			Amount:                uint64(deposit.Amount),
+			CredType:              withdrawalCredType(deposit.WithdrawalCredentials),
 		}
 		if overrideForkId != nil {
 			dbDeposit.ForkId = uint64(*overrideForkId)

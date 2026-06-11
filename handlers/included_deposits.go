@@ -53,6 +53,7 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 	var withOrphaned uint64
 	var address string
 	var withValid uint64
+	var credTypes []uint8
 
 	if urlArgs.Has("f") {
 		if urlArgs.Has("f.mini") {
@@ -82,6 +83,17 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.valid") {
 			withValid, _ = strconv.ParseUint(urlArgs.Get("f.valid"), 10, 64)
 		}
+		if vals, ok := urlArgs["f.cred"]; ok {
+			seen := map[uint8]bool{}
+			for _, v := range vals {
+				t, err := strconv.ParseUint(v, 10, 8)
+				if err != nil || t > 3 || seen[uint8(t)] {
+					continue
+				}
+				seen[uint8(t)] = true
+				credTypes = append(credTypes, uint8(t))
+			}
+		}
 	} else {
 		withOrphaned = 1
 		withValid = 1
@@ -89,7 +101,7 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredIncludedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, uint8(withOrphaned), address, uint8(withValid))
+		data.Data, pageError = getFilteredIncludedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, uint8(withOrphaned), address, uint8(withValid), credTypes)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -101,11 +113,11 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8) (*models.IncludedDepositsPageData, error) {
+func getFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8, credTypes []uint8) (*models.IncludedDepositsPageData, error) {
 	pageData := &models.IncludedDepositsPageData{}
-	pageCacheKey := fmt.Sprintf("included_deposits:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid)
+	pageCacheKey := fmt.Sprintf("included_deposits:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid, credTypes)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildFilteredIncludedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid)
+		pageData, cacheTimeout := buildFilteredIncludedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid, credTypes)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -119,7 +131,7 @@ func getFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minInd
 	return pageData, pageErr
 }
 
-func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8) (*models.IncludedDepositsPageData, time.Duration) {
+func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8, credTypes []uint8) (*models.IncludedDepositsPageData, time.Duration) {
 	filterArgs := url.Values{}
 	if minIndex != 0 {
 		filterArgs.Add("f.mini", fmt.Sprintf("%v", minIndex))
@@ -148,6 +160,11 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 	if withValid != 0 {
 		filterArgs.Add("f.valid", fmt.Sprintf("%v", withValid))
 	}
+	credTypeSet := make(map[uint8]bool, len(credTypes))
+	for _, t := range credTypes {
+		credTypeSet[t] = true
+		filterArgs.Add("f.cred", fmt.Sprintf("%v", t))
+	}
 
 	pageData := &models.IncludedDepositsPageData{
 		FilterMinIndex:      minIndex,
@@ -159,9 +176,10 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 		FilterWithOrphaned:  withOrphaned,
 		FilterAddress:       address,
 		FilterWithValid:     withValid,
+		FilterCredTypes:     credTypeSet,
 	}
 	cacheTimeout := 5 * time.Minute
-	logrus.Debugf("included_deposits page called: %v:%v [%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount)
+	logrus.Debugf("included_deposits page called: %v:%v [%v,%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, credTypes)
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
 	} else {
@@ -184,15 +202,16 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 	// Update to use new filter structure
 	depositFilter := &services.CombinedDepositRequestFilter{
 		Filter: &dbtypes.DepositTxFilter{
-			MinIndex:      minIndex,
-			MaxIndex:      maxIndex,
-			PublicKey:     common.FromHex(publickey),
-			ValidatorName: vname,
-			MinAmount:     minAmount,
-			MaxAmount:     maxAmount,
-			WithOrphaned:  withOrphaned,
-			Address:       common.FromHex(address),
-			WithValid:     withValid,
+			MinIndex:            minIndex,
+			MaxIndex:            maxIndex,
+			PublicKey:           common.FromHex(publickey),
+			ValidatorName:       vname,
+			MinAmount:           minAmount,
+			MaxAmount:           maxAmount,
+			WithOrphaned:        withOrphaned,
+			Address:             common.FromHex(address),
+			WithValid:           withValid,
+			WithdrawalCredTypes: credTypes,
 		},
 	}
 

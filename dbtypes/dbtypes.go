@@ -290,6 +290,7 @@ type Deposit struct {
 	WithdrawalCredentials []byte  `db:"withdrawalcredentials"`
 	Amount                uint64  `db:"amount"`
 	ForkId                uint64  `db:"fork_id"`
+	CredType              uint8   `db:"cred_type"`
 }
 
 type DepositWithTx struct {
@@ -446,6 +447,7 @@ type Validator struct {
 	ActivationEpoch            int64  `db:"activation_epoch"`
 	ExitEpoch                  int64  `db:"exit_epoch"`
 	WithdrawableEpoch          int64  `db:"withdrawable_epoch"`
+	CredType                   uint8  `db:"cred_type"`
 }
 
 // EL Explorer types

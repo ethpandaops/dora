@@ -121,9 +121,10 @@ func (bs *ChainService) GetDepositRequestsByFilter(ctx context.Context, filter *
 	}
 
 	txFilter := &dbtypes.DepositTxFilter{
-		Address:       filter.Filter.Address,
-		TargetAddress: filter.Filter.TargetAddress,
-		WithValid:     filter.Filter.WithValid,
+		Address:             filter.Filter.Address,
+		TargetAddress:       filter.Filter.TargetAddress,
+		WithValid:           filter.Filter.WithValid,
+		WithdrawalCredTypes: filter.Filter.WithdrawalCredTypes,
 	}
 
 	dbOperations, totalReqResults := bs.GetDepositOperationsByFilter(ctx, operationFilter, txFilter, pageOffset, pageSize)
@@ -316,6 +317,13 @@ func (bs *ChainService) GetDepositOperationsByFilter(ctx context.Context, filter
 				}
 			}
 
+			if len(txFilter.WithdrawalCredTypes) > 0 {
+				wdcreds := depositWithTx.WithdrawalCredentials
+				if len(wdcreds) == 0 || !slices.Contains(txFilter.WithdrawalCredTypes, wdcreds[0]) {
+					continue
+				}
+			}
+
 			filteredMatches = append(filteredMatches, depositWithTx)
 		}
 
@@ -394,6 +402,10 @@ type IndexedDepositQueue struct {
 }
 
 func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *beacon.Block) *IndexedDepositQueue {
+	if headBlock == nil {
+		return nil
+	}
+
 	forkId := headBlock.GetForkId()
 	queueBlockRoot, queueSlot, queueBalance, queue := bs.beaconIndexer.GetLatestDepositQueueByBlockRoot(headBlock.Root)
 

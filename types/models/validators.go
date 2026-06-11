@@ -11,6 +11,7 @@ type ValidatorsPageData struct {
 	FilterName       string                           `json:"filter_name"`
 	FilterStatus     string                           `json:"filter_status"`
 	FilterWithdrawal string                           `json:"filter_withdrawal"`
+	FilterCredTypes  map[uint8]bool                   `json:"filter_cred_types"`
 	FilterStatusOpts []ValidatorsPageDataStatusOption `json:"filter_status_opts"`
 
 	Validators       []*ValidatorsPageDataValidator `json:"validators"`
