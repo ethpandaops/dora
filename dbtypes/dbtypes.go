@@ -290,6 +290,7 @@ type Deposit struct {
 	WithdrawalCredentials []byte  `db:"withdrawalcredentials"`
 	Amount                uint64  `db:"amount"`
 	ForkId                uint64  `db:"fork_id"`
+	CredType              uint8   `db:"cred_type"`
 }
 
 type DepositWithTx struct {

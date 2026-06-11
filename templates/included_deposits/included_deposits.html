@@ -116,23 +116,13 @@
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <nobr>Credential Type</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex flex-wrap gap-3 cred-type-filter">
-                    <div class="form-check form-check-inline">
-                      <input class="form-check-input" type="checkbox" name="f.cred" id="credType0" value="0" {{ if index .FilterCredTypes 0 }}checked{{ end }}>
-                      <label class="form-check-label text-monospace text-warning" for="credType0">0x00</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                      <input class="form-check-input" type="checkbox" name="f.cred" id="credType1" value="1" {{ if index .FilterCredTypes 1 }}checked{{ end }}>
-                      <label class="form-check-label text-monospace text-success" for="credType1">0x01</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                      <input class="form-check-input" type="checkbox" name="f.cred" id="credType2" value="2" {{ if index .FilterCredTypes 2 }}checked{{ end }}>
-                      <label class="form-check-label text-monospace text-info" for="credType2">0x02</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                      <input class="form-check-input" type="checkbox" name="f.cred" id="credType3" value="3" {{ if index .FilterCredTypes 3 }}checked{{ end }}>
-                      <label class="form-check-label text-monospace text-primary" for="credType3">0x03</label>
-                    </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <select name="f.cred" multiple="multiple" class="filter-multiselect">
+                      <option value="0" {{ if index .FilterCredTypes 0 }}selected{{ end }}>0x00 (BLS)</option>
+                      <option value="1" {{ if index .FilterCredTypes 1 }}selected{{ end }}>0x01 (Execution)</option>
+                      <option value="2" {{ if index .FilterCredTypes 2 }}selected{{ end }}>0x02 (Compounding)</option>
+                      <option value="3" {{ if index .FilterCredTypes 3 }}selected{{ end }}>0x03 (Builder)</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -432,9 +422,19 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script src="/js/bootstrap-multiselect.js"></script>
 <script>
   $(document).ready(function() {
     var lastPopover = null;
+
+    $('#depositsFilterForm .filter-multiselect').each(function() {
+      $(this).multiselect({
+        onInitialized: function() {
+          this.$button.attr("data-bs-toggle", "dropdown");
+          this.$container.addClass("filter-multiselect-container");
+        }
+      });
+    });
 
     $('.tx-details-btn').click(function() {
       var txdetails = $(this).data('txdetails');
@@ -516,7 +516,26 @@
 </script>
 {{ end }}
 {{ define "css" }}
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
 <style>
+.filter-multiselect-container {
+  width: 100%;
+}
+.filter-multiselect-container.btn-group>.btn {
+  text-align: left;
+}
+.filter-multiselect-container .multiselect-container {
+  width: 100%;
+}
+.filter-multiselect-container .multiselect-container>li>a>label {
+  padding: 4px 8px;
+  width: 100%;
+  white-space: nowrap;
+}
+.filter-multiselect-container .multiselect-container>li>a>label>input {
+  margin: 0 4px;
+}
+
 .tx-details-label {
   min-width: 90px;
 }

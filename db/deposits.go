@@ -17,11 +17,11 @@ func InsertDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.Deposi
 			dbtypes.DBEnginePgsql:  "INSERT INTO deposits ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO deposits ",
 		}),
-		"(deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id)",
+		"(deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id, cred_type)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 9
+	fieldCount := 10
 
 	args := make([]any, len(deposits)*fieldCount)
 	for i, deposit := range deposits {
@@ -47,6 +47,7 @@ func InsertDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.Deposi
 		args[argIdx+6] = deposit.WithdrawalCredentials[:]
 		args[argIdx+7] = deposit.Amount
 		args[argIdx+8] = deposit.ForkId
+		args[argIdx+9] = deposit.CredType
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -140,15 +141,15 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 		}
 
 		if len(txFilter.WithdrawalCredTypes) > 0 {
-			fmt.Fprintf(&sql, " %v (", filterOp)
+			fmt.Fprintf(&sql, " %v deposits.cred_type IN (", filterOp)
 			for i, credType := range txFilter.WithdrawalCredTypes {
 				if i > 0 {
-					fmt.Fprintf(&sql, " OR ")
+					fmt.Fprintf(&sql, ", ")
 				}
-				args = append(args, []byte{credType})
-				fmt.Fprintf(&sql, " SUBSTRING(deposits.withdrawalcredentials, 1, 1) = $%v", len(args))
+				args = append(args, uint16(credType))
+				fmt.Fprintf(&sql, "$%v", len(args))
 			}
-			fmt.Fprintf(&sql, " )")
+			fmt.Fprintf(&sql, ")")
 			filterOp = "AND"
 		}
 
