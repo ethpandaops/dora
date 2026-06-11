@@ -292,6 +292,23 @@ definitions:
       syncnets:
         type: string
     type: object
+  api.APIDasGuardianProposerPreference:
+    properties:
+      dependent_root:
+        type: string
+      fee_recipient:
+        type: string
+      from:
+        type: string
+      gas_limit:
+        type: integer
+      proposal_slot:
+        type: integer
+      received_at:
+        type: string
+      validator_index:
+        type: integer
+    type: object
   api.APIDasGuardianScanRequest:
     properties:
       enr:
@@ -307,6 +324,13 @@ definitions:
         items:
           type: integer
         type: array
+      wait_for_proposer_preferences_seconds:
+        description: |-
+          WaitForProposerPreferencesSeconds, if > 0, keeps the Gloas
+          `proposer_preferences` gossip subscription open for this many seconds
+          after the RPC exchange so the gossip mesh has time to deliver messages.
+          Capped at 60s server-side. Ignored on pre-Gloas forks.
+        type: integer
     type: object
   api.APIDasGuardianScanResponse:
     properties:
@@ -327,6 +351,13 @@ definitions:
         additionalProperties: true
         description: P2P Information
         type: object
+      proposer_preferences:
+        description: |-
+          Gloas SignedProposerPreferences sniffed off the peer's gossip during
+          the scan window. Empty pre-Gloas, or when no proposer published in time.
+        items:
+          $ref: '#/definitions/api.APIDasGuardianProposerPreference'
+        type: array
       remote_metadata:
         allOf:
         - $ref: '#/definitions/api.APIDasGuardianMetadata'

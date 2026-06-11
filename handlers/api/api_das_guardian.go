@@ -22,6 +22,11 @@ type APIDasGuardianScanRequest struct {
 	Slots       []uint64 `json:"slots,omitempty"`        // Optional slot numbers to scan
 	RandomMode  string   `json:"random_mode,omitempty"`  // Random slot selection mode: "non_missed", "with_blobs", "available"
 	RandomCount int32    `json:"random_count,omitempty"` // Number of random slots to select (default: 4)
+	// WaitForProposerPreferencesSeconds, if > 0, keeps the Gloas
+	// `proposer_preferences` gossip subscription open for this many seconds
+	// after the RPC exchange so the gossip mesh has time to deliver messages.
+	// Capped at 60s server-side. Ignored on pre-Gloas forks.
+	WaitForProposerPreferencesSeconds int32 `json:"wait_for_proposer_preferences_seconds,omitempty"`
 }
 
 // APIDasGuardianScanResponse represents the response from DAS Guardian scan
@@ -42,8 +47,24 @@ type APIDasGuardianScanResult struct {
 	// Metadata (from RemoteMetadata)
 	RemoteMetadata *APIDasGuardianMetadata `json:"remote_metadata,omitempty"`
 
+	// Gloas SignedProposerPreferences sniffed off the peer's gossip during
+	// the scan window. Empty pre-Gloas, or when no proposer published in time.
+	ProposerPreferences []*APIDasGuardianProposerPreference `json:"proposer_preferences,omitempty"`
+
 	// DAS Evaluation Result
 	EvalResult *APIDasGuardianEvalResult `json:"eval_result,omitempty"`
+}
+
+// APIDasGuardianProposerPreference is one SignedProposerPreferences gossip
+// message observed during the scan, attributed to the peer that delivered it.
+type APIDasGuardianProposerPreference struct {
+	ValidatorIndex uint64 `json:"validator_index"`
+	ProposalSlot   uint64 `json:"proposal_slot"`
+	FeeRecipient   string `json:"fee_recipient"`
+	GasLimit       uint64 `json:"gas_limit"`
+	DependentRoot  string `json:"dependent_root"`
+	ReceivedAt     string `json:"received_at"`
+	From           string `json:"from"`
 }
 
 // APIDasGuardianStatus represents the beacon node status
@@ -110,11 +131,31 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Honour an optional wait window so the Gloas proposer_preferences
+	// gossip subscription has time to deliver messages. Cap at 60s so a
+	// caller can't tie up a worker indefinitely.
+	waitSeconds := req.WaitForProposerPreferencesSeconds
+	if waitSeconds < 0 {
+		waitSeconds = 0
+	}
+	if waitSeconds > 60 {
+		waitSeconds = 60
+	}
+	scanTimeout := 30 * time.Second
+	if extra := time.Duration(waitSeconds) * time.Second; extra > 0 {
+		scanTimeout = 30*time.Second + extra
+	}
+
 	// Create temporary DAS Guardian instance
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), scanTimeout)
 	defer cancel()
 
-	dasGuardian, err := services.NewDasGuardian(ctx, logrus.WithField("component", "das-guardian-api"))
+	guardianOpts := make([]services.DasGuardianOption, 0, 1)
+	if waitSeconds > 0 {
+		guardianOpts = append(guardianOpts, services.WithProposerPreferencesWait(time.Duration(waitSeconds)*time.Second))
+	}
+
+	dasGuardian, err := services.NewDasGuardian(ctx, logrus.WithField("component", "das-guardian-api"), guardianOpts...)
 	if err != nil {
 		logrus.WithError(err).Error("failed to create DAS Guardian instance")
 		http.Error(w, `{"error": "failed to initialize DAS Guardian"}`, http.StatusInternalServerError)
@@ -197,6 +238,28 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 				Syncnets:          fmt.Sprintf("0x%x", scanResult.RemoteMetadataV3.Syncnets),
 				CustodyGroupCount: uint64(scanResult.RemoteMetadataV3.CustodyGroupCount),
 			}
+		}
+
+		// Map any Gloas SignedProposerPreferences messages that were observed
+		// off the wire during the scan window.
+		if len(scanResult.ProposerPreferences) > 0 {
+			prefs := make([]*APIDasGuardianProposerPreference, 0, len(scanResult.ProposerPreferences))
+			for _, obs := range scanResult.ProposerPreferences {
+				if obs == nil || obs.Message == nil || obs.Message.Message == nil {
+					continue
+				}
+				msg := obs.Message.Message
+				prefs = append(prefs, &APIDasGuardianProposerPreference{
+					ValidatorIndex: uint64(msg.ValidatorIndex),
+					ProposalSlot:   uint64(msg.ProposalSlot),
+					FeeRecipient:   fmt.Sprintf("0x%x", msg.FeeRecipient),
+					GasLimit:       msg.GasLimit,
+					DependentRoot:  fmt.Sprintf("0x%x", msg.DependentRoot),
+					ReceivedAt:     obs.ReceivedAt.Format(time.RFC3339),
+					From:           obs.From.String(),
+				})
+			}
+			result.ProposerPreferences = prefs
 		}
 
 		// Map evaluation result (always present since it's not a pointer)
