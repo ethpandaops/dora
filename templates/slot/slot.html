@@ -38,7 +38,7 @@
         <a class="nav-link active" id="overview-tab" data-bs-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">Overview</a>
       </li>
       {{ if .Block }}
-        {{ if gt .Block.TransactionsCount 0 }}
+        {{ if or (gt .Block.TransactionsCount 0) (and .Block.ExecutionData .Block.ExecutionData.BlockAccessList) }}
           <li class="nav-item">
             <a class="nav-link" id="transactions-tab" data-bs-toggle="tab" href="#transactions" role="tab" aria-controls="transactions" aria-selected="false">Transactions <span class="badge bg-secondary text-white">{{ .Block.TransactionsCount }}</span></a>
           </li>
@@ -51,69 +51,49 @@
         <li class="nav-item">
           <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
         </li>
-        {{ if gt .Block.PtcVotesCount 0 }}
+        {{ if or (gt .Block.DepositsCount 0) (gt .Block.DepositRequestsCount 0) }}
           <li class="nav-item">
-            <a class="nav-link" id="ptcVotes-tab" data-bs-toggle="tab" href="#ptcVotes" role="tab" aria-controls="ptcVotes" aria-selected="false">PTC Votes <span class="badge bg-secondary text-white">{{ .Block.PtcVotesCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.DepositsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="deposits-tab" data-bs-toggle="tab" href="#deposits" role="tab" aria-controls="deposits" aria-selected="false">Deposits <span class="badge bg-secondary text-white">{{ .Block.DepositsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.VoluntaryExitsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="voluntary-exits-tab" data-bs-toggle="tab" href="#voluntary-exits" role="tab" aria-controls="voluntary-exits" aria-selected="false">Voluntary Exits <span class="badge bg-secondary text-white">{{ .Block.VoluntaryExitsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.AttesterSlashingsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="attester-slashings-tab" data-bs-toggle="tab" href="#attester-slashings" role="tab" aria-controls="attester-slashings" aria-selected="false">Attester Slashings <span class="badge bg-secondary text-white">{{ .Block.AttesterSlashingsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.ProposerSlashingsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="proposer-slashings-tab" data-bs-toggle="tab" href="#proposer-slashings" role="tab" aria-controls="proposer-slashings" aria-selected="false">Proposer Slashings <span class="badge bg-secondary text-white">{{ .Block.ProposerSlashingsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.WithdrawalsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="withdrawals-tab" data-bs-toggle="tab" href="#withdrawals" role="tab" aria-controls="withdrawal" aria-selected="false">Withdrawals <span class="badge bg-secondary text-white">{{ .Block.WithdrawalsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.BLSChangesCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="blsChange-tab" data-bs-toggle="tab" href="#blsChange" role="tab" aria-controls="blsChange" aria-selected="false">BLS Change <span class="badge bg-secondary text-white">{{ .Block.BLSChangesCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.BlobsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="blobSidecars-tab" data-bs-toggle="tab" href="#blobSidecars" role="tab" aria-controls="blobSidecars" aria-selected="false">Blob Sidecars <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.DepositRequestsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="depositRequests-tab" data-bs-toggle="tab" href="#depositRequests" role="tab" aria-controls="depositRequests" aria-selected="false">Deposit Requests <span class="badge bg-secondary text-white">{{ .Block.DepositRequestsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.WithdrawalRequestsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="withdrawalRequests-tab" data-bs-toggle="tab" href="#withdrawalRequests" role="tab" aria-controls="withdrawalRequests" aria-selected="false">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></a>
+            <a class="nav-link" id="deposits-tab" data-bs-toggle="tab" href="#deposits" role="tab" aria-controls="deposits" aria-selected="false">Deposits <span class="badge bg-secondary text-white">{{ addUI64 .Block.DepositsCount .Block.DepositRequestsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.ConsolidationRequestsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
+            <a class="nav-link" id="consolidations-tab" data-bs-toggle="tab" href="#consolidations" role="tab" aria-controls="consolidations" aria-selected="false">Consolidations <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
           </li>
         {{ end }}
-        {{ if and .Block.ExecutionData .Block.ExecutionData.BlockAccessList }}
+        {{ if gt .Block.VoluntaryExitsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="accessList-tab" data-bs-toggle="tab" href="#accessList" role="tab" aria-controls="accessList" aria-selected="false">Access List <span class="badge bg-secondary text-white">{{ len .Block.ExecutionData.BlockAccessList }}</span></a>
+            <a class="nav-link" id="exits-tab" data-bs-toggle="tab" href="#exits" role="tab" aria-controls="exits" aria-selected="false">Exits <span class="badge bg-secondary text-white">{{ .Block.VoluntaryExitsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if or (gt .Block.WithdrawalsCount 0) (gt .Block.WithdrawalRequestsCount 0) }}
+          <li class="nav-item">
+            <a class="nav-link" id="withdrawals-tab" data-bs-toggle="tab" href="#withdrawals" role="tab" aria-controls="withdrawals" aria-selected="false">Withdrawals <span class="badge bg-secondary text-white">{{ addUI64 .Block.WithdrawalsCount .Block.WithdrawalRequestsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if or (gt .Block.AttesterSlashingsCount 0) (gt .Block.ProposerSlashingsCount 0) }}
+          <li class="nav-item">
+            <a class="nav-link" id="slashings-tab" data-bs-toggle="tab" href="#slashings" role="tab" aria-controls="slashings" aria-selected="false">Slashings <span class="badge bg-secondary text-white">{{ addUI64 .Block.AttesterSlashingsCount .Block.ProposerSlashingsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.PtcVotesCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="ptc-tab" data-bs-toggle="tab" href="#ptc" role="tab" aria-controls="ptc" aria-selected="false">PTC Votes <span class="badge bg-secondary text-white">{{ .Block.PtcVotesCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.BLSChangesCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="bls-tab" data-bs-toggle="tab" href="#bls" role="tab" aria-controls="bls" aria-selected="false">BLS Changes <span class="badge bg-secondary text-white">{{ .Block.BLSChangesCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.BlobsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="blobs-tab" data-bs-toggle="tab" href="#blobs" role="tab" aria-controls="blobs" aria-selected="false">Blobs <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.InclusionListsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="inclusionLists-tab" data-bs-toggle="tab" href="#inclusionLists" role="tab" aria-controls="inclusionLists" aria-selected="false">Inclusion Lists <span class="badge bg-secondary text-white">{{ .Block.InclusionListsCount }}</span></a>
+            <a class="nav-link" id="focils-tab" data-bs-toggle="tab" href="#focils" role="tab" aria-controls="focils" aria-selected="false">FOCILs <span class="badge bg-secondary text-white">{{ .Block.InclusionListsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.ExecutionProofsCount 0 }}
@@ -123,7 +103,7 @@
         {{ end }}
         {{ if .Block }}
           <li class="nav-item ms-auto">
-            <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Download">
+            <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false" data-bs-placement="bottom" title="Download">
               <i class="fas fa-download"></i>
             </a>
           </li>
@@ -138,19 +118,75 @@
         </div>
       </div>
       {{ if .Block }}
-        {{ if gt .Block.TransactionsCount 0 }}
-          <div class="tab-pane fade show active" id="transactions" role="tabpanel" aria-labelledby="transactions-tab">
+        {{ if or (gt .Block.TransactionsCount 0) (and .Block.ExecutionData .Block.ExecutionData.BlockAccessList) }}
+          {{ $hasBal := and .Block.ExecutionData .Block.ExecutionData.BlockAccessList }}
+          {{ $hasTxs := gt .Block.TransactionsCount 0 }}
+          <div class="tab-pane fade" id="transactions" role="tabpanel" aria-labelledby="transactions-tab">
+            {{ if and $hasTxs $hasBal }}
+              <ul class="nav nav-pills mb-3" role="tablist">
+                <li class="nav-item">
+                  <a class="nav-link active" id="transactions-list-tab" data-bs-toggle="pill" href="#transactions-list" role="tab" aria-controls="transactions-list" aria-selected="true">Transactions <span class="badge bg-secondary text-white">{{ .Block.TransactionsCount }}</span></a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" id="bals-list-tab" data-bs-toggle="pill" href="#bals-list" role="tab" aria-controls="bals-list" aria-selected="false">Access List <span class="badge bg-secondary text-white">{{ len .Block.ExecutionData.BlockAccessList }}</span></a>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="transactions-list" role="tabpanel" aria-labelledby="transactions-list-tab">
+                  <div class="card block-card">
+                    <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                      <div class="row p-1 mx-0">
+                        <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.TransactionsCount }} Transactions</b></h3>
+                      </div>
+                    </div>
+                    {{ template "block_transactions" . }}
+                  </div>
+                </div>
+                <div class="tab-pane fade" id="bals-list" role="tabpanel" aria-labelledby="bals-list-tab">
+                  <div class="card block-card">
+                    <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                      <div class="row p-1 mx-0">
+                        <h3 class="h5 col-md-12 text-center"><b>Block Access List (EIP-7928)</b></h3>
+                      </div>
+                    </div>
+                    {{ template "block_access_list" . }}
+                  </div>
+                </div>
+              </div>
+            {{ else if $hasTxs }}
+              <div class="card block-card">
+                <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                  <div class="row p-1 mx-0">
+                    <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.TransactionsCount }} Transactions</b></h3>
+                  </div>
+                </div>
+                {{ template "block_transactions" . }}
+              </div>
+            {{ else if $hasBal }}
+              <div class="card block-card">
+                <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                  <div class="row p-1 mx-0">
+                    <h3 class="h5 col-md-12 text-center"><b>Block Access List (EIP-7928)</b></h3>
+                  </div>
+                </div>
+                {{ template "block_access_list" . }}
+              </div>
+            {{ end }}
+          </div>
+        {{ end }}
+        {{ if gt .Block.BidsCount 0 }}
+          <div class="tab-pane fade" id="bids" role="tabpanel" aria-labelledby="bids-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.TransactionsCount }} Transactions </b></h3>
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BidsCount }} Execution Payload Bids</b></h3>
                 </div>
               </div>
-              {{ template "block_transactions" . }}
+              {{ template "block_bids" . }}
             </div>
           </div>
         {{ end }}
-        <div class="tab-pane fade show active" id="attestations" role="tabpanel" aria-labelledby="attestations-tab">
+        <div class="tab-pane fade" id="attestations" role="tabpanel" aria-labelledby="attestations-tab">
           <div class="card block-card">
             <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
               <div class="row p-1 mx-0">
@@ -163,152 +199,104 @@
           </div>
           {{ template "block_attestations" . }}
         </div>
-        {{ if gt .Block.DepositsCount 0 }}
-          <div class="tab-pane fade show active" id="deposits" role="tabpanel" aria-labelledby="deposits-tab">
+        {{ if or (gt .Block.DepositsCount 0) (gt .Block.DepositRequestsCount 0) }}
+          <div class="tab-pane fade" id="deposits" role="tabpanel" aria-labelledby="deposits-tab">
+            {{ if gt .Block.DepositRequestsCount 0 }}
+              <div class="card block-card">
+                <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                  <div class="row p-1 mx-0">
+                    <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositRequestsCount }} Deposit Requests</b></h3>
+                  </div>
+                </div>
+                {{ template "block_deposit_requests" . }}
+              </div>
+            {{ end }}
+            {{ if gt .Block.DepositsCount 0 }}
+              <div class="card block-card{{ if gt .Block.DepositRequestsCount 0 }} mt-3{{ end }}">
+                <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                  <div class="row p-1 mx-0">
+                    <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositsCount }} Legacy Deposits</b></h3>
+                  </div>
+                </div>
+                {{ template "block_deposits" . }}
+              </div>
+            {{ end }}
+          </div>
+        {{ end }}
+        {{ if gt .Block.ConsolidationRequestsCount 0 }}
+          <div class="tab-pane fade" id="consolidations" role="tabpanel" aria-labelledby="consolidations-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositsCount }} Deposits </b></h3>
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ConsolidationRequestsCount }} Consolidation Requests</b></h3>
                 </div>
               </div>
-              {{ template "block_deposits" . }}
+              {{ template "block_consolidation_requests" . }}
             </div>
           </div>
         {{ end }}
         {{ if gt .Block.VoluntaryExitsCount 0 }}
-          <div class="tab-pane fade show active" id="voluntary-exits" role="tabpanel" aria-labelledby="voluntary-exits-tab">
+          <div class="tab-pane fade" id="exits" role="tabpanel" aria-labelledby="exits-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.VoluntaryExitsCount }} Exits </b></h3>
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.VoluntaryExitsCount }} Voluntary Exits</b></h3>
                 </div>
               </div>
               {{ template "block_voluntary_exits" . }}
             </div>
           </div>
         {{ end }}
-        {{ if gt .Block.AttesterSlashingsCount 0 }}
-          <div class="tab-pane fade show active" id="attester-slashings" role="tabpanel" aria-labelledby="attester-slashings-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.AttesterSlashingsCount }} Attester Slashing(s) </b></h3>
+        {{ if or (gt .Block.WithdrawalsCount 0) (gt .Block.WithdrawalRequestsCount 0) }}
+          <div class="tab-pane fade" id="withdrawals" role="tabpanel" aria-labelledby="withdrawals-tab">
+            {{ if gt .Block.WithdrawalRequestsCount 0 }}
+              <div class="card block-card">
+                <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                  <div class="row p-1 mx-0">
+                    <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.WithdrawalRequestsCount }} Withdrawal Requests</b></h3>
+                  </div>
                 </div>
+                {{ template "block_withdrawal_requests" . }}
               </div>
-            </div>
-            {{ template "block_attesterSlashing" . }}
+            {{ end }}
+            {{ if gt .Block.WithdrawalsCount 0 }}
+              <div class="card block-card{{ if gt .Block.WithdrawalRequestsCount 0 }} mt-3{{ end }}">
+                <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                  <div class="row p-1 mx-0">
+                    <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.WithdrawalsCount }} Executed Withdrawals</b></h3>
+                  </div>
+                </div>
+                {{ template "block_withdrawals" . }}
+              </div>
+            {{ end }}
           </div>
         {{ end }}
-        {{ if gt .Block.ProposerSlashingsCount 0 }}
-          <div class="tab-pane fade show active" id="proposer-slashings" role="tabpanel" aria-labelledby="proposer-slashings-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ProposerSlashingsCount }} Proposer Slashing(s) </b></h3>
+        {{ if or (gt .Block.AttesterSlashingsCount 0) (gt .Block.ProposerSlashingsCount 0) }}
+          <div class="tab-pane fade" id="slashings" role="tabpanel" aria-labelledby="slashings-tab">
+            {{ if gt .Block.AttesterSlashingsCount 0 }}
+              <div class="card block-card">
+                <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                  <div class="row p-1 mx-0">
+                    <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.AttesterSlashingsCount }} Attester Slashing(s)</b></h3>
+                  </div>
                 </div>
               </div>
-            </div>
-            {{ template "block_proposerSlashing" . }}
-          </div>
-        {{ end }}
-        {{ if gt .Block.WithdrawalsCount 0 }}
-          <div class="tab-pane fade show active" id="withdrawals" role="tabpanel" aria-labelledby="withdrawals-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.WithdrawalsCount }} Withdrawals </b></h3>
+              {{ template "block_attesterSlashing" . }}
+            {{ end }}
+            {{ if gt .Block.ProposerSlashingsCount 0 }}
+              <div class="card block-card{{ if gt .Block.AttesterSlashingsCount 0 }} mt-3{{ end }}">
+                <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                  <div class="row p-1 mx-0">
+                    <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ProposerSlashingsCount }} Proposer Slashing(s)</b></h3>
+                  </div>
                 </div>
               </div>
-              {{ template "block_withdrawals" . }}
-            </div>
-          </div>
-        {{ end }}
-        {{ if gt .Block.BLSChangesCount 0 }}
-          <div class="tab-pane fade show active" id="blsChange" role="tabpanel" aria-labelledby="blsChange-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BLSChangesCount }} BLS changes </b></h3>
-                </div>
-              </div>
-              {{ template "block_blsChange" . }}
-            </div>
-          </div>
-        {{ end }}
-        {{ if gt .Block.BlobsCount 0 }}
-          <div class="tab-pane fade show active" id="blobSidecars" role="tabpanel" aria-labelledby="blobSidecars-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BlobsCount }} Blob sidecars </b></h3>
-                </div>
-              </div>
-            </div>
-            {{ template "block_blobSidecar" . }}
-          </div>
-        {{ end }}
-        {{ if gt .Block.DepositRequestsCount 0 }}
-          <div class="tab-pane fade show active" id="depositRequests" role="tabpanel" aria-labelledby="depositRequests-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositRequestsCount }} Deposit Requests</b></h3>
-                </div>
-              </div>
-            </div>
-            {{ template "block_deposit_requests" . }}
-          </div>
-        {{ end }}
-        {{ if gt .Block.WithdrawalRequestsCount 0 }}
-          <div class="tab-pane fade show active" id="withdrawalRequests" role="tabpanel" aria-labelledby="withdrawalRequests-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.WithdrawalRequestsCount }} Withdrawal Requests</b></h3>
-                </div>
-              </div>
-            </div>
-            {{ template "block_withdrawal_requests" . }}
-          </div>
-        {{ end }}
-        {{ if gt .Block.ConsolidationRequestsCount 0 }}
-          <div class="tab-pane fade show active" id="consolidationRequests" role="tabpanel" aria-labelledby="consolidationRequests-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ConsolidationRequestsCount }} Consolidation Requests </b></h3>
-                </div>
-              </div>
-            </div>
-            {{ template "block_consolidation_requests" . }}
-          </div>
-        {{ end }}
-        {{ if and .Block.ExecutionData .Block.ExecutionData.BlockAccessList }}
-          <div class="tab-pane fade" id="accessList" role="tabpanel" aria-labelledby="accessList-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Block Access List (EIP-7928)</b></h3>
-                </div>
-              </div>
-              {{ template "block_access_list" . }}
-            </div>
-          </div>
-        {{ end }}
-        {{ if gt .Block.BidsCount 0 }}
-          <div class="tab-pane fade show active" id="bids" role="tabpanel" aria-labelledby="bids-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BidsCount }} Execution Payload Bids</b></h3>
-                </div>
-              </div>
-              {{ template "block_bids" . }}
-            </div>
+              {{ template "block_proposerSlashing" . }}
+            {{ end }}
           </div>
         {{ end }}
         {{ if gt .Block.PtcVotesCount 0 }}
-          <div class="tab-pane fade show active" id="ptcVotes" role="tabpanel" aria-labelledby="ptcVotes-tab">
+          <div class="tab-pane fade" id="ptc" role="tabpanel" aria-labelledby="ptc-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -319,8 +307,32 @@
             </div>
           </div>
         {{ end }}
+        {{ if gt .Block.BLSChangesCount 0 }}
+          <div class="tab-pane fade" id="bls" role="tabpanel" aria-labelledby="bls-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BLSChangesCount }} BLS Changes</b></h3>
+                </div>
+              </div>
+              {{ template "block_blsChange" . }}
+            </div>
+          </div>
+        {{ end }}
+        {{ if gt .Block.BlobsCount 0 }}
+          <div class="tab-pane fade" id="blobs" role="tabpanel" aria-labelledby="blobs-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BlobsCount }} Blob Sidecars</b></h3>
+                </div>
+              </div>
+            </div>
+            {{ template "block_blobSidecar" . }}
+          </div>
+        {{ end }}
         {{ if gt .Block.InclusionListsCount 0 }}
-          <div class="tab-pane fade show active" id="inclusionLists" role="tabpanel" aria-labelledby="inclusionLists-tab">
+          <div class="tab-pane fade" id="focils" role="tabpanel" aria-labelledby="focils-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -332,7 +344,7 @@
           </div>
         {{ end }}
         {{ if gt .Block.ExecutionProofsCount 0 }}
-          <div class="tab-pane fade show active" id="proofs" role="tabpanel" aria-labelledby="proofs-tab">
+          <div class="tab-pane fade" id="proofs" role="tabpanel" aria-labelledby="proofs-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -439,15 +451,6 @@
       {{ end }}
     </div>
     <script type="text/javascript">
-      Array.prototype.forEach.call(document.getElementById("tabContent").children, function(paneEl, paneIdx) {
-        if(!paneEl.classList.contains("tab-pane")) {
-          return;
-        }
-        if(paneIdx > 0) {
-          paneEl.classList.remove("active");
-          paneEl.classList.remove("show");
-        }
-      });
       $(function() {
         function activateTabByHash() {
           if (!location.hash) return;
@@ -500,8 +503,7 @@
           loadTracoorData();
         });
 
-        // Also load if URL hash is #download on page load
-        if (location.hash === '#download') {
+        if (window.location.hash === '#download') {
           loadTracoorData();
           tracoorLoaded = true;
         }
