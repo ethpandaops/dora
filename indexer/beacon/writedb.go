@@ -108,7 +108,7 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 	}
 
 	// Apply payload orphaned status from block flag (set during finalization/sync)
-	if block.isPayloadOrphaned {
+	if block.isPayloadOrphaned && dbBlock.PayloadStatus == dbtypes.PayloadStatusCanonical {
 		dbBlock.PayloadStatus = dbtypes.PayloadStatusOrphaned
 	}
 
@@ -338,12 +338,14 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	// Get builder index from block, default to -1 (self-built/MaxUint64)
 	var builderIndexInt64 int64 = -1
+	var bidValue uint64
 	if blockIndex := block.GetBlockIndex(dbw.indexer.ctx); blockIndex != nil {
 		if blockIndex.BuilderIndex == math.MaxUint64 {
 			builderIndexInt64 = -1
 		} else {
 			builderIndexInt64 = int64(blockIndex.BuilderIndex)
 		}
+		bidValue = blockIndex.BidValue
 	}
 
 	// Extract execution payload bid from Gloas/Heze blocks and add to bid cache.
@@ -373,6 +375,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		PayloadStatus:         payloadStatus,
 		BlockUid:              block.BlockUID,
 		BuilderIndex:          builderIndexInt64,
+		EthBidValue:           bidValue,
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)
@@ -907,7 +910,7 @@ func (dbw *dbWriter) classifyWithdrawalType(idx int, simResult *withdrawalSimRes
 	isBuilder := uint64(validatorIndex)&BuilderIndexFlag != 0
 
 	// First N withdrawals are builder payments — type and ref slot from sim
-	if idx < simResult.BuilderPaymentCount {
+	if uint64(idx) < simResult.BuilderPaymentCount {
 		if idx < len(simResult.BuilderPayments) {
 			bp := simResult.BuilderPayments[idx]
 			return bp.Type, bp.RefSlot
@@ -916,7 +919,7 @@ func (dbw *dbWriter) classifyWithdrawalType(idx int, simResult *withdrawalSimRes
 	}
 
 	// Next M withdrawals are from pending partial withdrawals (EIP-7002 requested)
-	if idx < simResult.BuilderPaymentCount+simResult.PartialCount {
+	if uint64(idx) < simResult.BuilderPaymentCount+uint64(simResult.PartialCount) {
 		return dbtypes.WithdrawalTypeRequestedWithdrawal, nil
 	}
 

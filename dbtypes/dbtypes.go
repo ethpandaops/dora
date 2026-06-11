@@ -70,6 +70,7 @@ type Slot struct {
 	PayloadStatus         PayloadStatus `db:"payload_status"`
 	BlockUid              uint64        `db:"block_uid"`
 	BuilderIndex          int64         `db:"builder_index"` // Builder index, -1 for self-built blocks (MaxUint64)
+	EthBidValue           uint64        `db:"eth_bid_value"` // Bid value in Gwei (0 for self-builds and pre-gloas blocks)
 }
 
 type Epoch struct {
@@ -599,6 +600,7 @@ const (
 	WithdrawalTypeBuilderFullWithdrawal = 4 // Builder sweep (full balance withdrawal)
 	WithdrawalTypeBuilderPayment        = 5 // Builder direct payment (payload delivered)
 	WithdrawalTypeBuilderDelayedPayment = 6 // Builder delayed/quorum payment (missed payload)
+	WithdrawalTypeBuilderUnknownPayment = 7 // Builder unknown payment (dora tracking is not accurate under terrible network conditions)
 )
 
 type Withdrawal struct {

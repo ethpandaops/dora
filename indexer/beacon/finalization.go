@@ -354,9 +354,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			}
 
 			// Check if next block builds on this block's committed payload
-			if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
-				block.isPayloadOrphaned = true
-			}
+			block.isPayloadOrphaned = !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:])
 		}
 	}
 
@@ -449,9 +447,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				if nextBlock != nil {
 					nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
 					if nextBlockIndex != nil {
-						if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
-							block.isPayloadOrphaned = true
-						}
+						block.isPayloadOrphaned = !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:])
 					}
 				}
 			}

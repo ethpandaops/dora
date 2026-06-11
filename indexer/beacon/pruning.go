@@ -189,9 +189,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 				if nextBlock != nil {
 					nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
 					if nextBlockIndex != nil {
-						if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
-							block.isPayloadOrphaned = true
-						}
+						block.isPayloadOrphaned = !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:])
 					}
 				}
 			}

@@ -70,6 +70,7 @@ type BlockBodyIndex struct {
 	EthTransactionCount uint64
 	BlobCount           uint64
 	BuilderIndex        uint64
+	BidValue            uint64 // bid value in Gwei (0 for self-builds and pre-gloas blocks)
 	GasUsed             uint64
 	GasLimit            uint64
 	BlockSize           uint64
@@ -440,6 +441,10 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 		blockIndex.BuilderIndex = uint64(builderIndex)
 	} else {
 		blockIndex.BuilderIndex = math.MaxUint64
+	}
+
+	if bidValue, err := getBlockPayloadBidValue(body); err == nil {
+		blockIndex.BidValue = uint64(bidValue)
 	}
 
 	if parentHash, err := getBlockExecutionParentHash(body); err == nil {
