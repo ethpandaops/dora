@@ -91,9 +91,7 @@ func TestGetValidatorName_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Goroutine 1: Continuous Reads
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -102,12 +100,10 @@ func TestGetValidatorName_Concurrency(t *testing.T) {
 				_ = vn.GetValidatorName(123)
 			}
 		}
-	}()
+	})
 
 	// Goroutine 2: Continuous Loader-like Map Reset/Updates
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -119,12 +115,10 @@ func TestGetValidatorName_Concurrency(t *testing.T) {
 				vn.namesMutex.Unlock()
 			}
 		}
-	}()
+	})
 
 	// Goroutine 3: Continuous Resolver-like Map Writes
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -137,18 +131,10 @@ func TestGetValidatorName_Concurrency(t *testing.T) {
 				vn.namesMutex.Unlock()
 			}
 		}
-	}()
+	})
 
 	// Run for a short duration
-	closeChan := make(chan struct{})
-	go func() {
-		select {
-		case <-time.After(100 * time.Millisecond):
-			close(stop)
-			close(closeChan)
-		}
-	}()
-
-	<-closeChan
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
 	wg.Wait()
 }
