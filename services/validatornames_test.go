@@ -81,7 +81,7 @@ func TestGetValidatorName_Concurrency(t *testing.T) {
 	vn := &ValidatorNames{
 		namesMutex:           sync.RWMutex{},
 		namesByIndex:         make(map[uint64]*validatorNameEntry),
-		namesByWithdrawal:     make(map[common.Address]*validatorNameEntry),
+		namesByWithdrawal:    make(map[common.Address]*validatorNameEntry),
 		namesByDepositOrigin: make(map[common.Address]*validatorNameEntry),
 		namesByDepositTarget: make(map[common.Address]*validatorNameEntry),
 		resolvedNamesByIndex: make(map[uint64]*validatorNameEntry),
