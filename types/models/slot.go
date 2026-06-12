@@ -293,6 +293,9 @@ type SlotPageTransaction struct {
 	GasLimit    uint64  `json:"gas_limit"`
 	TxFee       float64 `json:"tx_fee"`        // Transaction fee in ETH
 	EffGasPrice float64 `json:"eff_gas_price"` // Effective gas price in Gwei
+
+	// Revert reason from call traces (only available when traces are stored)
+	RevertReason string `json:"revert_reason"`
 }
 
 type SlotPageDepositRequest struct {

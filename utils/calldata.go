@@ -740,3 +740,50 @@ func decodeBLS12G2MSMInput(data []byte) []*DecodedCalldataParam {
 
 	return params
 }
+
+// solidityPanicReasons maps Panic(uint256) error codes to readable descriptions.
+var solidityPanicReasons = map[uint64]string{
+	0x00: "generic panic",
+	0x01: "assertion failed",
+	0x11: "arithmetic overflow or underflow",
+	0x12: "division or modulo by zero",
+	0x21: "invalid enum conversion",
+	0x22: "corrupted storage byte array",
+	0x31: "pop on empty array",
+	0x32: "array index out of bounds",
+	0x41: "memory allocation overflow",
+	0x51: "call to invalid internal function",
+}
+
+// FormatRevertReason builds a human readable revert reason from a call frame's
+// error text and return data. It decodes Error(string) and Panic(uint256)
+// payloads and falls back to the raw selector for custom errors.
+func FormatRevertReason(errorText string, output []byte) string {
+	if errorText == "" {
+		return ""
+	}
+	if len(output) < 4 {
+		return errorText
+	}
+
+	switch binary.BigEndian.Uint32(output[:4]) {
+	case 0x08c379a0: // Error(string)
+		if reason, err := abi.UnpackRevert(output); err == nil && reason != "" {
+			return fmt.Sprintf("%s: %s", errorText, strings.ToValidUTF8(reason, "?"))
+		}
+	case 0x4e487b71: // Panic(uint256)
+		if len(output) >= 36 {
+			code := new(big.Int).SetBytes(output[4:36])
+			if code.IsUint64() {
+				if reason, ok := solidityPanicReasons[code.Uint64()]; ok {
+					return fmt.Sprintf("%s: panic - %s", errorText, reason)
+				}
+				return fmt.Sprintf("%s: panic 0x%x", errorText, code)
+			}
+		}
+	default:
+		return fmt.Sprintf("%s (custom error 0x%x)", errorText, output[:4])
+	}
+
+	return errorText
+}

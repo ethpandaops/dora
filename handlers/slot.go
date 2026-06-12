@@ -22,10 +22,13 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
+	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -1194,6 +1197,7 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 	if utils.Config.ExecutionIndexer.Enabled && len(pageData.Transactions) > 0 {
 		elTxs, err := db.GetElTransactionsByBlockUid(ctx, blockUid)
 		if err == nil && len(elTxs) > 0 {
+			failedTxs := []*models.SlotPageTransaction{}
 			for _, elTx := range elTxs {
 				txData := txHashMap[string(elTx.TxHash)]
 				if txData == nil {
@@ -1209,8 +1213,61 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 				if elTx.GasUsed > 0 && elTx.EffGasPrice > 0 {
 					txData.TxFee = float64(elTx.GasUsed) * elTx.EffGasPrice / 1e9
 				}
+
+				if elTx.Reverted {
+					failedTxs = append(failedTxs, txData)
+				}
+			}
+
+			if len(failedTxs) > 0 {
+				getSlotPageTransactionRevertReasons(ctx, pageData.BlockRoot, failedTxs, blockUid)
 			}
 		}
+	}
+}
+
+// getSlotPageTransactionRevertReasons loads call traces from blockdb for failed
+// transactions and extracts the revert reason for the status badge tooltip.
+func getSlotPageTransactionRevertReasons(ctx context.Context, blockRoot []byte, failedTxs []*models.SlotPageTransaction, blockUid uint64) {
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() || len(blockRoot) == 0 {
+		return
+	}
+
+	elBlock, err := db.GetElBlock(ctx, blockUid)
+	if err != nil || elBlock == nil || elBlock.DataStatus&dbtypes.ElBlockDataCallTraces == 0 {
+		return
+	}
+
+	// Bound the number of blockdb lookups for blocks with lots of failed transactions
+	if len(failedTxs) > 50 {
+		failedTxs = failedTxs[:50]
+	}
+
+	slot := blockUid >> 16
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	for _, txData := range failedTxs {
+		sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+			ctx, slot, blockRoot, txData.Hash,
+			bdbtypes.ExecDataSectionCallTrace,
+		)
+		if err != nil || sections == nil || sections.CallTraceData == nil {
+			continue
+		}
+
+		uncompData, err := snappy.Decode(nil, sections.CallTraceData)
+		if err != nil {
+			continue
+		}
+
+		var frames []bdbtypes.FlatCallFrame
+		if err := dynssz.GetGlobalDynSsz().UnmarshalSSZ(&frames, uncompData); err != nil || len(frames) == 0 {
+			continue
+		}
+
+		// The first frame is the top-level call; bubbled-up errors end up there
+		txData.RevertReason = utils.FormatRevertReason(frames[0].Error, frames[0].Output)
 	}
 }
 
