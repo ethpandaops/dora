@@ -190,8 +190,8 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		// acquire per-page-type concurrency semaphore if configured (non-blocking)
 		if fc.pageTypeSemLimit > 0 {
 			pageType := pageKey
-			if idx := strings.IndexByte(pageKey, ':'); idx >= 0 {
-				pageType = pageKey[:idx]
+			if before, _, ok := strings.Cut(pageKey, ":"); ok {
+				pageType = before
 			}
 
 			typeSem := fc.getPageTypeSemaphore(pageType)
