@@ -104,6 +104,7 @@ type DepositsPageDataQueuedDeposit struct {
 	ProjectedIndex        bool                                    `json:"projected_index"`
 	ValidatorName         string                                  `json:"validator_name"`
 	IsBuilder             bool                                    `json:"is_builder"`
+	Postponed             bool                                    `json:"postponed"`
 }
 
 type DepositsPageDataQueuedDepositTxDetails struct {
