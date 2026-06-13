@@ -332,9 +332,9 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	}
 
-	// DepositCount reflects the deposits this block processes; in Gloas these are the
-	// parent's payload requests (parent_execution_requests), matching how the deposits
-	// table attributes them, rather than the block's own payload.
+	// DepositCount counts the deposits this block processes; in Gloas these come from the
+	// parent payload (parent_execution_requests), consistent with the deposits table and
+	// the slot detail page, which attribute requests to the block that processes them.
 	if processedRequests, _ := dbw.getProcessedExecutionRequests(block); processedRequests != nil {
 		depositRequests = processedRequests.Deposits
 	}
@@ -570,8 +570,8 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 				}
 			}
 
-			// Count the deposits each block processes; in Gloas these come from the
-			// parent's payload (parent_execution_requests), matching the deposits table.
+			// Count the deposits each block processes; in Gloas these come from the parent
+			// payload (parent_execution_requests), consistent with the deposits table.
 			if processedRequests, _ := dbw.getProcessedExecutionRequests(block); processedRequests != nil {
 				depositRequests = processedRequests.Deposits
 			}

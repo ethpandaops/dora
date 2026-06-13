@@ -961,8 +961,13 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
 		var requests *electra.ExecutionRequests
 		if blockData.Block.Version >= spec.DataVersionGloas {
+			// In Gloas the execution requests carried by a payload are processed in the next
+			// block (as parent_execution_requests), so they are displayed there — consistent
+			// with the deposits table and the slot/epoch deposit counts. The withdrawal sweep
+			// remains part of this block's own payload.
+			requests = body.ParentExecutionRequests
+			pageData.RequestsFromParentPayload = true
 			if blockData.Payload != nil {
-				requests = blockData.Payload.Message.ExecutionRequests
 				executionWithdrawals = blockData.Payload.Message.Payload.Withdrawals
 			}
 		} else {

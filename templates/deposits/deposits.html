@@ -409,7 +409,7 @@
               <td>{{ $deposit.QueuePosition }}</td>
               {{ if $deposit.Postponed }}
               <td>
-                {{ if not $deposit.EstimatedTime.IsZero }}<span data-timer="{{ $deposit.EstimatedTime.Unix }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Applied when the validator becomes withdrawable ({{ $deposit.EstimatedTime }})">{{ formatRecentTimeShort $deposit.EstimatedTime }}</span> {{ end }}<span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit is for an exiting validator. It is postponed each epoch until the validator becomes withdrawable and does not move through the normal deposit queue.">postponed</span>
+                {{ if not $deposit.EstimatedTime.IsZero }}<span data-timer="{{ $deposit.EstimatedTime.Unix }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.EstimatedTime }}">{{ formatRecentTimeShort $deposit.EstimatedTime }}</span> {{ end }}<span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit is for an exiting validator. It can only be processed once the validator becomes withdrawable; the estimate is that epoch, after which it still has to run through the queue to be applied.">postponed</span>
               </td>
               {{ else }}
               <td data-timer="{{ $deposit.EstimatedTime.Unix }}">

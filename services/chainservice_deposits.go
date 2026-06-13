@@ -511,13 +511,25 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	for idx, queueEntry := range indexedQueue.Queue {
 		queueEntry.QueuePos = uint64(idx)
 
-		switch {
-		case queueEntry.Postponed:
-			// Postponed deposits do not flow through the churn queue; they are applied once
-			// their validator becomes withdrawable, so estimate from that epoch.
-			queueEntry.EpochEstimate = bs.postponedDepositEpoch(queueEntry.PendingDeposit.Pubkey)
-
-		case totalActiveBalance > 0:
+		if queueEntry.Postponed {
+			// A postponed deposit is processed at the later of when the churn queue reaches
+			// its position (queueEpoch — postponed deposits sit at the back) and when its
+			// validator becomes withdrawable. If the queue would only reach it after the
+			// validator is already withdrawable, it is processed like a normal queued deposit
+			// and is no longer flagged postponed; otherwise the exit is the bottleneck and it
+			// keeps waiting. Postponed deposits are applied without consuming churn.
+			exitEpoch := bs.postponedDepositEpoch(queueEntry.PendingDeposit.Pubkey)
+			switch {
+			case exitEpoch == 0:
+				// validator/exit unknown: keep flagged, no estimate
+			case exitEpoch > queueEpoch:
+				queueEntry.EpochEstimate = exitEpoch
+			default:
+				queueEntry.EpochEstimate = queueEpoch
+				queueEntry.Postponed = false
+				hasChurnDeposit = true
+			}
+		} else if totalActiveBalance > 0 {
 			if currentEpochCount >= maxPendingDepositsPerEpoch {
 				queueEpoch++
 				queueBalance = activationExitChurnLimit
