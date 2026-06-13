@@ -506,14 +506,18 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	queueEpoch++
 	queueBalance += activationExitChurnLimit
 	currentEpochCount := uint64(0)
+	hasChurnDeposit := false
 
 	for idx, queueEntry := range indexedQueue.Queue {
 		queueEntry.QueuePos = uint64(idx)
 
-		// Postponed deposits do not flow through the churn queue (they wait for their
-		// validator to become withdrawable), so they neither consume churn budget nor
-		// receive a churn-based estimate.
-		if !queueEntry.Postponed && totalActiveBalance > 0 {
+		switch {
+		case queueEntry.Postponed:
+			// Postponed deposits do not flow through the churn queue; they are applied once
+			// their validator becomes withdrawable, so estimate from that epoch.
+			queueEntry.EpochEstimate = bs.postponedDepositEpoch(queueEntry.PendingDeposit.Pubkey)
+
+		case totalActiveBalance > 0:
 			if currentEpochCount >= maxPendingDepositsPerEpoch {
 				queueEpoch++
 				queueBalance = activationExitChurnLimit
@@ -529,14 +533,38 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 			queueEntry.EpochEstimate = queueEpoch
 			currentEpochCount++
 			queueBalance -= queueEntry.PendingDeposit.Amount
+			hasChurnDeposit = true
 		}
 
 		indexedQueue.TotalGwei += queueEntry.PendingDeposit.Amount
 	}
 
-	indexedQueue.QueueEstimation = queueEpoch
+	// Only deposits flowing through the churn queue contribute to the overall processing
+	// estimate; an empty or all-postponed queue leaves QueueEstimation at 0 (rendered as
+	// "--").
+	if hasChurnDeposit {
+		indexedQueue.QueueEstimation = queueEpoch
+	}
 
 	return indexedQueue
+}
+
+// postponedDepositEpoch estimates when a postponed deposit will be applied: the epoch its
+// validator becomes withdrawable. Returns 0 (unknown) if the validator can't be resolved or
+// has no concrete withdrawable epoch yet.
+func (bs *ChainService) postponedDepositEpoch(pubkey phase0.BLSPubKey) phase0.Epoch {
+	validatorIdx, found := bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
+	if !found || uint64(validatorIdx)&BuilderIndexFlag != 0 {
+		return 0
+	}
+	validator := bs.GetValidatorByIndex(validatorIdx, false)
+	if validator == nil || validator.Validator == nil {
+		return 0
+	}
+	if validator.Validator.WithdrawableEpoch >= beacon.FarFutureEpoch {
+		return 0
+	}
+	return validator.Validator.WithdrawableEpoch
 }
 
 // resolveQueueDepositIndexes assigns an EL deposit index to each queue entry by position

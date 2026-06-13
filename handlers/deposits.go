@@ -140,7 +140,11 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 		pageData.EtherChurnPerEpoch = chainState.GetActivationExitChurnLimit(totalEligibleEther)
 		pageData.EtherChurnPerDay = pageData.EtherChurnPerEpoch * 225
 
-		pageData.NewDepositProcessAfter = chainState.EpochToTime(queuedDeposits.QueueEstimation)
+		// QueueEstimation is 0 for an empty or all-postponed queue; leave the time unset so
+		// the UI shows "--" instead of a bogus estimate.
+		if queuedDeposits.QueueEstimation > 0 {
+			pageData.NewDepositProcessAfter = chainState.EpochToTime(queuedDeposits.QueueEstimation)
+		}
 	} else {
 		// pre-electra
 		pageData.ValidatorsPerEpoch = chainState.GetValidatorChurnLimit(activeValidatorCount)
@@ -376,10 +380,10 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				wdCreds := queueEntry.PendingDeposit.WithdrawalCredentials[:]
 				isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
 
-				// Postponed deposits have no churn-based estimate (they wait for their
-				// validator to become withdrawable), so EstimatedTime is left unset.
+				// EpochEstimate is the churn-based epoch for normal deposits and the
+				// validator's withdrawable epoch for postponed ones; 0 means unknown.
 				var estimatedTime time.Time
-				if !queueEntry.Postponed {
+				if queueEntry.EpochEstimate > 0 {
 					estimatedTime = chainState.EpochToTime(queueEntry.EpochEstimate)
 				}
 

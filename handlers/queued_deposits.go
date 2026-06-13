@@ -215,10 +215,10 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 		wdCreds := queueEntry.PendingDeposit.WithdrawalCredentials[:]
 		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
 
-		// Postponed deposits have no churn-based estimate (they wait for their validator
-		// to become withdrawable), so EstimatedTime is left at its zero value.
+		// EpochEstimate is the churn-based epoch for normal deposits and the validator's
+		// withdrawable epoch for postponed ones; 0 means unknown.
 		var estimatedTime time.Time
-		if !queueEntry.Postponed {
+		if queueEntry.EpochEstimate > 0 {
 			estimatedTime = chainState.EpochToTime(queueEntry.EpochEstimate)
 		}
 

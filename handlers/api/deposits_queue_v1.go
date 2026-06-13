@@ -227,10 +227,10 @@ func APIDepositsQueueV1(w http.ResponseWriter, r *http.Request) {
 				for _, item := range selectedEntries {
 					queueEntry := item.entry
 
-					// Postponed deposits have no churn-based estimate (they wait for their
-					// validator to become withdrawable), so EstimatedTime is left at 0.
+					// EpochEstimate is the churn-based epoch for normal deposits and the
+					// validator's withdrawable epoch for postponed ones; 0 means unknown.
 					estimatedTime := int64(0)
-					if !queueEntry.Postponed {
+					if queueEntry.EpochEstimate > 0 {
 						estimatedTime = chainState.EpochToTime(queueEntry.EpochEstimate).Unix()
 					}
 
