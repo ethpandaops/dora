@@ -122,7 +122,11 @@
                 {{ range $i, $deposit := .Deposits }}
                   <tr>
                     <td>{{ $deposit.QueuePosition }}</td>
+                    {{ if $deposit.Postponed }}
+                    <td><span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit is for an exiting validator. It is postponed each epoch until the validator becomes withdrawable and does not move through the normal deposit queue.">postponed</span></td>
+                    {{ else }}
                     <td data-timer="{{ $deposit.EstimatedTime.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.EstimatedTime }}">{{ formatRecentTimeShort $deposit.EstimatedTime }}</span></td>
+                    {{ end }}
                     <td>
                       {{ if $deposit.HasIndex }}
                         <span class="badge rounded-pill text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit was triggered via a validator deposit transaction">{{ $deposit.Index }}</span>

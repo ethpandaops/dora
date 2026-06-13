@@ -61,6 +61,50 @@ func InsertDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.Deposi
 	return nil
 }
 
+// GetDepositRequestsBySlots returns canonical deposit request rows whose
+// slot_number is in the given set, ordered by (slot_number, slot_index). It is
+// used to resolve the EL deposit index of queue entries that were reordered
+// (postponed) and can no longer be aligned by queue position, matching them by
+// their PendingDeposit.slot.
+func GetDepositRequestsBySlots(ctx context.Context, slots []uint64, canonicalForkIds []uint64) ([]*dbtypes.Deposit, error) {
+	deposits := []*dbtypes.Deposit{}
+	if len(slots) == 0 {
+		return deposits, nil
+	}
+
+	// SQLite caps bound variables (default 999); chunk to stay well below that.
+	const maxParams = 900
+
+	for start := 0; start < len(slots); start += maxParams {
+		end := min(start+maxParams, len(slots))
+		chunk := slots[start:end]
+
+		var sql strings.Builder
+		args := make([]any, 0, len(chunk)+len(canonicalForkIds))
+		fmt.Fprint(&sql, `SELECT deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id, cred_type
+			FROM deposits
+			WHERE slot_number IN (`)
+		for _, slot := range chunk {
+			args = append(args, slot)
+		}
+		appendDollarPlaceholders(&sql, 1, len(chunk), ", ")
+		fmt.Fprint(&sql, ")")
+
+		filterOp := "AND"
+		appendWithOrphanedFilter(&sql, &args, &filterOp, 0, canonicalForkIds, "deposits.fork_id")
+
+		fmt.Fprint(&sql, " ORDER BY slot_number, slot_index")
+
+		var chunkResult []*dbtypes.Deposit
+		if err := ReaderDb.SelectContext(ctx, &chunkResult, sql.String(), args...); err != nil {
+			return nil, fmt.Errorf("error fetching deposit requests by slots: %w", err)
+		}
+		deposits = append(deposits, chunkResult...)
+	}
+
+	return deposits, nil
+}
+
 func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.DepositFilter, txFilter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositWithTx, uint64, error) {
 	var sql strings.Builder
 	args := []any{}

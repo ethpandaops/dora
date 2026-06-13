@@ -315,7 +315,6 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			executionExtraData = blockPayload.Message.Payload.ExtraData
 			executionTransactions = blockPayload.Message.Payload.Transactions
 			executionWithdrawals = blockPayload.Message.Payload.Withdrawals
-			depositRequests = blockPayload.Message.ExecutionRequests.Deposits
 			payloadStatus = dbtypes.PayloadStatusCanonical
 		} else {
 			payloadStatus = dbtypes.PayloadStatusMissing
@@ -331,9 +330,13 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			executionWithdrawals = ep.Withdrawals
 			executionBlockParentHash = ep.ParentHash[:]
 		}
-		if body.ExecutionRequests != nil {
-			depositRequests = body.ExecutionRequests.Deposits
-		}
+	}
+
+	// DepositCount reflects the deposits this block processes; in Gloas these are the
+	// parent's payload requests (parent_execution_requests), matching how the deposits
+	// table attributes them, rather than the block's own payload.
+	if processedRequests, _ := dbw.getProcessedExecutionRequests(block); processedRequests != nil {
+		depositRequests = processedRequests.Deposits
 	}
 
 	// Get builder index from block, default to -1 (self-built/MaxUint64)
@@ -559,16 +562,18 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 					dbEpoch.PayloadCount++
 					executionTransactions = blockPayload.Message.Payload.Transactions
 					executionWithdrawals = blockPayload.Message.Payload.Withdrawals
-					depositRequests = blockPayload.Message.ExecutionRequests.Deposits
 				}
 			} else {
 				if body.ExecutionPayload != nil {
 					executionTransactions = body.ExecutionPayload.Transactions
 					executionWithdrawals = body.ExecutionPayload.Withdrawals
 				}
-				if body.ExecutionRequests != nil {
-					depositRequests = body.ExecutionRequests.Deposits
-				}
+			}
+
+			// Count the deposits each block processes; in Gloas these come from the
+			// parent's payload (parent_execution_requests), matching the deposits table.
+			if processedRequests, _ := dbw.getProcessedExecutionRequests(block); processedRequests != nil {
+				depositRequests = processedRequests.Deposits
 			}
 
 			dbEpoch.AttestationCount += uint64(len(attestations))
@@ -715,28 +720,44 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 	return nil
 }
 
-func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Deposit {
+// getProcessedExecutionRequests returns the execution requests this block processes,
+// together with the EL block number they were included in.
+//
+// In Gloas/EIP-7732 a block processes its parent's payload requests
+// (parent_execution_requests) at this block's slot, so the requests are attributed to this
+// block's slot (matching the beacon state's PendingDeposit.slot). They were included in the
+// parent payload, which is the direct EL parent of this block's payload, so its block
+// number is this block's payload number minus one. Reading the requests from the block body
+// keeps them available even when the payload envelope is missing. The first Gloas block
+// carries an empty parent_execution_requests, so the last pre-Gloas requests are not counted
+// twice. In earlier forks the requests live in the block body and were included in the
+// block's own payload.
+func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*electra.ExecutionRequests, uint64) {
 	chainState := dbw.indexer.consensusPool.GetChainState()
 
 	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
-		return nil
+		return nil, 0
 	}
 	body := blockBody.Message.Body
 
-	var requests *electra.ExecutionRequests
-
 	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
-		// In Gloas/EIP-7732 the parent's payload requests are processed in this block at
-		// this block's slot, so SlotNumber matches the beacon state's PendingDeposit.slot
-		// that the deposit queue resolver aligns against. The first Gloas block carries an
-		// empty parent_execution_requests, so the last pre-Gloas requests are not counted
-		// twice.
-		requests = body.ParentExecutionRequests
-	} else {
-		requests = body.ExecutionRequests
+		var blockNumber uint64
+		if payload := block.GetExecutionPayload(dbw.indexer.ctx); payload != nil && payload.Message.Payload.BlockNumber > 0 {
+			blockNumber = payload.Message.Payload.BlockNumber - 1
+		}
+		return body.ParentExecutionRequests, blockNumber
 	}
 
+	var blockNumber uint64
+	if body.ExecutionPayload != nil {
+		blockNumber = body.ExecutionPayload.BlockNumber
+	}
+	return body.ExecutionRequests, blockNumber
+}
+
+func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Deposit {
+	requests, _ := dbw.getProcessedExecutionRequests(block)
 	if requests == nil {
 		return []*dbtypes.Deposit{}
 	}
@@ -1102,29 +1123,7 @@ func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block
 }
 
 func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.ConsolidationRequest {
-	chainState := dbw.indexer.consensusPool.GetChainState()
-
-	var requests *electra.ExecutionRequests
-	var blockNumber uint64
-
-	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
-		payload := block.GetExecutionPayload(dbw.indexer.ctx)
-		if payload != nil {
-			requests = payload.Message.ExecutionRequests
-			blockNumber = payload.Message.Payload.BlockNumber
-		}
-	} else {
-		blockBody := block.GetBlock(dbw.indexer.ctx)
-		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
-			return nil
-		}
-
-		requests = blockBody.Message.Body.ExecutionRequests
-		if blockBody.Message.Body.ExecutionPayload != nil {
-			blockNumber = blockBody.Message.Body.ExecutionPayload.BlockNumber
-		}
-	}
-
+	requests, blockNumber := dbw.getProcessedExecutionRequests(block)
 	if requests == nil {
 		return []*dbtypes.ConsolidationRequest{}
 	}
@@ -1198,29 +1197,7 @@ func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, o
 }
 
 func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.WithdrawalRequest {
-	chainState := dbw.indexer.consensusPool.GetChainState()
-
-	var requests *electra.ExecutionRequests
-	var blockNumber uint64
-
-	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
-		payload := block.GetExecutionPayload(dbw.indexer.ctx)
-		if payload != nil {
-			requests = payload.Message.ExecutionRequests
-			blockNumber = payload.Message.Payload.BlockNumber
-		}
-	} else {
-		blockBody := block.GetBlock(dbw.indexer.ctx)
-		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
-			return nil
-		}
-
-		requests = blockBody.Message.Body.ExecutionRequests
-		if blockBody.Message.Body.ExecutionPayload != nil {
-			blockNumber = blockBody.Message.Body.ExecutionPayload.BlockNumber
-		}
-	}
-
+	requests, blockNumber := dbw.getProcessedExecutionRequests(block)
 	if requests == nil {
 		return []*dbtypes.WithdrawalRequest{}
 	}

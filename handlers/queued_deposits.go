@@ -215,13 +215,21 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 		wdCreds := queueEntry.PendingDeposit.WithdrawalCredentials[:]
 		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
 
+		// Postponed deposits have no churn-based estimate (they wait for their validator
+		// to become withdrawable), so EstimatedTime is left at its zero value.
+		var estimatedTime time.Time
+		if !queueEntry.Postponed {
+			estimatedTime = chainState.EpochToTime(queueEntry.EpochEstimate)
+		}
+
 		depositData := &models.QueuedDepositsPageDataDeposit{
 			QueuePosition:         queueEntry.QueuePos,
-			EstimatedTime:         chainState.EpochToTime(queueEntry.EpochEstimate),
+			EstimatedTime:         estimatedTime,
 			PublicKey:             queueEntry.PendingDeposit.Pubkey[:],
 			Amount:                uint64(queueEntry.PendingDeposit.Amount),
 			Withdrawalcredentials: wdCreds,
 			IsBuilder:             isBuilder,
+			Postponed:             queueEntry.Postponed,
 		}
 
 		// Get validator status if exists
@@ -284,7 +292,6 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 			if tx, txFound := txDetailsMap[depositData.Index]; txFound {
 				depositData.HasTransaction = true
 				depositData.TransactionHash = tx.TxHash
-				depositData.Withdrawalcredentials = tx.WithdrawalCredentials
 				depositData.TransactionDetails = &models.QueuedDepositsPageDataDepositTxDetails{
 					BlockNumber: tx.BlockNumber,
 					BlockHash:   fmt.Sprintf("%#x", tx.BlockRoot),

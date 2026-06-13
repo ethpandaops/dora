@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -392,6 +393,11 @@ type IndexedDepositQueueEntry struct {
 	DepositIndex   *uint64
 	EpochEstimate  phase0.Epoch
 	PendingDeposit *electra.PendingDeposit
+	// Postponed marks a deposit that process_pending_deposits reorders to the back of
+	// the queue (its validator is exiting), so it no longer follows the queue's
+	// slot<->index order and is resolved by slot rather than by position. Its
+	// EpochEstimate is left unset as it does not flow through the normal churn queue.
+	Postponed bool
 }
 
 type IndexedDepositQueue struct {
@@ -421,45 +427,19 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 		return indexedQueue
 	}
 
-	// Best-effort deposit-index assignment: the queue itself (pending_deposits) always
-	// comes from the beacon state, but the EL deposit indexes are derived by anchoring
-	// the tail of the queue to the last included deposit and counting backwards. If the
-	// anchor can't be resolved (no included deposit found yet), we still return the full
-	// queue — entries are simply left without a DepositIndex instead of hiding everything.
-	//
-	// Matching is by deposit index AND pubkey: the index sequence is not contiguous in
-	// the queue. Post-Gloas builder (0x03) deposits get an EL deposit index but are
-	// onboarded as builders and never enter the queue, leaving gaps; and 0x01->0x02
-	// compounding-switch deposits are synthesized during state transition with no EL
-	// deposit at all. We skip the synthetic ones entirely and, for real ones, skip over
-	// index gaps until the pubkey at the candidate index matches the queue entry.
+	// Assign EL deposit indexes by position, flagging postponed (reordered) entries
+	// that must instead be resolved by slot.
 	lastIncludedDeposit, includedPubkeyByIndex := bs.getRecentIncludedDeposits(ctx, queueBlockRoot)
-	if lastIncludedDeposit != nil && lastIncludedDeposit.Index != nil {
-		candidate := int64(*lastIncludedDeposit.Index)
-		for idx := len(queue) - 1; idx >= 0; idx-- {
-			deposit := queue[idx]
-			if isSyntheticPendingDeposit(deposit) {
-				continue // compounding-switch/excess-balance deposit, no EL deposit index
-			}
-			if candidate < 0 {
-				break // ran out of indexes; leave earlier entries unindexed
-			}
-			// Skip indexes that belong to deposits not present in the queue (builder
-			// gaps). A known pubkey that does not match means this index is a gap.
-			for candidate >= 0 {
-				pubkey, known := includedPubkeyByIndex[uint64(candidate)]
-				if known && pubkey != deposit.Pubkey {
-					candidate--
-					continue
-				}
-				break // matches, or unknown (beyond cache) -> accept and fall back to contiguous
-			}
-			if candidate < 0 {
-				break
-			}
-			depositIndexCopy := uint64(candidate)
-			indexedQueue.Queue[idx].DepositIndex = &depositIndexCopy
-			candidate--
+	indexes, postponed := resolveQueueDepositIndexes(queue, lastIncludedDeposit, includedPubkeyByIndex)
+	for idx := range indexedQueue.Queue {
+		indexedQueue.Queue[idx].DepositIndex = indexes[idx]
+	}
+
+	// Resolve postponed entries by slot (one batched query) and flag them for rendering.
+	bs.resolvePostponedDepositIndexes(ctx, queue, indexedQueue.Queue, postponed)
+	for idx := range indexedQueue.Queue {
+		if postponed[idx] {
+			indexedQueue.Queue[idx].Postponed = true
 		}
 	}
 
@@ -530,7 +510,10 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	for idx, queueEntry := range indexedQueue.Queue {
 		queueEntry.QueuePos = uint64(idx)
 
-		if totalActiveBalance > 0 {
+		// Postponed deposits do not flow through the churn queue (they wait for their
+		// validator to become withdrawable), so they neither consume churn budget nor
+		// receive a churn-based estimate.
+		if !queueEntry.Postponed && totalActiveBalance > 0 {
 			if currentEpochCount >= maxPendingDepositsPerEpoch {
 				queueEpoch++
 				queueBalance = activationExitChurnLimit
@@ -554,6 +537,156 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	indexedQueue.QueueEstimation = queueEpoch
 
 	return indexedQueue
+}
+
+// resolveQueueDepositIndexes assigns an EL deposit index to each queue entry by position
+// and flags the postponed (reordered) entries. It returns, per entry, the resolved index
+// (nil where it must be resolved by slot) and whether the entry is postponed.
+//
+// pending_deposits comes verbatim from the beacon state but carries no EL deposit index.
+// Regular deposits sit in the queue in strict slot<->index order, so their indexes are
+// derived by anchoring the tail to the last included deposit and counting backwards.
+//
+// process_pending_deposits moves deposits of an exiting validator to the back of the
+// queue, breaking that order. Such postponed entries surface as a slot that dips below
+// the running maximum; they are excluded from the backward count (left nil) and resolved
+// individually by slot afterwards. Detection is purely slot-based (independent of the
+// possibly-delayed validator set) so the assigned index is always correct.
+//
+// Matching in the backward count is by deposit index AND pubkey: post-Gloas builder
+// (0x03) deposits get an EL deposit index but never enter the queue, leaving gaps; and
+// 0x01->0x02 compounding-switch deposits are synthesized with no EL deposit at all.
+// Synthetic ones are skipped entirely, and for real ones index gaps are skipped until the
+// pubkey at the candidate index matches the queue entry.
+func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes.Deposit, includedPubkeyByIndex map[uint64]phase0.BLSPubKey) (indexes []*uint64, postponed []bool) {
+	indexes = make([]*uint64, len(queue))
+	postponed = make([]bool, len(queue))
+
+	// Forward pass: flag entries whose slot dips below the running maximum.
+	prevRegularSlot := phase0.Slot(0)
+	for idx, deposit := range queue {
+		if isSyntheticPendingDeposit(deposit) {
+			continue
+		}
+		if deposit.Slot < prevRegularSlot {
+			postponed[idx] = true
+			continue
+		}
+		prevRegularSlot = deposit.Slot
+	}
+
+	// Backward pass: assign indexes to the regular (in-order) entries.
+	tailRegularIdx := -1
+	if anchor != nil && anchor.Index != nil {
+		candidate := int64(*anchor.Index)
+		for idx := len(queue) - 1; idx >= 0; idx-- {
+			deposit := queue[idx]
+			if isSyntheticPendingDeposit(deposit) || postponed[idx] {
+				continue
+			}
+			if candidate < 0 {
+				break // ran out of indexes; leave earlier entries unindexed
+			}
+			// Skip indexes that belong to deposits not present in the queue (builder
+			// gaps). A known pubkey that does not match means this index is a gap.
+			for candidate >= 0 {
+				pubkey, known := includedPubkeyByIndex[uint64(candidate)]
+				if known && pubkey != deposit.Pubkey {
+					candidate--
+					continue
+				}
+				break // matches, or unknown (beyond cache) -> accept and fall back to contiguous
+			}
+			if candidate < 0 {
+				break
+			}
+			if tailRegularIdx < 0 {
+				tailRegularIdx = idx
+			}
+			depositIndexCopy := uint64(candidate)
+			indexes[idx] = &depositIndexCopy
+			candidate--
+		}
+	}
+
+	// Anchor verification. The tail-most regular entry must align with the anchor's slot.
+	// If it doesn't (a degenerate queue whose most recent deposits are all postponed or
+	// builder deposits, so the anchor is not the real tail), the positional assignment
+	// cannot be trusted and every non-synthetic entry is resolved by slot instead. This
+	// recovers the "queue is nothing but postponed deposits" case, which has no slot dip.
+	anchorVerified := tailRegularIdx >= 0 && anchor != nil &&
+		queue[tailRegularIdx].Slot == phase0.Slot(anchor.SlotNumber)
+	if !anchorVerified {
+		for idx, deposit := range queue {
+			if isSyntheticPendingDeposit(deposit) {
+				continue
+			}
+			postponed[idx] = true
+			indexes[idx] = nil
+		}
+	}
+
+	return indexes, postponed
+}
+
+// resolvePostponedDepositIndexes fills in the EL deposit index of queue entries flagged
+// as postponed. These were reordered out of the queue's slot<->index sequence, so they
+// can't be aligned by position; instead they are looked up in a single batched query by
+// their slot (which equals the beacon state's PendingDeposit.slot) and matched on
+// (slot, pubkey, amount, withdrawal_credentials). Byte-identical deposits sharing a slot
+// are consumed in slot_index order, matching their queue order. Entries with no DB match
+// are left without an index rather than mis-assigned.
+func (bs *ChainService) resolvePostponedDepositIndexes(ctx context.Context, queue []*electra.PendingDeposit, entries []*IndexedDepositQueueEntry, postponed []bool) {
+	slotSet := make(map[uint64]struct{})
+	for idx, isPostponed := range postponed {
+		if isPostponed {
+			slotSet[uint64(queue[idx].Slot)] = struct{}{}
+		}
+	}
+	if len(slotSet) == 0 {
+		return
+	}
+
+	slots := make([]uint64, 0, len(slotSet))
+	for slot := range slotSet {
+		slots = append(slots, slot)
+	}
+
+	rows, err := db.GetDepositRequestsBySlots(ctx, slots, bs.GetCanonicalForkIds())
+	if err != nil {
+		logrus.Warnf("ChainService.resolvePostponedDepositIndexes error: %v", err)
+		return
+	}
+
+	depositKey := func(slot, amount uint64, pubkey, wdcreds []byte) string {
+		return fmt.Sprintf("%d-%x-%d-%x", slot, pubkey, amount, wdcreds)
+	}
+
+	// Rows arrive ordered by (slot_number, slot_index), so identical deposits keep their
+	// inclusion order within each key.
+	indexesByKey := make(map[string][]uint64, len(rows))
+	for _, row := range rows {
+		if row.Index == nil {
+			continue
+		}
+		key := depositKey(row.SlotNumber, row.Amount, row.PublicKey, row.WithdrawalCredentials)
+		indexesByKey[key] = append(indexesByKey[key], *row.Index)
+	}
+
+	for idx, isPostponed := range postponed {
+		if !isPostponed {
+			continue
+		}
+		deposit := queue[idx]
+		key := depositKey(uint64(deposit.Slot), uint64(deposit.Amount), deposit.Pubkey[:], deposit.WithdrawalCredentials)
+		indexes := indexesByKey[key]
+		if len(indexes) == 0 {
+			continue
+		}
+		depositIndexCopy := indexes[0]
+		indexesByKey[key] = indexes[1:]
+		entries[idx].DepositIndex = &depositIndexCopy
+	}
 }
 
 // isSyntheticPendingDeposit reports whether a pending deposit was synthesized during
