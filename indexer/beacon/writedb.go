@@ -718,20 +718,23 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Deposit {
 	chainState := dbw.indexer.consensusPool.GetChainState()
 
+	blockBody := block.GetBlock(dbw.indexer.ctx)
+	if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
+		return nil
+	}
+	body := blockBody.Message.Body
+
 	var requests *electra.ExecutionRequests
 
 	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
-		payload := block.GetExecutionPayload(dbw.indexer.ctx)
-		if payload != nil {
-			requests = payload.Message.ExecutionRequests
-		}
+		// In Gloas/EIP-7732 the parent's payload requests are processed in this block at
+		// this block's slot, so SlotNumber matches the beacon state's PendingDeposit.slot
+		// that the deposit queue resolver aligns against. The first Gloas block carries an
+		// empty parent_execution_requests, so the last pre-Gloas requests are not counted
+		// twice.
+		requests = body.ParentExecutionRequests
 	} else {
-		blockBody := block.GetBlock(dbw.indexer.ctx)
-		if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
-			return nil
-		}
-
-		requests = blockBody.Message.Body.ExecutionRequests
+		requests = body.ExecutionRequests
 	}
 
 	if requests == nil {
