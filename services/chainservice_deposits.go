@@ -635,7 +635,7 @@ func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes
 // their slot (which equals the beacon state's PendingDeposit.slot) and matched on
 // (slot, pubkey, amount, withdrawal_credentials). Byte-identical deposits sharing a slot
 // are consumed in slot_index order, matching their queue order. Entries with no DB match
-// are left without an index rather than mis-assigned.
+// are left without an index rather than wrongly assigned.
 func (bs *ChainService) resolvePostponedDepositIndexes(ctx context.Context, queue []*electra.PendingDeposit, entries []*IndexedDepositQueueEntry, postponed []bool) {
 	slotSet := make(map[uint64]struct{})
 	for idx, isPostponed := range postponed {
