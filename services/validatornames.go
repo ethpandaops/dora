@@ -142,11 +142,30 @@ func (vn *ValidatorNames) getDefaultValidatorNames() string {
 func (vn *ValidatorNames) resolveNames() (bool, error) {
 	logger_vn.Debugf("resolve validator names")
 
+	vn.namesMutex.RLock()
+	var namesByWithdrawalCopy map[common.Address]*validatorNameEntry
+	if vn.namesByWithdrawal != nil {
+		namesByWithdrawalCopy = maps.Clone(vn.namesByWithdrawal)
+	}
+	var namesByDepositOriginCopy map[common.Address]*validatorNameEntry
+	if vn.namesByDepositOrigin != nil {
+		namesByDepositOriginCopy = maps.Clone(vn.namesByDepositOrigin)
+	}
+	var namesByDepositTargetCopy map[common.Address]*validatorNameEntry
+	if vn.namesByDepositTarget != nil {
+		namesByDepositTargetCopy = maps.Clone(vn.namesByDepositTarget)
+	}
+	var resolvedNamesByIndexCopy map[uint64]*validatorNameEntry
+	if vn.resolvedNamesByIndex != nil {
+		resolvedNamesByIndexCopy = maps.Clone(vn.resolvedNamesByIndex)
+	}
+	vn.namesMutex.RUnlock()
+
 	newResolvedNames := map[uint64]*validatorNameEntry{}
 	hasUpdates := false
 	addResolved := func(index uint64, name *validatorNameEntry) {
 		newResolvedNames[index] = name
-		if vn.resolvedNamesByIndex[index] != name {
+		if resolvedNamesByIndexCopy[index] != name {
 			hasUpdates = true
 		}
 	}
@@ -154,7 +173,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	canonicalForkIds := GlobalBeaconService.GetCanonicalForkIds()
 
 	// resolve names by withdrawal address
-	for wdAddr, name := range vn.namesByWithdrawal {
+	for wdAddr, name := range namesByWithdrawalCopy {
 		if name == nil {
 			continue
 		}
@@ -168,7 +187,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	}
 
 	// resolve names by depositor address
-	for address := range vn.namesByDepositOrigin {
+	for address := range namesByDepositOriginCopy {
 		offset := uint64(0)
 		pageSize := uint64(5000)
 
@@ -179,7 +198,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 			for _, deposit := range deposits {
 				validatorIndex, found := vn.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey))
 				if found {
-					addResolved(uint64(validatorIndex), vn.namesByDepositOrigin[address])
+					addResolved(uint64(validatorIndex), namesByDepositOriginCopy[address])
 				}
 			}
 
@@ -191,7 +210,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	}
 
 	// resolve names by deposit target address
-	for address := range vn.namesByDepositTarget {
+	for address := range namesByDepositTargetCopy {
 		offset := uint64(0)
 		pageSize := uint64(5000)
 
@@ -202,7 +221,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 			for _, deposit := range deposits {
 				validatorIndex, found := vn.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey))
 				if found {
-					addResolved(uint64(validatorIndex), vn.namesByDepositTarget[address])
+					addResolved(uint64(validatorIndex), namesByDepositTargetCopy[address])
 				}
 			}
 
@@ -215,7 +234,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 
 	if !hasUpdates {
 		// check for removed names
-		for index := range vn.resolvedNamesByIndex {
+		for index := range resolvedNamesByIndexCopy {
 			if newResolvedNames[index] == nil {
 				hasUpdates = true
 			}
@@ -223,7 +242,9 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	}
 
 	if hasUpdates {
+		vn.namesMutex.Lock()
 		vn.resolvedNamesByIndex = newResolvedNames
+		vn.namesMutex.Unlock()
 	}
 
 	return hasUpdates, nil
