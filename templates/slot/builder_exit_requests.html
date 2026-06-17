@@ -1,0 +1,38 @@
+{{ define "block_builder_exit_requests" }}
+  <div class="table-ellipsis">
+    <table id="block_builder_exits" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Source Address</th>
+          <th class="border-0">Builder</th>
+          <th class="border-0">Public Key</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $req := .Block.BuilderExitRequests }}
+          <tr>
+            <td>
+              <div class="ellipsis-copy-btn">
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $req.SourceAddress }}"></i>
+              </div>
+              {{ ethAddressLink $req.SourceAddress }}
+            </td>
+            <td>
+              {{- if $req.HasBuilderIndex }}
+                {{ formatBuilderWithIndex $req.BuilderIndex "" }}
+              {{- else }}
+                <span class="text-muted">-</span>
+              {{- end }}
+            </td>
+            <td class="text-monospace">
+              <div class="ellipsis-copy-btn">
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $req.PublicKey }}"></i>
+              </div>
+              0x{{ printf "%x" $req.PublicKey }}
+            </td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}

@@ -21,6 +21,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -52,6 +53,8 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/deposit_requests.html",
 		"slot/withdrawal_requests.html",
 		"slot/consolidation_requests.html",
+		"slot/builder_deposit_requests.html",
+		"slot/builder_exit_requests.html",
 		"slot/bids.html",
 		"slot/ptc_votes.html",
 		"slot/inclusion_lists.html",
@@ -978,6 +981,8 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageDepositRequests(pageData, requests.Deposits)
 			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
 			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+			getSlotPageBuilderDeposits(pageData, requests.BuilderDeposits)
+			getSlotPageBuilderExits(pageData, requests.BuilderExits)
 		}
 	}
 
@@ -1315,6 +1320,54 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	}
 
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
+}
+
+func getSlotPageBuilderDeposits(pageData *models.SlotPageBlockData, builderDeposits []*gloas.BuilderDepositRequest) {
+	pageData.BuilderDepositRequests = make([]*models.SlotPageBuilderDepositRequest, 0, len(builderDeposits))
+
+	for _, builderDeposit := range builderDeposits {
+		requestData := &models.SlotPageBuilderDepositRequest{
+			PublicKey:       builderDeposit.Pubkey[:],
+			WithdrawalCreds: builderDeposit.WithdrawalCredentials,
+			Amount:          uint64(builderDeposit.Amount),
+			Signature:       builderDeposit.Signature[:],
+		}
+
+		if rawIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(builderDeposit.Pubkey); found {
+			fullIndex := uint64(rawIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				requestData.HasBuilderIndex = true
+				requestData.BuilderIndex = fullIndex &^ services.BuilderIndexFlag
+			}
+		}
+
+		pageData.BuilderDepositRequests = append(pageData.BuilderDepositRequests, requestData)
+	}
+
+	pageData.BuilderDepositRequestsCount = uint64(len(pageData.BuilderDepositRequests))
+}
+
+func getSlotPageBuilderExits(pageData *models.SlotPageBlockData, builderExits []*gloas.BuilderExitRequest) {
+	pageData.BuilderExitRequests = make([]*models.SlotPageBuilderExitRequest, 0, len(builderExits))
+
+	for _, builderExit := range builderExits {
+		requestData := &models.SlotPageBuilderExitRequest{
+			SourceAddress: builderExit.SourceAddress[:],
+			PublicKey:     builderExit.Pubkey[:],
+		}
+
+		if rawIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(builderExit.Pubkey); found {
+			fullIndex := uint64(rawIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				requestData.HasBuilderIndex = true
+				requestData.BuilderIndex = fullIndex &^ services.BuilderIndexFlag
+			}
+		}
+
+		pageData.BuilderExitRequests = append(pageData.BuilderExitRequests, requestData)
+	}
+
+	pageData.BuilderExitRequestsCount = uint64(len(pageData.BuilderExitRequests))
 }
 
 func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot phase0.Root, slot uint64) {

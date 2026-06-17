@@ -344,11 +344,16 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	}
 
-	// DepositCount counts the deposits this block processes; in Gloas these come from the
-	// parent payload (parent_execution_requests), consistent with the deposits table and
-	// the slot detail page, which attribute requests to the block that processes them.
+	// DepositCount/ExitCount count the deposits and exits this block processes; in Gloas
+	// these come from the parent payload (parent_execution_requests), consistent with the
+	// deposits table and the slot detail page, which attribute requests to the block that
+	// processes them. Gloas builder deposits/exits (EIP-8282) are folded into the combined
+	// deposit/exit counts.
+	var builderDepositCount, builderExitCount int
 	if processedRequests, _ := dbw.getProcessedExecutionRequests(block); processedRequests != nil {
 		depositRequests = processedRequests.Deposits
+		builderDepositCount = len(processedRequests.BuilderDeposits)
+		builderExitCount = len(processedRequests.BuilderExits)
 	}
 
 	// Get builder index from block, default to -1 (self-built/MaxUint64)
@@ -380,8 +385,8 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		Graffiti:              graffiti[:],
 		GraffitiText:          utils.GraffitiToString(graffiti[:]),
 		AttestationCount:      uint64(len(attestations)),
-		DepositCount:          uint64(len(deposits) + len(depositRequests)),
-		ExitCount:             uint64(len(voluntaryExits)),
+		DepositCount:          uint64(len(deposits) + len(depositRequests) + builderDepositCount),
+		ExitCount:             uint64(len(voluntaryExits) + builderExitCount),
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
@@ -582,15 +587,19 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 				}
 			}
 
-			// Count the deposits each block processes; in Gloas these come from the parent
-			// payload (parent_execution_requests), consistent with the deposits table.
+			// Count the deposits/exits each block processes; in Gloas these come from the
+			// parent payload (parent_execution_requests), consistent with the deposits table.
+			// Gloas builder deposits/exits (EIP-8282) are folded into the combined counts.
+			var builderDepositCount, builderExitCount int
 			if processedRequests, _ := dbw.getProcessedExecutionRequests(block); processedRequests != nil {
 				depositRequests = processedRequests.Deposits
+				builderDepositCount = len(processedRequests.BuilderDeposits)
+				builderExitCount = len(processedRequests.BuilderExits)
 			}
 
 			dbEpoch.AttestationCount += uint64(len(attestations))
-			dbEpoch.DepositCount += uint64(len(deposits) + len(depositRequests))
-			dbEpoch.ExitCount += uint64(len(voluntaryExits))
+			dbEpoch.DepositCount += uint64(len(deposits) + len(depositRequests) + builderDepositCount)
+			dbEpoch.ExitCount += uint64(len(voluntaryExits) + builderExitCount)
 			dbEpoch.AttesterSlashingCount += uint64(len(attesterSlashings))
 			dbEpoch.ProposerSlashingCount += uint64(len(proposerSlashings))
 			dbEpoch.BLSChangeCount += uint64(len(blsToExecChanges))
