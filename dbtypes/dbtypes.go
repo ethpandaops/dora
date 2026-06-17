@@ -437,6 +437,99 @@ type WithdrawalRequestTx struct {
 	DequeueBlock    uint64  `db:"dequeue_block"`
 }
 
+const (
+	BuilderDepositRequestResultUnknown uint8 = 0
+	BuilderDepositRequestResultSuccess uint8 = 1
+
+	// builder registration outcomes
+	BuilderDepositRequestResultNewBuilder uint8 = 2
+	BuilderDepositRequestResultTopUp      uint8 = 3
+
+	// errors
+	BuilderDepositRequestResultInvalidSignature uint8 = 20
+)
+
+// BuilderDeposit is the consensus-layer view of a builder deposit request
+// (Gloas/EIP-8282), attributed to the slot that processes it.
+type BuilderDeposit struct {
+	SlotNumber            uint64  `db:"slot_number"`
+	SlotRoot              []byte  `db:"slot_root"`
+	SlotIndex             uint64  `db:"slot_index"`
+	Orphaned              bool    `db:"orphaned"`
+	ForkId                uint64  `db:"fork_id"`
+	PublicKey             []byte  `db:"public_key"`
+	WithdrawalCredentials []byte  `db:"withdrawal_credentials"`
+	Amount                uint64  `db:"amount"`
+	Signature             []byte  `db:"signature"`
+	BuilderIndex          *uint64 `db:"builder_index"`
+	TxHash                []byte  `db:"tx_hash"`
+	BlockNumber           uint64  `db:"block_number"`
+	Result                uint8   `db:"result"`
+}
+
+// BuilderDepositTx is the execution-layer view of a builder deposit request,
+// indexed from the builder deposit system contract.
+type BuilderDepositTx struct {
+	BlockNumber           uint64  `db:"block_number"`
+	BlockIndex            uint64  `db:"block_index"`
+	BlockTime             uint64  `db:"block_time"`
+	BlockRoot             []byte  `db:"block_root"`
+	ForkId                uint64  `db:"fork_id"`
+	PublicKey             []byte  `db:"public_key"`
+	WithdrawalCredentials []byte  `db:"withdrawal_credentials"`
+	Amount                uint64  `db:"amount"`
+	Signature             []byte  `db:"signature"`
+	BuilderIndex          *uint64 `db:"builder_index"`
+	TxHash                []byte  `db:"tx_hash"`
+	TxSender              []byte  `db:"tx_sender"`
+	TxTarget              []byte  `db:"tx_target"`
+	DequeueBlock          uint64  `db:"dequeue_block"`
+}
+
+const (
+	BuilderExitRequestResultUnknown uint8 = 0
+	BuilderExitRequestResultSuccess uint8 = 1
+
+	// errors
+	BuilderExitRequestResultBuilderNotFound      uint8 = 20
+	BuilderExitRequestResultNotActive            uint8 = 21
+	BuilderExitRequestResultInvalidSource        uint8 = 22
+	BuilderExitRequestResultHasPendingWithdrawal uint8 = 23
+)
+
+// BuilderExit is the consensus-layer view of a builder exit request
+// (Gloas/EIP-8282), attributed to the slot that processes it.
+type BuilderExit struct {
+	SlotNumber    uint64  `db:"slot_number"`
+	SlotRoot      []byte  `db:"slot_root"`
+	SlotIndex     uint64  `db:"slot_index"`
+	Orphaned      bool    `db:"orphaned"`
+	ForkId        uint64  `db:"fork_id"`
+	SourceAddress []byte  `db:"source_address"`
+	PublicKey     []byte  `db:"public_key"`
+	BuilderIndex  *uint64 `db:"builder_index"`
+	TxHash        []byte  `db:"tx_hash"`
+	BlockNumber   uint64  `db:"block_number"`
+	Result        uint8   `db:"result"`
+}
+
+// BuilderExitTx is the execution-layer view of a builder exit request, indexed
+// from the builder exit system contract.
+type BuilderExitTx struct {
+	BlockNumber   uint64  `db:"block_number"`
+	BlockIndex    uint64  `db:"block_index"`
+	BlockTime     uint64  `db:"block_time"`
+	BlockRoot     []byte  `db:"block_root"`
+	ForkId        uint64  `db:"fork_id"`
+	SourceAddress []byte  `db:"source_address"`
+	PublicKey     []byte  `db:"public_key"`
+	BuilderIndex  *uint64 `db:"builder_index"`
+	TxHash        []byte  `db:"tx_hash"`
+	TxSender      []byte  `db:"tx_sender"`
+	TxTarget      []byte  `db:"tx_target"`
+	DequeueBlock  uint64  `db:"dequeue_block"`
+}
+
 type Validator struct {
 	ValidatorIndex             uint64 `db:"validator_index"`
 	Pubkey                     []byte `db:"pubkey"`

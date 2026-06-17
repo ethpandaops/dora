@@ -169,6 +169,18 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 		return err
 	}
 
+	// insert builder deposit requests (gloas)
+	err = dbw.persistBlockBuilderDeposits(tx, block, orphaned, overrideForkId)
+	if err != nil {
+		return err
+	}
+
+	// insert builder exit requests (gloas)
+	err = dbw.persistBlockBuilderExits(tx, block, orphaned, overrideForkId)
+	if err != nil {
+		return err
+	}
+
 	// insert withdrawals
 	err = dbw.persistBlockWithdrawals(tx, block, orphaned, overrideForkId, sim)
 	if err != nil {
@@ -732,7 +744,7 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 // carries an empty parent_execution_requests, so the last pre-Gloas requests are not counted
 // twice. In earlier forks the requests live in the block body and were included in the
 // block's own payload.
-func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*electra.ExecutionRequests, uint64) {
+func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*all.ExecutionRequests, uint64) {
 	chainState := dbw.indexer.consensusPool.GetChainState()
 
 	blockBody := block.GetBlock(dbw.indexer.ctx)
@@ -786,6 +798,92 @@ func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrid
 	}
 
 	return dbDeposits
+}
+
+// persistBlockBuilderDeposits persists the block's builder deposit requests
+// (Gloas/EIP-8282) to the builder_deposits table. Pre-Gloas blocks carry none.
+func (dbw *dbWriter) persistBlockBuilderDeposits(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+	dbDeposits := dbw.buildDbBuilderDeposits(block, orphaned, overrideForkId)
+	if len(dbDeposits) > 0 {
+		err := db.InsertBuilderDeposits(dbw.indexer.ctx, tx, dbDeposits)
+		if err != nil {
+			return fmt.Errorf("error inserting builder deposits: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (dbw *dbWriter) buildDbBuilderDeposits(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.BuilderDeposit {
+	requests, blockNumber := dbw.getProcessedExecutionRequests(block)
+	if requests == nil || len(requests.BuilderDeposits) == 0 {
+		return []*dbtypes.BuilderDeposit{}
+	}
+
+	dbDeposits := make([]*dbtypes.BuilderDeposit, len(requests.BuilderDeposits))
+	for idx, deposit := range requests.BuilderDeposits {
+		dbDeposit := &dbtypes.BuilderDeposit{
+			SlotNumber:            uint64(block.Slot),
+			SlotRoot:              block.Root[:],
+			SlotIndex:             uint64(idx),
+			Orphaned:              orphaned,
+			ForkId:                uint64(block.forkId),
+			PublicKey:             deposit.Pubkey[:],
+			WithdrawalCredentials: deposit.WithdrawalCredentials,
+			Amount:                uint64(deposit.Amount),
+			Signature:             deposit.Signature[:],
+			BlockNumber:           blockNumber,
+		}
+		if overrideForkId != nil {
+			dbDeposit.ForkId = uint64(*overrideForkId)
+		}
+
+		dbDeposits[idx] = dbDeposit
+	}
+
+	return dbDeposits
+}
+
+// persistBlockBuilderExits persists the block's builder exit requests
+// (Gloas/EIP-8282) to the builder_exits table. Pre-Gloas blocks carry none.
+func (dbw *dbWriter) persistBlockBuilderExits(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+	dbExits := dbw.buildDbBuilderExits(block, orphaned, overrideForkId)
+	if len(dbExits) > 0 {
+		err := db.InsertBuilderExits(dbw.indexer.ctx, tx, dbExits)
+		if err != nil {
+			return fmt.Errorf("error inserting builder exits: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (dbw *dbWriter) buildDbBuilderExits(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.BuilderExit {
+	requests, blockNumber := dbw.getProcessedExecutionRequests(block)
+	if requests == nil || len(requests.BuilderExits) == 0 {
+		return []*dbtypes.BuilderExit{}
+	}
+
+	dbExits := make([]*dbtypes.BuilderExit, len(requests.BuilderExits))
+	for idx, exit := range requests.BuilderExits {
+		dbExit := &dbtypes.BuilderExit{
+			SlotNumber:    uint64(block.Slot),
+			SlotRoot:      block.Root[:],
+			SlotIndex:     uint64(idx),
+			Orphaned:      orphaned,
+			ForkId:        uint64(block.forkId),
+			SourceAddress: exit.SourceAddress[:],
+			PublicKey:     exit.Pubkey[:],
+			BlockNumber:   blockNumber,
+		}
+		if overrideForkId != nil {
+			dbExit.ForkId = uint64(*overrideForkId)
+		}
+
+		dbExits[idx] = dbExit
+	}
+
+	return dbExits
 }
 
 func (dbw *dbWriter) persistBlockVoluntaryExits(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {

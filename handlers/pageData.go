@@ -212,19 +212,6 @@ func createMenuItems(active string) []types.MainMenuItem {
 		Links: validatorMenuLinks,
 	})
 
-	if specs != nil && specs.GloasForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.GloasForkEpoch {
-		builderMenu := []types.NavigationLink{
-			{
-				Label: "Builders",
-				Path:  "/builders",
-				Icon:  "fa-building",
-			},
-		}
-		validatorMenu = append(validatorMenu, types.NavigationGroup{
-			Links: builderMenu,
-		})
-	}
-
 	validatorActionsGroup := types.NavigationGroup{
 		Links: []types.NavigationLink{
 			{
@@ -295,7 +282,7 @@ func createMenuItems(active string) []types.MainMenuItem {
 		})
 	}
 
-	return []types.MainMenuItem{
+	mainMenu := []types.MainMenuItem{
 		{
 			Label:    "Blockchain",
 			IsActive: active == "blockchain",
@@ -306,12 +293,45 @@ func createMenuItems(active string) []types.MainMenuItem {
 			IsActive: active == "validators",
 			Groups:   validatorMenu,
 		},
-		{
-			Label:    "Clients",
-			IsActive: active == "clients",
-			Groups:   clientsMenu,
-		},
 	}
+
+	// Builders menu group (Gloas/EIP-8282): builders are tracked separately from validators.
+	if specs != nil && specs.GloasForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.GloasForkEpoch {
+		buildersMenu := []types.NavigationGroup{
+			{
+				Links: []types.NavigationLink{
+					{
+						Label: "Builders List",
+						Path:  "/builders",
+						Icon:  "fa-building",
+					},
+					{
+						Label: "Builder Deposits",
+						Path:  "/builders/deposits",
+						Icon:  "fa-file-signature",
+					},
+					{
+						Label: "Builder Exits",
+						Path:  "/builders/exits",
+						Icon:  "fa-door-open",
+					},
+				},
+			},
+		}
+		mainMenu = append(mainMenu, types.MainMenuItem{
+			Label:    "Builders",
+			IsActive: active == "builders",
+			Groups:   buildersMenu,
+		})
+	}
+
+	mainMenu = append(mainMenu, types.MainMenuItem{
+		Label:    "Clients",
+		IsActive: active == "clients",
+		Groups:   clientsMenu,
+	})
+
+	return mainMenu
 }
 
 // used to handle errors constructed by Template.ExecuteTemplate correctly
