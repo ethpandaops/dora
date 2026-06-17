@@ -253,6 +253,7 @@
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
                   <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositRequestsCount }} Deposit Requests</b></h3>
+                  {{ if .Block.RequestsFromParentPayload }}<p class="col-md-12 text-center text-muted mb-0"><small>These requests were included in the parent block's payload and are processed in this block.</small></p>{{ end }}
                 </div>
               </div>
             </div>
@@ -265,6 +266,7 @@
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
                   <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.WithdrawalRequestsCount }} Withdrawal Requests</b></h3>
+                  {{ if .Block.RequestsFromParentPayload }}<p class="col-md-12 text-center text-muted mb-0"><small>These requests were included in the parent block's payload and are processed in this block.</small></p>{{ end }}
                 </div>
               </div>
             </div>
@@ -277,6 +279,7 @@
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
                   <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ConsolidationRequestsCount }} Consolidation Requests </b></h3>
+                  {{ if .Block.RequestsFromParentPayload }}<p class="col-md-12 text-center text-muted mb-0"><small>These requests were included in the parent block's payload and are processed in this block (EIP-7732).</small></p>{{ end }}
                 </div>
               </div>
             </div>
