@@ -80,6 +80,7 @@ type SlotPageBlockData struct {
 	DepositRequestsCount       uint64                  `json:"deposit_receipts_count"`
 	WithdrawalRequestsCount    uint64                  `json:"withdrawal_requests_count"`
 	ConsolidationRequestsCount uint64                  `json:"consolidation_requests_count"`
+	RequestsFromParentPayload  bool                    `json:"requests_from_parent_payload"`
 	BidsCount                  uint64                  `json:"bids_count"`
 	PtcVotesCount              uint64                  `json:"ptc_votes_count"`
 

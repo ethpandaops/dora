@@ -3009,6 +3009,9 @@ const docTemplate = `{
                 "index": {
                     "type": "integer"
                 },
+                "postponed": {
+                    "type": "boolean"
+                },
                 "public_key": {
                     "type": "string"
                 },

@@ -49,6 +49,7 @@ func init() {
 
 	// Additional options
 	migrateCmd.Flags().String("limit-tables", "", "Limit tables to migrate (comma separated list)")
+	migrateCmd.Flags().String("exclude-tables", "", "Exclude tables from migration (comma separated list)")
 	migrateCmd.Flags().BoolP("debug", "d", false, "Enable debug mode")
 
 	// Mark required flags
@@ -61,6 +62,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	sourceEngine, _ := cmd.Flags().GetString("source-engine")
 	targetEngine, _ := cmd.Flags().GetString("target-engine")
 	limitTablesStr, _ := cmd.Flags().GetString("limit-tables")
+	excludeTablesStr, _ := cmd.Flags().GetString("exclude-tables")
 
 	// Source database flags
 	sourceSqlitePath, _ := cmd.Flags().GetString("source-sqlite-path")
@@ -91,6 +93,11 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 		limitTables = strings.Split(limitTablesStr, ",")
 	}
 
+	excludeTables := make([]string, 0)
+	if excludeTablesStr != "" {
+		excludeTables = strings.Split(excludeTablesStr, ",")
+	}
+
 	sourceConfig := DbConfig{Engine: sourceEngine}
 	targetConfig := DbConfig{Engine: targetEngine}
 
@@ -114,7 +121,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 		targetConfig.Pgsql.Name = targetPgsqlDb
 	}
 
-	if err := migrateDatabase(sourceConfig, targetConfig, limitTables); err != nil {
+	if err := migrateDatabase(sourceConfig, targetConfig, limitTables, excludeTables); err != nil {
 		return fmt.Errorf("migration failed: %v", err)
 	}
 
@@ -122,7 +129,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func migrateDatabase(source, target DbConfig, limitTables []string) error {
+func migrateDatabase(source, target DbConfig, limitTables []string, excludeTables []string) error {
 	var sourceDb *sqlx.DB
 	var err error
 
@@ -178,6 +185,17 @@ func migrateDatabase(source, target DbConfig, limitTables []string) error {
 		filteredTables := make([]string, 0)
 		for _, table := range tables {
 			if slices.Contains(limitTables, table) {
+				filteredTables = append(filteredTables, table)
+			}
+		}
+		tables = filteredTables
+	}
+
+	// Filter tables if excludeTables is provided
+	if len(excludeTables) > 0 {
+		filteredTables := make([]string, 0)
+		for _, table := range tables {
+			if !slices.Contains(excludeTables, table) {
 				filteredTables = append(filteredTables, table)
 			}
 		}
