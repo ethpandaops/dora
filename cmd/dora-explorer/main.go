@@ -238,6 +238,8 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/builders", handlers.Builders).Methods("GET")
 	router.HandleFunc("/builders/deposits", handlers.BuilderDeposits).Methods("GET")
 	router.HandleFunc("/builders/exits", handlers.BuilderExits).Methods("GET")
+	router.HandleFunc("/builders/submit_deposit", handlers.SubmitBuilderDeposit).Methods("GET")
+	router.HandleFunc("/builders/submit_exit", handlers.SubmitBuilderExit).Methods("GET")
 	router.HandleFunc("/builder/{idxOrPubKey}", handlers.BuilderDetail).Methods("GET")
 
 	if utils.Config.Frontend.Pprof {

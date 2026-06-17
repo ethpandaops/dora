@@ -318,6 +318,28 @@ func createMenuItems(active string) []types.MainMenuItem {
 				},
 			},
 		}
+
+		builderSubmitLinks := []types.NavigationLink{}
+		if utils.Config.Frontend.ShowSubmitDeposit {
+			builderSubmitLinks = append(builderSubmitLinks, types.NavigationLink{
+				Label: "Submit Builder Deposit",
+				Path:  "/builders/submit_deposit",
+				Icon:  "fa-file-import",
+			})
+		}
+		if utils.Config.Frontend.ShowSubmitElRequests {
+			builderSubmitLinks = append(builderSubmitLinks, types.NavigationLink{
+				Label: "Submit Builder Exit",
+				Path:  "/builders/submit_exit",
+				Icon:  "fa-door-open",
+			})
+		}
+		if len(builderSubmitLinks) > 0 {
+			buildersMenu = append(buildersMenu, types.NavigationGroup{
+				Links: builderSubmitLinks,
+			})
+		}
+
 		mainMenu = append(mainMenu, types.MainMenuItem{
 			Label:    "Builders",
 			IsActive: active == "builders",

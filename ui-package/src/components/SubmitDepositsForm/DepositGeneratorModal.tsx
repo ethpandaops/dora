@@ -12,6 +12,7 @@ import {
   ValidatorOverride,
   CredentialType,
   WithdrawalCredentialConfig,
+  DepositDomainType,
 } from './DepositGenerator';
 
 interface IDepositGeneratorModalProps {
@@ -19,6 +20,10 @@ interface IDepositGeneratorModalProps {
   defaultWithdrawalAddress?: string;
   onClose: () => void;
   onGenerate: (deposits: IDeposit[]) => void;
+  // Builder mode (Gloas/EIP-8282): sign under DOMAIN_BUILDER_DEPOSIT and lock the
+  // withdrawal credential to the 0x03 builder prefix.
+  domainType?: DepositDomainType;
+  lockBuilderCredentials?: boolean;
 }
 
 type ActiveTab = 'basic' | 'overrides';
@@ -37,7 +42,7 @@ interface IValidatorOverrideState {
 }
 
 const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => {
-  const { genesisForkVersion, defaultWithdrawalAddress, onClose, onGenerate } = props;
+  const { genesisForkVersion, defaultWithdrawalAddress, onClose, onGenerate, domainType, lockBuilderCredentials } = props;
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('basic');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -51,7 +56,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
   const [validatorCount, setValidatorCount] = useState(1);
   const [amountEth, setAmountEth] = useState('32');
   const [credentialInputMode, setCredentialInputMode] = useState<CredentialInputMode>('type');
-  const [credentialType, setCredentialType] = useState<CredentialType>('01');
+  const [credentialType, setCredentialType] = useState<CredentialType>(lockBuilderCredentials ? '03' : '01');
   const [withdrawalAddress, setWithdrawalAddress] = useState(defaultWithdrawalAddress || '');
   const [rawCredentials, setRawCredentials] = useState('');
 
@@ -204,7 +209,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
         overrides: validatorOverrides,
       };
 
-      const deposits = await generateDeposits(config, genesisForkVersion);
+      const deposits = await generateDeposits(config, genesisForkVersion, domainType ?? 'deposit');
       onGenerate(deposits);
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : String(error));
@@ -398,12 +403,19 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                       <select
                         className="form-select"
                         value={credentialType}
+                        disabled={lockBuilderCredentials}
                         onChange={(e) => setCredentialType(e.target.value as CredentialType)}
                       >
-                        <option value="00">0x00 - BLS (derived)</option>
-                        <option value="01">0x01 - Execution</option>
-                        <option value="02">0x02 - Compounding</option>
-                        <option value="03">0x03 - Builder</option>
+                        {lockBuilderCredentials ? (
+                          <option value="03">0x03 - Builder</option>
+                        ) : (
+                          <>
+                            <option value="00">0x00 - BLS (derived)</option>
+                            <option value="01">0x01 - Execution</option>
+                            <option value="02">0x02 - Compounding</option>
+                            <option value="03">0x03 - Builder</option>
+                          </>
+                        )}
                       </select>
                     </div>
                     {credentialType !== '00' && (

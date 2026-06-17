@@ -5,6 +5,8 @@ import { IWagmiRainbowProviderProps, IWagmiRainbowProviderConfig } from './compo
 import { ISubmitDepositsFormProps } from './components/SubmitDepositsForm/SubmitDepositsFormProps';
 import { ISubmitConsolidationsFormProps } from './components/SubmitConsolidationsForm/SubmitConsolidationsFormProps';
 import { ISubmitWithdrawalsFormProps } from './components/SubmitWithdrawalsForm/SubmitWithdrawalsFormProps';
+import { ISubmitBuilderDepositsFormProps } from './components/SubmitBuilderDepositsForm/SubmitBuilderDepositsFormProps';
+import { ISubmitBuilderExitsFormProps } from './components/SubmitBuilderExitsForm/SubmitBuilderExitsFormProps';
 export interface IComponentExports {
   [component: string]: (container: HTMLElement, cfg: any) => IComponentControls
 }
@@ -48,6 +50,30 @@ function exportComponents(uiPackages: IComponentExports) {
       return (
         <WagmiRainbowProvider {...config.wagmiConfig}>
           <SubmitWithdrawalsForm {...config.submitWithdrawalsConfig} />
+        </WagmiRainbowProvider>
+      )
+    }
+  );
+
+  // SubmitBuilderDepositsForm component
+  const SubmitBuilderDepositsForm = React.lazy<React.ComponentType<ISubmitBuilderDepositsFormProps>>(() => import(/* webpackChunkName: "submit-builder-deposit" */ './components/SubmitBuilderDepositsForm/SubmitBuilderDepositsForm'));
+  uiPackages.SubmitBuilderDepositsForm = buildComponentLoader<{wagmiConfig: IWagmiRainbowProviderConfig, submitBuilderDepositsConfig: ISubmitBuilderDepositsFormProps}>(
+    (config) => {
+      return (
+        <WagmiRainbowProvider {...config.wagmiConfig}>
+          <SubmitBuilderDepositsForm {...config.submitBuilderDepositsConfig} />
+        </WagmiRainbowProvider>
+      )
+    }
+  );
+
+  // SubmitBuilderExitsForm component
+  const SubmitBuilderExitsForm = React.lazy<React.ComponentType<ISubmitBuilderExitsFormProps>>(() => import(/* webpackChunkName: "submit-builder-exit" */ './components/SubmitBuilderExitsForm/SubmitBuilderExitsForm'));
+  uiPackages.SubmitBuilderExitsForm = buildComponentLoader<{wagmiConfig: IWagmiRainbowProviderConfig, submitBuilderExitsConfig: ISubmitBuilderExitsFormProps}>(
+    (config) => {
+      return (
+        <WagmiRainbowProvider {...config.wagmiConfig}>
+          <SubmitBuilderExitsForm {...config.submitBuilderExitsConfig} />
         </WagmiRainbowProvider>
       )
     }
