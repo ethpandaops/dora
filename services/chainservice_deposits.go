@@ -429,8 +429,8 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 
 	// Assign EL deposit indexes by position, flagging postponed (reordered) entries
 	// that must instead be resolved by slot.
-	lastIncludedDeposit, includedPubkeyByIndex := bs.getRecentIncludedDeposits(ctx, queueBlockRoot)
-	indexes, postponed := resolveQueueDepositIndexes(queue, lastIncludedDeposit, includedPubkeyByIndex)
+	lastIncludedDeposit := bs.getRecentIncludedDeposits(ctx, queueBlockRoot)
+	indexes, postponed := resolveQueueDepositIndexes(queue, lastIncludedDeposit)
 	for idx := range indexedQueue.Queue {
 		indexedQueue.Queue[idx].DepositIndex = indexes[idx]
 	}
@@ -593,12 +593,12 @@ func (bs *ChainService) postponedDepositEpoch(pubkey phase0.BLSPubKey) phase0.Ep
 // individually by slot afterwards. Detection is purely slot-based (independent of the
 // possibly-delayed validator set) so the assigned index is always correct.
 //
-// Matching in the backward count is by deposit index AND pubkey: post-Gloas builder
-// (0x03) deposits get an EL deposit index but never enter the queue, leaving gaps; and
-// 0x01->0x02 compounding-switch deposits are synthesized with no EL deposit at all.
-// Synthetic ones are skipped entirely, and for real ones index gaps are skipped until the
-// pubkey at the candidate index matches the queue entry.
-func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes.Deposit, includedPubkeyByIndex map[uint64]phase0.BLSPubKey) (indexes []*uint64, postponed []bool) {
+// 0x01->0x02 compounding-switch deposits are synthesized in the queue with no EL deposit
+// at all; they are skipped entirely. Every other queue entry maps to a real EL deposit in
+// contiguous index order (post-Gloas builder deposits arrive via the separate builder
+// deposit contract and never appear in the regular deposit stream), so each non-postponed
+// entry simply takes the next index below the anchor.
+func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes.Deposit) (indexes []*uint64, postponed []bool) {
 	indexes = make([]*uint64, len(queue))
 	postponed = make([]bool, len(queue))
 
@@ -626,19 +626,6 @@ func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes
 			}
 			if candidate < 0 {
 				break // ran out of indexes; leave earlier entries unindexed
-			}
-			// Skip indexes that belong to deposits not present in the queue (builder
-			// gaps). A known pubkey that does not match means this index is a gap.
-			for candidate >= 0 {
-				pubkey, known := includedPubkeyByIndex[uint64(candidate)]
-				if known && pubkey != deposit.Pubkey {
-					candidate--
-					continue
-				}
-				break // matches, or unknown (beyond cache) -> accept and fall back to contiguous
-			}
-			if candidate < 0 {
-				break
 			}
 			if tailRegularIdx < 0 {
 				tailRegularIdx = idx
@@ -745,21 +732,17 @@ func isSyntheticPendingDeposit(deposit *electra.PendingDeposit) bool {
 	return true
 }
 
-// getRecentIncludedDeposits returns the most recent queue-eligible included deposit —
-// the anchor used to align EL deposit indexes to the pending_deposits queue — together
-// with a map of EL deposit index -> pubkey for the recent included deposits.
+// getRecentIncludedDeposits returns the most recent included deposit — the anchor used to
+// align EL deposit indexes to the pending_deposits queue.
 //
-// The map intentionally includes ALL included deposits, even post-Gloas builder (0x03)
-// deposits that are onboarded as builders and never enter the queue, so callers can
-// detect the index gaps those deposits leave and match queue entries across them by
-// pubkey. The anchor, by contrast, is the last deposit that actually enters the queue
-// (builder deposits are excluded only once Gloas is active).
-func (bs *ChainService) getRecentIncludedDeposits(ctx context.Context, headRoot phase0.Root) (*dbtypes.Deposit, map[uint64]phase0.BLSPubKey) {
-	indexPubkeys := make(map[uint64]phase0.BLSPubKey)
-
+// Post-Gloas (EIP-8282) builder deposits arrive via the dedicated builder deposit contract
+// and never appear in the regular deposit stream, so every included regular deposit (any
+// credential type, including 0x03) enters the pending_deposits queue and is a valid anchor;
+// the EL deposit index sequence stays contiguous with the queue.
+func (bs *ChainService) getRecentIncludedDeposits(ctx context.Context, headRoot phase0.Root) *dbtypes.Deposit {
 	headBlock := bs.beaconIndexer.GetBlockByRoot(headRoot)
 	if headBlock == nil {
-		return nil, indexPubkeys
+		return nil
 	}
 
 	canonicalForkIds := bs.beaconIndexer.GetParentForkIds(headBlock.GetForkId())
@@ -813,17 +796,9 @@ func (bs *ChainService) getRecentIncludedDeposits(ctx context.Context, headRoot 
 				deposits = block.GetDbDeposits(bs.beaconIndexer, nil, isCanonical)
 			}
 
-			// Builder deposits (0x03) enter the queue before Gloas (they become
-			// validators) but are onboarded as builders once Gloas is active and then
-			// skip the queue, leaving gaps in the index sequence.
-			skipBuilderDeposits := chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot))
+			// Every included regular deposit enters the queue and is a valid anchor; the
+			// most recent one wins.
 			for _, deposit := range deposits {
-				if deposit.Index != nil {
-					indexPubkeys[*deposit.Index] = phase0.BLSPubKey(deposit.PublicKey)
-				}
-				if skipBuilderDeposits && len(deposit.WithdrawalCredentials) > 0 && deposit.WithdrawalCredentials[0] == 0x03 {
-					continue // onboarded as a builder; not in the queue, not a valid anchor
-				}
 				lastQueued = deposit
 			}
 		}
@@ -841,7 +816,7 @@ func (bs *ChainService) getRecentIncludedDeposits(ctx context.Context, headRoot 
 		}
 	}
 
-	return lastQueued, indexPubkeys
+	return lastQueued
 }
 
 type QueuedDepositFilter struct {
