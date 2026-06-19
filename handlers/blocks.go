@@ -94,6 +94,8 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 		}
 	}
 	if len(displayMap) == 0 {
+		cs := services.GlobalBeaconService.GetChainState()
+		gloasActive := cs.IsEip7732Enabled(cs.EpochOfSlot(cs.CurrentSlot()))
 		displayMap = map[uint64]bool{
 			1:  true,
 			2:  true,
@@ -110,11 +112,11 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 			13: true,
 			14: true,
 			15: true,
-			16: true,
+			16: !gloasActive, // MEV Block (replaced by Builder once gloas is active)
 			17: true,
 			18: false,
 			19: false,
-			20: false, // Builder (hidden by default)
+			20: gloasActive, // Builder (shown once gloas is active)
 		}
 	}
 

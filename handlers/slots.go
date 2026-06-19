@@ -99,6 +99,9 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 			hasSnooperClients = snooperManager.HasClients()
 		}
 
+		cs := services.GlobalBeaconService.GetChainState()
+		gloasActive := cs.IsEip7732Enabled(cs.EpochOfSlot(cs.CurrentSlot()))
+
 		displayMap = map[uint64]bool{
 			1:  true,
 			2:  true,
@@ -119,7 +122,7 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 			17: false,
 			18: !hasSnooperClients, // Disable receive delay if snooper clients exist
 			19: hasSnooperClients,  // Enable exec time if snooper clients exist
-			20: false,              // Builder (hidden by default)
+			20: gloasActive,        // Builder (shown once gloas is active)
 		}
 	}
 

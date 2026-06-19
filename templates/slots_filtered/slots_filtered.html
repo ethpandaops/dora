@@ -99,6 +99,20 @@
                     <input name="f.builder" type="number" class="form-control" placeholder="Builder Index (-1 for self-built)" aria-label="Builder Index" value="{{ .FilterBuilder }}">
                   </div>
                 </div>
+                {{ if .IsGloasActive }}
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Builder Blocks
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <select name="f.builderblock" aria-controls="builderblock" class="form-control">
+                      <option value="0" {{ if eq .FilterWithBuilder 0 }}selected{{ end }}>All</option>
+                      <option value="1" {{ if eq .FilterWithBuilder 1 }}selected{{ end }}>Builder-built only</option>
+                      <option value="2" {{ if eq .FilterWithBuilder 2 }}selected{{ end }}>Self-built only</option>
+                    </select>
+                  </div>
+                </div>
+                {{ end }}
               </div>
             </div>
             <div class="col-sm-12 col-md-6">

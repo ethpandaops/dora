@@ -104,6 +104,20 @@
             </div>
             <div class="col-sm-12 col-md-6">
               <div class="container">
+                {{ if .IsGloasActive }}
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Builder Blocks</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <select name="f.builderblock" aria-controls="builderblock" class="form-control">
+                      <option value="0" {{ if eq .FilterWithBuilder 0 }}selected{{ end }}>All</option>
+                      <option value="1" {{ if eq .FilterWithBuilder 1 }}selected{{ end }}>Builder-built only</option>
+                      <option value="2" {{ if eq .FilterWithBuilder 2 }}selected{{ end }}>Self-built only</option>
+                    </select>
+                  </div>
+                </div>
+                {{ else }}
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <nobr>MEV Blocks</nobr>
@@ -116,6 +130,7 @@
                     </select>
                   </div>
                 </div>
+                {{ end }}
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <nobr>Tx Count</nobr>
@@ -178,6 +193,7 @@
                 <option value="8" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
                 <option value="9" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
                 <option value="10" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
+                <option value="14" {{ if .DisplayBuilder }}selected{{ end }}>Builder</option>
                 <option value="11" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                 <option value="13" {{ if .DisplayFeeRecipient }}selected{{ end }}>Fee Recipient</option>
@@ -214,6 +230,7 @@
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
+                {{ if .DisplayBuilder }}<th>Builder</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
                 {{ if .DisplayFeeRecipient }}<th>Fee Recipient</th>{{ end }}
@@ -272,6 +289,13 @@
                           <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.MevBlockRelays }}">Yes</span>
                         {{ else }}
                           <span class="badge rounded-pill text-bg-secondary">No</span>
+                        {{ end }}
+                      </td>
+                    {{- end }}
+                    {{- if $g.DisplayBuilder }}
+                      <td>
+                        {{ if $block.HasBuilder }}
+                          {{ formatBuilderWithURL $block.BuilderIndex $block.BuilderName $block.BuilderURL }}
                         {{ end }}
                       </td>
                     {{- end }}

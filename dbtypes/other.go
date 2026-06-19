@@ -87,6 +87,7 @@ type BlockFilter struct {
 	MinBlockSize         *uint64  // Filter by minimum block size (bytes)
 	MaxBlockSize         *uint64  // Filter by maximum block size (bytes)
 	WithMevBlock         uint8    // 0=hide mev, 1=show all, 2=mev only
+	WithBuilderBlock     uint8    // 0=all (default), 1=builder-built only, 2=self-built only
 	MinEpoch             *uint64  // Filter by minimum epoch
 	MaxEpoch             *uint64  // Filter by maximum epoch
 	MinSlot              *uint64  // Filter by minimum slot (derived from MinEpoch)

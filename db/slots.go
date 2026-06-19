@@ -482,6 +482,13 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		fmt.Fprintf(&sql, ` AND slots.builder_index = $%v `, argIdx)
 		args = append(args, *filter.BuilderIndex)
 	}
+	if filter.WithBuilderBlock == 1 {
+		// builder-built blocks only (self-built blocks use builder_index = -1)
+		fmt.Fprint(&sql, ` AND slots.builder_index >= 0 `)
+	} else if filter.WithBuilderBlock == 2 {
+		// self-built blocks only
+		fmt.Fprint(&sql, ` AND slots.builder_index = -1 `)
+	}
 
 	if filter.WithPayloadMask != dbtypes.PayloadStatusMaskAll {
 		allowedPayloadStatuses := []dbtypes.PayloadStatus{}
