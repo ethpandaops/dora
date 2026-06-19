@@ -172,24 +172,27 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 			return nil, err
 		}
 		resState = loaded
-		apiLoadDur := time.Since(apiStart)
+		client.logger.Infof("loaded epoch %v state from beacon API in %v",
+			s.targetEpoch, time.Since(apiStart).Round(time.Millisecond))
+	}
 
+	if resState != nil {
 		// For Fulu+: apply epoch transition to advance the state from the post-block state
 		// of the parent epoch's last block to the pre-state of the target epoch.
 		// Skip for genesis (epoch 0) — the genesis state is already the correct pre-state.
-		var epochTransitionDur time.Duration
 		if resState.Version >= spec.DataVersionFulu && s.targetEpoch > 0 {
 			epochStart := time.Now()
+
 			var transitionInfo statetransition.TransitionInfo
 			if err := statetransition.NewStateTransition(specs, client.indexer.dynSsz).PrepareEpochPreState(resState, s.targetEpoch, &transitionInfo); err != nil {
 				return nil, fmt.Errorf("error applying epoch transition for epoch %v: %w", s.targetEpoch, err)
 			}
-			epochTransitionDur = time.Since(epochStart)
+			epochTransitionDur := time.Since(epochStart)
 			s.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
-		}
 
-		client.logger.Infof("loaded epoch %v state from beacon API in %v + epoch transition %v",
-			s.targetEpoch, apiLoadDur.Round(time.Millisecond), epochTransitionDur.Round(time.Millisecond))
+			client.logger.Infof("applied epoch transition for epoch %v in %v",
+				s.targetEpoch, epochTransitionDur.Round(time.Millisecond))
+		}
 
 		// Store in state cache for future use.
 		if sc != nil {
@@ -373,14 +376,12 @@ func (s *epochState) tryReplayFromParentState(
 		return nil
 	}
 
-	// Skip replay across fork boundaries. Fork upgrades (e.g. upgrade_to_gloas, which
-	// onboards builders from the pending_deposits queue) are NOT implemented by the
-	// state transition, so an epoch transition that crosses a fork would silently
-	// produce a wrong, un-migrated state — and since the returned pre-state is not
-	// verified against a target-epoch block, the error would go unnoticed. Detect both
-	// a dependent-block/parent-state version mismatch and a fork change between the
-	// parent epoch and the target epoch, and fall back to loading the full state from
-	// the beacon API for that epoch.
+	// Skip replay across fork boundaries. The Fulu→Gloas upgrade (upgrade_to_gloas, applied
+	// inside PrepareEpochPreState) is implemented, but the other fork upgrades are not, and
+	// crossing a boundary during this unverified parent-state reconstruction is avoided as a
+	// conservative measure: the source state for a fork epoch is instead obtained via API load
+	// + PrepareEpochPreState. Detect both a dependent-block/parent-state version mismatch and a
+	// fork change between the parent epoch and the target epoch, and fall back to the API.
 	chainState := client.indexer.consensusPool.GetChainState()
 	if depBeaconBlock.Version != parentState.Version ||
 		chainState.GetForkVersionAtEpoch(parentEpoch) != chainState.GetForkVersionAtEpoch(s.targetEpoch) {
@@ -446,32 +447,12 @@ func (s *epochState) tryReplayFromParentState(
 	}
 	blockReplayDur := time.Since(replayStart)
 
-	// Apply epoch transition to advance the state from the post-block state of
-	// the parent epoch's last block to the pre-state of the target epoch.
-	var epochTransitionDur time.Duration
-	if parentState.Version >= spec.DataVersionFulu {
-		epochStart := time.Now()
-		var transitionInfo statetransition.TransitionInfo
-		if err := st.PrepareEpochPreState(parentState, s.targetEpoch, &transitionInfo); err != nil {
-			client.logger.Warnf("replay: epoch transition failed for epoch %v: %v", s.targetEpoch, err)
-			return nil
-		}
-		epochTransitionDur = time.Since(epochStart)
-		s.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
-	}
-
 	client.logger.Infof(
-		"replayed epoch %v: %d blocks in %v (apply %v) + epoch transition %v",
+		"replayed epoch %v: %d blocks in %v (apply %v)",
 		parentEpoch, len(epochBlocks),
 		blockReplayDur.Round(time.Millisecond),
 		blockApplyTotal.Round(time.Millisecond),
-		epochTransitionDur.Round(time.Millisecond),
 	)
-
-	// Cache the post-epoch-transition state for the target epoch.
-	if err := sc.Store(s.slotRoot, s.targetEpoch, parentState); err != nil {
-		client.logger.Warnf("failed to cache replayed state for epoch %v: %v", s.targetEpoch, err)
-	}
 
 	return parentState
 }
