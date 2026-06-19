@@ -836,7 +836,20 @@ func formatValidator(index uint64, name string, icon string, withIndex bool) tem
 // reflects the payload build source on Gloas+ blocks: a house for self-built
 // payloads and a hard-hat (linking to the builder) for builder-built payloads.
 // Pre-Gloas blocks (hasBuilder == false) fall back to the default validator icon.
-func FormatProposerWithBuildSource(index uint64, name string, hasBuilder bool, builderIndex uint64, builderURL string) template.HTML {
+//
+// Scheduled/missing slots (status == 0) and unknown proposers have no
+// determinable build source and are rendered without any leading icon.
+func FormatProposerWithBuildSource(status uint8, index uint64, name string, hasBuilder bool, builderIndex uint64, builderURL string) template.HTML {
+	if status == 0 || index == math.MaxInt64 {
+		if index == math.MaxInt64 {
+			return template.HTML(`<span class="validator-label validator-index">unknown</span>`)
+		}
+		if name != "" {
+			return template.HTML(fmt.Sprintf(`<span class="validator-label validator-name"><a href="/validator/%v">%v</a></span>`, index, html.EscapeString(name)))
+		}
+		return template.HTML(fmt.Sprintf(`<span class="validator-label validator-index"><a href="/validator/%v">%v</a></span>`, index, index))
+	}
+
 	if !hasBuilder {
 		return FormatValidator(index, name)
 	}
@@ -857,9 +870,6 @@ func FormatProposerWithBuildSource(index uint64, name string, hasBuilder bool, b
 		iconHTML = fmt.Sprintf(`<a href="%v"%v class="builder-source-link" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload (builder %v)"><i class="fas fa-hard-hat mr-2"></i></a>`, builderLink, external, builderIndex)
 	}
 
-	if index == math.MaxInt64 {
-		return template.HTML(fmt.Sprintf(`<span class="validator-label validator-index">%v unknown</span>`, iconHTML))
-	}
 	nameLabel := fmt.Sprintf("%v", index)
 	labelClass := "validator-index"
 	if name != "" {
