@@ -271,7 +271,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 			16: false,
 			17: !hasSnooperClients, // Disable receive delay if snooper clients exist
 			18: hasSnooperClients,  // Enable exec time if snooper clients exist
-			19: gloasActive,        // Builder (shown once gloas is active)
+			19: false,              // Builder (opt-in; proposer column already shows build source)
 		}
 	} else {
 		displayMask := uint64(0)
