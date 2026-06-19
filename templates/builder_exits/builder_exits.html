@@ -156,7 +156,17 @@
                     </td>
                     <td class="d-none d-md-table-cell">
                       {{ if $exit.HasTransaction }}
-                        <a href="/el/tx/0x{{ printf "%x" $exit.TransactionHash }}" class="text-truncate d-inline-block" style="max-width: 150px;">0x{{ printf "%x" $exit.TransactionHash }}</a>
+                        <div class="d-flex">
+                          <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $exit.TransactionHash 0 }}</span>
+                          <div>
+                            <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $exit.TransactionHash }}"></i>
+                          </div>
+                          {{ if $exit.TransactionDetails }}
+                          <div>
+                            <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $exit.TransactionDetails true }}"></i>
+                          </div>
+                          {{ end }}
+                        </div>
                       {{ else }}
                         <span class="text-muted">-</span>
                       {{ end }}
@@ -212,9 +222,12 @@
       </div>
       <div id="footer-placeholder" style="height:71px;"></div>
     </div>
+    {{ template "txDetailsModal" . }}
   </div>
 {{ end }}
-{{ define "js" }}{{ end }}
+{{ define "js" }}
+{{ template "txDetailsModal-js" . }}
+{{ end }}
 {{ define "css" }}
 <style>
 .filter-amount-separator {
@@ -223,4 +236,5 @@
   padding-right: 10px;
 }
 </style>
+{{ template "txDetailsModal-css" . }}
 {{ end }}

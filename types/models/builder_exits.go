@@ -35,18 +35,19 @@ type BuilderExitsPageData struct {
 }
 
 type BuilderExitsPageDataExit struct {
-	IsIncluded          bool      `json:"is_included"`
-	SlotNumber          uint64    `json:"slot"`
-	SlotRoot            []byte    `json:"slot_root" ssz-size:"32"`
-	Time                time.Time `json:"time"`
-	Orphaned            bool      `json:"orphaned"`
-	SourceAddress       []byte    `json:"source_address" ssz-size:"20"`
-	PublicKey           []byte    `json:"pubkey" ssz-size:"48"`
-	HasBuilderIndex     bool      `json:"has_builder_index"`
-	BuilderIndex        uint64    `json:"builder_index"`
-	Result              uint8     `json:"result"`
-	HasTransaction      bool      `json:"has_transaction"`
-	TransactionHash     []byte    `json:"tx_hash" ssz-size:"32"`
-	TransactionOrphaned bool      `json:"tx_orphaned"`
-	BlockNumber         uint64    `json:"block_number"`
+	IsIncluded          bool                          `json:"is_included"`
+	SlotNumber          uint64                        `json:"slot"`
+	SlotRoot            []byte                        `json:"slot_root" ssz-size:"32"`
+	Time                time.Time                     `json:"time"`
+	Orphaned            bool                          `json:"orphaned"`
+	SourceAddress       []byte                        `json:"source_address" ssz-size:"20"`
+	PublicKey           []byte                        `json:"pubkey" ssz-size:"48"`
+	HasBuilderIndex     bool                          `json:"has_builder_index"`
+	BuilderIndex        uint64                        `json:"builder_index"`
+	Result              uint8                         `json:"result"`
+	HasTransaction      bool                          `json:"has_transaction"`
+	TransactionHash     []byte                        `json:"tx_hash" ssz-size:"32"`
+	TransactionDetails  *BuilderPageDataExitTxDetails `json:"tx_details"`
+	TransactionOrphaned bool                          `json:"tx_orphaned"`
+	BlockNumber         uint64                        `json:"block_number"`
 }

@@ -20,6 +20,7 @@ import (
 func BuilderDeposits(w http.ResponseWriter, r *http.Request) {
 	var templateFiles = append(layoutTemplateFiles,
 		"builder_deposits/builder_deposits.html",
+		"_shared/txDetailsModal.html",
 		"_svg/professor.html",
 	)
 
@@ -197,6 +198,14 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 			depositData.HasTransaction = true
 			depositData.TransactionHash = deposit.Transaction.TxHash
 			depositData.TransactionOrphaned = deposit.TransactionOrphaned
+			depositData.TransactionDetails = &models.BuilderPageDataDepositTxDetails{
+				BlockNumber: deposit.Transaction.BlockNumber,
+				BlockHash:   fmt.Sprintf("%#x", deposit.Transaction.BlockRoot),
+				BlockTime:   deposit.Transaction.BlockTime,
+				TxOrigin:    common.Address(deposit.Transaction.TxSender).Hex(),
+				TxTarget:    common.Address(deposit.Transaction.TxTarget).Hex(),
+				TxHash:      fmt.Sprintf("%#x", deposit.Transaction.TxHash),
+			}
 		}
 
 		pageData.Deposits = append(pageData.Deposits, depositData)

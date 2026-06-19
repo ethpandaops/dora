@@ -20,6 +20,7 @@ import (
 func BuilderExits(w http.ResponseWriter, r *http.Request) {
 	var templateFiles = append(layoutTemplateFiles,
 		"builder_exits/builder_exits.html",
+		"_shared/txDetailsModal.html",
 		"_svg/professor.html",
 	)
 
@@ -183,6 +184,14 @@ func buildBuilderExitsPageData(ctx context.Context, pageIdx uint64, pageSize uin
 			exitData.HasTransaction = true
 			exitData.TransactionHash = exit.Transaction.TxHash
 			exitData.TransactionOrphaned = exit.TransactionOrphaned
+			exitData.TransactionDetails = &models.BuilderPageDataExitTxDetails{
+				BlockNumber: exit.Transaction.BlockNumber,
+				BlockHash:   fmt.Sprintf("%#x", exit.Transaction.BlockRoot),
+				BlockTime:   exit.Transaction.BlockTime,
+				TxOrigin:    common.Address(exit.Transaction.TxSender).Hex(),
+				TxTarget:    common.Address(exit.Transaction.TxTarget).Hex(),
+				TxHash:      fmt.Sprintf("%#x", exit.Transaction.TxHash),
+			}
 		}
 
 		pageData.Exits = append(pageData.Exits, exitData)

@@ -301,17 +301,17 @@ func createMenuItems(active string) []types.MainMenuItem {
 			{
 				Links: []types.NavigationLink{
 					{
-						Label: "Builders List",
+						Label: "Builders",
 						Path:  "/builders",
 						Icon:  "fa-building",
 					},
 					{
-						Label: "Builder Deposits",
+						Label: "Deposits",
 						Path:  "/builders/deposits",
 						Icon:  "fa-file-signature",
 					},
 					{
-						Label: "Builder Exits",
+						Label: "Exits",
 						Path:  "/builders/exits",
 						Icon:  "fa-door-open",
 					},
@@ -322,14 +322,14 @@ func createMenuItems(active string) []types.MainMenuItem {
 		builderSubmitLinks := []types.NavigationLink{}
 		if utils.Config.Frontend.ShowSubmitDeposit {
 			builderSubmitLinks = append(builderSubmitLinks, types.NavigationLink{
-				Label: "Submit Builder Deposit",
+				Label: "Submit Deposit",
 				Path:  "/builders/submit_deposit",
 				Icon:  "fa-file-import",
 			})
 		}
 		if utils.Config.Frontend.ShowSubmitElRequests {
 			builderSubmitLinks = append(builderSubmitLinks, types.NavigationLink{
-				Label: "Submit Builder Exit",
+				Label: "Submit Exit",
 				Path:  "/builders/submit_exit",
 				Icon:  "fa-door-open",
 			})
