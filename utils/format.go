@@ -832,6 +832,43 @@ func formatValidator(index uint64, name string, icon string, withIndex bool) tem
 	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> <a href=\"/validator/%v\">%v</a></span>", icon, index, index))
 }
 
+// FormatProposerWithBuildSource renders a proposer label whose leading icon
+// reflects the payload build source on Gloas+ blocks: a house for self-built
+// payloads and a hard-hat (linking to the builder) for builder-built payloads.
+// Pre-Gloas blocks (hasBuilder == false) fall back to the default validator icon.
+func FormatProposerWithBuildSource(index uint64, name string, hasBuilder bool, builderIndex uint64, builderURL string) template.HTML {
+	if !hasBuilder {
+		return FormatValidator(index, name)
+	}
+
+	var iconHTML string
+	if builderIndex == math.MaxUint64 {
+		// self-built payload
+		iconHTML = `<i class="fas fa-house mr-2" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Self-built payload"></i>`
+	} else {
+		// builder-built payload - link the icon to the builder URL when known,
+		// otherwise to the internal builder page
+		builderLink := fmt.Sprintf("/builder/%v", builderIndex)
+		external := ""
+		if builderURL != "" {
+			builderLink = html.EscapeString(builderURL)
+			external = ` target="_blank" rel="noopener noreferrer"`
+		}
+		iconHTML = fmt.Sprintf(`<a href="%v"%v class="builder-source-link" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload (builder %v)"><i class="fas fa-hard-hat mr-2"></i></a>`, builderLink, external, builderIndex)
+	}
+
+	if index == math.MaxInt64 {
+		return template.HTML(fmt.Sprintf(`<span class="validator-label validator-index">%v unknown</span>`, iconHTML))
+	}
+	nameLabel := fmt.Sprintf("%v", index)
+	labelClass := "validator-index"
+	if name != "" {
+		nameLabel = html.EscapeString(name)
+		labelClass = "validator-name"
+	}
+	return template.HTML(fmt.Sprintf(`<span class="validator-label %v">%v <a href="/validator/%v">%v</a></span>`, labelClass, iconHTML, index, nameLabel))
+}
+
 func FormatValidatorNameWithIndex(index uint64, name string) template.HTML {
 	if name != "" {
 		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\">%v (%v)</span>", html.EscapeString(name), index))

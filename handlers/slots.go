@@ -309,8 +309,8 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 				}
 			}
 
-			// Add builder info
-			if pageData.DisplayBuilder {
+			// Add builder info (needed for the Builder column and the proposer build-source icon)
+			if pageData.DisplayBuilder || pageData.DisplayProposer {
 				if dbSlot.BuilderIndex == -1 {
 					slotData.HasBuilder = true
 					slotData.BuilderIndex = math.MaxUint64
