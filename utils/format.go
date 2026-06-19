@@ -843,6 +843,13 @@ func FormatBuilder(index uint64, name string) template.HTML {
 	return formatBuilder(index, name, "", "fa-hard-hat mr-2", false)
 }
 
+// FormatInactiveBuilder renders a builder whose index has been reused by a different builder
+// (EIP-8282). Since the index no longer identifies this pubkey, it links to the details page by
+// pubkey instead of by index.
+func FormatInactiveBuilder(pubkey []byte) template.HTML {
+	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas fa-hard-hat mr-2\"></i> <a href=\"/builder/0x%x\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"This builder's index was reused by a different builder\">(inactive)</a></span>", pubkey))
+}
+
 func FormatBuilderWithIndex(index uint64, name string) template.HTML {
 	return formatBuilder(index, name, "", "fa-hard-hat mr-2", true)
 }

@@ -44,6 +44,7 @@ type BuilderExitsPageDataExit struct {
 	PublicKey           []byte                        `json:"pubkey" ssz-size:"48"`
 	HasBuilderIndex     bool                          `json:"has_builder_index"`
 	BuilderIndex        uint64                        `json:"builder_index"`
+	IsInactiveBuilder   bool                          `json:"is_inactive_builder"` // pubkey is a known builder but its index was reused
 	Result              uint8                         `json:"result"`
 	HasTransaction      bool                          `json:"has_transaction"`
 	TransactionHash     []byte                        `json:"tx_hash" ssz-size:"32"`

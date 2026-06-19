@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -165,6 +167,28 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
+	// builderIdxOf returns the builder index recorded for a deposit (CL request preferred, else
+	// the pending EL tx), if any.
+	builderIdxOf := func(deposit *services.CombinedBuilderDeposit) *uint64 {
+		if deposit.Request != nil && deposit.Request.BuilderIndex != nil {
+			return deposit.Request.BuilderIndex
+		}
+		if deposit.Transaction != nil && deposit.Transaction.BuilderIndex != nil {
+			return deposit.Transaction.BuilderIndex
+		}
+		return nil
+	}
+
+	// collect the builder indexes to resolve so we can batch-load the builders and tell whether
+	// each pubkey still owns its (reusable) index or was superseded.
+	indexes := make([]gloas.BuilderIndex, 0, len(combined))
+	for _, deposit := range combined {
+		if idx := builderIdxOf(deposit); idx != nil {
+			indexes = append(indexes, gloas.BuilderIndex(*idx))
+		}
+	}
+	builders := services.GlobalBeaconService.GetActiveBuildersByIndexes(ctx, indexes)
+
 	for _, deposit := range combined {
 		depositData := &models.BuilderDepositsPageDataDeposit{}
 
@@ -179,18 +203,19 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 			depositData.Amount = deposit.Request.Amount
 			depositData.Result = deposit.Request.Result
 			depositData.BlockNumber = deposit.Request.BlockNumber
-			if deposit.Request.BuilderIndex != nil {
-				depositData.HasBuilderIndex = true
-				depositData.BuilderIndex = *deposit.Request.BuilderIndex
-			}
 		} else if deposit.Transaction != nil {
 			depositData.PublicKey = deposit.Transaction.PublicKey
 			depositData.WithdrawalCredentials = deposit.Transaction.WithdrawalCredentials
 			depositData.Amount = deposit.Transaction.Amount
 			depositData.BlockNumber = deposit.Transaction.BlockNumber
-			if deposit.Transaction.BuilderIndex != nil {
+		}
+
+		if idx := builderIdxOf(deposit); idx != nil {
+			if b := builders[gloas.BuilderIndex(*idx)]; b != nil && bytes.Equal(b.PublicKey[:], depositData.PublicKey) {
 				depositData.HasBuilderIndex = true
-				depositData.BuilderIndex = *deposit.Transaction.BuilderIndex
+				depositData.BuilderIndex = *idx
+			} else {
+				depositData.IsInactiveBuilder = true
 			}
 		}
 

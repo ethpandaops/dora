@@ -566,7 +566,7 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 // has no concrete withdrawable epoch yet.
 func (bs *ChainService) postponedDepositEpoch(pubkey phase0.BLSPubKey) phase0.Epoch {
 	validatorIdx, found := bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
-	if !found || uint64(validatorIdx)&BuilderIndexFlag != 0 {
+	if !found {
 		return 0
 	}
 	validator := bs.GetValidatorByIndex(validatorIdx, false)

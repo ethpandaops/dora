@@ -338,19 +338,21 @@ type SlotPageConsolidationRequest struct {
 }
 
 type SlotPageBuilderDepositRequest struct {
-	PublicKey       []byte `json:"pubkey" ssz-size:"48"`
-	WithdrawalCreds []byte `json:"withdrawal_creds" ssz-size:"32"`
-	Amount          uint64 `json:"amount"`
-	Signature       []byte `json:"signature" ssz-size:"96"`
-	HasBuilderIndex bool   `json:"has_builder_index"`
-	BuilderIndex    uint64 `json:"builder_index"`
+	PublicKey         []byte `json:"pubkey" ssz-size:"48"`
+	WithdrawalCreds   []byte `json:"withdrawal_creds" ssz-size:"32"`
+	Amount            uint64 `json:"amount"`
+	Signature         []byte `json:"signature" ssz-size:"96"`
+	HasBuilderIndex   bool   `json:"has_builder_index"`
+	BuilderIndex      uint64 `json:"builder_index"`
+	IsInactiveBuilder bool   `json:"is_inactive_builder"` // pubkey is a known builder but its index was reused
 }
 
 type SlotPageBuilderExitRequest struct {
-	SourceAddress   []byte `json:"source_address" ssz-size:"20"`
-	PublicKey       []byte `json:"pubkey" ssz-size:"48"`
-	HasBuilderIndex bool   `json:"has_builder_index"`
-	BuilderIndex    uint64 `json:"builder_index"`
+	SourceAddress     []byte `json:"source_address" ssz-size:"20"`
+	PublicKey         []byte `json:"pubkey" ssz-size:"48"`
+	HasBuilderIndex   bool   `json:"has_builder_index"`
+	BuilderIndex      uint64 `json:"builder_index"`
+	IsInactiveBuilder bool   `json:"is_inactive_builder"` // pubkey is a known builder but its index was reused
 }
 
 type SlotPageBid struct {

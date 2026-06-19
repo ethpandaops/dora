@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -981,8 +982,8 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageDepositRequests(pageData, requests.Deposits)
 			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
 			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
-			getSlotPageBuilderDeposits(pageData, requests.BuilderDeposits)
-			getSlotPageBuilderExits(pageData, requests.BuilderExits)
+			getSlotPageBuilderDeposits(ctx, pageData, requests.BuilderDeposits)
+			getSlotPageBuilderExits(ctx, pageData, requests.BuilderExits)
 		}
 	}
 
@@ -1322,10 +1323,24 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
 }
 
-func getSlotPageBuilderDeposits(pageData *models.SlotPageBlockData, builderDeposits []*gloas.BuilderDepositRequest) {
+func getSlotPageBuilderDeposits(ctx context.Context, pageData *models.SlotPageBlockData, builderDeposits []*gloas.BuilderDepositRequest) {
 	pageData.BuilderDepositRequests = make([]*models.SlotPageBuilderDepositRequest, 0, len(builderDeposits))
 
-	for _, builderDeposit := range builderDeposits {
+	// resolve pubkeys -> builder indexes first, then batch-load the builders for those indexes to
+	// tell whether each pubkey still owns its (reusable) index or was superseded.
+	resolvedIdx := make([]gloas.BuilderIndex, len(builderDeposits))
+	resolvedOk := make([]bool, len(builderDeposits))
+	indexes := make([]gloas.BuilderIndex, 0, len(builderDeposits))
+	for i, builderDeposit := range builderDeposits {
+		if builderIdx, found := services.GlobalBeaconService.GetBuilderIndexByPubkey(builderDeposit.Pubkey); found {
+			resolvedIdx[i] = builderIdx
+			resolvedOk[i] = true
+			indexes = append(indexes, builderIdx)
+		}
+	}
+	builders := services.GlobalBeaconService.GetActiveBuildersByIndexes(ctx, indexes)
+
+	for i, builderDeposit := range builderDeposits {
 		requestData := &models.SlotPageBuilderDepositRequest{
 			PublicKey:       builderDeposit.Pubkey[:],
 			WithdrawalCreds: builderDeposit.WithdrawalCredentials,
@@ -1333,11 +1348,12 @@ func getSlotPageBuilderDeposits(pageData *models.SlotPageBlockData, builderDepos
 			Signature:       builderDeposit.Signature[:],
 		}
 
-		if rawIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(builderDeposit.Pubkey); found {
-			fullIndex := uint64(rawIdx)
-			if fullIndex&services.BuilderIndexFlag != 0 {
+		if resolvedOk[i] {
+			if b := builders[resolvedIdx[i]]; b != nil && bytes.Equal(b.PublicKey[:], builderDeposit.Pubkey[:]) {
 				requestData.HasBuilderIndex = true
-				requestData.BuilderIndex = fullIndex &^ services.BuilderIndexFlag
+				requestData.BuilderIndex = uint64(resolvedIdx[i])
+			} else {
+				requestData.IsInactiveBuilder = true
 			}
 		}
 
@@ -1347,20 +1363,33 @@ func getSlotPageBuilderDeposits(pageData *models.SlotPageBlockData, builderDepos
 	pageData.BuilderDepositRequestsCount = uint64(len(pageData.BuilderDepositRequests))
 }
 
-func getSlotPageBuilderExits(pageData *models.SlotPageBlockData, builderExits []*gloas.BuilderExitRequest) {
+func getSlotPageBuilderExits(ctx context.Context, pageData *models.SlotPageBlockData, builderExits []*gloas.BuilderExitRequest) {
 	pageData.BuilderExitRequests = make([]*models.SlotPageBuilderExitRequest, 0, len(builderExits))
 
-	for _, builderExit := range builderExits {
+	resolvedIdx := make([]gloas.BuilderIndex, len(builderExits))
+	resolvedOk := make([]bool, len(builderExits))
+	indexes := make([]gloas.BuilderIndex, 0, len(builderExits))
+	for i, builderExit := range builderExits {
+		if builderIdx, found := services.GlobalBeaconService.GetBuilderIndexByPubkey(builderExit.Pubkey); found {
+			resolvedIdx[i] = builderIdx
+			resolvedOk[i] = true
+			indexes = append(indexes, builderIdx)
+		}
+	}
+	builders := services.GlobalBeaconService.GetActiveBuildersByIndexes(ctx, indexes)
+
+	for i, builderExit := range builderExits {
 		requestData := &models.SlotPageBuilderExitRequest{
 			SourceAddress: builderExit.SourceAddress[:],
 			PublicKey:     builderExit.Pubkey[:],
 		}
 
-		if rawIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(builderExit.Pubkey); found {
-			fullIndex := uint64(rawIdx)
-			if fullIndex&services.BuilderIndexFlag != 0 {
+		if resolvedOk[i] {
+			if b := builders[resolvedIdx[i]]; b != nil && bytes.Equal(b.PublicKey[:], builderExit.Pubkey[:]) {
 				requestData.HasBuilderIndex = true
-				requestData.BuilderIndex = fullIndex &^ services.BuilderIndexFlag
+				requestData.BuilderIndex = uint64(resolvedIdx[i])
+			} else {
+				requestData.IsInactiveBuilder = true
 			}
 		}
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -153,6 +155,28 @@ func buildBuilderExitsPageData(ctx context.Context, pageIdx uint64, pageSize uin
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
+	// builderIdxOf returns the builder index recorded for an exit (CL request preferred, else the
+	// pending EL tx), if any.
+	builderIdxOf := func(exit *services.CombinedBuilderExit) *uint64 {
+		if exit.Request != nil && exit.Request.BuilderIndex != nil {
+			return exit.Request.BuilderIndex
+		}
+		if exit.Transaction != nil && exit.Transaction.BuilderIndex != nil {
+			return exit.Transaction.BuilderIndex
+		}
+		return nil
+	}
+
+	// collect the builder indexes to resolve so we can batch-load the builders and tell whether
+	// each pubkey still owns its (reusable) index or was superseded.
+	indexes := make([]gloas.BuilderIndex, 0, len(combined))
+	for _, exit := range combined {
+		if idx := builderIdxOf(exit); idx != nil {
+			indexes = append(indexes, gloas.BuilderIndex(*idx))
+		}
+	}
+	builders := services.GlobalBeaconService.GetActiveBuildersByIndexes(ctx, indexes)
+
 	for _, exit := range combined {
 		exitData := &models.BuilderExitsPageDataExit{}
 
@@ -166,17 +190,18 @@ func buildBuilderExitsPageData(ctx context.Context, pageIdx uint64, pageSize uin
 			exitData.PublicKey = exit.Request.PublicKey
 			exitData.Result = exit.Request.Result
 			exitData.BlockNumber = exit.Request.BlockNumber
-			if exit.Request.BuilderIndex != nil {
-				exitData.HasBuilderIndex = true
-				exitData.BuilderIndex = *exit.Request.BuilderIndex
-			}
 		} else if exit.Transaction != nil {
 			exitData.SourceAddress = exit.Transaction.SourceAddress
 			exitData.PublicKey = exit.Transaction.PublicKey
 			exitData.BlockNumber = exit.Transaction.BlockNumber
-			if exit.Transaction.BuilderIndex != nil {
+		}
+
+		if idx := builderIdxOf(exit); idx != nil {
+			if b := builders[gloas.BuilderIndex(*idx)]; b != nil && bytes.Equal(b.PublicKey[:], exitData.PublicKey) {
 				exitData.HasBuilderIndex = true
-				exitData.BuilderIndex = *exit.Transaction.BuilderIndex
+				exitData.BuilderIndex = *idx
+			} else {
+				exitData.IsInactiveBuilder = true
 			}
 		}
 

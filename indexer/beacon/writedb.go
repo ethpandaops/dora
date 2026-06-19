@@ -843,6 +843,10 @@ func (dbw *dbWriter) buildDbBuilderDeposits(block *Block, orphaned bool, overrid
 			Signature:             deposit.Signature[:],
 			BlockNumber:           blockNumber,
 		}
+		if builderIdx, found := dbw.indexer.builderPubkeyCache.Get(deposit.Pubkey); found {
+			resolvedIdx := uint64(builderIdx)
+			dbDeposit.BuilderIndex = &resolvedIdx
+		}
 		if overrideForkId != nil {
 			dbDeposit.ForkId = uint64(*overrideForkId)
 		}
@@ -884,6 +888,10 @@ func (dbw *dbWriter) buildDbBuilderExits(block *Block, orphaned bool, overrideFo
 			SourceAddress: exit.SourceAddress[:],
 			PublicKey:     exit.Pubkey[:],
 			BlockNumber:   blockNumber,
+		}
+		if builderIdx, found := dbw.indexer.builderPubkeyCache.Get(exit.Pubkey); found {
+			resolvedIdx := uint64(builderIdx)
+			dbExit.BuilderIndex = &resolvedIdx
 		}
 		if overrideForkId != nil {
 			dbExit.ForkId = uint64(*overrideForkId)

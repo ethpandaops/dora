@@ -141,6 +141,8 @@
                     <td>
                       {{ if $deposit.HasBuilderIndex }}
                         {{ formatBuilderWithIndex $deposit.BuilderIndex "" }}
+                      {{ else if $deposit.IsInactiveBuilder }}
+                        {{ formatInactiveBuilder $deposit.PublicKey }}
                       {{ else }}
                         <span class="text-muted">-</span>
                       {{ end }}

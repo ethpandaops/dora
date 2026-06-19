@@ -134,6 +134,8 @@
                     <td>
                       {{ if $exit.HasBuilderIndex }}
                         {{ formatBuilderWithIndex $exit.BuilderIndex "" }}
+                      {{ else if $exit.IsInactiveBuilder }}
+                        {{ formatInactiveBuilder $exit.PublicKey }}
                       {{ else }}
                         <span class="text-muted">-</span>
                       {{ end }}
