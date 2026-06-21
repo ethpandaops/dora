@@ -167,6 +167,14 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
+	// builder deposits at the exact Gloas fork boundary slot are the one-time onboarding of
+	// builders from the pending deposit queue (they came through the validator deposit contract).
+	onboardingSlot, hasOnboardingSlot := uint64(0), false
+	if specs := chainState.GetSpecs(); specs.GloasForkEpoch != nil {
+		onboardingSlot = *specs.GloasForkEpoch * specs.SlotsPerEpoch
+		hasOnboardingSlot = true
+	}
+
 	// builderIdxOf returns the builder index recorded for a deposit (CL request preferred, else
 	// the pending EL tx), if any.
 	builderIdxOf := func(deposit *services.CombinedBuilderDeposit) *uint64 {
@@ -203,6 +211,7 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 			depositData.Amount = deposit.Request.Amount
 			depositData.Result = deposit.Request.Result
 			depositData.BlockNumber = deposit.Request.BlockNumber
+			depositData.IsOnboarding = hasOnboardingSlot && deposit.Request.SlotNumber == onboardingSlot
 		} else if deposit.Transaction != nil {
 			depositData.PublicKey = deposit.Transaction.PublicKey
 			depositData.WithdrawalCredentials = deposit.Transaction.WithdrawalCredentials

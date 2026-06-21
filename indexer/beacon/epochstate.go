@@ -40,7 +40,8 @@ type epochState struct {
 	pendingDeposits           []*electra.PendingDeposit
 	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
 	builderPendingWithdrawals []*gloas.BuilderPendingWithdrawal
-	delayedBuilderPaymentRefs []uint16 // references to the slots of the delayed builder payments
+	delayedBuilderPaymentRefs []uint16                  // references to the slots of the delayed builder payments
+	gloasOnboardedDeposits    []*electra.PendingDeposit // builder deposits onboarded by the upgrade_to_gloas fork transition
 	pendingConsolidations     []*electra.PendingConsolidation
 	proposerLookahead         []phase0.ValidatorIndex
 	latestExecutionHash       phase0.Hash32
@@ -189,6 +190,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 			}
 			epochTransitionDur := time.Since(epochStart)
 			s.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
+			s.gloasOnboardedDeposits = transitionInfo.GloasOnboardedDeposits
 
 			client.logger.Infof("applied epoch transition for epoch %v in %v",
 				s.targetEpoch, epochTransitionDur.Round(time.Millisecond))

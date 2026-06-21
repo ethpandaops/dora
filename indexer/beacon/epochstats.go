@@ -523,8 +523,28 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		DutiesSSZ:     packedSsz,
 	}
 
+	// The upgrade_to_gloas fork transition onboards builders from the pending_deposits queue at
+	// the Gloas fork epoch. Those deposits came through the validator deposit contract, so copy
+	// them into the builder deposit tables here (once, at the fork epoch) to surface them on the
+	// builder deposit / builder detail pages.
+	var onboardedDeposits []*electra.PendingDeposit
+	var onboardedForkId ForkKey
+	if gloasForkEpoch := chainState.GetSpecs().GloasForkEpoch; gloasForkEpoch != nil &&
+		uint64(es.epoch) == *gloasForkEpoch && len(dependentState.gloasOnboardedDeposits) > 0 {
+		onboardedDeposits = dependentState.gloasOnboardedDeposits
+		if dependentBlock := indexer.blockCache.getBlockByRoot(es.dependentRoot); dependentBlock != nil {
+			onboardedForkId = dependentBlock.forkId
+		}
+	}
+
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.InsertUnfinalizedDuty(indexer.ctx, tx, dbDuty)
+		if err := db.InsertUnfinalizedDuty(indexer.ctx, tx, dbDuty); err != nil {
+			return err
+		}
+		if len(onboardedDeposits) > 0 {
+			return indexer.dbWriter.persistGloasOnboardedBuilderDeposits(tx, es.epoch, es.dependentRoot, onboardedForkId, onboardedDeposits)
+		}
+		return nil
 	})
 	if err != nil {
 		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String())

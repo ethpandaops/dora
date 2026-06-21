@@ -127,6 +127,9 @@
                         {{ else }}
                           <a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a>
                         {{ end }}
+                        {{ if $deposit.IsOnboarding }}
+                          <i class="fa fa-info-circle text-info ml-1" data-bs-toggle="tooltip" data-bs-title="Onboarded as a builder from the pending deposit queue at the Gloas fork transition"></i>
+                        {{ end }}
                       {{ else }}
                         <span class="text-muted">pending</span>
                       {{ end }}

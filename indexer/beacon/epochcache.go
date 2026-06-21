@@ -548,6 +548,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 					continue
 				}
 				entry.epochState.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
+				entry.epochState.gloasOnboardedDeposits = transitionInfo.GloasOnboardedDeposits
 
 				// Extract values from the advanced state.
 				if err := entry.epochState.processState(state, cache); err != nil {
