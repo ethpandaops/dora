@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -18,7 +19,7 @@ func WaitForCtrlC() {
 
 func HandleSubroutinePanic(identifier string, restartFn func()) {
 	if err := recover(); err != nil {
-		logrus.WithError(err.(error)).Errorf("uncaught panic in %v subroutine: %v, stack: %v", identifier, err, string(debug.Stack()))
+		logrus.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in %v subroutine: %v, stack: %v", identifier, err, string(debug.Stack()))
 
 		if restartFn != nil {
 			go func() {

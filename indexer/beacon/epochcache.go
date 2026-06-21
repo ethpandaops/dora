@@ -313,7 +313,7 @@ func (cache *epochCache) withPrecomputeLock(f func() error) error {
 func (cache *epochCache) startLoaderLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.epochCache.startLoaderLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.epochCache.startLoaderLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
 			time.Sleep(10 * time.Second)
 
 			go cache.startLoaderLoop()
@@ -398,7 +398,7 @@ func (cache *epochCache) runLoaderLoop() {
 func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 	defer func() {
 		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.epochCache.loadEpochStats subroutine: %v, stack: %v", err, string(debug.Stack()))
+			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.epochCache.loadEpochStats subroutine: %v, stack: %v", err, string(debug.Stack()))
 		}
 	}()
 

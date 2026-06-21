@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"fmt"
 	"math"
 	"runtime/debug"
 	"sort"
@@ -199,7 +200,7 @@ func (cache *validatorActivityCache) getValidatorActivityCount(validatorIndex ph
 func (cache *validatorActivityCache) cleanupLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.validatorActivityCache.cleanupLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.validatorActivityCache.cleanupLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
 			time.Sleep(10 * time.Second)
 
 			go cache.cleanupLoop()

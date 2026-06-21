@@ -18,7 +18,7 @@ import (
 func (client *Client) runClientLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			client.logger.WithError(err.(error)).Errorf("uncaught panic in clients.consensus.Client.runClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			client.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in clients.consensus.Client.runClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
 			time.Sleep(10 * time.Second)
 
 			go client.runClientLoop()

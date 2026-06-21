@@ -95,7 +95,7 @@ func (c *Client) startIndexing() {
 func (c *Client) startClientLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			c.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.Client.startClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			c.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.Client.startClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
 			time.Sleep(10 * time.Second)
 
 			go c.startClientLoop()

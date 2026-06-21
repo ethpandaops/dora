@@ -777,7 +777,7 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 func (cache *validatorCache) runPersistLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.validatorCache.runPersistLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.validatorCache.runPersistLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
 			time.Sleep(10 * time.Second)
 
 			go cache.runPersistLoop()

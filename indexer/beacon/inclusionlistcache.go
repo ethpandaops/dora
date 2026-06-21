@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"fmt"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -66,7 +67,7 @@ func (cache *inclusionListCache) getInclusionListsBySlot(slot phase0.Slot) []*v1
 func (cache *inclusionListCache) cleanupLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.inclusionListCache.cleanupLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.inclusionListCache.cleanupLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
 			time.Sleep(10 * time.Second)
 
 			go cache.cleanupLoop()
