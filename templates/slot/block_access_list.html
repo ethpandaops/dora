@@ -534,7 +534,7 @@
             html = this.renderStorageReads(entry.storage_reads);
             break;
           case 'balance':
-            html = this.renderBalanceChanges(entry.balance_changes);
+            html = this.renderBalanceChanges(entry.balance_changes, entry.address);
             break;
           case 'nonce':
             html = this.renderNonceChanges(entry.nonce_changes);
@@ -613,26 +613,47 @@
         return html;
       },
       
-      renderBalanceChanges(balanceChanges) {
+      renderBalanceChanges(balanceChanges, entryAddress) {
         if (!balanceChanges || balanceChanges.length === 0) return '';
-        
+
+        // EIP-8037: normalize the entry address to a plain lowercase hex string (no 0x)
+        var entryAddrHex = '';
+        if (entryAddress) {
+          entryAddrHex = Array.isArray(entryAddress)
+            ? entryAddress.map(function(b){return ('0'+(b&0xFF).toString(16)).slice(-2);}).join('')
+            : String(entryAddress).replace(/^0x/,'').toLowerCase();
+        }
+
         let html = '<div>';
         balanceChanges.forEach((change, index) => {
-          const txLabel = change.block_access_index === 0 ? 'Pre-execution' : 
-                          change.block_access_index === 65535 ? 'Post-execution' : 
+          const txLabel = change.block_access_index === 0 ? 'Pre-execution' :
+                          change.block_access_index === 65535 ? 'Post-execution' :
                           `Tx ${change.block_access_index}`;
-          
+
+          // EIP-8037: origin/coinbase role badge
+          var roleBadge = '';
+          var bai = change.block_access_index || 0;
+          if (bai > 0 && bai !== 65535) {
+            var txOrigin = window.txOriginByBAI && window.txOriginByBAI[bai];
+            if (txOrigin && entryAddrHex && entryAddrHex === txOrigin) {
+              roleBadge = ' <span class="badge bg-warning text-dark" style="font-size:10px;" title="EIP-8037: tx origin — balance change may include gas refund routed back to sender">origin</span>';
+            } else if (window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase()) {
+              roleBadge = ' <span class="badge bg-success" style="font-size:10px;" title="EIP-8037: fee recipient (coinbase) — receives base fee + priority fee">coinbase</span>';
+            }
+          }
+
           html += `
             <div class="bal-change-item">
               <span class="bal-tx-index">${txLabel}</span>
               <span class="bal-balance-value">${formatBalance(change.balance)}</span>
           `;
-          
+
           if (index > 0) {
             const prevBalance = balanceChanges[index - 1].balance;
             html += renderBalanceDiff(change.balance, prevBalance);
           }
-          
+
+          html += roleBadge;
           html += '</div>';
         });
         html += '</div>';
@@ -661,19 +682,45 @@
       
       renderCodeChanges(codeChanges) {
         if (!codeChanges || codeChanges.length === 0) return '';
-        
+
         let html = '<div>';
         codeChanges.forEach(change => {
-          const txLabel = change.block_access_index === 0 ? 'Pre-execution' : 
-                          change.block_access_index === 65535 ? 'Post-execution' : 
+          const txLabel = change.block_access_index === 0 ? 'Pre-execution' :
+                          change.block_access_index === 65535 ? 'Post-execution' :
                           `Tx ${change.block_access_index}`;
           const codeHex = change.code ? arrayToHex(change.code) : '';
           const codeLength = change.code ? change.code.length : 0;
-          
+
+          // EIP-8246: SELFDESTRUCT detection when code is cleared
+          var isCodeCleared = !change.code || change.code.length === 0;
+          var destructionBadge = '';
+          if (isCodeCleared) {
+            var bai = change.block_access_index || 0;
+            var zeroAddr = '0000000000000000000000000000000000000000';
+            var zeroEntry = null;
+            if (window.currentBlockAccessList) {
+              for (var j = 0; j < window.currentBlockAccessList.length; j++) {
+                var e = window.currentBlockAccessList[j];
+                var addr = Array.isArray(e.address)
+                  ? e.address.map(function(b){return ('0'+b.toString(16)).slice(-2);}).join('')
+                  : (e.address||'').replace(/^0x/,'').toLowerCase();
+                if (addr === zeroAddr) { zeroEntry = e; break; }
+              }
+            }
+            var zeroGotBalance = zeroEntry && Array.isArray(zeroEntry.balance_changes) &&
+              zeroEntry.balance_changes.some(function(b){ return (b.block_access_index||0) === bai; });
+
+            if (zeroGotBalance) {
+              destructionBadge = '<span class="badge bg-danger ms-2" title="SELFDESTRUCT with ETH burn to address(0) — pre-EIP-8246 behavior">SELFDESTRUCT (burn)</span>';
+            } else {
+              destructionBadge = '<span class="badge bg-warning text-dark ms-2" title="EIP-8246: SELFDESTRUCT, no ETH burn to address(0)">SELFDESTRUCT (no burn)</span>';
+            }
+          }
+
           html += `
             <div class="mb-3">
               <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="bal-tx-index">${txLabel}</span>
+                <span class="bal-tx-index">${txLabel}</span>${destructionBadge}
                 <span class="text-muted">${codeLength} bytes</span>
               </div>
               <div class="bal-change-item text-break" style="max-height: 200px; overflow-y: auto;">
@@ -814,6 +861,8 @@
     // Store current block access list data with base64 to hex conversion
     window.currentBlockAccessList = {{ if .Block.ExecutionData.BlockAccessList }}convertBase64ToHex(JSON.parse({{ includeJSON .Block.ExecutionData.BlockAccessList false }})){{ else }}[]{{ end }};
     window.currentSlot = {{ .Slot }};
+    // EIP-8037: fee recipient (coinbase) for origin/coinbase badge annotation
+    window.doraFeeRecipient = {{ if .Block.ExecutionData }}{{ if .Block.ExecutionData.FeeRecipient }}"{{ printf "%x" .Block.ExecutionData.FeeRecipient }}"{{ else }}null{{ end }}{{ else }}null{{ end }};
   </script>
 
   <script>
@@ -1746,7 +1795,20 @@
     });
 
     // Transaction details for callouts
-    const transactionDetails = JSON.parse({{ includeJSON .TransactionDetails false }});
+    window.transactionDetails = JSON.parse({{ includeJSON .TransactionDetails false }});
+
+    // EIP-8037: build per-tx origin index keyed by block_access_index (1-based)
+    window.txOriginByBAI = {};
+    if (window.transactionDetails && Array.isArray(window.transactionDetails)) {
+      window.transactionDetails.forEach(function(tx, i) {
+        if (tx && tx.from) {
+          var fromHex = Array.isArray(tx.from)
+            ? tx.from.map(function(b){return ('0'+b.toString(16)).slice(-2);}).join('')
+            : tx.from;
+          window.txOriginByBAI[i + 1] = fromHex.replace(/^0x/, '').toLowerCase();
+        }
+      });
+    }
     
     // Transaction callout functionality
     let currentCallout = null;
@@ -1758,7 +1820,7 @@
       }
       
       // Get transaction count from the transaction details
-      const txCount = Object.keys(transactionDetails).length;
+      const txCount = Object.keys(window.transactionDetails).length;
       
       // TX 0 is pre-execution system transaction
       // TX 1 to txCount are actual transactions (0-based in array)
@@ -1772,7 +1834,7 @@
       } else if (txIndex === txCount + 1) {
         isPostSystemTx = true;
       } else {
-        tx = transactionDetails[txIndex - 1];
+        tx = window.transactionDetails[txIndex - 1];
       }
       
       // Create callout element
