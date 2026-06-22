@@ -113,6 +113,10 @@ type TransactionPageData struct {
 	BlobFeeSavings float64                    `json:"blob_fee_savings"`           // Savings percentage ((fee_cap - price) / fee_cap * 100)
 	Blobs          []*TransactionPageDataBlob `json:"blobs"`                      // Blob details
 
+	// AccessList (EIP-2930, tx type 1)
+	AccessListEntries    []TransactionAccessListEntry `json:"access_list_entries"`
+	AccessListStorageKeys uint64                      `json:"access_list_storage_keys"` // total storage key count across all entries
+
 	// Authorizations (EIP-7702, tx type 4)
 	Authorizations []*TransactionPageDataAuthorization `json:"authorizations"`
 
@@ -138,6 +142,12 @@ type TransactionPageData struct {
 	// State changes tab (prestateTracer diffMode)
 	StateChanges             []*TransactionPageDataStateChangeAccount `json:"state_changes"`
 	StateChangesNotAvailable bool                                     `json:"state_changes_not_available"`
+}
+
+// TransactionAccessListEntry is one address+storage-keys pair from an EIP-2930 access list.
+type TransactionAccessListEntry struct {
+	Address     []byte   `json:"address"`
+	StorageKeys [][]byte `json:"storage_keys"`
 }
 
 // TransactionPageDataStateChangeAccount represents state changes for a single account.
