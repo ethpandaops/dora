@@ -866,8 +866,10 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageTransactions(ctx, pageData, executionPayload.Transactions, blockUid)
 		}
 
-		// EIP-7778: compute gas refund delta = block.gasUsed - sum(receipt.gasUsed).
-		// block.gasUsed is pre-refund (EIP-7778); each receipt.gasUsed is post-refund.
+		// EIP-7778: compute gas refund delta = |block.gasUsed - sum(receipt.gasUsed)|.
+		// In Amsterdam these two counters ALWAYS diverge (they were equal pre-Amsterdam):
+		//   block.gasUsed  = gp.Used()           = max(sum_regular, sum_state)
+		//   sum(receipts)  = gp.CumulativeUsed() = sum(max(pre_refund-refund, floor))
 		// Only computed when EL indexing has enriched ALL tx receipts in this block.
 		if len(pageData.Transactions) > 0 {
 			var sumTxGas uint64
@@ -880,10 +882,15 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			}
 			if elDataCount == len(pageData.Transactions) {
 				blockGas := executionPayload.GasUsed
-				if blockGas > sumTxGas {
+				pageData.ExecutionData.SumTxGasUsed = &sumTxGas
+				if blockGas >= sumTxGas {
 					delta := blockGas - sumTxGas
-					pageData.ExecutionData.SumTxGasUsed = &sumTxGas
 					pageData.ExecutionData.GasRefundDelta = &delta
+					pageData.ExecutionData.GasRefundDeltaExcess = true
+				} else {
+					delta := sumTxGas - blockGas
+					pageData.ExecutionData.GasRefundDelta = &delta
+					pageData.ExecutionData.GasRefundDeltaExcess = false
 				}
 			}
 		}

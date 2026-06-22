@@ -373,10 +373,15 @@
 
                 {{ if .GasRefundDelta }}
                 <div class="row py-1">
-                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7778: block.gasUsed = max(sum_regular, sum_state) — a 2D formula. When block.gasUsed exceeds sum(receipt.gasUsed), refunds are not reducing block space. Delta = block.gasUsed − sum(receipt.gasUsed). Refunds go to tx.origin (EIP-8037).">Gas Refund Delta:</span></div>
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7778: block.gasUsed = max(sum_regular, sum_state). These two counters ALWAYS diverge in Amsterdam (they were equal pre-Amsterdam). +delta: regular gas dominates (block > receipts). -delta: state gas dominates (block < receipts).">Gas Refund Delta:</span></div>
                   <div class="col-md-10 text-monospace">
-                    +{{ formatAddCommas .GasRefundDelta }}
-                    <span class="badge bg-info ms-2" data-bs-toggle="tooltip" title="EIP-7778: block uses 2D gas formula; regular gas dimension dominates in this block">EIP-7778</span>
+                    {{ if .GasRefundDeltaExcess }}
+                      <span class="text-success">+{{ formatAddCommas .GasRefundDelta }}</span>
+                      <span class="badge bg-info ms-2" data-bs-toggle="tooltip" title="EIP-7778: regular gas dominates — block.gasUsed exceeds sum(receipt.gasUsed). Refunds not subtracted from block space.">EIP-7778 ▲</span>
+                    {{ else }}
+                      <span class="text-warning">−{{ formatAddCommas .GasRefundDelta }}</span>
+                      <span class="badge bg-warning text-dark ms-2" data-bs-toggle="tooltip" title="EIP-7778: state gas dominates — block.gasUsed is BELOW sum(receipt.gasUsed). 2D accounting: block counts max(regular,state), not simple sum.">EIP-7778 ▼</span>
+                    {{ end }}
                     <small class="text-muted ms-2">(receipts sum: {{ formatAddCommas .SumTxGasUsed }})</small>
                   </div>
                 </div>
