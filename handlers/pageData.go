@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"syscall"
@@ -296,7 +297,9 @@ func createMenuItems(active string) []types.MainMenuItem {
 	}
 
 	// Builders menu group (Gloas/EIP-8282): builders are tracked separately from validators.
-	if specs != nil && specs.GloasForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.GloasForkEpoch {
+	// Shown as soon as Gloas is scheduled (a finite fork epoch), not only once it is active, so
+	// the builder deposits page can surface the projected early-onboarded builders ahead of the fork.
+	if specs != nil && specs.GloasForkEpoch != nil && *specs.GloasForkEpoch < math.MaxUint64 {
 		buildersMenu := []types.NavigationGroup{
 			{
 				Links: []types.NavigationLink{
