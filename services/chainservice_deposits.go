@@ -405,6 +405,45 @@ type IndexedDepositQueue struct {
 	TotalNew        uint64
 	TotalGwei       phase0.Gwei
 	QueueEstimation phase0.Epoch
+
+	// LastIncludedDepositIndex is the EL index of the most recent deposit included on chain as of
+	// the queue snapshot (nil if unknown). Deposits with a higher index were included after the
+	// snapshot (e.g. in the current epoch) and are not yet reflected in the queue; deposits with a
+	// lower index that are absent from the queue have already been applied.
+	LastIncludedDepositIndex *uint64
+
+	// churn-simulation residual, captured after estimating every queued deposit, so a
+	// hypothetical deposit appended to the tail can be projected (see EstimateAppendedDepositEpoch).
+	churnEpoch                 phase0.Epoch
+	churnBalance               phase0.Gwei
+	churnEpochCount            uint64
+	activationExitChurnLimit   phase0.Gwei
+	maxPendingDepositsPerEpoch uint64
+	totalActiveBalance         phase0.Gwei
+}
+
+// EstimateAppendedDepositEpoch projects the epoch in which a deposit of the given amount would be
+// processed by process_pending_deposits if it were appended to the tail of the queue right now. It
+// continues the same churn simulation used for the existing entries from its residual state. It
+// returns 0 (unknown) when the churn parameters are unavailable (e.g. no active balance yet).
+func (q *IndexedDepositQueue) EstimateAppendedDepositEpoch(amount phase0.Gwei) phase0.Epoch {
+	if q.totalActiveBalance == 0 || q.activationExitChurnLimit == 0 {
+		return 0
+	}
+
+	queueEpoch := q.churnEpoch
+	queueBalance := q.churnBalance
+
+	if q.maxPendingDepositsPerEpoch > 0 && q.churnEpochCount >= q.maxPendingDepositsPerEpoch {
+		queueEpoch++
+		queueBalance = q.activationExitChurnLimit
+	}
+	for queueBalance < amount {
+		queueEpoch++
+		queueBalance += q.activationExitChurnLimit
+	}
+
+	return queueEpoch
 }
 
 func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *beacon.Block) *IndexedDepositQueue {
@@ -423,23 +462,30 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 			PendingDeposit: queue[idx],
 		}
 	}
-	if len(queue) == 0 {
-		return indexedQueue
-	}
-
-	// Assign EL deposit indexes by position, flagging postponed (reordered) entries
-	// that must instead be resolved by slot.
+	// The anchor (most recent included deposit) is resolved unconditionally — even for an empty
+	// queue — so callers can tell already-applied deposits from deposits included after the snapshot.
 	lastIncludedDeposit := bs.getRecentIncludedDeposits(ctx, queueBlockRoot)
-	indexes, postponed := resolveQueueDepositIndexes(queue, lastIncludedDeposit)
-	for idx := range indexedQueue.Queue {
-		indexedQueue.Queue[idx].DepositIndex = indexes[idx]
+	if lastIncludedDeposit != nil && lastIncludedDeposit.Index != nil {
+		anchorIndex := *lastIncludedDeposit.Index
+		indexedQueue.LastIncludedDepositIndex = &anchorIndex
 	}
 
-	// Resolve postponed entries by slot (one batched query) and flag them for rendering.
-	bs.resolvePostponedDepositIndexes(ctx, queue, indexedQueue.Queue, postponed)
-	for idx := range indexedQueue.Queue {
-		if postponed[idx] {
-			indexedQueue.Queue[idx].Postponed = true
+	// The churn-simulation residual below is still populated for an empty queue (so the
+	// safety estimate for a newly appended deposit works), hence no early return here.
+	if len(queue) > 0 {
+		// Assign EL deposit indexes by position, flagging postponed (reordered) entries
+		// that must instead be resolved by slot.
+		indexes, postponed := resolveQueueDepositIndexes(queue, lastIncludedDeposit)
+		for idx := range indexedQueue.Queue {
+			indexedQueue.Queue[idx].DepositIndex = indexes[idx]
+		}
+
+		// Resolve postponed entries by slot (one batched query) and flag them for rendering.
+		bs.resolvePostponedDepositIndexes(ctx, queue, indexedQueue.Queue, postponed)
+		for idx := range indexedQueue.Queue {
+			if postponed[idx] {
+				indexedQueue.Queue[idx].Postponed = true
+			}
 		}
 	}
 
@@ -557,6 +603,15 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	if hasChurnDeposit {
 		indexedQueue.QueueEstimation = queueEpoch
 	}
+
+	// Retain the churn-simulation residual so a hypothetical deposit appended to the tail can be
+	// projected (EstimateAppendedDepositEpoch) — used by the pre-Gloas builder onboarding safety check.
+	indexedQueue.churnEpoch = queueEpoch
+	indexedQueue.churnBalance = queueBalance
+	indexedQueue.churnEpochCount = currentEpochCount
+	indexedQueue.activationExitChurnLimit = activationExitChurnLimit
+	indexedQueue.maxPendingDepositsPerEpoch = maxPendingDepositsPerEpoch
+	indexedQueue.totalActiveBalance = totalActiveBalance
 
 	return indexedQueue
 }

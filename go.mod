@@ -10,7 +10,7 @@ require (
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c
 	github.com/ethpandaops/ethwallclock v0.4.0
-	github.com/ethpandaops/go-eth2-client v0.1.4-0.20260618225213-e8d135e8cdc1
+	github.com/ethpandaops/go-eth2-client v0.1.4
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
@@ -23,7 +23,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/minio/minio-go/v7 v7.1.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.3.2-0.20260610112910-1d3a73e3fe4c
+	github.com/pk910/dynamic-ssz v1.3.2
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
@@ -143,7 +143,7 @@ require (
 	github.com/pion/transport/v3 v3.0.7 // indirect
 	github.com/pion/turn/v4 v4.1.1 // indirect
 	github.com/pion/webrtc/v4 v4.1.4 // indirect
-	github.com/pk910/hashtree-bindings v0.2.1 // indirect
+	github.com/pk910/hashtree-bindings v0.2.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prysmaticlabs/fastssz v0.0.0-20241008181541-518c4ce73516 // indirect
 	github.com/prysmaticlabs/gohashtree v0.0.5-beta // indirect

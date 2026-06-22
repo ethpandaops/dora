@@ -469,6 +469,15 @@ func buildBuilderRecentDeposits(ctx context.Context, pubkey []byte, chainState *
 		WithOrphaned: 1,
 	}
 	deposits, _, _ := services.GlobalBeaconService.GetBuilderDepositsByFilter(ctx, filter, 0, 20)
+
+	// builder deposits at the exact Gloas fork boundary slot are the one-time onboarding of
+	// builders from the pending deposit queue (they came through the validator deposit contract).
+	onboardingSlot, hasOnboardingSlot := uint64(0), false
+	if specs := chainState.GetSpecs(); specs.GloasForkEpoch != nil {
+		onboardingSlot = *specs.GloasForkEpoch * specs.SlotsPerEpoch
+		hasOnboardingSlot = true
+	}
+
 	for _, deposit := range deposits {
 		entry := &models.BuilderPageDataDeposit{
 			Type: "deposit",
@@ -479,6 +488,7 @@ func buildBuilderRecentDeposits(ctx context.Context, pubkey []byte, chainState *
 			entry.Time = chainState.SlotToTime(phase0.Slot(deposit.Request.SlotNumber))
 			entry.Orphaned = deposit.RequestOrphaned
 			entry.Amount = deposit.Request.Amount
+			entry.IsOnboarding = hasOnboardingSlot && deposit.Request.SlotNumber == onboardingSlot
 		} else if deposit.Transaction != nil {
 			entry.Amount = deposit.Transaction.Amount
 			entry.Time = time.Unix(int64(deposit.Transaction.BlockTime), 0)

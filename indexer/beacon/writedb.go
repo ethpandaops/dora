@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 
@@ -855,6 +856,124 @@ func (dbw *dbWriter) buildDbBuilderDeposits(block *Block, orphaned bool, overrid
 	}
 
 	return dbDeposits
+}
+
+// persistGloasOnboardedBuilderDeposits copies the builder deposits that the one-time
+// upgrade_to_gloas fork transition onboarded from the pending_deposits queue into the
+// builder_deposits (+ builder_deposit_request_txs) tables. These deposits arrived through
+// the validator deposit contract, so they are absent from the dedicated builder deposit
+// tables; without this copy they never surface on the builder deposit / builder detail pages.
+//
+// The deposits are attributed to the first slot of the Gloas fork epoch (where onboarding
+// happens) and keyed by the epoch's dependent root, so reloads upsert and sibling branches
+// stay distinct. Execution-layer tx details are sourced from the regular deposit_txs table
+// (matched by pubkey+amount+signature); the contract indexer persists those rows for recent
+// unfinalized blocks too, so the lookup is reliable even shortly after the fork.
+func (dbw *dbWriter) persistGloasOnboardedBuilderDeposits(tx *sqlx.Tx, epoch phase0.Epoch, dependentRoot phase0.Root, forkId ForkKey, onboarded []*electra.PendingDeposit) error {
+	if len(onboarded) == 0 {
+		return nil
+	}
+
+	chainState := dbw.indexer.consensusPool.GetChainState()
+	slotNumber := uint64(epoch) * chainState.GetSpecs().SlotsPerEpoch
+
+	// Index the deposit txs of every onboarded pubkey for matching. Top-ups share a pubkey, so
+	// candidates are consumed in order as they are paired to keep the mapping 1:1.
+	pubkeys := make([][]byte, 0, len(onboarded))
+	seenPubkey := make(map[phase0.BLSPubKey]bool, len(onboarded))
+	for _, deposit := range onboarded {
+		if !seenPubkey[deposit.Pubkey] {
+			seenPubkey[deposit.Pubkey] = true
+			pubkeys = append(pubkeys, deposit.Pubkey[:])
+		}
+	}
+
+	txsByPubkey := make(map[phase0.BLSPubKey][]*dbtypes.DepositTx, len(pubkeys))
+	for _, depositTx := range db.GetDepositTxsByPublicKeys(dbw.indexer.ctx, pubkeys) {
+		key := phase0.BLSPubKey(depositTx.PublicKey)
+		txsByPubkey[key] = append(txsByPubkey[key], depositTx)
+	}
+
+	dbDeposits := make([]*dbtypes.BuilderDeposit, 0, len(onboarded))
+	dbDepositTxs := make([]*dbtypes.BuilderDepositTx, 0, len(onboarded))
+	firstSeen := make(map[phase0.BLSPubKey]bool, len(pubkeys))
+
+	for idx, deposit := range onboarded {
+		// The first deposit of a pubkey registers a new builder, later ones top it up.
+		result := dbtypes.BuilderDepositRequestResultTopUp
+		if !firstSeen[deposit.Pubkey] {
+			firstSeen[deposit.Pubkey] = true
+			result = dbtypes.BuilderDepositRequestResultNewBuilder
+		}
+
+		dbDeposit := &dbtypes.BuilderDeposit{
+			SlotNumber:            slotNumber,
+			SlotRoot:              dependentRoot[:],
+			SlotIndex:             uint64(idx),
+			Orphaned:              false,
+			ForkId:                uint64(forkId),
+			PublicKey:             deposit.Pubkey[:],
+			WithdrawalCredentials: deposit.WithdrawalCredentials,
+			Amount:                uint64(deposit.Amount),
+			Signature:             deposit.Signature[:],
+			Result:                result,
+		}
+		if builderIdx, found := dbw.indexer.builderPubkeyCache.Get(deposit.Pubkey); found {
+			resolvedIdx := uint64(builderIdx)
+			dbDeposit.BuilderIndex = &resolvedIdx
+		}
+
+		if depositTx := consumeMatchingDepositTx(txsByPubkey, deposit); depositTx != nil {
+			dbDeposit.TxHash = depositTx.TxHash
+			dbDeposit.BlockNumber = depositTx.BlockNumber
+
+			// dequeue_block is set to the originating EL block so the page treats the request as
+			// already included (its pending bucket is dequeue_block > highest indexed EL block).
+			dbDepositTxs = append(dbDepositTxs, &dbtypes.BuilderDepositTx{
+				BlockNumber:           depositTx.BlockNumber,
+				BlockIndex:            uint64(idx),
+				BlockTime:             depositTx.BlockTime,
+				BlockRoot:             depositTx.BlockRoot,
+				ForkId:                depositTx.ForkId,
+				PublicKey:             deposit.Pubkey[:],
+				WithdrawalCredentials: deposit.WithdrawalCredentials,
+				Amount:                uint64(deposit.Amount),
+				Signature:             deposit.Signature[:],
+				BuilderIndex:          dbDeposit.BuilderIndex,
+				TxHash:                depositTx.TxHash,
+				TxSender:              depositTx.TxSender,
+				TxTarget:              depositTx.TxTarget,
+				DequeueBlock:          depositTx.BlockNumber,
+			})
+		}
+
+		dbDeposits = append(dbDeposits, dbDeposit)
+	}
+
+	if err := db.InsertBuilderDeposits(dbw.indexer.ctx, tx, dbDeposits); err != nil {
+		return fmt.Errorf("error inserting onboarded builder deposits: %v", err)
+	}
+	if len(dbDepositTxs) > 0 {
+		if err := db.InsertBuilderDepositTxs(dbw.indexer.ctx, tx, dbDepositTxs); err != nil {
+			return fmt.Errorf("error inserting onboarded builder deposit txs: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// consumeMatchingDepositTx returns and removes the first deposit tx that matches the pending
+// deposit by amount and signature, so repeated top-ups of the same pubkey pair to distinct txs.
+func consumeMatchingDepositTx(txsByPubkey map[phase0.BLSPubKey][]*dbtypes.DepositTx, deposit *electra.PendingDeposit) *dbtypes.DepositTx {
+	candidates := txsByPubkey[deposit.Pubkey]
+	for i, candidate := range candidates {
+		if candidate.Amount == uint64(deposit.Amount) && bytes.Equal(candidate.Signature, deposit.Signature[:]) {
+			txsByPubkey[deposit.Pubkey] = append(candidates[:i], candidates[i+1:]...)
+			return candidate
+		}
+	}
+
+	return nil
 }
 
 // persistBlockBuilderExits persists the block's builder exit requests

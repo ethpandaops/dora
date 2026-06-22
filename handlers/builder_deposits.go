@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -101,6 +102,15 @@ func getBuilderDepositsPageData(pageIdx uint64, pageSize uint64, minSlot uint64,
 }
 
 func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, pubkey string, minIndex uint64, maxIndex uint64, minAmount uint64, maxAmount uint64) *models.BuilderDepositsPageData {
+	// Before the fork the real builder_deposits table is empty: if Gloas is scheduled but not yet
+	// active, show the builders projected to be onboarded from the pending deposit queue instead.
+	chainSpecs := services.GlobalBeaconService.GetChainState().GetSpecs()
+	currentEpoch := uint64(services.GlobalBeaconService.GetChainState().CurrentEpoch())
+	if chainSpecs != nil && chainSpecs.GloasForkEpoch != nil &&
+		*chainSpecs.GloasForkEpoch < math.MaxUint64 && currentEpoch < *chainSpecs.GloasForkEpoch {
+		return buildBuilderDepositsProjectionPageData(ctx, pageIdx, pageSize, minSlot, maxSlot, pubkey, minIndex, maxIndex, minAmount, maxAmount)
+	}
+
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -167,6 +177,14 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
+	// builder deposits at the exact Gloas fork boundary slot are the one-time onboarding of
+	// builders from the pending deposit queue (they came through the validator deposit contract).
+	onboardingSlot, hasOnboardingSlot := uint64(0), false
+	if specs := chainState.GetSpecs(); specs.GloasForkEpoch != nil {
+		onboardingSlot = *specs.GloasForkEpoch * specs.SlotsPerEpoch
+		hasOnboardingSlot = true
+	}
+
 	// builderIdxOf returns the builder index recorded for a deposit (CL request preferred, else
 	// the pending EL tx), if any.
 	builderIdxOf := func(deposit *services.CombinedBuilderDeposit) *uint64 {
@@ -203,6 +221,7 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 			depositData.Amount = deposit.Request.Amount
 			depositData.Result = deposit.Request.Result
 			depositData.BlockNumber = deposit.Request.BlockNumber
+			depositData.IsOnboarding = hasOnboardingSlot && deposit.Request.SlotNumber == onboardingSlot
 		} else if deposit.Transaction != nil {
 			depositData.PublicKey = deposit.Transaction.PublicKey
 			depositData.WithdrawalCredentials = deposit.Transaction.WithdrawalCredentials
@@ -235,6 +254,195 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 
 		pageData.Deposits = append(pageData.Deposits, depositData)
 	}
+	pageData.DepositCount = uint64(len(pageData.Deposits))
+
+	if pageData.DepositCount > 0 {
+		pageData.FirstIndex = pageData.Deposits[0].SlotNumber
+		pageData.LastIndex = pageData.Deposits[pageData.DepositCount-1].SlotNumber
+	}
+
+	pageData.TotalPages = totalRows / pageSize
+	if totalRows%pageSize > 0 {
+		pageData.TotalPages++
+	}
+	pageData.LastPageIndex = pageData.TotalPages
+	if pageIdx < pageData.TotalPages {
+		pageData.NextPageIndex = pageIdx + 1
+	}
+
+	pageData.UrlParams = make([]models.UrlParam, 0)
+	for key, values := range filterArgs {
+		if len(values) > 0 {
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: key, Value: values[0]})
+		}
+	}
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
+
+	pageData.FirstPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
+	pageData.PrevPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
+	pageData.NextPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
+	pageData.LastPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
+
+	return pageData
+}
+
+// buildBuilderDepositsProjectionPageData builds the pre-Gloas projection view of the builder
+// deposits page: the builders projected to be onboarded from the pending deposit queue at the Gloas
+// fork transition, plus the "is it safe to deposit right now" indicator. It applies the slot, pubkey
+// and amount filters (the builder-index filter has no meaning before any builder exists).
+func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, pubkey string, minIndex uint64, maxIndex uint64, minAmount uint64, maxAmount uint64) *models.BuilderDepositsPageData {
+	filterArgs := url.Values{}
+	if minSlot != 0 {
+		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
+	}
+	if maxSlot != 0 {
+		filterArgs.Add("f.maxs", fmt.Sprintf("%v", maxSlot))
+	}
+	if pubkey != "" {
+		filterArgs.Add("f.pubkey", pubkey)
+	}
+	if minIndex != 0 {
+		filterArgs.Add("f.mini", fmt.Sprintf("%v", minIndex))
+	}
+	if maxIndex != 0 {
+		filterArgs.Add("f.maxi", fmt.Sprintf("%v", maxIndex))
+	}
+	if minAmount != 0 {
+		filterArgs.Add("f.mina", fmt.Sprintf("%v", minAmount))
+	}
+	if maxAmount != 0 {
+		filterArgs.Add("f.maxa", fmt.Sprintf("%v", maxAmount))
+	}
+
+	pageData := &models.BuilderDepositsPageData{
+		FilterMinSlot:   minSlot,
+		FilterMaxSlot:   maxSlot,
+		FilterPubKey:    pubkey,
+		FilterMinIndex:  minIndex,
+		FilterMaxIndex:  maxIndex,
+		FilterMinAmount: minAmount,
+		FilterMaxAmount: maxAmount,
+		IsProjection:    true,
+	}
+	if pageIdx == 1 {
+		pageData.IsDefaultPage = true
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	pageData.PageSize = pageSize
+	pageData.CurrentPageIndex = pageIdx
+	if pageIdx > 1 {
+		pageData.PrevPageIndex = pageIdx - 1
+	}
+
+	chainState := services.GlobalBeaconService.GetChainState()
+	projection := services.GlobalBeaconService.GetBuilderOnboardingProjection(ctx)
+	if projection != nil {
+		pageData.ProjectionTruncated = projection.Truncated
+		pageData.GloasForkEpoch = uint64(projection.GloasForkEpoch)
+		pageData.GloasForkTime = projection.GloasForkTime
+		pageData.OnboardedNewCount = projection.OnboardedNewCount
+		pageData.OnboardedTopUpCount = projection.OnboardedTopUpCount
+		pageData.TooEarlyCount = projection.TooEarlyCount
+		pageData.InvalidSignatureCount = projection.InvalidSignatureCount
+		pageData.KeptAsValidatorCount = projection.KeptAsValidatorCount
+		pageData.TotalQueueProcessedBeforeFork = projection.TotalQueueProcessedBeforeFork
+		pageData.HasSafetyEstimate = projection.HasSafetyEstimate
+		pageData.DepositSafe = projection.DepositSafe
+		pageData.NewDepositEstimateEpoch = uint64(projection.NewDepositEstimateEpoch)
+		pageData.NewDepositEstimateTime = projection.NewDepositEstimateTime
+	}
+
+	// Map and filter the projected deposits (slot / pubkey / amount; builder-index filter ignored).
+	pubkeyFilter := common.FromHex(pubkey)
+	matched := make([]*models.BuilderDepositsPageDataDeposit, 0)
+	if projection != nil {
+		for _, pd := range projection.Deposits {
+			dep := pd.Deposit
+			slot := dep.SlotNumber
+			amount := dep.Amount
+
+			if minSlot != 0 && slot < minSlot {
+				continue
+			}
+			if maxSlot != 0 && slot > maxSlot {
+				continue
+			}
+			if len(pubkeyFilter) > 0 && !bytes.Equal(pubkeyFilter, dep.PublicKey) {
+				continue
+			}
+			if minAmount != 0 && amount < minAmount {
+				continue
+			}
+			if maxAmount != 0 && amount > maxAmount {
+				continue
+			}
+
+			depositData := &models.BuilderDepositsPageDataDeposit{
+				IsIncluded:                true,
+				IsProjected:               true,
+				SlotNumber:                slot,
+				SlotRoot:                  dep.SlotRoot,
+				Orphaned:                  dep.Orphaned,
+				Time:                      chainState.SlotToTime(phase0.Slot(slot)),
+				PublicKey:                 dep.PublicKey,
+				WithdrawalCredentials:     dep.WithdrawalCredentials,
+				Amount:                    amount,
+				Result:                    pd.Result,
+				IsQueued:                  pd.IsQueued,
+				QueuePosition:             pd.QueuePos,
+				ProjectedOnboarded:        pd.Onboarded(),
+				ProjectedTooEarly:         pd.TooEarly,
+				ProjectedAlreadyProcessed: pd.AlreadyProcessed,
+				ProjectedKeptAsValidator:  pd.KeptAsValidator,
+				ProjectedInvalidSignature: pd.InvalidSignature,
+			}
+			if dep.Index != nil {
+				depositData.HasDepositIndex = true
+				depositData.DepositIndex = *dep.Index
+			}
+			switch {
+			case pd.AlreadyProcessed:
+				depositData.EstimatedTime = chainState.SlotToTime(phase0.Slot(slot))
+			case pd.EstimateEpoch > 0:
+				depositData.EstimatedTime = chainState.EpochToTime(pd.EstimateEpoch)
+			default:
+				depositData.EstimatedTime = projection.GloasForkTime
+			}
+
+			if dep.BlockNumber != nil {
+				depositData.HasTransaction = true
+				depositData.TransactionHash = dep.TxHash
+				depositData.BlockNumber = *dep.BlockNumber
+				blockTime := uint64(0)
+				if dep.BlockTime != nil {
+					blockTime = *dep.BlockTime
+				}
+				depositData.TransactionDetails = &models.BuilderPageDataDepositTxDetails{
+					BlockNumber: *dep.BlockNumber,
+					BlockHash:   fmt.Sprintf("%#x", dep.BlockRoot),
+					BlockTime:   blockTime,
+					TxOrigin:    common.Address(dep.TxSender).Hex(),
+					TxTarget:    common.Address(dep.TxTarget).Hex(),
+					TxHash:      fmt.Sprintf("%#x", dep.TxHash),
+				}
+			}
+
+			matched = append(matched, depositData)
+		}
+	}
+
+	totalRows := uint64(len(matched))
+	start := (pageIdx - 1) * pageSize
+	end := start + pageSize
+	if start > totalRows {
+		start = totalRows
+	}
+	if end > totalRows {
+		end = totalRows
+	}
+	pageData.Deposits = matched[start:end]
 	pageData.DepositCount = uint64(len(pageData.Deposits))
 
 	if pageData.DepositCount > 0 {
