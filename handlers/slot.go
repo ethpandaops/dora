@@ -866,6 +866,28 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageTransactions(ctx, pageData, executionPayload.Transactions, blockUid)
 		}
 
+		// EIP-7778: compute gas refund delta = block.gasUsed - sum(receipt.gasUsed).
+		// block.gasUsed is pre-refund (EIP-7778); each receipt.gasUsed is post-refund.
+		// Only computed when EL indexing has enriched ALL tx receipts in this block.
+		if len(pageData.Transactions) > 0 {
+			var sumTxGas uint64
+			elDataCount := 0
+			for _, tx := range pageData.Transactions {
+				if tx.HasElData {
+					sumTxGas += tx.GasUsed
+					elDataCount++
+				}
+			}
+			if elDataCount == len(pageData.Transactions) {
+				blockGas := executionPayload.GasUsed
+				if blockGas >= sumTxGas {
+					delta := blockGas - sumTxGas
+					pageData.ExecutionData.SumTxGasUsed = &sumTxGas
+					pageData.ExecutionData.GasRefundDelta = &delta
+				}
+			}
+		}
+
 		// EIP-7928 Block Access List — the chainservice sources the bytes
 		// either from the envelope (fresh from the node) or from blockdb
 		// (preserved after the node pruned it).

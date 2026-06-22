@@ -143,6 +143,11 @@ type SlotPageExecutionData struct {
 	BlockAccessListHash []byte                          `json:"block_access_list_hash,omitempty"`
 	BlockAccessList     []*SlotPageBlockAccessListEntry `json:"block_access_list,omitempty"`
 	BALSummary          *SlotPageBALSummary             `json:"bal_summary,omitempty"`
+
+	// EIP-7778: gas refund delta (block.gasUsed - sum(receipt.gasUsed)).
+	// Only set when EL indexing has enriched all tx receipts; nil otherwise.
+	SumTxGasUsed    *uint64 `json:"sum_tx_gas_used,omitempty"`
+	GasRefundDelta  *uint64 `json:"gas_refund_delta,omitempty"`
 }
 
 type SlotPageValidatorName struct {

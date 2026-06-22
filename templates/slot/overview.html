@@ -371,6 +371,17 @@
                   </div>
                 </div>
 
+                {{ if .GasRefundDelta }}
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7778: block.gasUsed is pre-refund gas. Gas refunds (SSTORE clears) are not subtracted from block space. Delta = block.gasUsed − sum(receipt.gasUsed). Refunds are credited to tx.origin (EIP-8037).">Gas Refund Delta:</span></div>
+                  <div class="col-md-10 text-monospace">
+                    +{{ formatAddCommas .GasRefundDelta }}
+                    <span class="badge bg-info ms-2" data-bs-toggle="tooltip" title="EIP-7778: refunds excluded from block gas accounting">EIP-7778</span>
+                    <small class="text-muted ms-2">(receipts sum: {{ formatAddCommas .SumTxGasUsed }})</small>
+                  </div>
+                </div>
+                {{ end }}
+
                 {{ if not $block.PayloadHeader }}
                   <div class="row py-1">
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas Limit">Gas Limit:</span></div>
