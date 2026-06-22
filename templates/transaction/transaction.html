@@ -256,7 +256,7 @@
             {{ end }}
             {{ if gt (len .InputData) 0 }}
             <div class="row p-2 mx-0">
-              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data">Input Data:</span></div>
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data">Input Data:</span> <span class="badge bg-secondary ms-1">{{ formatNumber (len .InputData) }} bytes</span></div>
               <div class="col-md-9">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   {{ if eq .TargetCallType "deploy" }}
