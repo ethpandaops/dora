@@ -116,6 +116,9 @@ type TransactionPageData struct {
 	// Authorizations (EIP-7702, tx type 4)
 	Authorizations []*TransactionPageDataAuthorization `json:"authorizations"`
 
+	// EIP-7976: calldata floor gas cost = 21000 + 64 × len(calldata); 0 if no calldata
+	CalldataFloorGas uint64 `json:"calldata_floor_gas"`
+
 	// Tab view
 	TabView string `json:"tab_view"`
 

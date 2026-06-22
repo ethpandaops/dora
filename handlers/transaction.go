@@ -33,6 +33,9 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
+// EIP-7708: ETH Transfer logger address — emits Transfer(address,address,uint256) on every ETH move.
+var ethTransferLogger = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
+
 // Transaction type names
 var txTypeNames = map[uint8]string{
 	0: "Legacy",
@@ -536,6 +539,11 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 	}
 	applyCallTargetResolution(ctx, pageData, methodID)
 
+	// EIP-7976: calldata floor gas = 21000 + 64 × len(calldata)
+	if len(pageData.InputData) > 0 {
+		pageData.CalldataFloorGas = 21000 + uint64(len(pageData.InputData))*64
+	}
+
 	// Blob hashes
 	pageData.BlobCount = uint32(len(ethTx.BlobHashes()))
 
@@ -804,6 +812,13 @@ func buildEventsFromBlockdb(events bdbtypes.EventDataList) []*models.Transaction
 		}
 		if len(ev.Topics) > 4 {
 			event.Topic4 = ev.Topics[4]
+		}
+
+		// EIP-7708: ETH transfers emit a Transfer(address,address,uint256) event from
+		// 0xfffffffffffffffffffffffffffffffffffffffe (the ETH Transfer logger).
+		// Topic0 = keccak256("Transfer(address,address,uint256)") = 0xddf252ad...
+		if bytes.Equal(ev.Source[:], ethTransferLogger[:]) {
+			event.EventName = "ETH Transfer (EIP-7708)"
 		}
 
 		result = append(result, event)
@@ -1277,6 +1292,11 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 
 	// Set input data from parsed transaction
 	pageData.InputData = ethTx.Data()
+
+	// EIP-7976: calldata floor gas = 21000 + 64 × len(calldata)
+	if len(pageData.InputData) > 0 {
+		pageData.CalldataFloorGas = 21000 + uint64(len(pageData.InputData))*64
+	}
 
 	// Generate JSON using proper marshaling
 	generateTxJSON(pageData, &ethTx)
