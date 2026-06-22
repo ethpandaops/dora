@@ -1465,6 +1465,12 @@ func loadAccessListData(
 		}
 		pageData.AccessListStorageKeys += uint64(len(entry.StorageKeys))
 	}
+
+	// EIP-7981 (Amsterdam): ACCESS_LIST_STORAGE_KEY_COST 2400→1900, address cost unchanged at 2400
+	addrs := uint64(len(al))
+	pageData.AccessListGasAmsterdam = addrs*2400 + pageData.AccessListStorageKeys*1900
+	pageData.AccessListGasPrague = addrs*2400 + pageData.AccessListStorageKeys*2400
+	pageData.AccessListGasSavings = pageData.AccessListGasPrague - pageData.AccessListGasAmsterdam
 }
 
 // resolveAuthorizationValidity loads state diffs from blockdb and checks

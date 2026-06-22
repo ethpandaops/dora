@@ -259,6 +259,7 @@
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-2930 access list — pre-warmed addresses and storage slots. Under EIP-7981 (Amsterdam): each address costs 2400 gas, each storage key costs 1900 gas.">Access List:</span></div>
               <div class="col-md-9">
                 <span class="badge bg-secondary me-2">{{ len .AccessListEntries }} {{ if eq (len .AccessListEntries) 1 }}address{{ else }}addresses{{ end }} &middot; {{ .AccessListStorageKeys }} storage {{ if eq .AccessListStorageKeys 1 }}key{{ else }}keys{{ end }}</span>
+                <span class="badge bg-info text-dark me-2" data-bs-toggle="tooltip" data-bs-placement="top" title="Access list intrinsic gas (EIP-7981): {{ formatNumber .AccessListGasAmsterdam }} gas in Amsterdam vs {{ formatNumber .AccessListGasPrague }} in Prague. Saves {{ formatNumber .AccessListGasSavings }} gas (storage key: 2400→1900).">{{ formatNumber .AccessListGasAmsterdam }} gas</span>
                 <div class="mt-2" style="font-size:0.85rem; font-family:monospace;">
                   {{ range $i, $entry := .AccessListEntries }}
                   <div class="py-1{{ if not (eq $i (add (len $.AccessListEntries) -1)) }} border-bottom{{ end }}">

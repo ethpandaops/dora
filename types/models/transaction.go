@@ -114,8 +114,12 @@ type TransactionPageData struct {
 	Blobs          []*TransactionPageDataBlob `json:"blobs"`                      // Blob details
 
 	// AccessList (EIP-2930, tx type 1)
-	AccessListEntries    []TransactionAccessListEntry `json:"access_list_entries"`
-	AccessListStorageKeys uint64                      `json:"access_list_storage_keys"` // total storage key count across all entries
+	AccessListEntries     []TransactionAccessListEntry `json:"access_list_entries"`
+	AccessListStorageKeys uint64                       `json:"access_list_storage_keys"` // total storage key count across all entries
+	// EIP-7981: Amsterdam changed ACCESS_LIST_STORAGE_KEY_COST 2400→1900 (address cost unchanged at 2400)
+	AccessListGasAmsterdam uint64 `json:"access_list_gas_amsterdam"` // intrinsic gas using Amsterdam pricing
+	AccessListGasPrague    uint64 `json:"access_list_gas_prague"`    // intrinsic gas using Prague pricing (for comparison)
+	AccessListGasSavings   uint64 `json:"access_list_gas_savings"`   // gas saved vs Prague (Amsterdam - Prague = negative = savings)
 
 	// Authorizations (EIP-7702, tx type 4)
 	Authorizations []*TransactionPageDataAuthorization `json:"authorizations"`
