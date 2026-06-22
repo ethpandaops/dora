@@ -880,7 +880,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			}
 			if elDataCount == len(pageData.Transactions) {
 				blockGas := executionPayload.GasUsed
-				if blockGas >= sumTxGas {
+				if blockGas > sumTxGas {
 					delta := blockGas - sumTxGas
 					pageData.ExecutionData.SumTxGasUsed = &sumTxGas
 					pageData.ExecutionData.GasRefundDelta = &delta
