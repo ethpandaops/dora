@@ -170,6 +170,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"isSystemContract":              IsSystemContract,
 		"getSystemContractName":         GetSystemContractName,
 		"calculateBalanceDiff":          CalculateBalanceDiff,
+		"hasCodeDestruction":            HasCodeDestruction,
 		"bitwiseAnd":                    func(a, b interface{}) int64 { return toInt64(a) & toInt64(b) },
 		"formatByteSize": func(v any) template.HTML {
 			n := toInt64(v)

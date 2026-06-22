@@ -480,6 +480,9 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 		}
 	}
 
+	// Add well-known static addresses
+	result[common.HexToAddress("0x4e59b44847b379578588920ca78fbf26c0b4956c")] = "Arachnid CREATE2 Factory (EIP-7997)"
+
 	return result
 }
 
