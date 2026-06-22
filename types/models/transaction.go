@@ -200,6 +200,11 @@ type TransactionPageDataEvent struct {
 
 	// Decoded (if known)
 	EventName string `json:"event_name"`
+
+	// EIP-7708: decoded ETH Transfer parameters (only set for ETH Transfer logger events)
+	EthTransferFrom  []byte `json:"eth_transfer_from,omitempty"`  // 20-byte from address
+	EthTransferTo    []byte `json:"eth_transfer_to,omitempty"`    // 20-byte to address
+	EthTransferValue string `json:"eth_transfer_value,omitempty"` // formatted ETH amount
 }
 
 // TransactionPageDataTokenTransfer represents a token transfer in the transaction
