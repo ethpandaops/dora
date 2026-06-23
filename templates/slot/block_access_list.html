@@ -1804,8 +1804,8 @@
         if (tx && tx.from) {
           var fromHex = Array.isArray(tx.from)
             ? tx.from.map(function(b){return ('0'+b.toString(16)).slice(-2);}).join('')
-            : tx.from;
-          window.txOriginByBAI[i + 1] = fromHex.replace(/^0x/, '').toLowerCase();
+            : base64ToHex(tx.from);
+          window.txOriginByBAI[i + 1] = (fromHex || '').replace(/^0x/, '').toLowerCase();
         }
       });
     }
