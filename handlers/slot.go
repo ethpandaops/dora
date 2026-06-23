@@ -1133,13 +1133,14 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 		}
 
 		txData := &models.SlotPageTransaction{
-			Index:    uint64(idx),
-			Hash:     txHash[:],
-			Value:    txValue,
-			Data:     tx.Data(),
-			Type:     uint64(txType),
-			TypeName: typeName,
-			GasLimit: tx.Gas(),
+			Index:          uint64(idx),
+			Hash:           txHash[:],
+			Value:          txValue,
+			Data:           tx.Data(),
+			Type:           uint64(txType),
+			TypeName:       typeName,
+			GasLimit:       tx.Gas(),
+			GasLimitCapped: tx.Gas() > 16_777_216,
 		}
 		txData.DataLen = uint64(len(txData.Data))
 
@@ -1742,13 +1743,14 @@ func decodeInclusionListTransactions(il *v1.SignedInclusionList, sysContracts ma
 		}
 
 		txData := &models.SlotPageTransaction{
-			Index:    uint64(idx),
-			Hash:     txHash[:],
-			Value:    txValue,
-			Data:     tx.Data(),
-			Type:     uint64(txType),
-			TypeName: typeName,
-			GasLimit: tx.Gas(),
+			Index:          uint64(idx),
+			Hash:           txHash[:],
+			Value:          txValue,
+			Data:           tx.Data(),
+			Type:           uint64(txType),
+			TypeName:       typeName,
+			GasLimit:       tx.Gas(),
+			GasLimitCapped: tx.Gas() > 16_777_216,
 		}
 		txData.DataLen = uint64(len(txData.Data))
 

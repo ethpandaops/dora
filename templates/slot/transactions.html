@@ -61,6 +61,9 @@
               <span data-bs-toggle="tooltip" title="{{ formatAddCommas $transaction.GasUsed }} / {{ formatAddCommas $transaction.GasLimit }}">
                 {{ formatAddCommas $transaction.GasUsed }}
               </span>
+              {{- if $transaction.GasLimitCapped }}
+              <span class="badge rounded-pill text-bg-warning ms-1" style="font-size:10px;" title="EIP-7825: gas_limit ({{ formatAddCommas $transaction.GasLimit }}) exceeds TX_MAX_GAS_LIMIT (2&#x5E;24=16,777,216). Execution budget is capped at TX_MAX_GAS_LIMIT in Amsterdam.">EIP-7825 capped</span>
+              {{- end }}
             </td>
             <td>
               <span data-bs-toggle="tooltip" title="{{ printf "%.9f" $transaction.EffGasPrice }} Gwei">

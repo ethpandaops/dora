@@ -293,12 +293,13 @@ type SlotPageTransaction struct {
 	TypeName      string  `json:"type_name"`
 
 	// EL-enriched data (only available when execution indexer is enabled)
-	HasElData   bool    `json:"has_el_data"`
-	Reverted    bool    `json:"reverted"`
-	GasUsed     uint64  `json:"gas_used"`
-	GasLimit    uint64  `json:"gas_limit"`
-	TxFee       float64 `json:"tx_fee"`        // Transaction fee in ETH
-	EffGasPrice float64 `json:"eff_gas_price"` // Effective gas price in Gwei
+	HasElData       bool    `json:"has_el_data"`
+	Reverted        bool    `json:"reverted"`
+	GasUsed         uint64  `json:"gas_used"`
+	GasLimit        uint64  `json:"gas_limit"`
+	GasLimitCapped  bool    `json:"gas_limit_capped"` // EIP-7825: true if gas_limit > TX_MAX_GAS_LIMIT (2^24=16,777,216); execution budget is capped in Amsterdam
+	TxFee           float64 `json:"tx_fee"`           // Transaction fee in ETH
+	EffGasPrice     float64 `json:"eff_gas_price"`    // Effective gas price in Gwei
 }
 
 type SlotPageDepositRequest struct {
