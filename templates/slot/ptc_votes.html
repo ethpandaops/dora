@@ -31,7 +31,7 @@
           <div class="card">
             <div class="card-body text-center">
               <h5 class="card-title mb-0">{{ .Block.PtcVotes.TotalPtcSize }}</h5>
-              <small class="text-muted">Committee Size</small>
+              <small class="text-muted" data-bs-toggle="tooltip" title="Number of PTC seats. On small validator sets a validator can hold multiple seats.">Committee Size</small>
             </div>
           </div>
         </div>
@@ -65,15 +65,13 @@
               </span>
             </div>
           </div>
-          {{ if gt (len $agg.Validators) 0 }}
+          {{ if gt $agg.VoteCount 0 }}
             <div class="card-body p-0">
               <a class="d-block px-3 py-2 text-muted" data-bs-toggle="collapse" href="#ptc-agg-{{ $i }}" role="button" aria-expanded="false" aria-controls="ptc-agg-{{ $i }}">
-                <i class="fas fa-chevron-down me-1"></i> Show {{ len $agg.Validators }} validators
+                <i class="fas fa-chevron-down me-1"></i> Show voting validators
               </a>
-              <div class="collapse px-3 pb-3" id="ptc-agg-{{ $i }}">
-                {{ range $j, $v := $agg.Validators }}
-                  {{ formatValidatorWithIndex $v.Index $v.Name }}
-                {{ end }}
+              <div class="collapse px-3 pb-3 ptc-validators" id="ptc-agg-{{ $i }}" data-agg-index="{{ $i }}">
+                <span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i> Loading committee duties...</span>
               </div>
             </div>
           {{ end }}
@@ -87,20 +85,97 @@
             <strong>{{ .Block.PtcVotes.NonVoterCount }}</strong> validator{{ if ne .Block.PtcVotes.NonVoterCount 1 }}s{{ end }}
             <span class="text-muted">({{ formatFloat .Block.PtcVotes.NonVoterPercent 1 }}%)</span>
           </div>
-          {{ if gt (len .Block.PtcVotes.NonVoters) 0 }}
-            <div class="card-body p-0">
-              <a class="d-block px-3 py-2 text-muted" data-bs-toggle="collapse" href="#ptc-nonvoters" role="button" aria-expanded="false" aria-controls="ptc-nonvoters">
-                <i class="fas fa-chevron-down me-1"></i> Show {{ len .Block.PtcVotes.NonVoters }} validators
-              </a>
-              <div class="collapse px-3 pb-3" id="ptc-nonvoters">
-                {{ range $j, $v := .Block.PtcVotes.NonVoters }}
-                  {{ formatValidatorWithIndex $v.Index $v.Name }}
-                {{ end }}
-              </div>
+          <div class="card-body p-0">
+            <a class="d-block px-3 py-2 text-muted" data-bs-toggle="collapse" href="#ptc-nonvoters" role="button" aria-expanded="false" aria-controls="ptc-nonvoters">
+              <i class="fas fa-chevron-down me-1"></i> Show absent validators
+            </a>
+            <div class="collapse px-3 pb-3" id="ptc-nonvoters">
+              <span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i> Loading committee duties...</span>
             </div>
-          {{ end }}
+          </div>
         </div>
       {{ end }}
+
+      <script type="text/javascript">
+        (function() {
+          var votedSlot = {{ .Block.PtcVotes.VotedSlot }};
+          var aggBits = JSON.parse({{ includeJSON .Block.PtcVotes.Aggregates false }}).map(function(a) { return a.aggregation_bits; });
+          var ptcNames = {};
+          var ptcPromise = null;
+
+          function base64ToBytes(b64) {
+            var s = atob(b64);
+            return Uint8Array.from(s, function(c) { return c.charCodeAt(0); });
+          }
+          function bitSet(bytes, i) {
+            return (bytes[i >> 3] & (1 << (i & 7))) !== 0;
+          }
+          function renderValidator(idx) {
+            var name = ptcNames[idx];
+            var label = name ? (name + ' (' + idx + ')') : idx;
+            return '<a class="validator-label me-2" href="/validator/' + idx + '"><i class="fas fa-male me-1"></i>' + label + '</a>';
+          }
+          function loadPtc() {
+            if (ptcPromise) return ptcPromise;
+            ptcPromise = fetch('/slot/' + votedSlot + '/duties?ptc=1')
+              .then(function(r) { return r.json(); })
+              .then(function(data) {
+                if (data.names) { ptcNames = data.names; }
+                return data.validators || [];
+              });
+            return ptcPromise;
+          }
+
+          document.querySelectorAll('.ptc-validators').forEach(function(el) {
+            el.addEventListener('shown.bs.collapse', function() {
+              if (el.dataset.loaded) return;
+              var aggIdx = parseInt(el.dataset.aggIndex, 10);
+              loadPtc().then(function(members) {
+                var bits = base64ToBytes(aggBits[aggIdx]);
+                var seen = {};
+                var html = '';
+                for (var i = 0; i < members.length; i++) {
+                  if (bitSet(bits, i) && !seen[members[i]]) {
+                    seen[members[i]] = 1;
+                    html += renderValidator(members[i]);
+                  }
+                }
+                el.innerHTML = html || '<span class="text-muted">No validators</span>';
+                el.dataset.loaded = '1';
+                if (window.explorer) { explorer.initControls(); }
+              });
+            });
+          });
+
+          var nv = document.getElementById('ptc-nonvoters');
+          if (nv) {
+            nv.addEventListener('shown.bs.collapse', function() {
+              if (nv.dataset.loaded) return;
+              loadPtc().then(function(members) {
+                var voted = {};
+                for (var a = 0; a < aggBits.length; a++) {
+                  var bits = base64ToBytes(aggBits[a]);
+                  for (var i = 0; i < members.length; i++) {
+                    if (bitSet(bits, i)) { voted[members[i]] = 1; }
+                  }
+                }
+                var seen = {};
+                var html = '';
+                for (var i = 0; i < members.length; i++) {
+                  var m = members[i];
+                  if (!voted[m] && !seen[m]) {
+                    seen[m] = 1;
+                    html += renderValidator(m);
+                  }
+                }
+                nv.innerHTML = html || '<span class="text-muted">No validators</span>';
+                nv.dataset.loaded = '1';
+                if (window.explorer) { explorer.initControls(); }
+              });
+            });
+          }
+        })();
+      </script>
     {{ else }}
       <p class="text-muted">No PTC vote data available.</p>
     {{ end }}

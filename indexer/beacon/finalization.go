@@ -586,6 +586,16 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				}
 			}(block)
 		}
+
+		// store the epoch's resolved duties alongside the block writes
+		wg.Add(1)
+		go func(values *EpochStatsValues) {
+			defer wg.Done()
+			if err := indexer.writeEpochDutiesToBlockDb(indexer.ctx, epoch, values); err != nil {
+				indexer.logger.Errorf("error writing epoch %v duties to blockdb: %v", epoch, err)
+			}
+		}(epochStatsValues)
+
 		wg.Wait()
 	}
 	t3dur := time.Since(t1)

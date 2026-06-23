@@ -66,7 +66,14 @@
           <div data-bind="html: formattedAggregationBits"></div>
         </div>
       </div>
-      {{ html "<!-- ko if: validators.length > 0 -->" }}
+      {{ html "<!-- ko if: loading -->" }}
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-12 text-center text-muted py-2">
+          <i class="fas fa-spinner fa-spin me-1"></i> Loading committee duties...
+        </div>
+      </div>
+      {{ html "<!-- /ko -->" }}
+      {{ html "<!-- ko if: validators().length > 0 -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators in this committee - green icons are attesting, red icons are not attesting">Validators:</span>
@@ -201,17 +208,39 @@
     self.target_epoch = data.target_epoch;
     self.target_root = base64ToBytes(data.target_root);
     self.signature = base64ToBytes(data.signature);
-    self.validators = data.validators;
-    self.included_validators = data.included_validators;
+    // Committee membership is lazy-loaded on first expand (see fetchValidators).
+    self.validators = ko.observableArray(data.validators || []);
     self.payload_status = data.payload_status !== undefined ? data.payload_status : null;
 
     self.showDetails = ko.observable(false);
+    self.loading = ko.observable(false);
+    self.validatorsLoaded = ko.observable(self.validators().length > 0);
+
+    self.fetchValidators = function() {
+      if (self.validatorsLoaded() || self.loading() || !self.committee_index.length) {
+        return;
+      }
+      self.loading(true);
+      fetch('/slot/' + self.slot + '/duties?committees=' + self.committee_index.join(','))
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+          if (data.names) {
+            Object.keys(data.names).forEach(function(k) { validatorNames[k] = data.names[k]; });
+          }
+          self.validators(data.validators || []);
+          self.validatorsLoaded(true);
+          self.loading(false);
+          setTimeout(function() { explorer.initControls(); }, 100);
+        })
+        .catch(function() { self.loading(false); });
+    };
 
     self.toggleDetails = function() {
       var isOpen = self.showDetails();
       self.showDetails(!isOpen);
 
       if (!isOpen) {
+        self.fetchValidators();
         setTimeout(function() {
           explorer.initControls();
         }, 100);
@@ -252,14 +281,15 @@
     // Compute ordered validators with attestation status
     self.orderedValidators = ko.computed(function() {
       var ordered = [];
+      var validators = self.validators();
 
-      for (var i = 0; i < self.validators.length; i++) {
+      for (var i = 0; i < validators.length; i++) {
         var byteIndex = Math.floor(i / 8);
         var bitIndex = i % 8;
         var isAttesting = (self.aggregation_bits[byteIndex] & (1 << bitIndex)) !== 0;
 
         ordered.push({
-          validator: self.validators[i],
+          validator: validators[i],
           isAttesting: isAttesting,
           position: i
         });
@@ -270,6 +300,7 @@
     // Format aggregation bits with validator info
     self.formattedAggregationBits = ko.computed(function() {
       var bits = self.aggregation_bits;
+      var validators = self.validators();
       var html = '<pre class="text-bitfield text-monospace text-break" style="font-size:1rem;">';
       var perLine = 8;
 
@@ -280,9 +311,9 @@
       for (var y = 0; y < bits.length; y += perLine) {
         var start = y * 8;
         var end = (y + perLine) * 8;
-        if (self.validators.length > 0 && end >= self.validators.length) {
-          end = self.validators.length;
-        } else if (self.validators.length === 0 && end >= bits.length * 8) {
+        if (validators.length > 0 && end >= validators.length) {
+          end = validators.length;
+        } else if (validators.length === 0 && end >= bits.length * 8) {
           end = bits.length * 8;
         }
 
@@ -303,7 +334,7 @@
             html += ' ';
           }
 
-          var validator = self.validators[x];
+          var validator = validators[x];
           if (validator !== undefined) {
             var name = validatorNames[validator];
             if (name) {

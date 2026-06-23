@@ -101,6 +101,7 @@ func init() {
 	blockdbCopyCmd.Flags().IntP("threads", "j", 10, "Number of concurrent copy workers")
 	blockdbCopyCmd.Flags().Bool("no-blocks", false, "Skip block data")
 	blockdbCopyCmd.Flags().Bool("no-execdata", false, "Skip execution data")
+	blockdbCopyCmd.Flags().Bool("no-duties", false, "Skip per-epoch duties data")
 	blockdbCopyCmd.Flags().Int64("min-slot", -1, "Minimum slot to copy (inclusive, -1 = no limit)")
 	blockdbCopyCmd.Flags().Int64("max-slot", -1, "Maximum slot to copy (inclusive, -1 = no limit)")
 	blockdbCopyCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
@@ -120,6 +121,7 @@ func runBlockdbCopy(cmd *cobra.Command, _ []string) error {
 	threads, _ := cmd.Flags().GetInt("threads")
 	noBlocks, _ := cmd.Flags().GetBool("no-blocks")
 	noExecdata, _ := cmd.Flags().GetBool("no-execdata")
+	noDuties, _ := cmd.Flags().GetBool("no-duties")
 	minSlot, _ := cmd.Flags().GetInt64("min-slot")
 	maxSlot, _ := cmd.Flags().GetInt64("max-slot")
 	verbose, _ := cmd.Flags().GetBool("verbose")
@@ -137,8 +139,8 @@ func runBlockdbCopy(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("--target-engine must be 'pebble' or 's3', got %q", targetEngine)
 	}
 
-	if noBlocks && noExecdata {
-		return fmt.Errorf("--no-blocks and --no-execdata cannot both be set")
+	if noBlocks && noExecdata && noDuties {
+		return fmt.Errorf("--no-blocks, --no-execdata and --no-duties cannot all be set")
 	}
 
 	if threads < 1 {
@@ -150,6 +152,7 @@ func runBlockdbCopy(cmd *cobra.Command, _ []string) error {
 		threads:      threads,
 		copyBlocks:   !noBlocks,
 		copyExec:     !noExecdata,
+		copyDuties:   !noDuties,
 		minSlot:      minSlot,
 		maxSlot:      maxSlot,
 		sourceEngine: sourceEngine,
@@ -249,6 +252,7 @@ type blockdbCopier struct {
 	threads      int
 	copyBlocks   bool
 	copyExec     bool
+	copyDuties   bool
 	minSlot      int64 // -1 = no limit
 	maxSlot      int64 // -1 = no limit
 	sourceEngine string
@@ -354,7 +358,19 @@ func (c *blockdbCopier) run(ctx context.Context) error {
 	close(workCh)
 	wg.Wait()
 
-	return enumErr
+	if enumErr != nil {
+		return enumErr
+	}
+
+	// Duties use a different per-backend layout than blocks/exec data, so they
+	// are copied through a dedicated pass via the EpochDuties representation.
+	if c.copyDuties {
+		if err := c.copyDutiesPass(ctx); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // enumerateS3 lists all objects from the source S3 bucket and pushes

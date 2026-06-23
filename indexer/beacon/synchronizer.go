@@ -510,6 +510,16 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 				}
 			}(block)
 		}
+
+		// store the epoch's resolved duties alongside the block writes
+		wg.Add(1)
+		go func(values *EpochStatsValues) {
+			defer wg.Done()
+			if err := s.indexer.writeEpochDutiesToBlockDb(s.indexer.ctx, syncEpoch, values); err != nil {
+				s.logger.Errorf("error writing epoch %v duties to blockdb: %v", syncEpoch, err)
+			}
+		}(epochStatsValues)
+
 		wg.Wait()
 	}
 

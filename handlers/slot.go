@@ -487,15 +487,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
 	}
 
-	appendValidatorName := func(index uint64, name string) {
-		for _, validatorName := range pageData.ValidatorNames {
-			if validatorName.Key == index {
-				return
-			}
-		}
-		pageData.ValidatorNames = append(pageData.ValidatorNames, models.SlotPageValidatorName{Key: index, Value: name})
-	}
-
 	epoch := chainState.EpochOfSlot(blockData.Header.Message.Slot)
 	assignmentsMap := make(map[phase0.Epoch]*beacon.EpochStatsValues)
 	assignmentsLoaded := make(map[phase0.Epoch]bool)
@@ -506,6 +497,8 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	attHeadBlocks := make(map[phase0.Root]phase0.Slot)
 
+	// Committee membership is loaded on demand via /slot/{slot}/duties; only the
+	// committee indices and aggregation bits are populated here.
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
 	for i, att := range attestations {
 		if att == nil || att.Data == nil {
@@ -570,10 +563,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			}
 		}
 
-		var attAssignments []uint64
-		includedValidators := []uint64{}
-		attEpochStatsValues := assignmentsMap[attEpoch]
-
 		if att.Version >= spec.DataVersionGloas {
 			payloadStatus := uint64(attData.Index)
 			attPageData.PayloadStatus = &payloadStatus
@@ -581,69 +570,19 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		if att.Version >= spec.DataVersionElectra {
 			// EIP-7549 attestation
-			attAssignments = []uint64{}
 			attPageData.CommitteeIndex = []uint64{}
-
-			committeeBits := att.CommitteeBits
-
-			attBitsOffset := uint64(0)
-			for _, committee := range committeeBits.BitIndices() {
+			for _, committee := range att.CommitteeBits.BitIndices() {
 				if uint64(committee) >= specs.MaxCommitteesPerSlot {
 					continue
 				}
-
 				attPageData.CommitteeIndex = append(attPageData.CommitteeIndex, uint64(committee))
-				if attEpochStatsValues != nil {
-					slotIndex := int(chainState.SlotToSlotIndex(attData.Slot))
-					committeeAssignments := attEpochStatsValues.AttesterDuties[slotIndex][uint64(committee)]
-					if len(committeeAssignments) == 0 {
-						break
-					}
-
-					committeeAssignmentsInt := make([]uint64, 0)
-					for j := 0; j < len(committeeAssignments); j++ {
-						validatorIndex := attEpochStatsValues.ActiveIndices[committeeAssignments[j]]
-						if attAggregationBits.BitAt(attBitsOffset + uint64(j)) {
-							includedValidators = append(includedValidators, uint64(validatorIndex))
-						}
-						committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(validatorIndex))
-					}
-
-					attBitsOffset += uint64(len(committeeAssignments))
-					attAssignments = append(attAssignments, committeeAssignmentsInt...)
-				}
 			}
 		} else {
-			// pre-electra attestation
-			if attEpochStatsValues != nil {
-				slotIndex := int(chainState.SlotToSlotIndex(attData.Slot))
-				committeeAssignments := attEpochStatsValues.AttesterDuties[slotIndex][uint64(attData.Index)]
-				committeeAssignmentsInt := make([]uint64, 0)
-				for j := 0; j < len(committeeAssignments); j++ {
-					validatorIndex := attEpochStatsValues.ActiveIndices[committeeAssignments[j]]
-					if attAggregationBits.BitAt(uint64(j)) {
-						includedValidators = append(includedValidators, uint64(validatorIndex))
-					}
-					committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(validatorIndex))
-				}
-
-				attAssignments = committeeAssignmentsInt
-			} else {
-				attAssignments = []uint64{}
-			}
-
 			attPageData.CommitteeIndex = []uint64{uint64(attData.Index)}
 		}
 
-		attPageData.Validators = attAssignments
-		for j := 0; j < len(attAssignments); j++ {
-			appendValidatorName(attAssignments[j], services.GlobalBeaconService.GetValidatorName(attAssignments[j]))
-		}
-
-		attPageData.IncludedValidators = includedValidators
-		for j := 0; j < len(includedValidators); j++ {
-			appendValidatorName(includedValidators[j], services.GlobalBeaconService.GetValidatorName(includedValidators[j]))
-		}
+		attPageData.Validators = []uint64{}
+		attPageData.IncludedValidators = []uint64{}
 
 		pageData.Attestations[i] = &attPageData
 	}
@@ -1443,30 +1382,9 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 
-	// PTC votes are for the previous slot
+	// PTC votes are for the previous slot. ptcDuties (resolved by the caller via
+	// the chain service) holds the PTC members for votedSlot.
 	votedSlot := blockSlot - 1
-	votedEpoch := chainState.EpochOfSlot(votedSlot)
-
-	// Get epoch stats for the voted slot to retrieve PTC duties
-	var ptcDuties []phase0.ValidatorIndex
-	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
-	epochStats := beaconIndexer.GetEpochStatsByEpoch(votedEpoch)
-	for _, es := range epochStats {
-		values := es.GetValues(true)
-		if values != nil && values.PtcDuties != nil {
-			slotInEpoch := uint64(votedSlot) % specs.SlotsPerEpoch
-			if slotInEpoch < uint64(len(values.PtcDuties)) && values.PtcDuties[slotInEpoch] != nil {
-				// Convert from active indice indices to validator indices
-				ptcDuties = make([]phase0.ValidatorIndex, len(values.PtcDuties[slotInEpoch]))
-				for i, activeIdx := range values.PtcDuties[slotInEpoch] {
-					if int(activeIdx) < len(values.ActiveIndices) {
-						ptcDuties[i] = values.ActiveIndices[activeIdx]
-					}
-				}
-				break
-			}
-		}
-	}
 
 	// PTC_SIZE is a spec constant (512). The Bitvector is always PTC_SIZE bits.
 	// On small validator sets, validators appear multiple times in PTC duties
@@ -1499,14 +1417,12 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 			BlobDataAvailable: pa.Data.BlobDataAvailable,
 			AggregationBits:   pa.AggregationBits,
 			Signature:         pa.Signature[:],
-			Validators:        make([]types.NamedValidator, 0),
+			Validators:        []types.NamedValidator{},
 		}
 
-		// Count votes from raw aggregation bits, then enrich with validator
-		// names when PTC duties are available. Vote count must not depend on
-		// duty availability — duties may be missing for pruned/unloaded epochs.
+		// Vote count comes from the raw aggregation bits; the member list is
+		// loaded on demand via /slot/{votedSlot}/duties?ptc=1.
 		bitCount := min(uint64(len(pa.AggregationBits))*8, ptcSize)
-		aggValidatorSet := make(map[uint64]bool)
 		bitVoteCount := uint64(0)
 		for i := uint64(0); i < bitCount; i++ {
 			if (pa.AggregationBits[i/8]>>(i%8))&1 != 1 {
@@ -1514,18 +1430,6 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 			}
 			votedPositions[i] = true
 			bitVoteCount++
-			if int(i) >= len(ptcDuties) {
-				continue
-			}
-			vidx := uint64(ptcDuties[i])
-			if aggValidatorSet[vidx] {
-				continue
-			}
-			aggValidatorSet[vidx] = true
-			aggregate.Validators = append(aggregate.Validators, types.NamedValidator{
-				Index: vidx,
-				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
-			})
 		}
 
 		aggregate.VoteCount = bitVoteCount
@@ -1534,50 +1438,11 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 		ptcVotes.Aggregates = append(ptcVotes.Aggregates, aggregate)
 	}
 
-	// Calculate participation by unique validators, not bit positions.
-	// On small validator sets, the same validator occupies multiple PTC positions.
-	// A validator votes at their first PTC position only (ptc.index()), leaving
-	// duplicate positions unset. Count unique voters/non-voters for display.
-	voterSet := make(map[uint64]bool)
-	if len(ptcDuties) > 0 {
-		for i := range ptcDuties {
-			if votedPositions[uint64(i)] {
-				voterSet[uint64(ptcDuties[i])] = true
-			}
-		}
-
-		// Non-voters: unique validators with NO voted position at all
-		nonVoterSet := make(map[uint64]bool)
-		for _, vidx := range ptcDuties {
-			v := uint64(vidx)
-			if !voterSet[v] {
-				nonVoterSet[v] = true
-			}
-		}
-		nonVoters := make([]types.NamedValidator, 0, len(nonVoterSet))
-		for vidx := range nonVoterSet {
-			nonVoters = append(nonVoters, types.NamedValidator{
-				Index: vidx,
-				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
-			})
-		}
-		ptcVotes.NonVoters = nonVoters
-		ptcVotes.NonVoterCount = uint64(len(nonVoters))
-	}
-
-	// Calculate participation rate based on unique validators
-	totalUniqueValidators := uint64(len(voterSet)) + ptcVotes.NonVoterCount
-	if totalUniqueValidators > 0 {
-		ptcVotes.TotalPtcSize = totalUniqueValidators
-		ptcVotes.Participation = float64(len(voterSet)) / float64(totalUniqueValidators)
-		ptcVotes.NonVoterPercent = float64(ptcVotes.NonVoterCount) / float64(totalUniqueValidators) * 100
-
-		// Recalculate aggregate vote percentages based on unique validators
-		for _, agg := range ptcVotes.Aggregates {
-			agg.VotePercent = float64(agg.VoteCount) / float64(totalUniqueValidators) * 100
-		}
-	} else if ptcSize > 0 {
-		// No duties available, use bit positions as approximation
+	// Participation is seat-based: voted positions over the full PTC size. On
+	// small validator sets the same validator holds multiple seats, so the seat
+	// count (not the unique-validator count) is the correct denominator and keeps
+	// the percentage within 0-100%.
+	if ptcSize > 0 {
 		totalVoted := uint64(len(votedPositions))
 		ptcVotes.NonVoterCount = ptcSize - totalVoted
 		ptcVotes.Participation = float64(totalVoted) / float64(ptcSize)
