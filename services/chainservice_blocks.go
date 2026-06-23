@@ -1401,8 +1401,11 @@ func (bs *ChainService) GetHighestElBlockNumber(ctx context.Context, overrideFor
 		if canonicalHead == nil {
 			break
 		}
-		if canonicalHead.GetBlockIndex(ctx) != nil {
-			return canonicalHead.GetBlockIndex(ctx).ExecutionNumber
+		// In Gloas/ePBS the execution payload is decoupled from the beacon block and may not be
+		// revealed yet for the most recent canonical head(s), in which case ExecutionNumber is 0.
+		// Walk back to the latest block that actually carries an execution number.
+		if blockIndex := canonicalHead.GetBlockIndex(ctx); blockIndex != nil && blockIndex.ExecutionNumber > 0 {
+			return blockIndex.ExecutionNumber
 		}
 
 		parentRoot := canonicalHead.GetParentRoot()
