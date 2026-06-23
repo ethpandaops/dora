@@ -193,7 +193,11 @@
           <div class="card-body px-0 py-3">
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas limit set for transaction">Gas Limit:</span></div>
-              <div class="col-md-9">{{ formatAddCommas .GasLimit }}</div>
+              <div class="col-md-9">{{ formatAddCommas .GasLimit }}
+                {{- if .GasLimitAtMaxTxGas }}
+                <span class="badge rounded-pill text-bg-warning ms-2" title="EIP-7825 (Amsterdam): MaxTxGas=16,000,000. This transaction&#39;s gas limit is at or above the per-transaction maximum.">EIP-7825 max</span>
+                {{- end }}
+              </div>
             </div>
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Actual gas used">Gas Used:</span></div>
