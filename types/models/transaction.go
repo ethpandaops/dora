@@ -82,7 +82,7 @@ type TransactionPageData struct {
 	GasLimit          uint64  `json:"gas_limit"`
 	GasUsed           uint64  `json:"gas_used"`
 	GasUsedPct        float64 `json:"gas_used_pct"` // Gas used percentage
-	GasLimitAtMaxTxGas bool   `json:"gas_limit_at_max_tx_gas"` // EIP-7825: true if gas >= MaxTxGas (16,000,000)
+	GasLimitAtMaxTxGas bool   `json:"gas_limit_at_max_tx_gas"` // EIP-7825: true if gas > TX_MAX_GAS_LIMIT (16,777,216=2^24); execution capped in Amsterdam
 
 	// Transaction details
 	TxType     uint8  `json:"tx_type"`

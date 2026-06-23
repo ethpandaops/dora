@@ -366,7 +366,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 
 	// Gas info
 	pageData.GasLimit = tx.GasLimit
-	pageData.GasLimitAtMaxTxGas = tx.GasLimit >= 16_000_000
+	pageData.GasLimitAtMaxTxGas = tx.GasLimit > 16_777_216
 	pageData.GasUsed = tx.GasUsed
 	if tx.GasLimit > 0 {
 		pageData.GasUsedPct = float64(tx.GasUsed) / float64(tx.GasLimit) * 100
@@ -493,7 +493,7 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 
 	pageData.Nonce = ethTx.Nonce()
 	pageData.GasLimit = ethTx.Gas()
-	pageData.GasLimitAtMaxTxGas = ethTx.Gas() >= 16_000_000
+	pageData.GasLimitAtMaxTxGas = ethTx.Gas() > 16_777_216
 
 	// Value
 	if ethTx.Value() != nil {

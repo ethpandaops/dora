@@ -195,7 +195,7 @@
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas limit set for transaction">Gas Limit:</span></div>
               <div class="col-md-9">{{ formatAddCommas .GasLimit }}
                 {{- if .GasLimitAtMaxTxGas }}
-                <span class="badge rounded-pill text-bg-warning ms-2" title="EIP-7825 (Amsterdam): MaxTxGas=16,000,000. This transaction&#39;s gas limit is at or above the per-transaction maximum.">EIP-7825 max</span>
+                <span class="badge rounded-pill text-bg-warning ms-2" title="EIP-7825 (Amsterdam): TX_MAX_GAS_LIMIT=16,777,216 (2^24). This transaction&#39;s gas limit exceeds TX_MAX_GAS_LIMIT. In Amsterdam, the execution budget is capped at TX_MAX_GAS_LIMIT regardless of the gas_limit field.">EIP-7825 capped</span>
                 {{- end }}
               </div>
             </div>
