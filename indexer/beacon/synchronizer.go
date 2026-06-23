@@ -512,15 +512,25 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		}
 
 		// store the epoch's resolved duties alongside the block writes
+		var dutiesSize int64
 		wg.Add(1)
 		go func(values *EpochStatsValues) {
 			defer wg.Done()
-			if err := s.indexer.writeEpochDutiesToBlockDb(s.indexer.ctx, syncEpoch, values); err != nil {
+			size, err := s.indexer.writeEpochDutiesToBlockDb(s.indexer.ctx, syncEpoch, values)
+			if err != nil {
 				s.logger.Errorf("error writing epoch %v duties to blockdb: %v", syncEpoch, err)
+				return
 			}
+			dutiesSize = size
 		}(epochStatsValues)
 
 		wg.Wait()
+
+		if dutiesSize > 0 {
+			if err := db.UpdateEpochDutiesSize(s.indexer.ctx, uint64(syncEpoch), uint64(dutiesSize)); err != nil {
+				s.logger.Errorf("error updating epoch %v duties size: %v", syncEpoch, err)
+			}
+		}
 	}
 
 	// cleanup cache (remove blocks from this epoch)

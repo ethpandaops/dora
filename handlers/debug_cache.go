@@ -89,6 +89,8 @@ type BlockDbStoredData struct {
 	BeaconBlockSize  int64
 	ExecDataCount    int64
 	ExecDataSize     int64
+	DutiesCount      int64
+	DutiesSize       int64
 	TotalCount       int64
 	TotalSize        int64
 }
@@ -306,8 +308,10 @@ func buildBlockDbStoredData() *BlockDbStoredData {
 		BeaconBlockSize:  dbStats.BeaconBlockSize,
 		ExecDataCount:    dbStats.ExecDataCount,
 		ExecDataSize:     dbStats.ExecDataSize,
-		TotalCount:       dbStats.BeaconBlockCount + dbStats.ExecDataCount,
-		TotalSize:        dbStats.BeaconBlockSize + dbStats.ExecDataSize,
+		DutiesCount:      dbStats.DutiesCount,
+		DutiesSize:       dbStats.DutiesSize,
+		TotalCount:       dbStats.BeaconBlockCount + dbStats.ExecDataCount + dbStats.DutiesCount,
+		TotalSize:        dbStats.BeaconBlockSize + dbStats.ExecDataSize + dbStats.DutiesSize,
 	}
 }
 

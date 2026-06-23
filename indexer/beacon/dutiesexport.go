@@ -90,29 +90,31 @@ func BuildEpochDuties(specs *consensus.ChainSpec, epoch phase0.Epoch, values *Ep
 	}
 }
 
-// writeEpochDutiesToBlockDb serializes and stores the per-epoch duties object.
-// It is best-effort and must never block finalization or synchronization.
-func (indexer *Indexer) writeEpochDutiesToBlockDb(ctx context.Context, epoch phase0.Epoch, values *EpochStatsValues) error {
+// writeEpochDutiesToBlockDb serializes and stores the per-epoch duties object,
+// returning the stored size. It is best-effort and must never block finalization
+// or synchronization.
+func (indexer *Indexer) writeEpochDutiesToBlockDb(ctx context.Context, epoch phase0.Epoch, values *EpochStatsValues) (int64, error) {
 	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsDuties() {
-		return nil
+		return 0, nil
 	}
 	if utils.Config != nil && utils.Config.Indexer.DisableBlockDBDuties {
-		return nil
+		return 0, nil
 	}
 
 	specs := indexer.consensusPool.GetChainState().GetSpecs()
 	if specs == nil {
-		return nil
+		return 0, nil
 	}
 
 	epochDuties := BuildEpochDuties(specs, epoch, values)
 	if epochDuties == nil {
-		return nil
+		return 0, nil
 	}
 
-	if _, err := blockdb.GlobalBlockDb.AddEpochDuties(ctx, epochDuties); err != nil {
-		return fmt.Errorf("failed to store epoch duties: %w", err)
+	size, err := blockdb.GlobalBlockDb.AddEpochDuties(ctx, epochDuties)
+	if err != nil {
+		return 0, fmt.Errorf("failed to store epoch duties: %w", err)
 	}
 
-	return nil
+	return size, nil
 }
