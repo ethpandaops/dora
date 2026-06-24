@@ -197,6 +197,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/slots/filtered", handlers.SlotsFiltered).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/tracoor", handlers.SlotTracoor).Methods("GET")
+	router.HandleFunc("/slot/{slotOrHash}/duties", handlers.SlotDuties).Methods("GET")
 	router.HandleFunc("/slot/{root}/blob/{index}", handlers.SlotBlob).Methods("GET")
 	router.HandleFunc("/blocks", handlers.Blocks).Methods("GET")
 	router.HandleFunc("/blocks/filtered", handlers.BlocksFiltered).Methods("GET")
