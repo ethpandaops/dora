@@ -1151,4 +1151,3 @@ func CalculateBalanceDiff(current []byte, previous []byte) template.HTML {
 	return template.HTML(fmt.Sprintf(`<span class="bal-balance-diff %s">(%s%s)</span>`,
 		class, sign, formattedDiff))
 }
-

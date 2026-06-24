@@ -448,10 +448,10 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 	result := make(map[common.Address]string, 5)
 
 	labels := map[string]string{
-		exerpc.WithdrawalRequestContract:    "Withdrawal Request (EIP-7002)",
-		exerpc.ConsolidationRequestContract: "Consolidation Request (EIP-7251)",
-		exerpc.BeaconRootsContract:          "Beacon Roots (EIP-4788)",
-		exerpc.HistoryStorageContract:       "Block Hash History (EIP-2935)",
+		exerpc.WithdrawalRequestContract:     "Withdrawal Request (EIP-7002)",
+		exerpc.ConsolidationRequestContract:  "Consolidation Request (EIP-7251)",
+		exerpc.BeaconRootsContract:           "Beacon Roots (EIP-4788)",
+		exerpc.HistoryStorageContract:        "Block Hash History (EIP-2935)",
 		exerpc.BuilderDepositRequestContract: "Builder Deposit (EIP-8282)",
 		exerpc.BuilderExitRequestContract:    "Builder Exit (EIP-8282)",
 	}
