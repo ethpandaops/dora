@@ -669,7 +669,7 @@
         function renderCauseBadges(bai) {
           return causesFor(bai).map(function(c) {
             var def = CAUSES[c];
-            return '<span class="badge ' + def.cls + ' ms-1" style="font-size:10px;" title="' + def.tip + '">' + def.label + '</span>';
+            return '<span class="badge ' + def.cls + ' ms-2 me-1" style="font-size:10px;" title="' + def.tip + '">' + def.label + '</span>';
           }).join('');
         }
 
