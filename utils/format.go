@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"reflect"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -1154,27 +1152,3 @@ func CalculateBalanceDiff(current []byte, previous []byte) template.HTML {
 		class, sign, formattedDiff))
 }
 
-// HasCodeDestruction returns true if any code_change entry in the slice has empty
-// Code, indicating a contract was destroyed (SELFDESTRUCT). Used in the BAL template
-// to annotate destroyed contracts for EIP-8246 visibility. Accepts the slice as
-// interface{} to avoid a package import cycle (types/models imports utils).
-func HasCodeDestruction(codeChanges interface{}) bool {
-	v := reflect.ValueOf(codeChanges)
-	if v.Kind() != reflect.Slice {
-		return false
-	}
-	for i := range v.Len() {
-		elem := v.Index(i)
-		if elem.Kind() == reflect.Ptr {
-			elem = elem.Elem()
-		}
-		if elem.Kind() != reflect.Struct {
-			continue
-		}
-		codeField := elem.FieldByName("Code")
-		if codeField.IsValid() && codeField.Kind() == reflect.Slice && codeField.Len() == 0 {
-			return true
-		}
-	}
-	return false
-}

@@ -452,6 +452,8 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 		exerpc.ConsolidationRequestContract: "Consolidation Request (EIP-7251)",
 		exerpc.BeaconRootsContract:          "Beacon Roots (EIP-4788)",
 		exerpc.HistoryStorageContract:       "Block Hash History (EIP-2935)",
+		exerpc.BuilderDepositRequestContract: "Builder Deposit (EIP-8282)",
+		exerpc.BuilderExitRequestContract:    "Builder Exit (EIP-8282)",
 	}
 
 	execChainState := bs.GetExecutionChainState()
@@ -480,14 +482,8 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 		}
 	}
 
-	// Add well-known static addresses
+	// Well-known static addresses (no on-chain config source)
 	result[common.HexToAddress("0x4e59b44847b379578588920ca78fbf26c0b4956c")] = "Arachnid CREATE2 Factory (EIP-7997)"
-
-	// EIP-8282: Builder execution request predeploys
-	result[common.HexToAddress("0x0000884d2AA32eAa155F59A2f24eFa73D9008282")] = "Builder Deposit (EIP-8282)"
-	result[common.HexToAddress("0x000014574A74c805590AFF9499fc7A690f008282")] = "Builder Exit (EIP-8282)"
-	// EIP-7708: ETH transfer log emitter (system address)
-	result[common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")] = "ETH Transfer Log Emitter (EIP-7708)"
 
 	return result
 }
