@@ -124,6 +124,9 @@ type TransactionPageData struct {
 	// Authorizations (EIP-7702, tx type 4)
 	Authorizations []*TransactionPageDataAuthorization `json:"authorizations"`
 
+	// EIP-7976: calldata floor gas cost = 21000 + 64 × len(calldata); 0 if no calldata
+	CalldataFloorGas uint64 `json:"calldata_floor_gas"`
+
 	// Tab view
 	TabView string `json:"tab_view"`
 
@@ -211,6 +214,11 @@ type TransactionPageDataEvent struct {
 
 	// Decoded (if known)
 	EventName string `json:"event_name"`
+
+	// EIP-7708: decoded ETH Transfer parameters (only set for ETH Transfer logger events)
+	EthTransferFrom  []byte `json:"eth_transfer_from,omitempty"`  // 20-byte from address
+	EthTransferTo    []byte `json:"eth_transfer_to,omitempty"`    // 20-byte to address
+	EthTransferValue string `json:"eth_transfer_value,omitempty"` // formatted ETH amount
 }
 
 // TransactionPageDataTokenTransfer represents a token transfer in the transaction
