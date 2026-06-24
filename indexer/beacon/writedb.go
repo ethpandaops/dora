@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 
@@ -169,6 +170,18 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 		return err
 	}
 
+	// insert builder deposit requests (gloas)
+	err = dbw.persistBlockBuilderDeposits(tx, block, orphaned, overrideForkId)
+	if err != nil {
+		return err
+	}
+
+	// insert builder exit requests (gloas)
+	err = dbw.persistBlockBuilderExits(tx, block, orphaned, overrideForkId)
+	if err != nil {
+		return err
+	}
+
 	// insert withdrawals
 	err = dbw.persistBlockWithdrawals(tx, block, orphaned, overrideForkId, sim)
 	if err != nil {
@@ -332,11 +345,16 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	}
 
-	// DepositCount counts the deposits this block processes; in Gloas these come from the
-	// parent payload (parent_execution_requests), consistent with the deposits table and
-	// the slot detail page, which attribute requests to the block that processes them.
+	// DepositCount/ExitCount count the deposits and exits this block processes; in Gloas
+	// these come from the parent payload (parent_execution_requests), consistent with the
+	// deposits table and the slot detail page, which attribute requests to the block that
+	// processes them. Gloas builder deposits/exits (EIP-8282) are folded into the combined
+	// deposit/exit counts.
+	var builderDepositCount, builderExitCount int
 	if processedRequests, _ := dbw.getProcessedExecutionRequests(block); processedRequests != nil {
 		depositRequests = processedRequests.Deposits
+		builderDepositCount = len(processedRequests.BuilderDeposits)
+		builderExitCount = len(processedRequests.BuilderExits)
 	}
 
 	// Get builder index from block, default to -1 (self-built/MaxUint64)
@@ -368,8 +386,8 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		Graffiti:              graffiti[:],
 		GraffitiText:          utils.GraffitiToString(graffiti[:]),
 		AttestationCount:      uint64(len(attestations)),
-		DepositCount:          uint64(len(deposits) + len(depositRequests)),
-		ExitCount:             uint64(len(voluntaryExits)),
+		DepositCount:          uint64(len(deposits) + len(depositRequests) + builderDepositCount),
+		ExitCount:             uint64(len(voluntaryExits) + builderExitCount),
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
@@ -570,15 +588,19 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 				}
 			}
 
-			// Count the deposits each block processes; in Gloas these come from the parent
-			// payload (parent_execution_requests), consistent with the deposits table.
+			// Count the deposits/exits each block processes; in Gloas these come from the
+			// parent payload (parent_execution_requests), consistent with the deposits table.
+			// Gloas builder deposits/exits (EIP-8282) are folded into the combined counts.
+			var builderDepositCount, builderExitCount int
 			if processedRequests, _ := dbw.getProcessedExecutionRequests(block); processedRequests != nil {
 				depositRequests = processedRequests.Deposits
+				builderDepositCount = len(processedRequests.BuilderDeposits)
+				builderExitCount = len(processedRequests.BuilderExits)
 			}
 
 			dbEpoch.AttestationCount += uint64(len(attestations))
-			dbEpoch.DepositCount += uint64(len(deposits) + len(depositRequests))
-			dbEpoch.ExitCount += uint64(len(voluntaryExits))
+			dbEpoch.DepositCount += uint64(len(deposits) + len(depositRequests) + builderDepositCount)
+			dbEpoch.ExitCount += uint64(len(voluntaryExits) + builderExitCount)
 			dbEpoch.AttesterSlashingCount += uint64(len(attesterSlashings))
 			dbEpoch.ProposerSlashingCount += uint64(len(proposerSlashings))
 			dbEpoch.BLSChangeCount += uint64(len(blsToExecChanges))
@@ -732,7 +754,7 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 // carries an empty parent_execution_requests, so the last pre-Gloas requests are not counted
 // twice. In earlier forks the requests live in the block body and were included in the
 // block's own payload.
-func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*electra.ExecutionRequests, uint64) {
+func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*all.ExecutionRequests, uint64) {
 	chainState := dbw.indexer.consensusPool.GetChainState()
 
 	blockBody := block.GetBlock(dbw.indexer.ctx)
@@ -786,6 +808,218 @@ func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrid
 	}
 
 	return dbDeposits
+}
+
+// persistBlockBuilderDeposits persists the block's builder deposit requests
+// (Gloas/EIP-8282) to the builder_deposits table. Pre-Gloas blocks carry none.
+func (dbw *dbWriter) persistBlockBuilderDeposits(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+	dbDeposits := dbw.buildDbBuilderDeposits(block, orphaned, overrideForkId)
+	if len(dbDeposits) > 0 {
+		err := db.InsertBuilderDeposits(dbw.indexer.ctx, tx, dbDeposits)
+		if err != nil {
+			return fmt.Errorf("error inserting builder deposits: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (dbw *dbWriter) buildDbBuilderDeposits(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.BuilderDeposit {
+	requests, blockNumber := dbw.getProcessedExecutionRequests(block)
+	if requests == nil || len(requests.BuilderDeposits) == 0 {
+		return []*dbtypes.BuilderDeposit{}
+	}
+
+	dbDeposits := make([]*dbtypes.BuilderDeposit, len(requests.BuilderDeposits))
+	for idx, deposit := range requests.BuilderDeposits {
+		dbDeposit := &dbtypes.BuilderDeposit{
+			SlotNumber:            uint64(block.Slot),
+			SlotRoot:              block.Root[:],
+			SlotIndex:             uint64(idx),
+			Orphaned:              orphaned,
+			ForkId:                uint64(block.forkId),
+			PublicKey:             deposit.Pubkey[:],
+			WithdrawalCredentials: deposit.WithdrawalCredentials,
+			Amount:                uint64(deposit.Amount),
+			Signature:             deposit.Signature[:],
+			BlockNumber:           blockNumber,
+		}
+		if builderIdx, found := dbw.indexer.builderPubkeyCache.Get(deposit.Pubkey); found {
+			resolvedIdx := uint64(builderIdx)
+			dbDeposit.BuilderIndex = &resolvedIdx
+		}
+		if overrideForkId != nil {
+			dbDeposit.ForkId = uint64(*overrideForkId)
+		}
+
+		dbDeposits[idx] = dbDeposit
+	}
+
+	return dbDeposits
+}
+
+// persistGloasOnboardedBuilderDeposits copies the builder deposits that the one-time
+// upgrade_to_gloas fork transition onboarded from the pending_deposits queue into the
+// builder_deposits (+ builder_deposit_request_txs) tables. These deposits arrived through
+// the validator deposit contract, so they are absent from the dedicated builder deposit
+// tables; without this copy they never surface on the builder deposit / builder detail pages.
+//
+// The deposits are attributed to the first slot of the Gloas fork epoch (where onboarding
+// happens) and keyed by the epoch's dependent root, so reloads upsert and sibling branches
+// stay distinct. Execution-layer tx details are sourced from the regular deposit_txs table
+// (matched by pubkey+amount+signature); the contract indexer persists those rows for recent
+// unfinalized blocks too, so the lookup is reliable even shortly after the fork.
+func (dbw *dbWriter) persistGloasOnboardedBuilderDeposits(tx *sqlx.Tx, epoch phase0.Epoch, dependentRoot phase0.Root, forkId ForkKey, onboarded []*electra.PendingDeposit) error {
+	if len(onboarded) == 0 {
+		return nil
+	}
+
+	chainState := dbw.indexer.consensusPool.GetChainState()
+	slotNumber := uint64(epoch) * chainState.GetSpecs().SlotsPerEpoch
+
+	// Index the deposit txs of every onboarded pubkey for matching. Top-ups share a pubkey, so
+	// candidates are consumed in order as they are paired to keep the mapping 1:1.
+	pubkeys := make([][]byte, 0, len(onboarded))
+	seenPubkey := make(map[phase0.BLSPubKey]bool, len(onboarded))
+	for _, deposit := range onboarded {
+		if !seenPubkey[deposit.Pubkey] {
+			seenPubkey[deposit.Pubkey] = true
+			pubkeys = append(pubkeys, deposit.Pubkey[:])
+		}
+	}
+
+	txsByPubkey := make(map[phase0.BLSPubKey][]*dbtypes.DepositTx, len(pubkeys))
+	for _, depositTx := range db.GetDepositTxsByPublicKeys(dbw.indexer.ctx, pubkeys) {
+		key := phase0.BLSPubKey(depositTx.PublicKey)
+		txsByPubkey[key] = append(txsByPubkey[key], depositTx)
+	}
+
+	dbDeposits := make([]*dbtypes.BuilderDeposit, 0, len(onboarded))
+	dbDepositTxs := make([]*dbtypes.BuilderDepositTx, 0, len(onboarded))
+	firstSeen := make(map[phase0.BLSPubKey]bool, len(pubkeys))
+
+	for idx, deposit := range onboarded {
+		// The first deposit of a pubkey registers a new builder, later ones top it up.
+		result := dbtypes.BuilderDepositRequestResultTopUp
+		if !firstSeen[deposit.Pubkey] {
+			firstSeen[deposit.Pubkey] = true
+			result = dbtypes.BuilderDepositRequestResultNewBuilder
+		}
+
+		dbDeposit := &dbtypes.BuilderDeposit{
+			SlotNumber:            slotNumber,
+			SlotRoot:              dependentRoot[:],
+			SlotIndex:             uint64(idx),
+			Orphaned:              false,
+			ForkId:                uint64(forkId),
+			PublicKey:             deposit.Pubkey[:],
+			WithdrawalCredentials: deposit.WithdrawalCredentials,
+			Amount:                uint64(deposit.Amount),
+			Signature:             deposit.Signature[:],
+			Result:                result,
+		}
+		if builderIdx, found := dbw.indexer.builderPubkeyCache.Get(deposit.Pubkey); found {
+			resolvedIdx := uint64(builderIdx)
+			dbDeposit.BuilderIndex = &resolvedIdx
+		}
+
+		if depositTx := consumeMatchingDepositTx(txsByPubkey, deposit); depositTx != nil {
+			dbDeposit.TxHash = depositTx.TxHash
+			dbDeposit.BlockNumber = depositTx.BlockNumber
+
+			// dequeue_block is set to the originating EL block so the page treats the request as
+			// already included (its pending bucket is dequeue_block > highest indexed EL block).
+			dbDepositTxs = append(dbDepositTxs, &dbtypes.BuilderDepositTx{
+				BlockNumber:           depositTx.BlockNumber,
+				BlockIndex:            uint64(idx),
+				BlockTime:             depositTx.BlockTime,
+				BlockRoot:             depositTx.BlockRoot,
+				ForkId:                depositTx.ForkId,
+				PublicKey:             deposit.Pubkey[:],
+				WithdrawalCredentials: deposit.WithdrawalCredentials,
+				Amount:                uint64(deposit.Amount),
+				Signature:             deposit.Signature[:],
+				BuilderIndex:          dbDeposit.BuilderIndex,
+				TxHash:                depositTx.TxHash,
+				TxSender:              depositTx.TxSender,
+				TxTarget:              depositTx.TxTarget,
+				DequeueBlock:          depositTx.BlockNumber,
+			})
+		}
+
+		dbDeposits = append(dbDeposits, dbDeposit)
+	}
+
+	if err := db.InsertBuilderDeposits(dbw.indexer.ctx, tx, dbDeposits); err != nil {
+		return fmt.Errorf("error inserting onboarded builder deposits: %v", err)
+	}
+	if len(dbDepositTxs) > 0 {
+		if err := db.InsertBuilderDepositTxs(dbw.indexer.ctx, tx, dbDepositTxs); err != nil {
+			return fmt.Errorf("error inserting onboarded builder deposit txs: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// consumeMatchingDepositTx returns and removes the first deposit tx that matches the pending
+// deposit by amount and signature, so repeated top-ups of the same pubkey pair to distinct txs.
+func consumeMatchingDepositTx(txsByPubkey map[phase0.BLSPubKey][]*dbtypes.DepositTx, deposit *electra.PendingDeposit) *dbtypes.DepositTx {
+	candidates := txsByPubkey[deposit.Pubkey]
+	for i, candidate := range candidates {
+		if candidate.Amount == uint64(deposit.Amount) && bytes.Equal(candidate.Signature, deposit.Signature[:]) {
+			txsByPubkey[deposit.Pubkey] = append(candidates[:i], candidates[i+1:]...)
+			return candidate
+		}
+	}
+
+	return nil
+}
+
+// persistBlockBuilderExits persists the block's builder exit requests
+// (Gloas/EIP-8282) to the builder_exits table. Pre-Gloas blocks carry none.
+func (dbw *dbWriter) persistBlockBuilderExits(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+	dbExits := dbw.buildDbBuilderExits(block, orphaned, overrideForkId)
+	if len(dbExits) > 0 {
+		err := db.InsertBuilderExits(dbw.indexer.ctx, tx, dbExits)
+		if err != nil {
+			return fmt.Errorf("error inserting builder exits: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (dbw *dbWriter) buildDbBuilderExits(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.BuilderExit {
+	requests, blockNumber := dbw.getProcessedExecutionRequests(block)
+	if requests == nil || len(requests.BuilderExits) == 0 {
+		return []*dbtypes.BuilderExit{}
+	}
+
+	dbExits := make([]*dbtypes.BuilderExit, len(requests.BuilderExits))
+	for idx, exit := range requests.BuilderExits {
+		dbExit := &dbtypes.BuilderExit{
+			SlotNumber:    uint64(block.Slot),
+			SlotRoot:      block.Root[:],
+			SlotIndex:     uint64(idx),
+			Orphaned:      orphaned,
+			ForkId:        uint64(block.forkId),
+			SourceAddress: exit.SourceAddress[:],
+			PublicKey:     exit.Pubkey[:],
+			BlockNumber:   blockNumber,
+		}
+		if builderIdx, found := dbw.indexer.builderPubkeyCache.Get(exit.Pubkey); found {
+			resolvedIdx := uint64(builderIdx)
+			dbExit.BuilderIndex = &resolvedIdx
+		}
+		if overrideForkId != nil {
+			dbExit.ForkId = uint64(*overrideForkId)
+		}
+
+		dbExits[idx] = dbExit
+	}
+
+	return dbExits
 }
 
 func (dbw *dbWriter) persistBlockVoluntaryExits(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {

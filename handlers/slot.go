@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
+	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -52,6 +54,8 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/deposit_requests.html",
 		"slot/withdrawal_requests.html",
 		"slot/consolidation_requests.html",
+		"slot/builder_deposit_requests.html",
+		"slot/builder_exit_requests.html",
 		"slot/bids.html",
 		"slot/ptc_votes.html",
 		"slot/inclusion_lists.html",
@@ -959,7 +963,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	}
 
 	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
-		var requests *electra.ExecutionRequests
+		var requests *all.ExecutionRequests
 		if blockData.Block.Version >= spec.DataVersionGloas {
 			// In Gloas the execution requests carried by a payload are processed in the next
 			// block (as parent_execution_requests), so they are displayed there — consistent
@@ -978,6 +982,8 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageDepositRequests(pageData, requests.Deposits)
 			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
 			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+			getSlotPageBuilderDeposits(ctx, pageData, requests.BuilderDeposits)
+			getSlotPageBuilderExits(ctx, pageData, requests.BuilderExits)
 		}
 	}
 
@@ -1315,6 +1321,82 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	}
 
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
+}
+
+func getSlotPageBuilderDeposits(ctx context.Context, pageData *models.SlotPageBlockData, builderDeposits []*gloas.BuilderDepositRequest) {
+	pageData.BuilderDepositRequests = make([]*models.SlotPageBuilderDepositRequest, 0, len(builderDeposits))
+
+	// resolve pubkeys -> builder indexes first, then batch-load the builders for those indexes to
+	// tell whether each pubkey still owns its (reusable) index or was superseded.
+	resolvedIdx := make([]gloas.BuilderIndex, len(builderDeposits))
+	resolvedOk := make([]bool, len(builderDeposits))
+	indexes := make([]gloas.BuilderIndex, 0, len(builderDeposits))
+	for i, builderDeposit := range builderDeposits {
+		if builderIdx, found := services.GlobalBeaconService.GetBuilderIndexByPubkey(builderDeposit.Pubkey); found {
+			resolvedIdx[i] = builderIdx
+			resolvedOk[i] = true
+			indexes = append(indexes, builderIdx)
+		}
+	}
+	builders := services.GlobalBeaconService.GetActiveBuildersByIndexes(ctx, indexes)
+
+	for i, builderDeposit := range builderDeposits {
+		requestData := &models.SlotPageBuilderDepositRequest{
+			PublicKey:       builderDeposit.Pubkey[:],
+			WithdrawalCreds: builderDeposit.WithdrawalCredentials,
+			Amount:          uint64(builderDeposit.Amount),
+			Signature:       builderDeposit.Signature[:],
+		}
+
+		if resolvedOk[i] {
+			if b := builders[resolvedIdx[i]]; b != nil && bytes.Equal(b.PublicKey[:], builderDeposit.Pubkey[:]) {
+				requestData.HasBuilderIndex = true
+				requestData.BuilderIndex = uint64(resolvedIdx[i])
+			} else {
+				requestData.IsInactiveBuilder = true
+			}
+		}
+
+		pageData.BuilderDepositRequests = append(pageData.BuilderDepositRequests, requestData)
+	}
+
+	pageData.BuilderDepositRequestsCount = uint64(len(pageData.BuilderDepositRequests))
+}
+
+func getSlotPageBuilderExits(ctx context.Context, pageData *models.SlotPageBlockData, builderExits []*gloas.BuilderExitRequest) {
+	pageData.BuilderExitRequests = make([]*models.SlotPageBuilderExitRequest, 0, len(builderExits))
+
+	resolvedIdx := make([]gloas.BuilderIndex, len(builderExits))
+	resolvedOk := make([]bool, len(builderExits))
+	indexes := make([]gloas.BuilderIndex, 0, len(builderExits))
+	for i, builderExit := range builderExits {
+		if builderIdx, found := services.GlobalBeaconService.GetBuilderIndexByPubkey(builderExit.Pubkey); found {
+			resolvedIdx[i] = builderIdx
+			resolvedOk[i] = true
+			indexes = append(indexes, builderIdx)
+		}
+	}
+	builders := services.GlobalBeaconService.GetActiveBuildersByIndexes(ctx, indexes)
+
+	for i, builderExit := range builderExits {
+		requestData := &models.SlotPageBuilderExitRequest{
+			SourceAddress: builderExit.SourceAddress[:],
+			PublicKey:     builderExit.Pubkey[:],
+		}
+
+		if resolvedOk[i] {
+			if b := builders[resolvedIdx[i]]; b != nil && bytes.Equal(b.PublicKey[:], builderExit.Pubkey[:]) {
+				requestData.HasBuilderIndex = true
+				requestData.BuilderIndex = uint64(resolvedIdx[i])
+			} else {
+				requestData.IsInactiveBuilder = true
+			}
+		}
+
+		pageData.BuilderExitRequests = append(pageData.BuilderExitRequests, requestData)
+	}
+
+	pageData.BuilderExitRequestsCount = uint64(len(pageData.BuilderExitRequests))
 }
 
 func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot phase0.Root, slot uint64) {

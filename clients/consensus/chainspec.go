@@ -228,11 +228,13 @@ type ChainSpecPreset struct {
 	NumberOfColumns                   *uint64 `yaml:"NUMBER_OF_COLUMNS" check-if-fork:"FuluForkEpoch"`
 
 	// Gloas
-	PtcSize                        uint64 `yaml:"PTC_SIZE" check-if-fork:"GloasForkEpoch"`
-	MaxPayloadAttestations         uint64 `yaml:"MAX_PAYLOAD_ATTESTATIONS" check-if-fork:"GloasForkEpoch"`
-	BuilderRegistryLimit           uint64 `yaml:"BUILDER_REGISTRY_LIMIT" check-if-fork:"GloasForkEpoch"`
-	BuilderPendingWithdrawalsLimit uint64 `yaml:"BUILDER_PENDING_WITHDRAWALS_LIMIT" check-if-fork:"GloasForkEpoch"`
-	MaxBuildersPerWithdrawalsSweep uint64 `yaml:"MAX_BUILDERS_PER_WITHDRAWALS_SWEEP" check-if-fork:"GloasForkEpoch"`
+	PtcSize                             uint64 `yaml:"PTC_SIZE" check-if-fork:"GloasForkEpoch"`
+	MaxPayloadAttestations              uint64 `yaml:"MAX_PAYLOAD_ATTESTATIONS" check-if-fork:"GloasForkEpoch"`
+	BuilderRegistryLimit                uint64 `yaml:"BUILDER_REGISTRY_LIMIT" check-if-fork:"GloasForkEpoch"`
+	BuilderPendingWithdrawalsLimit      uint64 `yaml:"BUILDER_PENDING_WITHDRAWALS_LIMIT" check-if-fork:"GloasForkEpoch"`
+	MaxBuildersPerWithdrawalsSweep      uint64 `yaml:"MAX_BUILDERS_PER_WITHDRAWALS_SWEEP" check-if-fork:"GloasForkEpoch"`
+	MaxBuilderDepositRequestsPerPayload uint64 `yaml:"MAX_BUILDER_DEPOSIT_REQUESTS_PER_PAYLOAD" check-if-fork:"GloasForkEpoch"`
+	MaxBuilderExitRequestsPerPayload    uint64 `yaml:"MAX_BUILDER_EXIT_REQUESTS_PER_PAYLOAD" check-if-fork:"GloasForkEpoch"`
 
 	// Heze
 	InclusionListCommitteeSize uint64 `yaml:"INCLUSION_LIST_COMMITTEE_SIZE" check-if-fork:"HezeForkEpoch"`

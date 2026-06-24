@@ -748,6 +748,24 @@ func (block *Block) GetDbConsolidationRequests(indexer *Indexer, isCanonical boo
 	return indexer.dbWriter.buildDbConsolidationRequests(block, !isCanonical, nil, nil)
 }
 
+// GetDbBuilderDeposits returns the database representation of the builder deposit requests in this block.
+func (block *Block) GetDbBuilderDeposits(indexer *Indexer, isCanonical bool) []*dbtypes.BuilderDeposit {
+	if block.isDisposed {
+		return nil
+	}
+
+	return indexer.dbWriter.buildDbBuilderDeposits(block, !isCanonical, nil)
+}
+
+// GetDbBuilderExits returns the database representation of the builder exit requests in this block.
+func (block *Block) GetDbBuilderExits(indexer *Indexer, isCanonical bool) []*dbtypes.BuilderExit {
+	if block.isDisposed {
+		return nil
+	}
+
+	return indexer.dbWriter.buildDbBuilderExits(block, !isCanonical, nil)
+}
+
 // GetForkId returns the fork ID of this block.
 func (block *Block) GetForkId() ForkKey {
 	return block.forkId

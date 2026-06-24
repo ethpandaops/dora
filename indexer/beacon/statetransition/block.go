@@ -69,6 +69,10 @@ func (st *StateTransition) applyBlock(state *all.BeaconState, block *all.SignedB
 			}
 		}
 		s.Slot++
+
+		// Apply the Gloas fork upgrade when advancing into the first slot of GLOAS_FORK_EPOCH,
+		// so a block that is the first of the Gloas fork is processed against an upgraded state.
+		maybeUpgradeToGloas(s, nil)
 	}
 
 	proposerIndex := block.Message.ProposerIndex

@@ -28,9 +28,9 @@
                   {{ end }}
                 </td>
                 {{ if $deposit.Orphaned }}
-                <td><a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
+                <td><a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.SlotNumber }}</a>{{ if $deposit.IsOnboarding }} <i class="fa fa-info-circle text-info ml-1" data-bs-toggle="tooltip" data-bs-title="Onboarded as a builder from the pending deposit queue at the Gloas fork transition"></i>{{ end }}</td>
                 {{ else }}
-                <td><a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
+                <td><a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a>{{ if $deposit.IsOnboarding }} <i class="fa fa-info-circle text-info ml-1" data-bs-toggle="tooltip" data-bs-title="Onboarded as a builder from the pending deposit queue at the Gloas fork transition"></i>{{ end }}</td>
                 {{ end }}
                 <td data-timer="{{ $deposit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span></td>
                 <td>{{ formatFullEthFromGwei $deposit.Amount }}</td>

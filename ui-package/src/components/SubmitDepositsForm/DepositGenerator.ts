@@ -32,6 +32,10 @@ const SigningData = new ContainerType({
 
 export type CredentialType = '00' | '01' | '02' | '03';
 
+// DepositDomainType selects the signing domain: regular validator deposits use
+// DOMAIN_DEPOSIT (0x03000000); builder deposits use DOMAIN_BUILDER_DEPOSIT (0x0E000000).
+export type DepositDomainType = 'deposit' | 'builder';
+
 export interface WithdrawalCredentialConfig {
   type: CredentialType;
   address?: string; // For 0x01/0x02: ETH address
@@ -133,7 +137,8 @@ export function validateWithdrawalCredentials(credentials: string): boolean {
  */
 export async function generateDeposits(
   config: GeneratorConfig,
-  genesisForkVersion: string
+  genesisForkVersion: string,
+  domainType: DepositDomainType = 'deposit'
 ): Promise<IDeposit[]> {
   // Note: BLS library must be initialized before calling this function
   // The caller (DepositGeneratorModal) handles BLS initialization
@@ -155,7 +160,7 @@ export async function generateDeposits(
   const masterKey = deriveKeyFromMnemonic(normalizedMnemonic);
 
   // Compute signing domain
-  const signingDomain = computeSigningDomain(genesisForkVersion);
+  const signingDomain = computeSigningDomain(genesisForkVersion, domainType);
 
   const deposits: IDeposit[] = [];
 
@@ -274,7 +279,7 @@ function generateSingleDeposit(
   };
 }
 
-function computeSigningDomain(genesisForkVersion: string): Uint8Array {
+function computeSigningDomain(genesisForkVersion: string, domainType: DepositDomainType = 'deposit'): Uint8Array {
   const forkVersionBytes = hexToBytes(genesisForkVersion);
 
   const forkData = {
@@ -283,9 +288,10 @@ function computeSigningDomain(genesisForkVersion: string): Uint8Array {
   };
   const forkDataRoot = ForkData.hashTreeRoot(forkData);
 
-  // DOMAIN_DEPOSIT = 0x03000000
+  // DOMAIN_DEPOSIT = 0x03000000, DOMAIN_BUILDER_DEPOSIT = 0x0E000000 (Gloas/EIP-8282)
+  const domainPrefix = domainType === 'builder' ? 0x0e : 0x03;
   const signingDomain = new Uint8Array(32);
-  signingDomain.set([0x03, 0x00, 0x00, 0x00]);
+  signingDomain.set([domainPrefix, 0x00, 0x00, 0x00]);
   signingDomain.set(forkDataRoot.slice(0, 28), 4);
 
   return signingDomain;
