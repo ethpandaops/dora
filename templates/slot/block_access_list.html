@@ -636,7 +636,7 @@
           if (bai > 0 && bai !== 65535) {
             var txOrigin = window.txOriginByBAI && window.txOriginByBAI[bai];
             if (txOrigin && entryAddrHex && entryAddrHex === txOrigin) {
-              roleBadge = ' <span class="badge bg-warning text-dark" style="font-size:10px;" title="This address sent Tx ' + bai + '. Its balance change includes gas cost deduction and any gas refunds.">tx sender</span>';
+              roleBadge = ' <span class="badge bg-warning text-dark" style="font-size:10px;" title="This balance change includes gas cost deduction, not just a value transfer — this address is the sender of Tx ' + bai + '.">tx sender</span>';
             } else if (window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase()) {
               roleBadge = ' <span class="badge bg-success" style="font-size:10px;" title="Fee recipient (coinbase) — receives base fee + priority fee from Tx ' + bai + '.">coinbase</span>';
             }
