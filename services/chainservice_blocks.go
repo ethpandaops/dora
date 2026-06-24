@@ -1117,7 +1117,21 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 				} else {
 					builderIndexInt64 = int64(builderIndex)
 				}
-				if builderIndexInt64 != *filter.BuilderIndex {
+				matches := builderIndexInt64 == *filter.BuilderIndex
+				if matches == filter.InvertBuilder {
+					continue
+				}
+			}
+
+			// filter by build source (self-built vs builder-built); mirrors the SQL clause in db/slots.go
+			if filter.WithBuilderBlock != 0 {
+				isSelfBuilt := blockIndex.BuilderIndex == math.MaxUint64
+				if filter.WithBuilderBlock == 1 && isSelfBuilt {
+					// builder-built blocks only
+					continue
+				}
+				if filter.WithBuilderBlock == 2 && !isSelfBuilt {
+					// self-built blocks only
 					continue
 				}
 			}
@@ -1176,7 +1190,7 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 &&
 			filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil &&
 			filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 &&
-			filter.BuilderIndex == nil && filter.WithPayloadMask&dbtypes.PayloadStatusMaskMissing != 0 && len(filter.EthBlockParentHash) == 0 && filter.MinGasUsed == nil &&
+			filter.BuilderIndex == nil && filter.WithBuilderBlock == 0 && filter.WithPayloadMask&dbtypes.PayloadStatusMaskMissing != 0 && len(filter.EthBlockParentHash) == 0 && filter.MinGasUsed == nil &&
 			filter.MaxGasUsed == nil && filter.MinGasLimit == nil && filter.MaxGasLimit == nil && filter.MinBlockSize == nil && filter.MaxBlockSize == nil &&
 			filter.WithMevBlock == 0
 

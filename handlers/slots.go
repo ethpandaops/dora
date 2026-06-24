@@ -119,7 +119,7 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 			17: false,
 			18: !hasSnooperClients, // Disable receive delay if snooper clients exist
 			19: hasSnooperClients,  // Enable exec time if snooper clients exist
-			20: false,              // Builder (hidden by default)
+			20: false,              // Builder (opt-in; proposer column already shows build source)
 		}
 	}
 
