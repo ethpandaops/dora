@@ -644,13 +644,23 @@
           if (bai === 0)     return ['system'];
           if (bai === 65535) return ['withdrawal'];
           var causes = [];
+          // Sender: this address sent the tx (always pays gas; may also have sent ETH out).
           var txOrigin = window.txOriginByBAI && window.txOriginByBAI[bai];
           if (txOrigin && entryAddrHex && entryAddrHex === txOrigin)
             causes.push('sender');
+          // Proposer/builder: fee recipient collects base fee + priority fee at every tx BAI.
           if (window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase())
             causes.push(isBuilderBlock ? 'builder' : 'proposer');
+          // Burn: zero address received ETH (permanent loss).
           if (entryAddrHex === ZERO_ADDR)
             causes.push('burn');
+          // Transfer: this address is the explicit ETH value recipient of this tx.
+          // Checked independently — a proposer who also received a value transfer gets both badges.
+          var txTo = window.txToByBAI && window.txToByBAI[bai];
+          var txValue = window.txValueByBAI && window.txValueByBAI[bai];
+          if (txTo && txValue && txValue > 0 && entryAddrHex === txTo)
+            causes.push('transfer');
+          // Fallback: internal CALL/SELFDESTRUCT transfer not visible at tx level.
           if (causes.length === 0)
             causes.push('transfer');
           return causes;
@@ -1827,15 +1837,28 @@
     // Transaction details for callouts
     window.transactionDetails = JSON.parse({{ includeJSON .TransactionDetails false }});
 
-    // EIP-8037: build per-tx origin index keyed by block_access_index (1-based)
+    // Build per-tx lookup tables keyed by block_access_index (1-based).
+    // txOriginByBAI: sender address; txToByBAI: recipient address; txValueByBAI: ETH value (float, in ETH).
     window.txOriginByBAI = {};
+    window.txToByBAI = {};
+    window.txValueByBAI = {};
     if (window.transactionDetails && Array.isArray(window.transactionDetails)) {
       window.transactionDetails.forEach(function(tx, i) {
+        var bai = i + 1;
         if (tx && tx.from) {
           var fromHex = Array.isArray(tx.from)
             ? tx.from.map(function(b){return ('0'+b.toString(16)).slice(-2);}).join('')
             : base64ToHex(tx.from);
-          window.txOriginByBAI[i + 1] = (fromHex || '').replace(/^0x/, '').toLowerCase();
+          window.txOriginByBAI[bai] = (fromHex || '').replace(/^0x/, '').toLowerCase();
+        }
+        if (tx && tx.to) {
+          var toHex = Array.isArray(tx.to)
+            ? tx.to.map(function(b){return ('0'+b.toString(16)).slice(-2);}).join('')
+            : base64ToHex(tx.to);
+          window.txToByBAI[bai] = (toHex || '').replace(/^0x/, '').toLowerCase();
+        }
+        if (tx && tx.value) {
+          window.txValueByBAI[bai] = tx.value;
         }
       });
     }
