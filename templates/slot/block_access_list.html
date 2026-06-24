@@ -634,7 +634,7 @@
           sender:    { cls: 'bg-warning text-dark', label: 'sender',    tip: 'Transaction sender — this address sent this transaction. Balance change includes the gas cost plus any ETH value transferred out.' },
           proposer:  { cls: 'bg-info text-dark',    label: 'proposer',  tip: 'Block proposer — this address is the fee recipient and collected the base fee + priority fee for this block.' },
           builder:   { cls: 'bg-primary',           label: 'builder',   tip: 'Block builder (EIP-7732) — this address is the execution payload builder\'s chosen fee recipient.' },
-          transfer:  { cls: 'bg-secondary',         label: 'transfer',  tip: 'ETH transfer — balance changed via a CALL value, SELFDESTRUCT, or contract creation endowment.' },
+          receiver:  { cls: 'bg-secondary',         label: 'receiver',  tip: 'ETH receiver — this address received ETH as the explicit value recipient of this transaction.' },
           burn:      { cls: 'bg-danger',            label: 'burn',      tip: 'ETH burn — funds sent to the zero address are permanently inaccessible. Pre-EIP-8246 SELFDESTRUCT sends ETH here.' },
           system:    { cls: 'bg-secondary',         label: 'system',    tip: 'Pre-execution system call — balance changed by a system contract before any user transactions.' },
           withdrawal:{ cls: 'bg-success',           label: 'withdrawal',tip: 'Post-execution — balance changed by a consensus-layer withdrawal or post-execution system contract.' },
@@ -655,15 +655,15 @@
           // Burn: zero address received ETH (permanent loss).
           if (entryAddrHex === ZERO_ADDR)
             causes.push('burn');
-          // Transfer: this address is the explicit ETH value recipient of this tx.
+          // Receiver: this address is the explicit ETH value recipient of this tx.
           // Checked independently — a proposer who also received a value transfer gets both badges.
           var txTo = window.txToByBAI && window.txToByBAI[bai];
           var txValue = window.txValueByBAI && window.txValueByBAI[bai];
           if (txTo && txValue && txValue > 0 && entryAddrHex === txTo)
-            causes.push('transfer');
+            causes.push('receiver');
           // Fallback: internal CALL/SELFDESTRUCT transfer not visible at tx level.
           if (causes.length === 0)
-            causes.push('transfer');
+            causes.push('receiver');
           return causes;
         }
 
