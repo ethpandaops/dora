@@ -53,6 +53,8 @@ func BlocksFiltered(w http.ResponseWriter, r *http.Request) {
 	var maxBlockSize string
 	var withMevBlock uint64
 	var withBuilderBlock uint64
+	var builder string
+	var invertBuilder bool
 	var minTxCount string
 	var maxTxCount string
 	var minBlobCount string
@@ -91,6 +93,12 @@ func BlocksFiltered(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.builderblock") {
 			withBuilderBlock, _ = strconv.ParseUint(urlArgs.Get("f.builderblock"), 10, 64)
 		}
+		if urlArgs.Has("f.builder") {
+			builder = urlArgs.Get("f.builder")
+		}
+		if urlArgs.Has("f.binvert") {
+			invertBuilder = urlArgs.Get("f.binvert") == "on"
+		}
 		if urlArgs.Has("f.mintx") {
 			minTxCount = urlArgs.Get("f.mintx")
 		}
@@ -116,7 +124,7 @@ func BlocksFiltered(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredBlocksPageData(pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, uint8(withMevBlock), uint8(withBuilderBlock), minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
+		data.Data, pageError = getFilteredBlocksPageData(pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, uint8(withMevBlock), uint8(withBuilderBlock), builder, invertBuilder, minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -128,11 +136,11 @@ func BlocksFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredBlocksPageData(pageIdx uint64, pageSize uint64, extradata string, invertextradata bool, minGasUsed string, maxGasUsed string, minGasLimit string, maxGasLimit string, minBlockSize string, maxBlockSize string, withMevBlock uint8, withBuilderBlock uint8, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, minEpoch string, maxEpoch string, displayColumns uint64) (*models.BlocksFilteredPageData, error) {
+func getFilteredBlocksPageData(pageIdx uint64, pageSize uint64, extradata string, invertextradata bool, minGasUsed string, maxGasUsed string, minGasLimit string, maxGasLimit string, minBlockSize string, maxBlockSize string, withMevBlock uint8, withBuilderBlock uint8, builder string, invertBuilder bool, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, minEpoch string, maxEpoch string, displayColumns uint64) (*models.BlocksFilteredPageData, error) {
 	pageData := &models.BlocksFilteredPageData{}
-	pageCacheKey := fmt.Sprintf("blocks_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, withMevBlock, withBuilderBlock, minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
+	pageCacheKey := fmt.Sprintf("blocks_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, withMevBlock, withBuilderBlock, builder, invertBuilder, minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredBlocksPageData(pageCall.CallCtx, pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, withMevBlock, withBuilderBlock, minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
+		return buildFilteredBlocksPageData(pageCall.CallCtx, pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, withMevBlock, withBuilderBlock, builder, invertBuilder, minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.BlocksFilteredPageData)
@@ -144,7 +152,7 @@ func getFilteredBlocksPageData(pageIdx uint64, pageSize uint64, extradata string
 	return pageData, pageErr
 }
 
-func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize uint64, extradata string, invertextradata bool, minGasUsed string, maxGasUsed string, minGasLimit string, maxGasLimit string, minBlockSize string, maxBlockSize string, withMevBlock uint8, withBuilderBlock uint8, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, minEpoch string, maxEpoch string, displayColumns uint64) *models.BlocksFilteredPageData {
+func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize uint64, extradata string, invertextradata bool, minGasUsed string, maxGasUsed string, minGasLimit string, maxGasLimit string, minBlockSize string, maxBlockSize string, withMevBlock uint8, withBuilderBlock uint8, builder string, invertBuilder bool, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, minEpoch string, maxEpoch string, displayColumns uint64) *models.BlocksFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	gloasActive := chainState.IsEip7732Enabled(chainState.EpochOfSlot(chainState.CurrentSlot()))
 	filterArgs := url.Values{}
@@ -178,6 +186,12 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 	}
 	if withBuilderBlock != 0 {
 		filterArgs.Add("f.builderblock", fmt.Sprintf("%v", withBuilderBlock))
+	}
+	if builder != "" {
+		filterArgs.Add("f.builder", builder)
+	}
+	if invertBuilder {
+		filterArgs.Add("f.binvert", "on")
 	}
 	if minTxCount != "" {
 		filterArgs.Add("f.mintx", minTxCount)
@@ -245,6 +259,8 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 		FilterMaxBlockSize:    maxBlockSize,
 		FilterWithMevBlock:    withMevBlock,
 		FilterWithBuilder:     withBuilderBlock,
+		FilterBuilder:         builder,
+		FilterInvertBuilder:   invertBuilder,
 		FilterMinTxCount:      minTxCount,
 		FilterMaxTxCount:      maxTxCount,
 		FilterMinBlobCount:    minBlobCount,
@@ -298,6 +314,14 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 		WithMissing:      0,
 		WithMevBlock:     withMevBlock,
 		WithBuilderBlock: withBuilderBlock,
+	}
+
+	if builder != "" {
+		builderIdx, err := strconv.ParseInt(builder, 10, 64)
+		if err == nil {
+			blockFilter.BuilderIndex = &builderIdx
+			blockFilter.InvertBuilder = invertBuilder
+		}
 	}
 
 	if minGasUsed != "" {

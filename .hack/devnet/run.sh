@@ -48,9 +48,12 @@ BUILDOOR_CONTAINER=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID
               -f "label=com.kurtosistech.id=buildoor" | head -1)
 if [ -n "$BUILDOOR_CONTAINER" ]; then
   BUILDOOR_PORT=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort }}' "$BUILDOOR_CONTAINER" 2>/dev/null)
+  # kurtosis service name (e.g. "buildoor") so dora shows it instead of the forwarded IP:port
+  BUILDOOR_NAME=$(docker inspect --format='{{ index .Config.Labels "kurtosis_service_name" }}' "$BUILDOOR_CONTAINER" 2>/dev/null)
+  if [ -z "$BUILDOOR_NAME" ]; then BUILDOOR_NAME="buildoor"; fi
   if [ -n "$BUILDOOR_PORT" ]; then
     BUILDOOR_CONFIG="buildoorUrls:
-    - \"http://127.0.0.1:${BUILDOOR_PORT}\""
+    - \"${BUILDOOR_NAME}|http://127.0.0.1:${BUILDOOR_PORT}\""
   fi
 fi
 

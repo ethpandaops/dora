@@ -80,6 +80,7 @@ type BlockFilter struct {
 	EthBlockHash         []byte   // Filter by EL block hash
 	EthBlockParentHash   []byte   // Filter by EL block parent hash
 	BuilderIndex         *int64   // Filter by builder index (-1 for self-built blocks)
+	InvertBuilder        bool     // Invert the builder index filter (exclude matches)
 	MinGasUsed           *uint64  // Filter by minimum gas used
 	MaxGasUsed           *uint64  // Filter by maximum gas used
 	MinGasLimit          *uint64  // Filter by minimum gas limit

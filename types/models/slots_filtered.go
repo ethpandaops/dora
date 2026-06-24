@@ -31,6 +31,7 @@ type SlotsFilteredPageData struct {
 	FilterMinSlot          string `json:"filter_min_slot"`
 	FilterMaxSlot          string `json:"filter_max_slot"`
 	FilterBuilder          string `json:"filter_builder"`
+	FilterInvertBuilder    bool   `json:"filter_invert_builder"`
 	FilterWithBuilder      uint8  `json:"filter_builder_block"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`

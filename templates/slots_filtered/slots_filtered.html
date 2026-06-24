@@ -86,33 +86,34 @@
                     <div class="flex-grow-1">
                       <input name="f.maxslot" type="number" class="form-control" placeholder="Max" aria-label="Max Slot" min="0" value="{{ .FilterMaxSlot }}">
                     </div>
-                    <div class="text-center" style="width: 30px;">
-
-                    </div>
                   </div>
                 </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     Builder
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.builder" type="number" class="form-control" placeholder="Builder Index (-1 for self-built)" aria-label="Builder Index" value="{{ .FilterBuilder }}">
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    {{ if .IsGloasActive }}
+                    <div class="flex-grow-1">
+                      <select name="f.builderblock" aria-controls="builderblock" class="form-control" aria-label="Builder Blocks">
+                        <option value="0" {{ if eq .FilterWithBuilder 0 }}selected{{ end }}>All</option>
+                        <option value="1" {{ if eq .FilterWithBuilder 1 }}selected{{ end }}>Builder-built only</option>
+                        <option value="2" {{ if eq .FilterWithBuilder 2 }}selected{{ end }}>Self-built only</option>
+                      </select>
+                    </div>
+                    <div class="text-center filter-separator"></div>
+                    {{ end }}
+                    <div class="flex-grow-1">
+                      <div class="input-group">
+                        <input name="f.builder" type="number" class="form-control" placeholder="Builder Index" aria-label="Builder Index" min="0" value="{{ .FilterBuilder }}">
+                        <div class="input-group-text">
+                          <input name="f.binvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertBuilder }}checked{{ end }} title="Invert filter (exclude matches)">
+                          <label class="form-check-label small" for="f.binvert" title="Invert filter (exclude matches)">NOT</label>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                {{ if .IsGloasActive }}
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    Builder Blocks
-                  </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
-                    <select name="f.builderblock" aria-controls="builderblock" class="form-control">
-                      <option value="0" {{ if eq .FilterWithBuilder 0 }}selected{{ end }}>All</option>
-                      <option value="1" {{ if eq .FilterWithBuilder 1 }}selected{{ end }}>Builder-built only</option>
-                      <option value="2" {{ if eq .FilterWithBuilder 2 }}selected{{ end }}>Self-built only</option>
-                    </select>
-                  </div>
-                </div>
-                {{ end }}
               </div>
             </div>
             <div class="col-sm-12 col-md-6">
@@ -157,9 +158,6 @@
                     <div class="flex-grow-1">
                       <input name="f.maxsync" type="number" class="form-control" placeholder="Max %" aria-label="Max Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMaxSyncAgg }}">
                     </div>
-                    <div class="text-center" style="width: 30px;">
-                      %
-                    </div>
                   </div>
                 </div>
                 {{ if .HasSnooperClients }}
@@ -197,9 +195,6 @@
                     <div class="flex-grow-1">
                       <input name="f.maxtx" type="number" class="form-control" placeholder="Max" aria-label="Max Transaction Count" min="0" value="{{ .FilterMaxTxCount }}">
                     </div>
-                    <div class="text-center" style="width: 30px;">
-                      
-                    </div>
                   </div>
                 </div>
                 <div class="row mt-1">
@@ -215,9 +210,6 @@
                     </div>
                     <div class="flex-grow-1">
                       <input name="f.maxblob" type="number" class="form-control" placeholder="Max" aria-label="Max Blob Count" min="0" value="{{ .FilterMaxBlobCount }}">
-                    </div>
-                    <div class="text-center" style="width: 30px;">
-
                     </div>
                   </div>
                 </div>
@@ -276,6 +268,13 @@
       $('#slotsFilterForm').submit(function () {
         $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
       });
+      // "Self-built only" forces builder_index = -1, so the builder index search is meaningless there
+      function updateBuilderIndexState() {
+        var selfBuilt = $('[name="f.builderblock"]').val() === '2';
+        $('[name="f.builder"],[name="f.binvert"]').prop('disabled', selfBuilt);
+      }
+      $('[name="f.builderblock"]').on('change', updateBuilderIndexState);
+      updateBuilderIndexState();
     </script>
 
     <div class="card mt-2">
@@ -354,7 +353,7 @@
                       <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
                     {{- end }}
                     {{- if $g.DisplayProposer }}
-                      <td>{{ formatValidator $slot.Proposer $slot.ProposerName }}</td>
+                      <td>{{ if gt $slot.Slot 0 }}{{ formatProposerWithBuildSource $slot.Status $slot.Proposer $slot.ProposerName $slot.HasBuilder $slot.BuilderIndex $slot.BuilderURL }}{{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayAttestations }}
                       <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>

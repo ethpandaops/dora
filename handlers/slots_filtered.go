@@ -65,6 +65,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var minSlot string
 	var maxSlot string
 	var builder string
+	var invertBuilder bool
 	var withBuilderBlock uint64
 
 	if urlArgs.Has("f") {
@@ -131,6 +132,9 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.builder") {
 			builder = urlArgs.Get("f.builder")
 		}
+		if urlArgs.Has("f.binvert") {
+			invertBuilder = urlArgs.Get("f.binvert") == "on"
+		}
 		if urlArgs.Has("f.builderblock") {
 			withBuilderBlock, _ = strconv.ParseUint(urlArgs.Get("f.builderblock"), 10, 64)
 		}
@@ -138,7 +142,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(statusMask), uint8(payloadMask), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, uint8(withBuilderBlock), displayColumns)
+		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(statusMask), uint8(payloadMask), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, invertBuilder, uint8(withBuilderBlock), displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -150,11 +154,11 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, statusMask uint8, payloadMask uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minSlot string, maxSlot string, builder string, withBuilderBlock uint8, displayColumns uint64) (*models.SlotsFilteredPageData, error) {
+func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, statusMask uint8, payloadMask uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minSlot string, maxSlot string, builder string, invertBuilder bool, withBuilderBlock uint8, displayColumns uint64) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
-	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, statusMask, payloadMask, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, withBuilderBlock, displayColumns)
+	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, statusMask, payloadMask, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, invertBuilder, withBuilderBlock, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlotsPageData(pageCall.CallCtx, pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, statusMask, payloadMask, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, withBuilderBlock, displayColumns)
+		return buildFilteredSlotsPageData(pageCall.CallCtx, pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, statusMask, payloadMask, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minSlot, maxSlot, builder, invertBuilder, withBuilderBlock, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotsFilteredPageData)
@@ -166,7 +170,7 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 	return pageData, pageErr
 }
 
-func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, statusMask uint8, payloadMask uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minSlot string, maxSlot string, builder string, withBuilderBlock uint8, displayColumns uint64) *models.SlotsFilteredPageData {
+func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, statusMask uint8, payloadMask uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minSlot string, maxSlot string, builder string, invertBuilder bool, withBuilderBlock uint8, displayColumns uint64) *models.SlotsFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	gloasActive := chainState.IsEip7732Enabled(chainState.EpochOfSlot(chainState.CurrentSlot()))
 	filterArgs := url.Values{}
@@ -232,6 +236,9 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 	}
 	if builder != "" {
 		filterArgs.Add("f.builder", builder)
+	}
+	if invertBuilder {
+		filterArgs.Add("f.binvert", "on")
 	}
 	if withBuilderBlock != 0 {
 		filterArgs.Add("f.builderblock", fmt.Sprintf("%v", withBuilderBlock))
@@ -331,6 +338,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 		FilterMinSlot:          minSlot,
 		FilterMaxSlot:          maxSlot,
 		FilterBuilder:          builder,
+		FilterInvertBuilder:    invertBuilder,
 		FilterWithBuilder:      withBuilderBlock,
 
 		IsGloasActive: gloasActive,
@@ -485,6 +493,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 		builderIdx, err := strconv.ParseInt(builder, 10, 64)
 		if err == nil {
 			blockFilter.BuilderIndex = &builderIdx
+			blockFilter.InvertBuilder = invertBuilder
 		}
 	}
 
@@ -571,8 +580,8 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 				}
 			}
 
-			// Add builder info
-			if pageData.DisplayBuilder {
+			// Add builder info (needed for the Builder column and the proposer build-source icon)
+			if pageData.DisplayBuilder || pageData.DisplayProposer {
 				if dbBlock.Block.BuilderIndex == -1 {
 					slotData.HasBuilder = true
 					slotData.BuilderIndex = math.MaxUint64 // Self-built sentinel

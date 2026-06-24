@@ -107,14 +107,26 @@
                 {{ if .IsGloasActive }}
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Builder Blocks</nobr>
+                    <nobr>Builder</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.builderblock" aria-controls="builderblock" class="form-control">
-                      <option value="0" {{ if eq .FilterWithBuilder 0 }}selected{{ end }}>All</option>
-                      <option value="1" {{ if eq .FilterWithBuilder 1 }}selected{{ end }}>Builder-built only</option>
-                      <option value="2" {{ if eq .FilterWithBuilder 2 }}selected{{ end }}>Self-built only</option>
-                    </select>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <select name="f.builderblock" aria-controls="builderblock" class="form-control" aria-label="Builder Blocks">
+                        <option value="0" {{ if eq .FilterWithBuilder 0 }}selected{{ end }}>All</option>
+                        <option value="1" {{ if eq .FilterWithBuilder 1 }}selected{{ end }}>Builder-built only</option>
+                        <option value="2" {{ if eq .FilterWithBuilder 2 }}selected{{ end }}>Self-built only</option>
+                      </select>
+                    </div>
+                    <div class="text-center filter-separator"></div>
+                    <div class="flex-grow-1">
+                      <div class="input-group">
+                        <input name="f.builder" type="number" class="form-control" placeholder="Builder Index" aria-label="Builder Index" min="0" value="{{ .FilterBuilder }}">
+                        <div class="input-group-text">
+                          <input name="f.binvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertBuilder }}checked{{ end }} title="Invert filter (exclude matches)">
+                          <label class="form-check-label small" for="f.binvert" title="Invert filter (exclude matches)">NOT</label>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 {{ else }}
@@ -212,6 +224,13 @@
       $('#blocksFilterForm').submit(function () {
         $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
       });
+      // "Self-built only" forces builder_index = -1, so the builder index search is meaningless there
+      function updateBuilderIndexState() {
+        var selfBuilt = $('[name="f.builderblock"]').val() === '2';
+        $('[name="f.builder"],[name="f.binvert"]').prop('disabled', selfBuilt);
+      }
+      $('[name="f.builderblock"]').on('change', updateBuilderIndexState);
+      updateBuilderIndexState();
     </script>
 
     <div class="card mt-2">

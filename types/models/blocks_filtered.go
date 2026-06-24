@@ -16,6 +16,8 @@ type BlocksFilteredPageData struct {
 	FilterMaxBlockSize    string `json:"filter_max_block_size"`
 	FilterWithMevBlock    uint8  `json:"filter_mev_block"`
 	FilterWithBuilder     uint8  `json:"filter_builder_block"`
+	FilterBuilder         string `json:"filter_builder"`
+	FilterInvertBuilder   bool   `json:"filter_invert_builder"`
 	FilterMinTxCount      string `json:"filter_min_tx"`
 	FilterMaxTxCount      string `json:"filter_max_tx"`
 	FilterMinBlobCount    string `json:"filter_min_blob"`
