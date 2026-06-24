@@ -1,6 +1,6 @@
 module github.com/ethpandaops/dora
 
-go 1.25.7
+go 1.26.1
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
@@ -8,7 +8,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/ethereum/go-ethereum v1.17.4
 	github.com/ethpandaops/eth-das-guardian v0.1.1
-	github.com/ethpandaops/ethcore v0.0.0-20260320045412-9cdd5d70a29c
+	github.com/ethpandaops/ethcore v0.0.0-20260604021418-f61e8ea2d4ab
 	github.com/ethpandaops/ethwallclock v0.4.0
 	github.com/ethpandaops/go-eth2-client v0.1.4
 	github.com/go-redis/redis/v8 v8.11.5
@@ -172,7 +172,7 @@ require (
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260409153401-be6f6cb8b1fa // indirect
 	golang.org/x/tools v0.44.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260420184626-e10c466a9529 // indirect
 	gopkg.in/ini.v1 v1.67.2 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
@@ -188,7 +188,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/consensys/gnark-crypto v0.18.1 // indirect
 	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/donovanhide/eventsource v0.0.0-20210830082556-c59027999da0
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -216,7 +216,7 @@ require (
 	github.com/kilic/bls12-381 v0.1.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.21 // indirect
+	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
