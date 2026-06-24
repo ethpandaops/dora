@@ -630,15 +630,15 @@
                           change.block_access_index === 65535 ? 'Post-execution' :
                           `Tx ${change.block_access_index}`;
 
-          // EIP-8037: origin/coinbase role badge
+          // Role badge: annotate balance changes for the tx sender and fee recipient
           var roleBadge = '';
           var bai = change.block_access_index || 0;
           if (bai > 0 && bai !== 65535) {
             var txOrigin = window.txOriginByBAI && window.txOriginByBAI[bai];
             if (txOrigin && entryAddrHex && entryAddrHex === txOrigin) {
-              roleBadge = ' <span class="badge bg-warning text-dark" style="font-size:10px;" title="EIP-8037: tx origin — balance change may include gas refund routed back to sender">origin</span>';
+              roleBadge = ' <span class="badge bg-warning text-dark" style="font-size:10px;" title="This address sent Tx ' + bai + '. Its balance change includes gas cost deduction and any gas refunds.">tx sender</span>';
             } else if (window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase()) {
-              roleBadge = ' <span class="badge bg-success" style="font-size:10px;" title="EIP-8037: fee recipient (coinbase) — receives base fee + priority fee">coinbase</span>';
+              roleBadge = ' <span class="badge bg-success" style="font-size:10px;" title="Fee recipient (coinbase) — receives base fee + priority fee from Tx ' + bai + '.">coinbase</span>';
             }
           }
 
