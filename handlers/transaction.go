@@ -33,6 +33,9 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
+// EIP-7708: ETH Transfer logger address — emits Transfer(address,address,uint256) on every ETH move.
+var ethTransferLogger = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
+
 // Transaction type names
 var txTypeNames = map[uint8]string{
 	0: "Legacy",
@@ -537,6 +540,11 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 	}
 	applyCallTargetResolution(ctx, pageData, methodID)
 
+	// EIP-7976: calldata floor gas = 21000 + 64 × len(calldata)
+	if len(pageData.InputData) > 0 {
+		pageData.CalldataFloorGas = 21000 + uint64(len(pageData.InputData))*64
+	}
+
 	// Blob hashes
 	pageData.BlobCount = uint32(len(ethTx.BlobHashes()))
 
@@ -810,6 +818,31 @@ func buildEventsFromBlockdb(events bdbtypes.EventDataList) []*models.Transaction
 		}
 		if len(ev.Topics) > 4 {
 			event.Topic4 = ev.Topics[4]
+		}
+
+		// EIP-7708: ETH transfers emit a Transfer(address,address,uint256) event from
+		// 0xfffffffffffffffffffffffffffffffffffffffe (the ETH Transfer logger).
+		// Topic0 = keccak256("Transfer(address,address,uint256)") = 0xddf252ad...
+		// Topic1 = from address (padded), Topic2 = to address (padded), Data = uint256 wei.
+		if bytes.Equal(ev.Source[:], ethTransferLogger[:]) {
+			event.EventName = "ETH Transfer (EIP-7708)"
+			// Decode from/to/value from the Transfer event
+			if len(ev.Topics) >= 3 && len(ev.Topics[1]) == 32 && len(ev.Topics[2]) == 32 {
+				event.EthTransferFrom = ev.Topics[1][12:] // last 20 bytes
+				event.EthTransferTo = ev.Topics[2][12:]
+			}
+			if len(ev.Data) >= 32 {
+				weiVal := new(big.Int).SetBytes(ev.Data[:32])
+				// Format as ETH with up to 6 decimal places, trimming trailing zeros
+				eth := new(big.Float).Quo(new(big.Float).SetInt(weiVal), new(big.Float).SetInt(big.NewInt(1e18)))
+				event.EthTransferValue = fmt.Sprintf("%.6f", eth)
+				// Trim trailing zeros after decimal point
+				if strings.Contains(event.EthTransferValue, ".") {
+					event.EthTransferValue = strings.TrimRight(event.EthTransferValue, "0")
+					event.EthTransferValue = strings.TrimRight(event.EthTransferValue, ".")
+				}
+				event.EthTransferValue += " ETH"
+			}
 		}
 
 		result = append(result, event)
@@ -1284,6 +1317,11 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	// Set input data from parsed transaction
 	pageData.InputData = ethTx.Data()
 	applyCalldataCosts(pageData)
+
+	// EIP-7976: calldata floor gas = 21000 + 64 × len(calldata)
+	if len(pageData.InputData) > 0 {
+		pageData.CalldataFloorGas = 21000 + uint64(len(pageData.InputData))*64
+	}
 
 	// Generate JSON using proper marshaling
 	generateTxJSON(pageData, &ethTx)

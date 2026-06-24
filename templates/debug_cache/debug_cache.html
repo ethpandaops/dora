@@ -611,6 +611,17 @@
             </div>
           </td>
         </tr>
+        <tr>
+          <td>Duties</td>
+          <td class="text-end">{{ formatNumber .DutiesCount }}</td>
+          <td class="text-end">{{ formatByteSize .DutiesSize }}</td>
+          <td class="text-end">{{ if gt .DutiesCount 0 }}{{ formatByteSize (div (float64 .DutiesSize) (float64 .DutiesCount)) }}{{ else }}N/A{{ end }}</td>
+          <td>
+            <div class="progress" style="height: 16px;">
+              <div class="progress-bar bg-success" role="progressbar" style="width: {{ pct .DutiesSize .TotalSize }}%;"></div>
+            </div>
+          </td>
+        </tr>
       </tbody>
     </table>
     {{ end }}
