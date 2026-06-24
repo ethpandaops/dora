@@ -142,6 +142,7 @@ type SlotPageExecutionData struct {
 	// EIP-7928
 	BlockAccessListHash []byte                          `json:"block_access_list_hash,omitempty"`
 	BlockAccessList     []*SlotPageBlockAccessListEntry `json:"block_access_list,omitempty"`
+	BALSummary          *SlotPageBALSummary             `json:"bal_summary,omitempty"`
 }
 
 type SlotPageValidatorName struct {
@@ -456,4 +457,15 @@ type SlotPageBlockBALCodeChange struct {
 	BlockAccessIndex uint16 `json:"block_access_index"`
 	Code             []byte `json:"code"`
 	CodeHash         []byte `json:"code_hash,omitempty"`
+}
+
+// SlotPageBALSummary holds block-level BAL aggregates for EIP-8038 visibility.
+type SlotPageBALSummary struct {
+	UniqueAddresses   uint64 `json:"unique_addresses"`
+	StorageSlotWrites uint64 `json:"storage_slot_writes"`
+	StorageWriteOps   uint64 `json:"storage_write_ops"`
+	ColdStorageReads  uint64 `json:"cold_storage_reads"`
+	BalanceChanges    uint64 `json:"balance_changes"`
+	CodeChanges       uint64 `json:"code_changes"`
+	NonceChanges      uint64 `json:"nonce_changes"`
 }

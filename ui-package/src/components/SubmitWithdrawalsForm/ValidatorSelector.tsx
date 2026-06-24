@@ -1,7 +1,6 @@
 import React, { useCallback } from 'react';
-import Select, { createFilter, OptionProps } from 'react-select'
+import Select, { createFilter, OptionProps, FilterOptionOption } from 'react-select'
 import { IValidator } from './SubmitWithdrawalsFormProps';
-import { FilterOptionOption } from 'react-select/dist/declarations/src/filters';
 
 interface IValidatorSelectorProps {
   validators: IValidator[];
