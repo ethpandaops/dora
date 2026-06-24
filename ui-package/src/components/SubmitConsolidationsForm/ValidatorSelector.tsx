@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import Select, { createFilter, OptionProps } from 'react-select'
+import Select, { createFilter, OptionProps, FilterOptionOption } from 'react-select'
 import { IValidator } from './SubmitConsolidationsFormProps';
-import { FilterOptionOption } from 'react-select/dist/declarations/src/filters';
 
 interface IValidatorSelectorProps {
   placeholder: string;
