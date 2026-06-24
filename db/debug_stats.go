@@ -141,6 +141,8 @@ type BlockDbStats struct {
 	BeaconBlockSize  int64
 	ExecDataCount    int64
 	ExecDataSize     int64
+	DutiesCount      int64
+	DutiesSize       int64
 }
 
 // GetBlockDbStats returns counts and sizes for beacon blocks and execution
@@ -172,6 +174,19 @@ func GetBlockDbStats() (*BlockDbStats, error) {
 		"SELECT COALESCE(SUM(data_size), 0) FROM el_blocks WHERE data_size > 0")
 	if err != nil {
 		stats.ExecDataSize = 0
+	}
+
+	// Duties: count epochs with a stored duties object
+	err = ReaderDb.Get(&stats.DutiesCount,
+		"SELECT COUNT(*) FROM epochs WHERE block_duties_size > 0")
+	if err != nil {
+		stats.DutiesCount = 0
+	}
+
+	err = ReaderDb.Get(&stats.DutiesSize,
+		"SELECT COALESCE(SUM(block_duties_size), 0) FROM epochs WHERE block_duties_size > 0")
+	if err != nil {
+		stats.DutiesSize = 0
 	}
 
 	return stats, nil
