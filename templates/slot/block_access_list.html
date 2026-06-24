@@ -641,8 +641,9 @@
         };
 
         function causesFor(bai) {
-          if (bai === 0)     return ['system'];
-          if (bai === 65535) return ['withdrawal'];
+          if (bai === 0) return ['system'];
+          var numTxs = window.transactionDetails ? Object.keys(window.transactionDetails).length : 0;
+          if (bai === numTxs + 1) return ['withdrawal'];
           var causes = [];
           // Sender: this address sent the tx (always pays gas; may also have sent ETH out).
           var txOrigin = window.txOriginByBAI && window.txOriginByBAI[bai];
@@ -673,10 +674,11 @@
           }).join('');
         }
 
+        const numTxsTotal = window.transactionDetails ? Object.keys(window.transactionDetails).length : 0;
         let html = '<div>';
         balanceChanges.forEach((change, index) => {
           const txLabel = change.block_access_index === 0 ? 'Pre-execution' :
-                          change.block_access_index === 65535 ? 'Post-execution' :
+                          change.block_access_index === numTxsTotal + 1 ? 'Post-execution' :
                           `Tx ${change.block_access_index}`;
 
           html += `
