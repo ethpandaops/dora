@@ -98,6 +98,14 @@ type TransactionPageData struct {
 	TargetCallName  string                        `json:"target_call_name"` // Precompile or system contract name
 	DecodedCalldata []*utils.DecodedCalldataParam `json:"decoded_calldata"` // Decoded params (nil if not available)
 
+	// Calldata gas cost breakdown (computed from InputData; zero when InputData is empty)
+	CalldataZeroBytes      int    `json:"calldata_zero_bytes"`      // Zero bytes in calldata
+	CalldataNonZeroBytes   int    `json:"calldata_nonzero_bytes"`   // Non-zero bytes in calldata
+	CalldataPragueTokens   int    `json:"calldata_prague_tokens"`   // EIP-7623 tokens: 4×nonzero + zero (used as prague floor multiplier)
+	CalldataStandardGas    uint64 `json:"calldata_standard_gas"`    // Intrinsic pre-Prague: 21000 + 4×zero + 16×nonzero
+	CalldataPragueFloor    uint64 `json:"calldata_prague_floor"`    // EIP-7623 floor (Prague+): 21000 + (4×nonzero + zero)×10
+	CalldataAmsterdamFloor uint64 `json:"calldata_amsterdam_floor"` // EIP-7976 floor (Amsterdam+): 21000 + total×64
+
 	// Full transaction data (loaded from beacon block)
 	TxRLP  string `json:"tx_rlp"`  // Hex-encoded RLP for copy button
 	TxJSON string `json:"tx_json"` // JSON representation for copy button
@@ -123,6 +131,9 @@ type TransactionPageData struct {
 
 	// Authorizations (EIP-7702, tx type 4)
 	Authorizations []*TransactionPageDataAuthorization `json:"authorizations"`
+
+	// EIP-7976: calldata floor gas cost = 21000 + 64 × len(calldata); 0 if no calldata
+	CalldataFloorGas uint64 `json:"calldata_floor_gas"`
 
 	// Tab view
 	TabView string `json:"tab_view"`
@@ -211,6 +222,11 @@ type TransactionPageDataEvent struct {
 
 	// Decoded (if known)
 	EventName string `json:"event_name"`
+
+	// EIP-7708: decoded ETH Transfer parameters (only set for ETH Transfer logger events)
+	EthTransferFrom  []byte `json:"eth_transfer_from,omitempty"`  // 20-byte from address
+	EthTransferTo    []byte `json:"eth_transfer_to,omitempty"`    // 20-byte to address
+	EthTransferValue string `json:"eth_transfer_value,omitempty"` // formatted ETH amount
 }
 
 // TransactionPageDataTokenTransfer represents a token transfer in the transaction
