@@ -1,0 +1,325 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0">
+        <i class="fas fa-file-signature mx-2"></i>Builder Deposits
+      </h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/builders" title="Builders">Builders</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Builder Deposits</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div id="header-placeholder" style="height:35px;"></div>
+
+    {{ if .IsProjection }}
+      <div class="card mt-2 border-info">
+        <div class="card-header">
+          <i class="fas fa-flask mx-1"></i>Projected Builder Onboarding (pre-Gloas)
+        </div>
+        <div class="card-body p-3">
+          <p class="mb-2">
+            Gloas activates at epoch <strong>{{ .GloasForkEpoch }}</strong>
+            (<span data-timer="{{ .GloasForkTime.Unix }}" data-bs-toggle="tooltip" data-bs-title="{{ .GloasForkTime }}">{{ formatRecentTimeShort .GloasForkTime }}</span>).
+            Builder deposits are not recorded on-chain yet &mdash; the entries below are the actual <strong>0x03-credential deposits</strong>,
+            each annotated with its <strong>projected</strong> fate at the fork (based on the deposit churn limit and pending queue), and may change as deposits are submitted or processed.
+            {{ if .ProjectionTruncated }}<span class="text-muted">(showing the first {{ len .Deposits }}; older deposits omitted)</span>{{ end }}
+          </p>
+          <div class="row">
+            <div class="col-md-6">
+              <ul class="mb-2 mb-md-0">
+                <li><strong>{{ .OnboardedNewCount }}</strong> new builder{{ if ne .OnboardedNewCount 1 }}s{{ end }} projected to be onboarded at the fork{{ if gt .OnboardedTopUpCount 0 }}, plus <strong>{{ .OnboardedTopUpCount }}</strong> top-up deposit{{ if ne .OnboardedTopUpCount 1 }}s{{ end }}{{ end }}</li>
+                {{ if gt .TooEarlyCount 0 }}<li><strong>{{ .TooEarlyCount }}</strong> deposit{{ if ne .TooEarlyCount 1 }}s{{ end }} too early (processed before the fork &rarr; become validators)</li>{{ end }}
+                {{ if gt .KeptAsValidatorCount 0 }}<li><strong>{{ .KeptAsValidatorCount }}</strong> kept as validator deposit{{ if ne .KeptAsValidatorCount 1 }}s{{ end }} (pubkey already a validator)</li>{{ end }}
+                {{ if gt .InvalidSignatureCount 0 }}<li><strong>{{ .InvalidSignatureCount }}</strong> with an invalid signature (dropped at onboarding)</li>{{ end }}
+              </ul>
+            </div>
+            <div class="col-md-6">
+              {{ if .HasSafetyEstimate }}
+                {{ if .DepositSafe }}
+                  <div class="alert alert-success mb-0 py-2">
+                    <i class="fas fa-circle-check mx-1"></i>
+                    <strong>Safe to deposit now.</strong> A builder deposit submitted now would remain queued until the fork
+                    (est. processing epoch {{ .NewDepositEstimateEpoch }}, at or after the fork) and be onboarded as a builder.
+                  </div>
+                {{ else }}
+                  <div class="alert alert-warning mb-0 py-2">
+                    <i class="fas fa-triangle-exclamation mx-1"></i>
+                    <strong>Queue too short to deposit yet.</strong> A deposit submitted now would be processed
+                    (~epoch {{ .NewDepositEstimateEpoch }}) before the fork and become a regular validator, not a builder.
+                  </div>
+                {{ end }}
+              {{ else }}
+                <div class="alert alert-secondary mb-0 py-2">
+                  <i class="fas fa-circle-info mx-1"></i> Not enough data to estimate whether it is safe to deposit now.
+                </div>
+              {{ end }}
+            </div>
+          </div>
+        </div>
+      </div>
+    {{ end }}
+
+    <form action="/builders/deposits" method="get" id="builderDepositsFilterForm">
+      <input type="hidden" name="f">
+      <div class="card mt-2">
+        <div class="card-header">Builder Deposit Filters</div>
+        <div class="card-body p-2">
+          <div class="row">
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">Slot Number</div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mins" type="number" class="form-control" placeholder="Min Slot" value="{{ if gt .FilterMinSlot 0 }}{{ .FilterMinSlot }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">-</div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxs" type="number" class="form-control" placeholder="Max Slot" value="{{ if gt .FilterMaxSlot 0 }}{{ .FilterMaxSlot }}{{ end }}">
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">Builder Index</div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mini" type="number" class="form-control" placeholder="Min Index" value="{{ if gt .FilterMinIndex 0 }}{{ .FilterMinIndex }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">-</div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxi" type="number" class="form-control" placeholder="Max Index" value="{{ if gt .FilterMaxIndex 0 }}{{ .FilterMaxIndex }}{{ end }}">
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">Public Key</div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.pubkey" type="text" class="form-control" placeholder="0x..." value="{{ .FilterPubKey }}">
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">Amount (Gwei)</div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mina" type="number" class="form-control" placeholder="Min Amount" value="{{ if gt .FilterMinAmount 0 }}{{ .FilterMinAmount }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">-</div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxa" type="number" class="form-control" placeholder="Max Amount" value="{{ if gt .FilterMaxAmount 0 }}{{ .FilterMaxAmount }}{{ end }}">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row mt-3">
+            <div class="col-8 col-md-6 table-pagesize">
+              <label class="px-2">
+                <span>Show </span>
+                <select name="c" class="custom-select custom-select-sm form-control form-control-sm">
+                  <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <span> entries per page</span>
+              </label>
+            </div>
+            <div class="col-4 col-md-6">
+              <div class="container text-end">
+                <button type="submit" class="btn btn-primary">Apply Filter</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+    <script type="text/javascript">
+      $('#builderDepositsFilterForm').submit(function () {
+        $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
+      });
+    </script>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+        <div class="table-responsive px-0 py-1">
+          <table class="table table-nobr" id="builderDeposits">
+            <thead>
+              <tr>
+                <th>Slot</th>
+                <th>Time</th>
+                <th>Builder</th>
+                <th class="d-none d-md-table-cell">Pub<span class="d-none d-lg-inline">lic </span>Key</th>
+                <th class="d-none d-lg-table-cell">W<span class="d-none d-lg-inline">ithdrawal</span> Cred</th>
+                <th>Amount</th>
+                <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
+                <th class="d-none d-md-table-cell">Transaction</th>
+              </tr>
+            </thead>
+            {{ if gt .DepositCount 0 }}
+              <tbody>
+                {{ range $i, $deposit := .Deposits }}
+                  <tr>
+                    <td>
+                      {{ if $deposit.IsIncluded }}
+                        {{ if $deposit.Orphaned }}
+                          <a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.SlotNumber }}</a>
+                        {{ else }}
+                          <a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a>
+                        {{ end }}
+                        {{ if $deposit.IsOnboarding }}
+                          <i class="fa fa-info-circle text-info ml-1" data-bs-toggle="tooltip" data-bs-title="Onboarded as a builder from the pending deposit queue at the Gloas fork transition"></i>
+                        {{ end }}
+                      {{ else }}
+                        <span class="text-muted">pending</span>
+                      {{ end }}
+                    </td>
+                    <td>
+                      {{ if $deposit.IsIncluded }}
+                        <span data-timer="{{ $deposit.Time.Unix }}" data-bs-toggle="tooltip" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span>
+                      {{ else }}
+                        <span class="text-muted">-</span>
+                      {{ end }}
+                    </td>
+                    <td>
+                      {{ if $deposit.IsProjected }}
+                        {{ if $deposit.IsQueued }}
+                          <span class="badge rounded-pill text-bg-light border" data-bs-toggle="tooltip" data-bs-title="Found in the current pending deposit queue at position {{ $deposit.QueuePosition }}"><i class="fas fa-list-ol mr-1"></i>#{{ $deposit.QueuePosition }}</span>
+                        {{ else }}
+                          <span class="text-muted">-</span>
+                        {{ end }}
+                      {{ else if $deposit.HasBuilderIndex }}
+                        {{ formatBuilderWithIndex $deposit.BuilderIndex "" }}
+                      {{ else if $deposit.IsInactiveBuilder }}
+                        {{ formatInactiveBuilder $deposit.PublicKey }}
+                      {{ else }}
+                        <span class="text-muted">-</span>
+                      {{ end }}
+                    </td>
+                    <td class="d-none d-md-table-cell">
+                      <div class="d-flex">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">0x{{ printf "%x" $deposit.PublicKey }}</span>
+                        <div><i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.PublicKey }}"></i></div>
+                      </div>
+                    </td>
+                    <td class="d-none d-lg-table-cell">
+                      <span>{{ formatWithdawalCredentials $deposit.WithdrawalCredentials }}</span>
+                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.WithdrawalCredentials }}"></i>
+                    </td>
+                    <td>{{ formatEthFromGwei $deposit.Amount }}</td>
+                    <td>
+                      {{ if $deposit.IsProjected }}
+                        {{ if $deposit.ProjectedAlreadyProcessed }}
+                          <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-title="Already processed by the deposit queue before the fork — became a regular validator, not a builder">Too early</span>
+                        {{ else if $deposit.ProjectedTooEarly }}
+                          <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-title="Projected to be processed by the deposit queue before the Gloas fork — becomes a regular validator, not a builder">Too early</span>
+                        {{ else if $deposit.ProjectedKeptAsValidator }}
+                          <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-title="Shares a pubkey with a validator deposit — applied as a validator deposit, not onboarded as a builder">Validator</span>
+                        {{ else if $deposit.ProjectedInvalidSignature }}
+                          <span class="badge rounded-pill text-bg-danger" data-bs-toggle="tooltip" data-bs-title="Invalid proof-of-possession — dropped at builder onboarding">Invalid sig</span>
+                        {{ else if eq $deposit.Result 3 }}
+                          <span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" data-bs-title="Projected to top up a builder onboarded at the Gloas fork">Top-up</span>
+                        {{ else }}
+                          <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-title="Projected to be onboarded as a new builder at the Gloas fork">New builder</span>
+                        {{ end }}
+                      {{ else if not $deposit.IsIncluded }}
+                        <span class="badge rounded-pill text-bg-secondary">Pending</span>
+                      {{ else if $deposit.Orphaned }}
+                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                      {{ else }}
+                        <span class="badge rounded-pill text-bg-success">Included</span>
+                      {{ end }}
+                    </td>
+                    <td class="d-none d-md-table-cell">
+                      {{ if $deposit.HasTransaction }}
+                        <div class="d-flex">
+                          <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $deposit.TransactionHash 0 }}</span>
+                          <div>
+                            <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.TransactionHash }}"></i>
+                          </div>
+                          {{ if $deposit.TransactionDetails }}
+                          <div>
+                            <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $deposit.TransactionDetails true }}"></i>
+                          </div>
+                          {{ end }}
+                        </div>
+                      {{ else }}
+                        <span class="text-muted">-</span>
+                      {{ end }}
+                    </td>
+                  </tr>
+                {{ end }}
+              </tbody>
+            {{ else }}
+              <tbody>
+                <tr style="height: 430px;">
+                  <td class="d-none d-md-table-cell"></td>
+                  <td style="vertical-align: middle;" colspan="10">
+                    <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                      {{ template "professor_svg" }}
+                    </div>
+                  </td>
+                  <td class="d-none d-md-table-cell"></td>
+                </tr>
+              </tbody>
+            {{ end }}
+          </table>
+        </div>
+        {{ if gt .TotalPages 1 }}
+          <div class="row">
+            <div class="col-sm-12 col-md-5 table-metainfo">
+              <div class="px-2">
+                <div class="table-meta" role="status" aria-live="polite">Showing builder deposits from slot {{ .FirstIndex }} to {{ .LastIndex }}</div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-7 table-paging">
+              <div class="d-inline-block px-2">
+                <ul class="pagination">
+                  <li class="first paginate_button page-item {{ if lt .PrevPageIndex 1 }}disabled{{ end }}">
+                    <a class="page-link" href="{{ .FirstPageLink }}">First</a>
+                  </li>
+                  <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}">
+                    <a class="page-link" href="{{ .PrevPageLink }}"><i class="fas fa-chevron-left"></i></a>
+                  </li>
+                  <li class="page-item disabled">
+                    <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
+                  </li>
+                  <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}">
+                    <a class="page-link" href="{{ .NextPageLink }}"><i class="fas fa-chevron-right"></i></a>
+                  </li>
+                  <li class="last paginate_button page-item {{ if or (eq .LastPageIndex 0) (ge .CurrentPageIndex .LastPageIndex) }}disabled{{ end }}">
+                    <a class="page-link" href="{{ .LastPageLink }}">Last</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        {{ end }}
+      </div>
+      <div id="footer-placeholder" style="height:71px;"></div>
+    </div>
+    {{ template "txDetailsModal" . }}
+  </div>
+{{ end }}
+{{ define "js" }}
+{{ template "txDetailsModal-js" . }}
+{{ end }}
+{{ define "css" }}
+<style>
+.filter-amount-separator {
+  padding-top: 6px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+</style>
+{{ template "txDetailsModal-css" . }}
+{{ end }}

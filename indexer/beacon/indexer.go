@@ -47,6 +47,7 @@ type Indexer struct {
 	epochCache         *epochCache
 	forkCache          *forkCache
 	pubkeyCache        *pubkeyCache
+	builderPubkeyCache *pubkeyCache
 	validatorCache     *validatorCache
 	pendingValidators  *pendingValidatorProjector
 	validatorActivity  *validatorActivityCache
@@ -123,6 +124,10 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	indexer.epochCache = newEpochCache(indexer)
 	indexer.forkCache = newForkCache(indexer)
 	indexer.pubkeyCache = newPubkeyCache(indexer, utils.Config.Indexer.PubkeyCachePath)
+	// builders (EIP-8282) live in a separate index space and may share pubkeys with validators,
+	// so they get their own pubkey cache. It reuses the validator cache's backing store (same
+	// file) but namespaces builder keys with a prefix to avoid collisions.
+	indexer.builderPubkeyCache = indexer.pubkeyCache.newPrefixedCache([]byte(pubkeyCacheBuilderPrefix))
 	indexer.validatorCache = newValidatorCache(indexer)
 	indexer.pendingValidators = newPendingValidatorProjector(indexer)
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
@@ -486,6 +491,7 @@ func (indexer *Indexer) StopIndexer() {
 	}
 
 	indexer.pubkeyCache.Close()
+	// builderPubkeyCache shares pubkeyCache's store, so it is closed by the line above.
 	indexer.stateCache.Close()
 }
 

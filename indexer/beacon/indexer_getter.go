@@ -376,8 +376,17 @@ func (indexer *Indexer) GetActivationExitQueueLengths(epoch phase0.Epoch, overri
 }
 
 // GetValidatorIndexByPubkey returns the validator index for a given pubkey.
+// Builders live in a separate index space (see GetBuilderIndexByPubkey) and are
+// never returned here, even if they share a pubkey with a validator.
 func (indexer *Indexer) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
 	return indexer.pubkeyCache.Get(pubkey)
+}
+
+// GetBuilderIndexByPubkey returns the builder index for a given pubkey (EIP-8282).
+// Builders have a dedicated pubkey cache, separate from validators.
+func (indexer *Indexer) GetBuilderIndexByPubkey(pubkey phase0.BLSPubKey) (gloas.BuilderIndex, bool) {
+	idx, found := indexer.builderPubkeyCache.Get(pubkey)
+	return gloas.BuilderIndex(idx), found
 }
 
 // GetValidatorByIndex returns the validator by index for a given forkId.
@@ -649,16 +658,13 @@ func (indexer *Indexer) applyBuilderBalanceChanges(block *Block, balances []phas
 				}
 			}
 
-			// Apply deposit requests (increase builder balances).
+			// Apply builder deposit requests (increase builder balances).
 			if payload.Message.ExecutionRequests != nil {
-				for _, deposit := range payload.Message.ExecutionRequests.Deposits {
-					if validatorIdx, found := indexer.pubkeyCache.Get(deposit.Pubkey); found {
-						idx := uint64(validatorIdx)
-						if idx&BuilderIndexFlag != 0 {
-							builderIdx := idx &^ BuilderIndexFlag
-							if builderIdx < uint64(len(balances)) {
-								balances[builderIdx] += phase0.Gwei(deposit.Amount)
-							}
+				for _, deposit := range payload.Message.ExecutionRequests.BuilderDeposits {
+					if builderIdx, found := indexer.builderPubkeyCache.Get(deposit.Pubkey); found {
+						idx := uint64(builderIdx)
+						if idx < uint64(len(balances)) {
+							balances[idx] += phase0.Gwei(deposit.Amount)
 						}
 					}
 				}
@@ -688,19 +694,7 @@ func (indexer *Indexer) applyBuilderBalanceChanges(block *Block, balances []phas
 			}
 		}
 
-		// Apply deposit requests (increase builder balances).
-		if body.ExecutionRequests != nil {
-			for _, deposit := range body.ExecutionRequests.Deposits {
-				if validatorIdx, found := indexer.pubkeyCache.Get(deposit.Pubkey); found {
-					idx := uint64(validatorIdx)
-					if idx&BuilderIndexFlag != 0 {
-						builderIdx := idx &^ BuilderIndexFlag
-						if builderIdx < uint64(len(balances)) {
-							balances[builderIdx] += phase0.Gwei(deposit.Amount)
-						}
-					}
-				}
-			}
-		}
+		// No builder deposit requests pre-EIP-7732: builders (EIP-8282) only exist from
+		// Gloas onwards, where the payload envelope path above is used instead.
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -90,6 +91,11 @@ type TransitionInfo struct {
 	// DelayedBuilderPayments is a list of slots that the state transition appended delayed builder payments for.
 	// This tells the state simulator which slots to reference delayed builder payments in the BuilderPendingWithdrawals list.
 	DelayedBuilderPayments []uint16
+
+	// GloasOnboardedDeposits holds the pending deposits that the one-time upgrade_to_gloas
+	// onboarding converted into builders (and thereby removed from the pending_deposits queue).
+	// Only populated when the transition crosses the Gloas fork; nil otherwise.
+	GloasOnboardedDeposits []*electra.PendingDeposit
 }
 
 // processSlots advances the state from its current slot to targetSlot, applying
@@ -123,6 +129,10 @@ func (st *StateTransition) processSlots(state *all.BeaconState, targetSlot phase
 		}
 
 		s.Slot++
+
+		// Apply the Gloas fork upgrade at the first slot of GLOAS_FORK_EPOCH (after the
+		// preceding Fulu epoch transition has run, mirroring the spec's irregular state change).
+		maybeUpgradeToGloas(s, info)
 	}
 
 	return nil
