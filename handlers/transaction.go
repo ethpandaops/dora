@@ -544,6 +544,11 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 		loadAuthorizationData(pageData, ethTx)
 	}
 
+	// Access list data for type 1 (EIP-2930) transactions
+	if ethTx.Type() == ethtypes.AccessListTxType {
+		loadAccessListData(pageData, ethTx)
+	}
+
 	// Generate RLP and JSON
 	if rlpData, err := ethTx.MarshalBinary(); err == nil {
 		pageData.TxRLP = "0x" + hex.EncodeToString(rlpData)
@@ -1290,6 +1295,11 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	if ethTx.Type() == ethtypes.SetCodeTxType {
 		loadAuthorizationData(pageData, &ethTx)
 	}
+
+	// Load access list data for type 1 (EIP-2930) transactions
+	if ethTx.Type() == ethtypes.AccessListTxType {
+		loadAccessListData(pageData, &ethTx)
+	}
 }
 
 // loadBlobData populates blob-related data for type 3 (blob) transactions.
@@ -1428,6 +1438,39 @@ func loadAuthorizationData(
 
 		pageData.Authorizations[i] = entry
 	}
+}
+
+// loadAccessListData extracts EIP-2930 access list entries from a parsed
+// transaction and populates pageData.AccessListEntries and
+// pageData.AccessListStorageKeys.
+func loadAccessListData(
+	pageData *models.TransactionPageData,
+	ethTx *ethtypes.Transaction,
+) {
+	al := ethTx.AccessList()
+	if len(al) == 0 {
+		return
+	}
+
+	pageData.AccessListEntries = make([]models.TransactionAccessListEntry, len(al))
+	for i, entry := range al {
+		keys := make([][]byte, len(entry.StorageKeys))
+		for j, k := range entry.StorageKeys {
+			keyCopy := k // common.Hash is [32]byte
+			keys[j] = keyCopy[:]
+		}
+		pageData.AccessListEntries[i] = models.TransactionAccessListEntry{
+			Address:     entry.Address.Bytes(),
+			StorageKeys: keys,
+		}
+		pageData.AccessListStorageKeys += uint64(len(entry.StorageKeys))
+	}
+
+	// EIP-7981 (Amsterdam): ACCESS_LIST_STORAGE_KEY_COST 2400→1900, address cost unchanged at 2400
+	addrs := uint64(len(al))
+	pageData.AccessListGasAmsterdam = addrs*2400 + pageData.AccessListStorageKeys*1900
+	pageData.AccessListGasPrague = addrs*2400 + pageData.AccessListStorageKeys*2400
+	pageData.AccessListGasSavings = pageData.AccessListGasPrague - pageData.AccessListGasAmsterdam
 }
 
 // resolveAuthorizationValidity loads state diffs from blockdb and checks

@@ -63,16 +63,16 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 func getSearchResolverResult(pageCacheKey, searchQuery string) (searchResolverResult, error) {
 	pageData := searchResolverResult{}
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, &pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		res, cacheTimeout := buildSearchResolverResult(pageCall.CallCtx, searchQuery)
 		pageCall.CacheTimeout = cacheTimeout
-		return res
+		return &res
 	})
 	if pageErr != nil {
 		return searchResolverResult{}, pageErr
 	}
-	if res, ok := pageRes.(searchResolverResult); ok {
-		return res, nil
+	if res, ok := pageRes.(*searchResolverResult); ok {
+		return *res, nil
 	}
 	return searchResolverResult{}, ErrInvalidPageModel
 }

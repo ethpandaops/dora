@@ -254,6 +254,31 @@
               <div class="col-md-9">{{ .BlobCount }}</div>
             </div>
             {{ end }}
+            {{ if gt (len .AccessListEntries) 0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-2930 access list — pre-warmed addresses and storage slots. Under EIP-7981 (Amsterdam): each address costs 2400 gas, each storage key costs 1900 gas.">Access List:</span></div>
+              <div class="col-md-9">
+                <span class="badge bg-secondary me-2">{{ len .AccessListEntries }} {{ if eq (len .AccessListEntries) 1 }}address{{ else }}addresses{{ end }} &middot; {{ .AccessListStorageKeys }} storage {{ if eq .AccessListStorageKeys 1 }}key{{ else }}keys{{ end }}</span>
+                <span class="badge bg-info text-dark me-2" data-bs-toggle="tooltip" data-bs-placement="top" title="Access list intrinsic gas (EIP-7981): {{ formatNumber .AccessListGasAmsterdam }} gas in Amsterdam vs {{ formatNumber .AccessListGasPrague }} in Prague. Saves {{ formatNumber .AccessListGasSavings }} gas (storage key: 2400→1900).">{{ formatNumber .AccessListGasAmsterdam }} gas</span>
+                <div class="mt-2" style="font-size:0.85rem; font-family:monospace;">
+                  {{ range $i, $entry := .AccessListEntries }}
+                  <div class="py-1{{ if not (eq $i (add (len $.AccessListEntries) -1)) }} border-bottom{{ end }}">
+                    <a href="/address/{{ formatEthAddressFull $entry.Address }}" class="text-monospace">{{ formatEthAddressFull $entry.Address }}</a>
+                    {{ if $entry.StorageKeys }}
+                    <ul class="mb-0 mt-1" style="list-style:none; padding-left:1.5em;">
+                      {{ range $entry.StorageKeys }}
+                      <li><span class="text-muted">{{ printf "0x%x" . }}</span></li>
+                      {{ end }}
+                    </ul>
+                    {{ else }}
+                    <span class="text-muted ms-2">(no storage keys)</span>
+                    {{ end }}
+                  </div>
+                  {{ end }}
+                </div>
+              </div>
+            </div>
+            {{ end }}
             {{ if gt (len .InputData) 0 }}
             <div class="row p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data">Input Data:</span> <span class="badge bg-secondary ms-1">{{ formatNumber (len .InputData) }} bytes</span></div>
