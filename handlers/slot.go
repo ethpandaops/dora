@@ -866,10 +866,10 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageTransactions(ctx, pageData, executionPayload.Transactions, blockUid)
 		}
 
-		// EIP-7778: compute gas refund delta = |block.gasUsed - sum(receipt.gasUsed)|.
-		// In Amsterdam these two counters ALWAYS diverge (they were equal pre-Amsterdam):
-		//   block.gasUsed  = gp.Used()           = max(sum_regular, sum_state)
-		//   sum(receipts)  = gp.CumulativeUsed() = sum(max(pre_refund-refund, floor))
+		// EIP-7778: compute block gas delta = block.gasUsed - sum(receipt.gasUsed).
+		// Pre-Amsterdam these were always equal; Amsterdam introduces a 2D gas model:
+		//   block.gasUsed = max(sum_regular, sum_state)          [EIP-7778]
+		//   receipt.gasUsed per tx = regular + state - refund    [EIP-8037, EIP-3529]
 		// Only computed when EL indexing has enriched ALL tx receipts in this block.
 		if len(pageData.Transactions) > 0 {
 			var sumTxGas uint64
