@@ -204,6 +204,9 @@
                     <div class="progress-bar" role="progressbar" style="width: {{ .GasUsedPct }}%;" aria-valuenow="{{ .GasUsed }}" aria-valuemin="0" aria-valuemax="{{ .GasLimit }}"></div>
                   </div>
                 </div>
+                {{ if gt .CalldataFloorGas 0 }}
+                <span class="badge bg-info text-dark ms-2 mt-1" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7976 calldata floor cost: 21000 + 64 × {{ len .InputData }} bytes = {{ formatNumber .CalldataFloorGas }} gas. Amsterdam requires transactions with calldata to pay at least this floor.">EIP-7976 floor: {{ formatNumber .CalldataFloorGas }} gas</span>
+                {{ end }}
               </div>
             </div>
             {{ if ge .TxType 2 }}

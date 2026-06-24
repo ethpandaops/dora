@@ -448,10 +448,12 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 	result := make(map[common.Address]string, 5)
 
 	labels := map[string]string{
-		exerpc.WithdrawalRequestContract:    "Withdrawal Request (EIP-7002)",
-		exerpc.ConsolidationRequestContract: "Consolidation Request (EIP-7251)",
-		exerpc.BeaconRootsContract:          "Beacon Roots (EIP-4788)",
-		exerpc.HistoryStorageContract:       "Block Hash History (EIP-2935)",
+		exerpc.WithdrawalRequestContract:     "Withdrawal Request (EIP-7002)",
+		exerpc.ConsolidationRequestContract:  "Consolidation Request (EIP-7251)",
+		exerpc.BeaconRootsContract:           "Beacon Roots (EIP-4788)",
+		exerpc.HistoryStorageContract:        "Block Hash History (EIP-2935)",
+		exerpc.BuilderDepositRequestContract: "Builder Deposit (EIP-8282)",
+		exerpc.BuilderExitRequestContract:    "Builder Exit (EIP-8282)",
 	}
 
 	execChainState := bs.GetExecutionChainState()
@@ -479,6 +481,9 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 			result[depositAddr] = "Deposit Contract"
 		}
 	}
+
+	// Well-known static addresses (no on-chain config source)
+	result[common.HexToAddress("0x4e59b44847b379578588920ca78fbf26c0b4956c")] = "Arachnid CREATE2 Factory (EIP-7997)"
 
 	return result
 }
