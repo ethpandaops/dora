@@ -165,6 +165,15 @@ type SlotPagePayloadHeader struct {
 	Signature          []byte   `json:"signature"`
 }
 
+// SlotDutiesResponse is the JSON payload returned by the lazy duties endpoint
+// (/slot/{slot}/duties). Validators holds the resolved global validator indices
+// for the requested attester committees or the PTC, and Names maps each index to
+// its known name.
+type SlotDutiesResponse struct {
+	Validators []uint64          `json:"validators"`
+	Names      map[uint64]string `json:"names"`
+}
+
 type SlotPageAttestation struct {
 	Slot           uint64   `json:"slot"`
 	CommitteeIndex []uint64 `json:"committeeindex"`

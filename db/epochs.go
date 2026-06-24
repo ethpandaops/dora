@@ -56,6 +56,16 @@ func InsertEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Epoch) error {
 	return nil
 }
 
+// UpdateEpochDutiesSize records the stored size of an epoch's duties object.
+func UpdateEpochDutiesSize(ctx context.Context, epoch uint64, size uint64) error {
+	return RunDBTransaction(func(tx *sqlx.Tx) error {
+		_, err := tx.ExecContext(ctx,
+			`UPDATE epochs SET block_duties_size = $1 WHERE epoch = $2`,
+			size, epoch)
+		return err
+	})
+}
+
 func IsEpochSynchronized(ctx context.Context, epoch uint64) bool {
 	var count uint64
 	err := ReaderDb.GetContext(ctx, &count, `SELECT COUNT(*) FROM epochs WHERE epoch = $1`, epoch)
