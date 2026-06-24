@@ -616,7 +616,7 @@
       renderBalanceChanges(balanceChanges, entryAddress) {
         if (!balanceChanges || balanceChanges.length === 0) return '';
 
-        // EIP-8037: normalize the entry address to a plain lowercase hex string (no 0x)
+        // Normalize entry address to plain lowercase hex (no 0x prefix)
         var entryAddrHex = '';
         if (entryAddress) {
           entryAddrHex = Array.isArray(entryAddress)
@@ -624,23 +624,43 @@
             : String(entryAddress).replace(/^0x/,'').toLowerCase();
         }
 
+        // Balance change cause badges.
+        // Each cause has: a CSS class, a label, and a tooltip explaining what caused the change.
+        // Multiple causes can apply to one entry (e.g. gas + fee for a self-sending coinbase tx).
+        var CAUSES = {
+          gas:        { cls: 'bg-warning text-dark', label: 'gas',        tip: 'Gas cost deduction — this address paid gas for this transaction.' },
+          fee:        { cls: 'bg-success',            label: 'fee',        tip: 'Fee receipt — this address received base fee + priority fee as the block fee recipient.' },
+          transfer:   { cls: 'bg-info text-dark',     label: 'transfer',   tip: 'ETH value transfer — balance changed via CALL, SELFDESTRUCT, or contract creation endowment.' },
+          system:     { cls: 'bg-secondary',           label: 'system',     tip: 'Pre-execution system call — balance changed by a system contract before any user transactions.' },
+          withdrawal: { cls: 'bg-primary',             label: 'withdrawal', tip: 'Post-execution — balance changed by a consensus-layer withdrawal or post-execution system contract.' },
+        };
+
+        function causesFor(bai) {
+          if (bai === 0)     return ['system'];
+          if (bai === 65535) return ['withdrawal'];
+          var causes = [];
+          var txOrigin = window.txOriginByBAI && window.txOriginByBAI[bai];
+          if (txOrigin && entryAddrHex && entryAddrHex === txOrigin)
+            causes.push('gas');
+          if (window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase())
+            causes.push('fee');
+          if (causes.length === 0)
+            causes.push('transfer');
+          return causes;
+        }
+
+        function renderCauseBadges(bai) {
+          return causesFor(bai).map(function(c) {
+            var def = CAUSES[c];
+            return '<span class="badge ' + def.cls + ' ms-1" style="font-size:10px;" title="' + def.tip + '">' + def.label + '</span>';
+          }).join('');
+        }
+
         let html = '<div>';
         balanceChanges.forEach((change, index) => {
           const txLabel = change.block_access_index === 0 ? 'Pre-execution' :
                           change.block_access_index === 65535 ? 'Post-execution' :
                           `Tx ${change.block_access_index}`;
-
-          // Role badge: annotate balance changes for the tx sender and fee recipient
-          var roleBadge = '';
-          var bai = change.block_access_index || 0;
-          if (bai > 0 && bai !== 65535) {
-            var txOrigin = window.txOriginByBAI && window.txOriginByBAI[bai];
-            if (txOrigin && entryAddrHex && entryAddrHex === txOrigin) {
-              roleBadge = ' <span class="badge bg-warning text-dark" style="font-size:10px;" title="This balance change includes gas cost deduction, not just a value transfer — this address is the sender of Tx ' + bai + '.">tx sender</span>';
-            } else if (window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase()) {
-              roleBadge = ' <span class="badge bg-success" style="font-size:10px;" title="Fee recipient (coinbase) — receives base fee + priority fee from Tx ' + bai + '.">coinbase</span>';
-            }
-          }
 
           html += `
             <div class="bal-change-item">
@@ -653,7 +673,7 @@
             html += renderBalanceDiff(change.balance, prevBalance);
           }
 
-          html += roleBadge;
+          html += renderCauseBadges(change.block_access_index || 0);
           html += '</div>';
         });
         html += '</div>';
