@@ -701,7 +701,7 @@
       
       renderNonceChanges(nonceChanges) {
         if (!nonceChanges || nonceChanges.length === 0) return '';
-        
+        const numTxsTotal = window.transactionDetails ? Object.keys(window.transactionDetails).length : 0;
         let html = '<div>';
         nonceChanges.forEach(change => {
           const txLabel = change.block_access_index === 0 ? 'Pre-execution' :
@@ -721,7 +721,7 @@
       
       renderCodeChanges(codeChanges) {
         if (!codeChanges || codeChanges.length === 0) return '';
-
+        const numTxsTotal = window.transactionDetails ? Object.keys(window.transactionDetails).length : 0;
         let html = '<div>';
         codeChanges.forEach(change => {
           const txLabel = change.block_access_index === 0 ? 'Pre-execution' :

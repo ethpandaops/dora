@@ -553,7 +553,7 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 	}
 
 	// Access list data for type 1 (EIP-2930) transactions
-	if ethTx.Type() == ethtypes.AccessListTxType {
+	if ethTx.Type() != ethtypes.LegacyTxType {
 		loadAccessListData(pageData, ethTx)
 	}
 
@@ -1335,7 +1335,7 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	}
 
 	// Load access list data for type 1 (EIP-2930) transactions
-	if ethTx.Type() == ethtypes.AccessListTxType {
+	if ethTx.Type() != ethtypes.LegacyTxType {
 		loadAccessListData(pageData, &ethTx)
 	}
 }
@@ -1478,8 +1478,8 @@ func loadAuthorizationData(
 	}
 }
 
-// loadAccessListData extracts EIP-2930 access list entries from a parsed
-// transaction and populates pageData.AccessListEntries and
+// loadAccessListData extracts access list entries from a parsed transaction
+// (types 1/2/3/4) and populates pageData.AccessListEntries and
 // pageData.AccessListStorageKeys.
 func loadAccessListData(
 	pageData *models.TransactionPageData,
