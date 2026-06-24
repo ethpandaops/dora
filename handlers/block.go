@@ -60,17 +60,17 @@ func Block(w http.ResponseWriter, r *http.Request) {
 func getBlockPageRedirect(numberOrHash string) ([]byte, error) {
 	pageData := []byte{}
 	pageCacheKey := fmt.Sprintf("block_redirect:%s", numberOrHash)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildBlockPageRedirect(pageCall.CallCtx, numberOrHash)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, &pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		redirect, cacheTimeout := buildBlockPageRedirect(pageCall.CallCtx, numberOrHash)
 		pageCall.CacheTimeout = cacheTimeout
-		return pageData
+		return &redirect
 	})
 	if pageErr == nil && pageRes != nil {
-		resData, resOk := pageRes.([]byte)
+		resData, resOk := pageRes.(*[]byte)
 		if !resOk {
 			return nil, ErrInvalidPageModel
 		}
-		pageData = resData
+		pageData = *resData
 	}
 	return pageData, pageErr
 }
