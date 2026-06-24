@@ -626,9 +626,8 @@
 
         // Balance change cause badges.
         // Each cause has: a CSS class, a label, and a tooltip.
-        // Multiple causes can apply (e.g. sender + proposer when the proposer sends a tx).
+        // Multiple causes can apply (e.g. sender + fee-recipient when the fee recipient sends a tx).
         var ZERO_ADDR = '0000000000000000000000000000000000000000';
-        var isBuilderBlock = !!window.doraIsBuilderBlock;
 
         var CAUSES = {
           sender:       { cls: 'bg-warning text-dark', label: 'sender',        tip: 'Transaction sender — this address sent this transaction. Balance change includes the gas cost plus any ETH value transferred out.' },
@@ -649,19 +648,22 @@
           if (txOrigin && entryAddrHex && entryAddrHex === txOrigin)
             causes.push('sender');
           // Fee recipient: collects base fee + priority fee at every tx BAI.
-          if (window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase())
+          var isFeeRecipient = window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase();
+          if (isFeeRecipient)
             causes.push('fee_recipient');
           // Burn: zero address received ETH (permanent loss).
           if (entryAddrHex === ZERO_ADDR)
             causes.push('burn');
           // Receiver: this address is the explicit ETH value recipient of this tx.
-          // Checked independently — a proposer who also received a value transfer gets both badges.
+          // Checked independently — a fee recipient who also received a value transfer gets both badges.
           var txTo = window.txToByBAI && window.txToByBAI[bai];
           var txValue = window.txValueByBAI && window.txValueByBAI[bai];
           if (txTo && txValue && txValue > 0 && entryAddrHex === txTo)
             causes.push('receiver');
           // Fallback: internal CALL/SELFDESTRUCT transfer not visible at tx level.
-          if (causes.length === 0)
+          // Only apply when doraFeeRecipient is known — if it's unset we can't rule out
+          // that this address is the fee recipient, so we show nothing rather than mislabel.
+          if (causes.length === 0 && window.doraFeeRecipient)
             causes.push('receiver');
           return causes;
         }

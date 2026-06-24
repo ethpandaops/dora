@@ -552,7 +552,7 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 		loadAuthorizationData(pageData, ethTx)
 	}
 
-	// Access list data for type 1 (EIP-2930) transactions
+	// Access list data for types 1/2/3/4 (all non-legacy transactions that carry access lists).
 	if ethTx.Type() != ethtypes.LegacyTxType {
 		loadAccessListData(pageData, ethTx)
 	}
