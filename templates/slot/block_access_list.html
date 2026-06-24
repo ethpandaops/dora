@@ -625,17 +625,19 @@
         }
 
         // Balance change cause badges.
-        // Each cause has: a CSS class, a label, and a tooltip explaining what caused the change.
-        // Multiple causes can apply to one entry (e.g. gas + fee for a self-sending coinbase tx).
+        // Each cause has: a CSS class, a label, and a tooltip.
+        // Multiple causes can apply (e.g. sender + proposer when the proposer sends a tx).
         var ZERO_ADDR = '0000000000000000000000000000000000000000';
+        var isBuilderBlock = !!window.doraIsBuilderBlock;
 
         var CAUSES = {
-          gas:        { cls: 'bg-warning text-dark', label: 'gas',        tip: 'Gas cost deduction — this address paid gas for this transaction.' },
-          fee:        { cls: 'bg-success',            label: 'fee',        tip: 'Fee receipt — this address received base fee + priority fee as the block fee recipient.' },
-          transfer:   { cls: 'bg-info text-dark',     label: 'transfer',   tip: 'ETH value transfer — balance changed via CALL, SELFDESTRUCT, or contract creation endowment.' },
-          burn:       { cls: 'bg-danger',             label: 'burn',       tip: 'ETH burn — funds sent to the zero address are permanently inaccessible. Pre-EIP-8246 SELFDESTRUCT sends ETH here.' },
-          system:     { cls: 'bg-secondary',          label: 'system',     tip: 'Pre-execution system call — balance changed by a system contract before any user transactions.' },
-          withdrawal: { cls: 'bg-primary',            label: 'withdrawal', tip: 'Post-execution — balance changed by a consensus-layer withdrawal or post-execution system contract.' },
+          sender:    { cls: 'bg-warning text-dark', label: 'sender',    tip: 'Transaction sender — this address sent this transaction. Balance change includes the gas cost plus any ETH value transferred out.' },
+          proposer:  { cls: 'bg-info text-dark',    label: 'proposer',  tip: 'Block proposer — this address is the fee recipient and collected the base fee + priority fee for this block.' },
+          builder:   { cls: 'bg-primary',           label: 'builder',   tip: 'Block builder (EIP-7732) — this address is the execution payload builder\'s chosen fee recipient.' },
+          transfer:  { cls: 'bg-secondary',         label: 'transfer',  tip: 'ETH transfer — balance changed via a CALL value, SELFDESTRUCT, or contract creation endowment.' },
+          burn:      { cls: 'bg-danger',            label: 'burn',      tip: 'ETH burn — funds sent to the zero address are permanently inaccessible. Pre-EIP-8246 SELFDESTRUCT sends ETH here.' },
+          system:    { cls: 'bg-secondary',         label: 'system',    tip: 'Pre-execution system call — balance changed by a system contract before any user transactions.' },
+          withdrawal:{ cls: 'bg-success',           label: 'withdrawal',tip: 'Post-execution — balance changed by a consensus-layer withdrawal or post-execution system contract.' },
         };
 
         function causesFor(bai) {
@@ -644,9 +646,9 @@
           var causes = [];
           var txOrigin = window.txOriginByBAI && window.txOriginByBAI[bai];
           if (txOrigin && entryAddrHex && entryAddrHex === txOrigin)
-            causes.push('gas');
+            causes.push('sender');
           if (window.doraFeeRecipient && entryAddrHex && entryAddrHex === window.doraFeeRecipient.toLowerCase())
-            causes.push('fee');
+            causes.push(isBuilderBlock ? 'builder' : 'proposer');
           if (entryAddrHex === ZERO_ADDR)
             causes.push('burn');
           if (causes.length === 0)
@@ -673,9 +675,10 @@
               <span class="bal-balance-value">${formatBalance(change.balance)}</span>
           `;
 
-          if (index > 0) {
-            const prevBalance = balanceChanges[index - 1].balance;
-            html += renderBalanceDiff(change.balance, prevBalance);
+          if (index === 0 && change.balance_before != null) {
+            html += renderBalanceDiff(change.balance, change.balance_before);
+          } else if (index > 0) {
+            html += renderBalanceDiff(change.balance, balanceChanges[index - 1].balance);
           }
 
           html += renderCauseBadges(change.block_access_index || 0);
@@ -886,8 +889,10 @@
     // Store current block access list data with base64 to hex conversion
     window.currentBlockAccessList = {{ if .Block.ExecutionData.BlockAccessList }}convertBase64ToHex(JSON.parse({{ includeJSON .Block.ExecutionData.BlockAccessList false }})){{ else }}[]{{ end }};
     window.currentSlot = {{ .Slot }};
-    // EIP-8037: fee recipient (coinbase) for origin/coinbase badge annotation
+    // Fee recipient (coinbase): proposer address in normal blocks, builder's chosen address in ePBS blocks.
     window.doraFeeRecipient = {{ if .Block.ExecutionData }}{{ if .Block.ExecutionData.FeeRecipient }}"{{ printf "%x" .Block.ExecutionData.FeeRecipient }}"{{ else }}null{{ end }}{{ else }}null{{ end }};
+    // True when this is an ePBS block (EIP-7732): fee_recipient belongs to the builder, not the proposer.
+    window.doraIsBuilderBlock = {{ if .Block.PayloadHeader }}true{{ else }}false{{ end }};
   </script>
 
   <script>

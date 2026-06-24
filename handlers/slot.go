@@ -935,7 +935,8 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			if err != nil {
 				logrus.Errorf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
 			} else {
-				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
+				preBalances := fetchPreBlockBalances(ctx, accesses, pageData.ExecutionData.BlockNumber)
+				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses, preBalances)
 			}
 		}
 
@@ -1813,11 +1814,42 @@ func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("invalid access list RLP: %v", err)
 	}
 
-	return json.NewEncoder(w).Encode(convertBALToModel(accesses))
+	return json.NewEncoder(w).Encode(convertBALToModel(accesses, nil))
+}
+
+// fetchPreBlockBalances returns pre-block balances (at blockNumber-1) for all
+// addresses in the BAL that have balance changes. Returns nil on any failure.
+func fetchPreBlockBalances(ctx context.Context, accesses []utils.BALAccountAccess, blockNumber uint64) map[[20]byte]*big.Int {
+	if blockNumber == 0 {
+		return nil
+	}
+	clients := services.GlobalBeaconService.GetExecutionClients()
+	if len(clients) == 0 {
+		return nil
+	}
+	elClient := clients[0].GetRPCClient()
+	parentBlock := new(big.Int).SetUint64(blockNumber - 1)
+	fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	result := make(map[[20]byte]*big.Int)
+	for _, entry := range accesses {
+		if len(entry.BalanceChanges) == 0 {
+			continue
+		}
+		addr := common.Address(entry.Address)
+		bal, err := elClient.GetBalanceAt(fetchCtx, addr, parentBlock)
+		if err != nil {
+			return nil // abort on any error; BalanceBefore will be omitted
+		}
+		result[entry.Address] = bal
+	}
+	return result
 }
 
 // convertBALToModel converts decoded EIP-7928 BAL entries to the UI model.
-func convertBALToModel(accesses []utils.BALAccountAccess) []*models.SlotPageBlockAccessListEntry {
+// preBlockBalances maps address → balance at blockNumber-1; may be nil.
+func convertBALToModel(accesses []utils.BALAccountAccess, preBlockBalances map[[20]byte]*big.Int) []*models.SlotPageBlockAccessListEntry {
 	result := make([]*models.SlotPageBlockAccessListEntry, len(accesses))
 	for i, entry := range accesses {
 		balEntry := &models.SlotPageBlockAccessListEntry{
@@ -1849,10 +1881,16 @@ func convertBALToModel(accesses []utils.BALAccountAccess) []*models.SlotPageBloc
 		if len(entry.BalanceChanges) > 0 {
 			balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
 			for j, balanceChange := range entry.BalanceChanges {
-				balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
+				bc := &models.SlotPageBlockBALBalanceChange{
 					BlockAccessIndex: balanceChange.TxIdx,
 					Balance:          balanceChange.Balance,
 				}
+				if j == 0 && preBlockBalances != nil {
+					if preBal, ok := preBlockBalances[entry.Address]; ok {
+						bc.BalanceBefore = preBal.Bytes()
+					}
+				}
+				balEntry.BalanceChanges[j] = bc
 			}
 		}
 
