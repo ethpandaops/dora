@@ -300,8 +300,9 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 				}
 			}
 
-			// Add builder info
-			if pageData.DisplayBuilder {
+			// Add builder info (needed for the Builder column and the proposer build-source icon).
+			// Only blocks that actually exist (proposed or orphaned) carry a build source.
+			if (pageData.DisplayBuilder || pageData.DisplayProposer) && dbSlot.Status > 0 {
 				if dbSlot.BuilderIndex == -1 {
 					slotData.HasBuilder = true
 					slotData.BuilderIndex = math.MaxUint64

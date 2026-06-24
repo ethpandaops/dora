@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -192,13 +193,26 @@ func (ec *ExecutionClient) UninstallBlockFilter(ctx context.Context, filterId Bl
 	return result, err
 }
 
-func (ec *ExecutionClient) GetLatestHeader(ctx context.Context) (*types.Header, error) {
-	header, err := ec.ethClient.HeaderByNumber(ctx, nil)
-	if err != nil {
-		return nil, err
+// GetLatestHead returns the latest block's number and hash as reported by the
+// execution node. The hash is read from the node's response rather than
+// recomputed from the header locally, which would be wrong whenever the header
+// carries fields the local go-ethereum types do not know about.
+func (ec *ExecutionClient) GetLatestHead(ctx context.Context) (uint64, common.Hash, error) {
+	var head struct {
+		Number *hexutil.Big `json:"number"`
+		Hash   common.Hash  `json:"hash"`
 	}
 
-	return header, nil
+	err := ec.rpcClient.CallContext(ctx, &head, "eth_getBlockByNumber", "latest", false)
+	if err != nil {
+		return 0, common.Hash{}, err
+	}
+
+	if head.Number == nil {
+		return 0, common.Hash{}, fmt.Errorf("no latest block returned")
+	}
+
+	return head.Number.ToInt().Uint64(), head.Hash, nil
 }
 
 func (ec *ExecutionClient) GetLatestBlock(ctx context.Context) (*types.Block, error) {

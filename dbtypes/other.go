@@ -204,6 +204,46 @@ type ConsolidationRequestTxFilter struct {
 	WithOrphaned     uint8
 }
 
+type BuilderDepositFilter struct {
+	MinSlot      uint64
+	MaxSlot      uint64
+	PublicKey    []byte
+	MinIndex     uint64
+	MaxIndex     uint64
+	MinAmount    *uint64
+	MaxAmount    *uint64
+	WithOrphaned uint8
+}
+
+type BuilderDepositTxFilter struct {
+	MinDequeue uint64
+	MaxDequeue uint64
+	PublicKey  []byte
+	MinIndex   uint64
+	MaxIndex   uint64
+	MinAmount  *uint64
+	MaxAmount  *uint64
+}
+
+type BuilderExitFilter struct {
+	MinSlot       uint64
+	MaxSlot       uint64
+	PublicKey     []byte
+	SourceAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
+	WithOrphaned  uint8
+}
+
+type BuilderExitTxFilter struct {
+	MinDequeue    uint64
+	MaxDequeue    uint64
+	PublicKey     []byte
+	SourceAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
+}
+
 type ValidatorOrder uint8
 
 const (
