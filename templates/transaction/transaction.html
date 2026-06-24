@@ -284,11 +284,16 @@
             {{ end }}
             {{ if gt (len .InputData) 0 }}
             <div class="row p-2 mx-0">
-              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data">Input Data:</span></div>
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data ({{ .CalldataZeroBytes }} zero bytes, {{ .CalldataNonZeroBytes }} non-zero bytes)">Input Data:</span> <span class="badge bg-secondary ms-1">{{ formatNumber (len .InputData) }} bytes</span> <small class="text-muted" style="font-size:0.75em;">{{ .CalldataZeroBytes }}×0 / {{ .CalldataNonZeroBytes }}×≠0</small></div>
               <div class="col-md-9">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   {{ if eq .TargetCallType "deploy" }}
                   <span class="badge rounded-pill text-bg-warning">Contract Creation</span>
+                  {{ if gt (len .InputData) 49152 }}
+                  <span class="badge rounded-pill text-bg-danger ms-1" title="Initcode ({{ formatNumber (len .InputData) }} bytes) exceeds Prague MAX_INIT_CODE_SIZE=49152. This deployment requires EIP-7954 (Amsterdam MAX_INIT_CODE_SIZE=131072).">EIP-7954</span>
+                  {{ else if gt (len .InputData) 24576 }}
+                  <span class="badge rounded-pill text-bg-warning ms-1" title="Initcode ({{ formatNumber (len .InputData) }} bytes) may deploy code exceeding Prague MAX_CODE_SIZE=24576. EIP-7954 (Amsterdam) raises the limit to 65536.">EIP-7954</span>
+                  {{ end }}
                   {{ else if eq .TargetCallType "precompile" }}
                   <span class="badge rounded-pill text-bg-info">Precompile: {{ .TargetCallName }}</span>
                   {{ else if eq .TargetCallType "system" }}
@@ -330,6 +335,16 @@
                 </div>
                 {{ end }}
                 <div id="input-data-ascii" class="border rounded p-2 text-monospace text-break" style="max-height: 200px; overflow-y: auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg); display: none; white-space: pre-wrap;"></div>
+              </div>
+            </div>
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3 text-muted" style="font-size:0.85em; padding-top:0.2rem;"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Minimum intrinsic gas required by this transaction&#39;s calldata under each fork&#39;s pricing rules. Does not include execution gas.">Calldata gas:</span></div>
+              <div class="col-md-9 d-flex flex-wrap align-items-center gap-1" style="font-size:0.85em;">
+                <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Pre-Prague standard pricing: 4 gas per zero byte, 16 gas per non-zero byte&#xA;= 21,000 + 4×{{ .CalldataZeroBytes }} + 16×{{ .CalldataNonZeroBytes }} = {{ formatAddCommas .CalldataStandardGas }} gas">pre-Prague&nbsp;{{ formatAddCommas .CalldataStandardGas }}</span>
+                <span class="text-muted">→</span>
+                <span class="badge text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7623 floor (Prague / Electra+): tokens = 4×nonzero + zero = {{ .CalldataPragueTokens }} tokens&#xA;floor = 21,000 + {{ .CalldataPragueTokens }}×10 = {{ formatAddCommas .CalldataPragueFloor }} gas&#xA;Always ≥ standard; data-heavy txs pay proportionally more.">EIP-7623&nbsp;{{ formatAddCommas .CalldataPragueFloor }}</span>
+                <span class="text-muted">→</span>
+                <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7976 floor (Amsterdam+): flat 64 gas per byte (all bytes equal, zero or not)&#xA;= 21,000 + {{ len .InputData }}×64 = {{ formatAddCommas .CalldataAmsterdamFloor }} gas&#xA;Supersedes EIP-7623; especially raises cost for zero-heavy calldata.">EIP-7976&nbsp;{{ formatAddCommas .CalldataAmsterdamFloor }}</span>
               </div>
             </div>
             {{ end }}
