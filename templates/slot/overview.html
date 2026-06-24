@@ -464,6 +464,29 @@
                   </div>
                 {{ end }}
 
+                {{ if .BALSummary }}
+                <div class="row py-1">
+                  <div class="col-md-2">
+                    <span data-bs-toggle="tooltip" data-bs-placement="top" title="Block Access List state-access aggregates. Storage writes and cold reads reflect EIP-8038 repricing units.">BAL Stats:</span>
+                  </div>
+                  <div class="col-md-10">
+                    <span class="text-monospace me-3" data-bs-toggle="tooltip" title="{{ .BALSummary.UniqueAddresses }} unique accounts touched">
+                      {{ formatAddCommas .BALSummary.UniqueAddresses }} accts
+                    </span>
+                    <span class="text-monospace me-3" data-bs-toggle="tooltip" title="Distinct storage slots written (EIP-8038 cold-write cost per unique key)">
+                      {{ formatAddCommas .BALSummary.StorageSlotWrites }} slot writes
+                      {{ if gt .BALSummary.StorageWriteOps .BALSummary.StorageSlotWrites }}<small class="text-muted">({{ formatAddCommas .BALSummary.StorageWriteOps }} ops)</small>{{ end }}
+                    </span>
+                    <span class="text-monospace me-3" data-bs-toggle="tooltip" title="Cold storage reads (EIP-8038 COLD_STORAGE_ACCESS=2100)">
+                      {{ formatAddCommas .BALSummary.ColdStorageReads }} cold reads
+                    </span>
+                    {{ if gt .BALSummary.BalanceChanges 0 }}<span class="text-monospace me-3 text-muted">{{ formatAddCommas .BALSummary.BalanceChanges }} bal changes</span>{{ end }}
+                    {{ if gt .BALSummary.CodeChanges 0 }}<span class="text-monospace me-3 text-muted">{{ formatAddCommas .BALSummary.CodeChanges }} code changes</span>{{ end }}
+                    {{ if gt .BALSummary.NonceChanges 0 }}<span class="text-monospace me-3 text-muted">{{ formatAddCommas .BALSummary.NonceChanges }} nonce changes</span>{{ end }}
+                  </div>
+                </div>
+                {{ end }}
+
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transactions">Transactions:</span></div>
                   <div class="col-md-10 text-monospace text-break">{{ $block.TransactionsCount }}</div>
