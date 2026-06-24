@@ -530,6 +530,7 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 
 	// Input data
 	pageData.InputData = ethTx.Data()
+	applyCalldataCosts(pageData)
 	methodID := []byte(nil)
 	if len(ethTx.Data()) >= 4 {
 		methodID = ethTx.Data()[:4]
@@ -1282,6 +1283,7 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 
 	// Set input data from parsed transaction
 	pageData.InputData = ethTx.Data()
+	applyCalldataCosts(pageData)
 
 	// Generate JSON using proper marshaling
 	generateTxJSON(pageData, &ethTx)
@@ -1406,6 +1408,35 @@ func applyCallTargetResolution(ctx context.Context, pageData *models.Transaction
 	if res.MethodID != nil {
 		pageData.MethodID = res.MethodID
 	}
+}
+
+// applyCalldataCosts computes calldata gas cost fields from pageData.InputData.
+// Covers three pricing regimes: pre-Prague standard, EIP-7623 (Prague floor), EIP-7976 (Amsterdam floor).
+// Must be called after InputData is set.
+func applyCalldataCosts(pageData *models.TransactionPageData) {
+	data := pageData.InputData
+	if len(data) == 0 {
+		return
+	}
+	z := 0
+	for _, b := range data {
+		if b == 0 {
+			z++
+		}
+	}
+	nz := len(data) - z
+	total := uint64(len(data))
+
+	tokens := nz*4 + z
+	pageData.CalldataZeroBytes = z
+	pageData.CalldataNonZeroBytes = nz
+	pageData.CalldataPragueTokens = tokens
+	// Standard intrinsic (pre-Prague): TX_BASE + 4×zero + 16×nonzero
+	pageData.CalldataStandardGas = 21000 + uint64(z)*4 + uint64(nz)*16
+	// EIP-7623 floor (Prague+): tokens = 4×nonzero + zero; floor = TX_BASE + tokens×10
+	pageData.CalldataPragueFloor = 21000 + uint64(tokens)*10
+	// EIP-7976 floor (Amsterdam+): flat 64 gas per byte regardless of zero/nonzero
+	pageData.CalldataAmsterdamFloor = 21000 + total*64
 }
 
 // loadAuthorizationData extracts EIP-7702 authorization list entries from a
