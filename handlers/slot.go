@@ -936,6 +936,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 				logrus.Errorf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
 			} else {
 				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
+				pageData.ExecutionData.BALSummary = computeBALSummary(pageData.ExecutionData.BlockAccessList)
 			}
 		}
 
@@ -1880,4 +1881,25 @@ func convertBALToModel(accesses []utils.BALAccountAccess) []*models.SlotPageBloc
 	}
 
 	return result
+}
+
+// computeBALSummary aggregates block-level BAL statistics for EIP-8038 visibility.
+func computeBALSummary(entries []*models.SlotPageBlockAccessListEntry) *models.SlotPageBALSummary {
+	if len(entries) == 0 {
+		return nil
+	}
+	s := &models.SlotPageBALSummary{
+		UniqueAddresses: uint64(len(entries)),
+	}
+	for _, e := range entries {
+		s.StorageSlotWrites += uint64(len(e.StorageChanges))
+		for _, sc := range e.StorageChanges {
+			s.StorageWriteOps += uint64(len(sc.Changes))
+		}
+		s.ColdStorageReads += uint64(len(e.StorageReads))
+		s.BalanceChanges += uint64(len(e.BalanceChanges))
+		s.CodeChanges += uint64(len(e.CodeChanges))
+		s.NonceChanges += uint64(len(e.NonceChanges))
+	}
+	return s
 }
