@@ -99,12 +99,12 @@ type TransactionPageData struct {
 	DecodedCalldata []*utils.DecodedCalldataParam `json:"decoded_calldata"` // Decoded params (nil if not available)
 
 	// Calldata gas cost breakdown (computed from InputData; zero when InputData is empty)
-	CalldataZeroBytes      int    `json:"calldata_zero_bytes"`       // Zero bytes in calldata
-	CalldataNonZeroBytes   int    `json:"calldata_nonzero_bytes"`    // Non-zero bytes in calldata
-	CalldataPragueTokens   int    `json:"calldata_prague_tokens"`    // EIP-7623 tokens: 4×nonzero + zero (used as prague floor multiplier)
-	CalldataStandardGas    uint64 `json:"calldata_standard_gas"`     // Intrinsic pre-Prague: 21000 + 4×zero + 16×nonzero
-	CalldataPragueFloor    uint64 `json:"calldata_prague_floor"`     // EIP-7623 floor (Prague+): 21000 + (4×nonzero + zero)×10
-	CalldataAmsterdamFloor uint64 `json:"calldata_amsterdam_floor"`  // EIP-7976 floor (Amsterdam+): 21000 + total×64
+	CalldataZeroBytes      int    `json:"calldata_zero_bytes"`      // Zero bytes in calldata
+	CalldataNonZeroBytes   int    `json:"calldata_nonzero_bytes"`   // Non-zero bytes in calldata
+	CalldataPragueTokens   int    `json:"calldata_prague_tokens"`   // EIP-7623 tokens: 4×nonzero + zero (used as prague floor multiplier)
+	CalldataStandardGas    uint64 `json:"calldata_standard_gas"`    // Intrinsic pre-Prague: 21000 + 4×zero + 16×nonzero
+	CalldataPragueFloor    uint64 `json:"calldata_prague_floor"`    // EIP-7623 floor (Prague+): 21000 + (4×nonzero + zero)×10
+	CalldataAmsterdamFloor uint64 `json:"calldata_amsterdam_floor"` // EIP-7976 floor (Amsterdam+): 21000 + total×64
 
 	// Full transaction data (loaded from beacon block)
 	TxRLP  string `json:"tx_rlp"`  // Hex-encoded RLP for copy button
