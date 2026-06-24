@@ -144,12 +144,12 @@ type SlotPageExecutionData struct {
 	BlockAccessList     []*SlotPageBlockAccessListEntry `json:"block_access_list,omitempty"`
 	BALSummary          *SlotPageBALSummary             `json:"bal_summary,omitempty"`
 
-	// EIP-7778: gas refund delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
-	// while sum(receipt.gasUsed) = gp.CumulativeUsed(). These ALWAYS diverge in Amsterdam.
+	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
+	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).
 	// Only set when EL indexing has enriched all tx receipts; nil otherwise.
 	SumTxGasUsed         *uint64 `json:"sum_tx_gas_used,omitempty"`
-	GasRefundDelta       *uint64 `json:"gas_refund_delta,omitempty"`       // absolute value of delta
-	GasRefundDeltaExcess bool    `json:"gas_refund_delta_excess,omitempty"` // true = block > sum (regular dominates), false = block < sum (state dominates)
+	BlockGasDelta       *uint64 `json:"block_gas_delta,omitempty"`       // absolute value of block.gasUsed - sum(receipt.gasUsed)
+	BlockGasDeltaExcess bool    `json:"block_gas_delta_excess,omitempty"` // true = block > sum (regular dominates), false = block < sum (state dominates)
 }
 
 type SlotPageValidatorName struct {

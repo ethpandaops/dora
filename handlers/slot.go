@@ -885,12 +885,12 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 				pageData.ExecutionData.SumTxGasUsed = &sumTxGas
 				if blockGas >= sumTxGas {
 					delta := blockGas - sumTxGas
-					pageData.ExecutionData.GasRefundDelta = &delta
-					pageData.ExecutionData.GasRefundDeltaExcess = true
+					pageData.ExecutionData.BlockGasDelta = &delta
+					pageData.ExecutionData.BlockGasDeltaExcess = true
 				} else {
 					delta := sumTxGas - blockGas
-					pageData.ExecutionData.GasRefundDelta = &delta
-					pageData.ExecutionData.GasRefundDeltaExcess = false
+					pageData.ExecutionData.BlockGasDelta = &delta
+					pageData.ExecutionData.BlockGasDeltaExcess = false
 				}
 			}
 		}
