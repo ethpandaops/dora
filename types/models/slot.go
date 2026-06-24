@@ -445,7 +445,7 @@ type SlotPageBlockBALStorageSlotChange struct {
 
 type SlotPageBlockBALBalanceChange struct {
 	BlockAccessIndex uint16 `json:"block_access_index"`
-	Balance          []byte `json:"balance"`               // uint256 as bytes (post-change)
+	Balance          []byte `json:"balance"`                  // uint256 as bytes (post-change)
 	BalanceBefore    []byte `json:"balance_before,omitempty"` // pre-block balance; set on the first entry only
 }
 
