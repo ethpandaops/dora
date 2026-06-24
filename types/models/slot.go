@@ -147,8 +147,8 @@ type SlotPageExecutionData struct {
 	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
 	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).
 	// Only set when EL indexing has enriched all tx receipts; nil otherwise.
-	SumTxGasUsed         *uint64 `json:"sum_tx_gas_used,omitempty"`
-	BlockGasDelta       *uint64 `json:"block_gas_delta,omitempty"`       // absolute value of block.gasUsed - sum(receipt.gasUsed)
+	SumTxGasUsed        *uint64 `json:"sum_tx_gas_used,omitempty"`
+	BlockGasDelta       *uint64 `json:"block_gas_delta,omitempty"`        // absolute value of block.gasUsed - sum(receipt.gasUsed)
 	BlockGasDeltaExcess bool    `json:"block_gas_delta_excess,omitempty"` // true = block > sum (regular dominates), false = block < sum (state dominates)
 }
 
