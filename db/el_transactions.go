@@ -10,7 +10,7 @@ import (
 )
 
 // elTransactionColumns is the column list for el_transactions queries.
-const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price"
+const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price, event_count"
 
 func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElTransaction) error {
 	if len(txs) == 0 {
@@ -23,11 +23,11 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_transactions ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_transactions ",
 		}),
-		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price)",
+		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price, event_count)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 18
+	fieldCount := 19
 
 	args := make([]any, len(txs)*fieldCount)
 	for i, tx := range txs {
@@ -61,10 +61,11 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 		args[argIdx+15] = tx.BlockNumber
 		args[argIdx+16] = tx.TxType
 		args[argIdx+17] = tx.EffGasPrice
+		args[argIdx+18] = tx.EventCount
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET tx_uid = excluded.tx_uid, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET tx_uid = excluded.tx_uid, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price, event_count = excluded.event_count",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -75,44 +76,10 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 	return nil
 }
 
-func GetElTransaction(ctx context.Context, blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, error) {
-	tx := &dbtypes.ElTransaction{}
-	err := ReaderDb.GetContext(ctx, tx, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
-	if err != nil {
-		return nil, err
-	}
-	return tx, nil
-}
-
 func GetElTransactionsByHash(ctx context.Context, txHash []byte) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
 	err := ReaderDb.SelectContext(ctx, &txs, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
 	if err != nil {
-		return nil, err
-	}
-	return txs, nil
-}
-
-// GetElTransactionsByHashes returns all transaction records matching the given
-// tx hashes. May return multiple records per hash if the tx appears in multiple
-// blocks (reorgs).
-func GetElTransactionsByHashes(ctx context.Context, txHashes [][]byte) ([]*dbtypes.ElTransaction, error) {
-	if len(txHashes) == 0 {
-		return []*dbtypes.ElTransaction{}, nil
-	}
-
-	var sql strings.Builder
-	args := make([]any, len(txHashes))
-
-	fmt.Fprint(&sql, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash IN (")
-	for i, h := range txHashes {
-		args[i] = h
-	}
-	appendDollarPlaceholders(&sql, 1, len(txHashes), ", ")
-	fmt.Fprint(&sql, ")")
-
-	txs := []*dbtypes.ElTransaction{}
-	if err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...); err != nil {
 		return nil, err
 	}
 	return txs, nil
@@ -152,60 +119,9 @@ func GetElTransactionsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtyp
 	return txs, nil
 }
 
-func GetElTransactionsByAccountID(ctx context.Context, accountID uint64, isFrom bool, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
-	var sql strings.Builder
-	args := []any{accountID}
-
-	column := "to_id"
-	if isFrom {
-		column = "from_id"
-	}
-
-	// Use window function for count (PostgreSQL 9.5+) - avoids double scan
-	// NULLS LAST matches the composite index definition to enable index scans.
-	fmt.Fprintf(&sql, `
-		SELECT
-			%s,
-			COUNT(*) OVER() AS total_count
-		FROM el_transactions
-		WHERE %s = $1
-		ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
-		LIMIT $2`, elTransactionColumns, column)
-	args = append(args, limit)
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
-	}
-
-	type resultRow struct {
-		dbtypes.ElTransaction
-		TotalCount uint64 `db:"total_count"`
-	}
-
-	rows := []resultRow{}
-	err := ReaderDb.SelectContext(ctx, &rows, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching el transactions by account id: %v", err)
-		return nil, 0, err
-	}
-
-	if len(rows) == 0 {
-		return []*dbtypes.ElTransaction{}, 0, nil
-	}
-
-	txs := make([]*dbtypes.ElTransaction, len(rows))
-	var totalCount uint64
-	for i, row := range rows {
-		txs[i] = &row.ElTransaction
-		if i == 0 {
-			totalCount = row.TotalCount
-		}
-	}
-
-	return txs, totalCount, nil
-}
-
+// GetElTransactionsFiltered returns transactions matching the given filter,
+// paginated and ordered by block_uid DESC. The first returned row carries the
+// total count in its TxUid field (see the count/UNION ALL pattern below).
 func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.ElTransactionFilter) ([]*dbtypes.ElTransaction, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
@@ -363,14 +279,4 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 	moreAvailable := totalCount >= MaxAccountTransactionCount
 
 	return txs, totalCount, moreAvailable, nil
-}
-
-func DeleteElTransaction(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64, txHash []byte) error {
-	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
-	return err
-}
-
-func DeleteElTransactionsByBlockUid(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64) error {
-	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_transactions WHERE block_uid = $1", blockUid)
-	return err
 }

@@ -828,7 +828,6 @@ func (t *TxIndexer) checkAndRunCleanup() {
 		if retentionStats != nil {
 			fields["transactions"] = retentionStats.TransactionsDeleted
 			fields["internalTxs"] = retentionStats.InternalTxsDeleted
-			fields["eventIndices"] = retentionStats.EventIndicesDeleted
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted
 		}

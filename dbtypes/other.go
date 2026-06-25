@@ -326,33 +326,10 @@ type ElTransactionFilter struct {
 	MaxGasUsed *uint64
 }
 
-type ElEventIndexFilter struct {
-	SourceID uint64
-	Topic1   []byte
-}
-
-type ElTransactionInternalFilter struct {
-	FromID uint64
-	ToID   uint64
-}
-
-type ElAccountFilter struct {
-	FunderID   uint64
-	IsContract *bool
-	MinFunded  uint64
-	MaxFunded  uint64
-}
-
 type ElTokenFilter struct {
 	Contract []byte
 	Name     string
 	Symbol   string
-}
-
-type ElBalanceFilter struct {
-	TokenID    *uint64
-	MinBalance *float64
-	MaxBalance *float64
 }
 
 type ElTokenTransferFilter struct {

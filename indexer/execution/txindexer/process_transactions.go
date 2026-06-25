@@ -1102,29 +1102,20 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 		result.transaction.FromID = result.fromAccount.id
 		result.transaction.ToID = result.toAccount.id
 
+		// event_count is the badge count for the events tab; full event data
+		// lives in blockdb (no separate searchable index table).
+		eventCount := len(result.events)
+		if eventCount > 32767 { // clamp to SMALLINT range
+			eventCount = 32767
+		}
+		result.transaction.EventCount = uint16(eventCount)
+
 		if err := db.InsertElTransactions(commitCtx, dbTx, []*dbtypes.ElTransaction{result.transaction}); err != nil {
 			return err
 		}
 	}
 
-	// 4. Insert event index entries (Mode 3 only - lightweight index for search)
-	if ctx.indexer.mode == ModeFull && len(result.events) > 0 {
-		eventIndices := make([]*dbtypes.ElEventIndex, 0, len(result.events))
-		for _, pe := range result.events {
-			eventIndices = append(eventIndices, &dbtypes.ElEventIndex{
-				TxUid:      result.transaction.TxUid,
-				EventIndex: pe.eventIndex,
-				SourceID:   pe.sourceAccount.id,
-				Topic1:     pe.topic1,
-			})
-		}
-
-		if err := db.InsertElEventIndices(commitCtx, dbTx, eventIndices); err != nil {
-			return err
-		}
-	}
-
-	// 5. Insert token transfers with resolved token and account IDs
+	// 4. Insert token transfers with resolved token and account IDs
 	if len(result.tokenTransfers) > 0 {
 		transfers := make([]*dbtypes.ElTokenTransfer, 0, len(result.tokenTransfers))
 		for _, pt := range result.tokenTransfers {

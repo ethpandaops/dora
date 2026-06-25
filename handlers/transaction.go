@@ -405,12 +405,13 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 		pageData.DataStatus = elBlock.DataStatus
 	}
 
-	// Load tab badge counts using lightweight COUNT queries instead of
-	// loading all rows. This avoids multi-second sequential scans for
-	// transactions with many events or internal calls.
-	eventCount, _ := db.GetElEventIndexCountByTxUid(ctx, tx.TxUid)
-	pageData.EventCount = eventCount
+	// Event count comes straight off the tx row (logs emitted); full event
+	// data is loaded from blockdb when the events tab is opened.
+	pageData.EventCount = uint64(tx.EventCount)
 
+	// Load remaining tab badge counts using lightweight COUNT queries instead
+	// of loading all rows. This avoids multi-second sequential scans for
+	// transactions with many transfers or internal calls.
 	transferCount, _ := db.GetElTokenTransferCountByTxUid(ctx, tx.TxUid)
 	pageData.TokenTransferCount = transferCount
 
@@ -422,7 +423,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// are loaded from blockdb when available, falling back to DB.
 	switch tabView {
 	case "events":
-		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid, tx.TxUid)
+		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid)
 	case "transfers":
 		transfers, _ := db.GetElTokenTransfersByTxUid(ctx, tx.TxUid)
 		loadTransactionTransfersFromData(ctx, pageData, transfers)
@@ -685,61 +686,10 @@ func generateTxJSON(pageData *models.TransactionPageData, ethTx *ethtypes.Transa
 	}
 }
 
-// loadTransactionEventsFromIndex populates event tab from the lightweight
-// event index. Full event data (all topics + data blob) will be loaded from
-// blockdb in a future phase. For now, only source address and topic1 (event
-// signature) are shown.
-func loadTransactionEventsFromIndex(ctx context.Context, pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex) {
-	if len(events) == 0 {
-		return
-	}
-
-	// Collect account IDs for batch lookup
-	accountIDs := make(map[uint64]bool, len(events))
-	for _, e := range events {
-		accountIDs[e.SourceID] = true
-	}
-
-	// Batch lookup accounts
-	accountIDList := make([]uint64, 0, len(accountIDs))
-	for id := range accountIDs {
-		accountIDList = append(accountIDList, id)
-	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
-	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
-			for _, a := range accounts {
-				accountMap[a.ID] = a
-			}
-		}
-	}
-
-	// Build events list from index entries
-	pageData.Events = make([]*models.TransactionPageDataEvent, 0, len(events))
-	for _, e := range events {
-		event := &models.TransactionPageDataEvent{
-			EventIndex: e.EventIndex,
-		}
-
-		// Source address
-		if source, ok := accountMap[e.SourceID]; ok {
-			event.SourceAddr = source.Address
-			event.SourceIsContract = source.IsContract
-		}
-
-		// Only topic1 (event signature) is available from the index
-		if len(e.Topic1) > 0 {
-			event.Topic0 = e.Topic1
-		}
-
-		pageData.Events = append(pageData.Events, event)
-	}
-}
-
 // loadTransactionEventsFromBlockdb populates the events tab with full event
-// data from blockdb (all topics + data blob). Falls back to loading from
-// the DB event index if blockdb data is unavailable (pruned or not stored).
-func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64, txUid uint64) {
+// data from blockdb (all topics + data blob). If blockdb data is unavailable
+// (pruned or not stored), the tab shows the "not available" state.
+func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
 	if pageData.EventCount == 0 {
 		return
 	}
@@ -787,9 +737,9 @@ func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.Tran
 		}
 	}
 
-	// Fallback: load from DB event index (only when blockdb is unavailable)
-	eventIndices, _ := db.GetElEventIndicesByTxUid(ctx, txUid)
-	loadTransactionEventsFromIndex(ctx, pageData, eventIndices)
+	// blockdb is the only source of event data; if it didn't yield anything,
+	// surface the "not available" state rather than an empty list.
+	pageData.EventsNotAvailable = true
 }
 
 // buildEventsFromBlockdb converts decoded blockdb events to page model events.

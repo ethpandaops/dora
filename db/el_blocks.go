@@ -89,26 +89,6 @@ func GetElBlocksByUids(ctx context.Context, blockUids []uint64) ([]*dbtypes.ElBl
 	return blocks, nil
 }
 
-// ResetElBlockDataStatus resets data_status and data_size for blocks
-// that have been evicted from blockdb.
-func ResetElBlockDataStatus(ctx context.Context, dbTx *sqlx.Tx, blockUids []uint64) error {
-	if len(blockUids) == 0 {
-		return nil
-	}
-
-	var sql strings.Builder
-	args := make([]any, len(blockUids))
-	fmt.Fprint(&sql, "UPDATE el_blocks SET data_status = 0, data_size = 0 WHERE block_uid IN (")
-	for i, uid := range blockUids {
-		args[i] = uid
-	}
-	appendDollarPlaceholders(&sql, 1, len(blockUids), ", ")
-	fmt.Fprint(&sql, ")")
-
-	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
-	return err
-}
-
 // ResetElBlockDataStatusBefore resets data_status and data_size for all blocks
 // with block_uid below the given threshold (used for time-based pruning).
 func ResetElBlockDataStatusBefore(ctx context.Context, dbTx *sqlx.Tx, blockUidThreshold uint64) (int64, error) {
@@ -204,10 +184,5 @@ func UpdateElBlockDataStatus(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64
 		"UPDATE el_blocks SET data_status = $1, data_size = $2 WHERE block_uid = $3",
 		dataStatus, dataSize, blockUid,
 	)
-	return err
-}
-
-func DeleteElBlock(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64) error {
-	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_blocks WHERE block_uid = $1", blockUid)
 	return err
 }

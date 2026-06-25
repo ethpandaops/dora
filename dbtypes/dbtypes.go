@@ -585,6 +585,7 @@ type ElTransaction struct {
 	BlockNumber uint64  `db:"block_number"`
 	TxType      uint8   `db:"tx_type"`
 	EffGasPrice float64 `db:"eff_gas_price"` // Effective gas price actually paid (in Gwei)
+	EventCount  uint16  `db:"event_count"`   // number of logs emitted (badge count; full event data in blockdb)
 }
 
 // ElTransactionInternal is a per-account aggregate of internal calls within a
@@ -599,14 +600,6 @@ type ElTransactionInternal struct {
 	ValueIn      float64 `db:"value_in"`       // sum of value where account was callee (ETH)
 	ValueOut     float64 `db:"value_out"`      // sum of value where account was caller (ETH)
 	GasUsed      uint64  `db:"gas_used"`       // sum of gas_used across calls involving the account
-}
-
-// ElEventIndex is a lightweight searchable index for events (full data in blockdb).
-type ElEventIndex struct {
-	TxUid      uint64 `db:"tx_uid"` // block_uid << 16 | tx_index
-	EventIndex uint32 `db:"event_index"`
-	SourceID   uint64 `db:"source_id"`
-	Topic1     []byte `db:"topic1"`
 }
 
 type ElAccount struct {

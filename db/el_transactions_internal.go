@@ -148,19 +148,3 @@ func GetElTransactionsInternalCountByTxUid(ctx context.Context, txUid uint64) (u
 	}
 	return count, nil
 }
-
-// GetElTransactionsInternalByTxUid returns the per-account aggregate rows
-// for a transaction. There is no natural ordering between accounts, so we
-// sort by account_id for stability.
-func GetElTransactionsInternalByTxUid(ctx context.Context, txUid uint64) ([]*dbtypes.ElTransactionInternal, error) {
-	entries := []*dbtypes.ElTransactionInternal{}
-	err := ReaderDb.SelectContext(ctx, &entries,
-		"SELECT tx_uid, account_id, in_count, out_count, call_type_mask, value_in, value_out, gas_used"+
-			" FROM el_transactions_internal WHERE tx_uid = $1 ORDER BY account_id ASC",
-		txUid,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return entries, nil
-}
