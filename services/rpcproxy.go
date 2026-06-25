@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ethpandaops/dora/handlers/middleware"
 	"github.com/sirupsen/logrus"
 )
 
@@ -289,29 +289,6 @@ func parseBlockNumber(block interface{}) (int64, error) {
 	}
 }
 
-// getClientIP extracts the client IP from the request
-func (rp *RPCProxy) getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (for reverse proxies)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the chain
-		if ips := strings.Split(xff, ","); len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
-		}
-	}
-
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fall back to remote address
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
 // ServeHTTP implements the HTTP handler for the RPC proxy
 func (rp *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Only allow POST requests
@@ -321,7 +298,7 @@ func (rp *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get client IP and check rate limit
-	clientIP := rp.getClientIP(r)
+	clientIP := middleware.GetClientIP(r)
 	if !rp.rateLimiter.Allow(clientIP) {
 		rp.logger.WithField("client_ip", clientIP).Warn("Rate limit exceeded")
 		w.Header().Set("Content-Type", "application/json")
