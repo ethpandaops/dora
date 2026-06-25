@@ -43,6 +43,8 @@ type RemoteCache interface {
 	GetString(ctx context.Context, key string) (string, error)
 	GetUint64(ctx context.Context, key string) (uint64, error)
 	GetBool(ctx context.Context, key string) (bool, error)
+
+	DeleteByPrefix(ctx context.Context, prefix string) error
 }
 
 func NewTieredCache(cacheSize int, redisAddress string, redisPrefix string, logger logrus.FieldLogger) (*TieredCache, error) {
@@ -221,6 +223,34 @@ func (cache *TieredCache) Get(key string, returnValue interface{}) (interface{},
 		cache.localGoCache.Set(key, valueMarshal)
 	}
 	return cacheValue.Value, nil
+}
+
+// DeleteByPrefix removes every entry whose key starts with prefix from both the local
+// and (if configured) the remote cache. It is used to actively invalidate a group of
+// related cached entries, e.g. all sort-order variants of a page after a forced refresh.
+func (cache *TieredCache) DeleteByPrefix(prefix string) error {
+	it := cache.localGoCache.Iterator()
+	localKeys := []string{}
+	for it.SetNext() {
+		entry, err := it.Value()
+		if err != nil {
+			continue
+		}
+		if strings.HasPrefix(entry.Key(), prefix) {
+			localKeys = append(localKeys, entry.Key())
+		}
+	}
+	for _, key := range localKeys {
+		cache.localGoCache.Delete(key)
+	}
+
+	if cache.remoteCache == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+	return cache.remoteCache.DeleteByPrefix(ctx, prefix)
 }
 
 // TieredCacheStats holds statistics about the tiered cache.
