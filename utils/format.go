@@ -916,12 +916,10 @@ func formatBuilder(index uint64, name string, externalURL string, icon string, w
 	}
 
 	// When the builder exposes an external URL, its "name" is often the full API URL, which is
-	// far too long for the table columns. Collapse it to a compact link button: the hard-hat icon
-	// links to the builder details page and a small external-link button opens the buildoor
-	// instance, showing the URL on hover instead of printing it inline.
+	// far too long for the table columns. Collapse it to the hyperlinked builder index and show
+	// the full API URL on hover instead of printing it inline.
 	if externalURL != "" {
-		linkButton := fmt.Sprintf(` <a href="%v" target="_blank" rel="noopener noreferrer" class="builder-external-link text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="%v"><i class="fas fa-external-link-alt"></i></a>`, html.EscapeString(externalURL), html.EscapeString(externalURL))
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, index, linkButton))
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\">%v</a></span>", icon, index, html.EscapeString(externalURL), index))
 	}
 
 	if name != "" {
