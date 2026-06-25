@@ -915,9 +915,16 @@ func formatBuilder(index uint64, name string, externalURL string, icon string, w
 		return template.HTML("<span class=\"builder-label builder-index\"><i class=\"fas fa-house mr-2\"></i> Self-built</span>")
 	}
 
-	externalLink := ""
+	// When the builder exposes an external URL, its "name" is often the full API URL, which is
+	// far too long for the table columns. Collapse it to a compact link button: the hard-hat icon
+	// links to the builder details page and a small external-link button opens the buildoor
+	// instance, showing the URL on hover instead of printing it inline.
 	if externalURL != "" {
-		externalLink = fmt.Sprintf(` <a href="%v" target="_blank" rel="noopener noreferrer" class="builder-external-link text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Open buildoor instance"><i class="fas fa-external-link-alt"></i></a>`, html.EscapeString(externalURL))
+		linkButton := fmt.Sprintf(` <a href="%v" target="_blank" rel="noopener noreferrer" class="builder-external-link text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="%v"><i class="fas fa-external-link-alt"></i></a>`, html.EscapeString(externalURL), html.EscapeString(externalURL))
+		if withIndex {
+			return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, index, linkButton))
+		}
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><a href=\"/builder/%v\"><i class=\"fas %v\"></i></a>%v</span>", index, icon, linkButton))
 	}
 
 	if name != "" {
@@ -927,9 +934,9 @@ func formatBuilder(index uint64, name string, externalURL string, icon string, w
 		} else {
 			nameLabel = html.EscapeString(name)
 		}
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, nameLabel, externalLink))
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", icon, index, nameLabel))
 	}
-	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, index, externalLink))
+	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", icon, index, index))
 }
 
 func FormatRecentTimeShort(ts time.Time) template.HTML {
