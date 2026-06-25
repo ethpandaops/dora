@@ -295,11 +295,12 @@ func (bc *BeaconClient) GetConfigSpecs(ctx context.Context) (map[string]interfac
 		return nil, fmt.Errorf("error retrieving specs: %v", err)
 	}
 
-	if specs["data"] == nil {
-		return nil, fmt.Errorf("specs data is nil")
+	dataMap, ok := specs["data"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("specs data is not an object (got %T)", specs["data"])
 	}
 
-	parsedSpecs := utils.ParseSpecMap(specs["data"].(map[string]interface{}))
+	parsedSpecs := utils.ParseSpecMap(dataMap)
 
 	return parsedSpecs, nil
 }
