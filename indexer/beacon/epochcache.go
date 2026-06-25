@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
-	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // epochStatsKey is the primary key for EpochStats entries in cache.
@@ -311,14 +311,9 @@ func (cache *epochCache) withPrecomputeLock(f func() error) error {
 // startLoaderLoop is the entrypoint for the beacon state loader subroutine.
 // contains the main loop & crash handler of the subroutine.
 func (cache *epochCache) startLoaderLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.epochCache.startLoaderLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go cache.startLoaderLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.epochCache.startLoaderLoop", func() {
+		cache.startLoaderLoop()
+	})
 
 	for {
 		cache.runLoaderLoop()
@@ -396,11 +391,7 @@ func (cache *epochCache) runLoaderLoop() {
 // retires loading from multiple clients, ordered by priority.
 // returns true if a epoch state request was done (either successful or failed).
 func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
-	defer func() {
-		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.epochCache.loadEpochStats subroutine: %v, stack: %v", err, string(debug.Stack()))
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.epochCache.loadEpochStats", nil)
 
 	clients := []*Client{}
 	preferArchive := epochStats.epoch < cache.indexer.lastFinalizedEpoch

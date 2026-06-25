@@ -1,13 +1,12 @@
 package beacon
 
 import (
-	"fmt"
 	"math"
-	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
@@ -198,14 +197,9 @@ func (cache *validatorActivityCache) getValidatorActivityCount(validatorIndex ph
 }
 
 func (cache *validatorActivityCache) cleanupLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.validatorActivityCache.cleanupLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go cache.cleanupLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.validatorActivityCache.cleanupLoop", func() {
+		cache.cleanupLoop()
+	})
 
 	for {
 		time.Sleep(30 * time.Minute)

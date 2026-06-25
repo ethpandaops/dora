@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"hash/crc64"
 	"math"
-	"runtime/debug"
 	"sync"
 	"time"
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
@@ -775,14 +775,9 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 // runPersistLoop handles the background persistence of validator states to the database
 // Runs in a separate goroutine and recovers from panics
 func (cache *validatorCache) runPersistLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(fmt.Errorf("%v", err)).Errorf("uncaught panic in indexer.beacon.validatorCache.runPersistLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go cache.runPersistLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.validatorCache.runPersistLoop", func() {
+		cache.runPersistLoop()
+	})
 
 	for range cache.triggerDbUpdate {
 		time.Sleep(2 * time.Second)
