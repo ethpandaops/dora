@@ -96,7 +96,9 @@ func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 		data.AttesterSlashingsCount = dbEpoch.AttesterSlashingCount
 		data.EligibleEther = dbEpoch.Eligible
 		data.VotedEther = dbEpoch.VotedTotal
-		data.GlobalParticipationRate = uint64(dbEpoch.VotedTarget * 100 / dbEpoch.Eligible)
+		if dbEpoch.Eligible > 0 {
+			data.GlobalParticipationRate = uint64(dbEpoch.VotedTarget * 100 / dbEpoch.Eligible)
+		}
 		data.ValidatorsCount = dbEpoch.ValidatorCount
 		data.TotalValidatorBalance = dbEpoch.ValidatorBalance
 		if dbEpoch.ValidatorCount > 0 {
