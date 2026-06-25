@@ -911,7 +911,8 @@ func FormatBuilderWithIndexAndURL(index uint64, name string, externalURL string)
 
 func formatBuilder(index uint64, name string, externalURL string, icon string, withIndex bool) template.HTML {
 	if index == math.MaxUint64 {
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> Self-built</span>", icon))
+		// self-built blocks have no builder; use the house icon (matches the proposer build-source icon)
+		return template.HTML("<span class=\"builder-label builder-index\"><i class=\"fas fa-house mr-2\"></i> Self-built</span>")
 	}
 
 	externalLink := ""

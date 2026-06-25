@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -18,7 +19,7 @@ var logger_buildoor = logrus.StandardLogger().WithField("module", "buildoor_inve
 type BuildoorInventory struct {
 	ctx             context.Context
 	overviewUrl     string
-	instanceUrls    []string
+	instanceHosts   []buildoorHost
 	refreshInterval time.Duration
 
 	entriesMutex sync.RWMutex
@@ -60,14 +61,21 @@ func (b *BuildoorInventory) StartUpdater() {
 	}
 
 	for _, raw := range utils.Config.Frontend.BuildoorUrls {
-		trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
-		if trimmed != "" {
-			b.instanceUrls = append(b.instanceUrls, trimmed)
+		// each entry is either "url" or "label|url" where label is the service name
+		entry := strings.TrimSpace(raw)
+		label := ""
+		if i := strings.Index(entry, "|"); i >= 0 {
+			label = strings.TrimSpace(entry[:i])
+			entry = strings.TrimSpace(entry[i+1:])
+		}
+		url := strings.TrimRight(entry, "/")
+		if url != "" {
+			b.instanceHosts = append(b.instanceHosts, buildoorHost{URL: url, Label: label})
 		}
 	}
 	b.overviewUrl = strings.TrimRight(utils.Config.Frontend.BuildoorOverviewUrl, "/")
 
-	if len(b.instanceUrls) == 0 && b.overviewUrl == "" {
+	if len(b.instanceHosts) == 0 && b.overviewUrl == "" {
 		return
 	}
 
@@ -111,10 +119,10 @@ func (b *BuildoorInventory) refresh() error {
 	resolvedCount := 0
 	unresolvedCount := 0
 
-	for _, url := range instances {
-		overview, err := b.fetchInstance(ctx, client, url)
+	for _, instance := range instances {
+		overview, err := b.fetchInstance(ctx, client, instance.URL)
 		if err != nil {
-			logger_buildoor.WithError(err).WithField("buildoor", url).Debug("skipping buildoor instance (overview fetch failed)")
+			logger_buildoor.WithError(err).WithField("buildoor", instance.URL).Debug("skipping buildoor instance (overview fetch failed)")
 			continue
 		}
 
@@ -123,9 +131,16 @@ func (b *BuildoorInventory) refresh() error {
 			continue
 		}
 
+		// prefer the service name (host label from the overview API); fall back to
+		// deriving it from the URL when no label is available
+		name := instance.Label
+		if name == "" {
+			name = deriveBuilderName(instance.URL)
+		}
+
 		newEntries[overview.BuilderIndex] = &buildoorEntry{
-			name: deriveBuilderName(url),
-			url:  url,
+			name: name,
+			url:  instance.URL,
 		}
 		resolvedCount++
 	}
@@ -138,27 +153,29 @@ func (b *BuildoorInventory) refresh() error {
 	return nil
 }
 
-func (b *BuildoorInventory) resolveInstances(ctx context.Context, client *http.Client) ([]string, error) {
-	if len(b.instanceUrls) > 0 {
-		return b.instanceUrls, nil
+func (b *BuildoorInventory) resolveInstances(ctx context.Context, client *http.Client) ([]buildoorHost, error) {
+	if len(b.instanceHosts) > 0 {
+		// directly configured URLs (optionally carrying a "label|url" service name)
+		return b.instanceHosts, nil
 	}
 	if b.overviewUrl == "" {
 		return nil, nil
 	}
 
-	hosts, err := b.fetchHosts(ctx, client)
+	hostsResp, err := b.fetchHosts(ctx, client)
 	if err != nil {
 		return nil, err
 	}
 
-	urls := make([]string, 0, len(hosts.Hosts))
-	for _, h := range hosts.Hosts {
+	hosts := make([]buildoorHost, 0, len(hostsResp.Hosts))
+	for _, h := range hostsResp.Hosts {
 		if h.URL == "" {
 			continue
 		}
-		urls = append(urls, strings.TrimRight(h.URL, "/"))
+		h.URL = strings.TrimRight(h.URL, "/")
+		hosts = append(hosts, h)
 	}
-	return urls, nil
+	return hosts, nil
 }
 
 func (b *BuildoorInventory) fetchHosts(ctx context.Context, client *http.Client) (*buildoorHostsResponse, error) {
@@ -239,6 +256,22 @@ func deriveBuilderName(rawUrl string) string {
 	host = strings.TrimPrefix(host, "http://")
 	host = strings.TrimRight(host, "/")
 
+	// strip any path component
+	if i := strings.IndexByte(host, '/'); i >= 0 {
+		host = host[:i]
+	}
+	// strip the port (e.g. "host:8080" -> "host", "127.0.0.1:35239" -> "127.0.0.1")
+	if i := strings.LastIndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+
+	// bare IP addresses carry no meaningful service name; return empty so the
+	// display falls back to the builder index instead of a misleading "127"
+	if net.ParseIP(host) != nil {
+		return ""
+	}
+
+	// use the first hostname label (e.g. "api-buildoor-foo.example.com" -> "api-buildoor-foo")
 	if i := strings.Index(host, "."); i >= 0 {
 		host = host[:i]
 	}

@@ -31,6 +31,8 @@ type SlotsFilteredPageData struct {
 	FilterMinSlot          string `json:"filter_min_slot"`
 	FilterMaxSlot          string `json:"filter_max_slot"`
 	FilterBuilder          string `json:"filter_builder"`
+	FilterInvertBuilder    bool   `json:"filter_invert_builder"`
+	FilterWithBuilder      uint8  `json:"filter_builder_block"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`
 	DisplaySlot         bool   `json:"dp_slot"`
@@ -54,6 +56,7 @@ type SlotsFilteredPageData struct {
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	HasSnooperClients bool `json:"has_snooper_clients"`
+	IsGloasActive     bool `json:"is_gloas_active"`
 
 	Slots     []*SlotsFilteredPageDataSlot `json:"slots"`
 	SlotCount uint64                       `json:"slot_count"`
