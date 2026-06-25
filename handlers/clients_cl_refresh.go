@@ -187,7 +187,12 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Note: Cache will be automatically invalidated on next page load due to fresh data
+	// Evict the cached consensus clients page(s). The page is served from the frontend
+	// page cache with a per-slot timeout, so without an explicit eviction the post-refresh
+	// reload would keep serving the stale render until that timeout expires.
+	if refreshedClients > 0 {
+		InvalidateCLClientsPageCache()
+	}
 
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")

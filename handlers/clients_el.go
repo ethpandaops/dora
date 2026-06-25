@@ -48,9 +48,20 @@ func ClientsEl(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// elClientsPageCacheKeyPrefix is the shared prefix of every cached execution clients page
+// variant. Each request caches under "<prefix><sortOrder>", so deleting the prefix evicts
+// all variants regardless of which sort orders were requested.
+const elClientsPageCacheKeyPrefix = "clients/execution/"
+
+// InvalidateELClientsPageCache evicts all cached variants of the execution clients page
+// so the next request rebuilds them from freshly refreshed client data.
+func InvalidateELClientsPageCache() {
+	services.GlobalFrontendCache.RemoveCacheByPrefix(elClientsPageCacheKeyPrefix)
+}
+
 func getELClientsPageData(sortOrder string) (*models.ClientsELPageData, error) {
 	pageData := &models.ClientsELPageData{}
-	pageCacheKey := fmt.Sprintf("clients/execution/%s", sortOrder)
+	pageCacheKey := fmt.Sprintf("%s%s", elClientsPageCacheKeyPrefix, sortOrder)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildELClientsPageData(sortOrder)
 		pageCall.CacheTimeout = cacheTimeout
