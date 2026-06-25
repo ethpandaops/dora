@@ -1,0 +1,105 @@
+{{ define "page" }}
+<div class="container mt-2">
+  <h1 class="h4 mb-3">Token Transfers</h1>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 el-data-table">
+          <thead>
+            <tr>
+              <th>Txn Hash</th>
+              <th>Block</th>
+              <th data-timecol="duration">Age</th>
+              <th>Method</th>
+              <th>From</th>
+              <th></th>
+              <th>To</th>
+              <th>Amount</th>
+              <th>Token</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ if gt (len .Transfers) 0 }}
+              {{ range .Transfers }}
+                <tr>
+                  <td class="text-monospace addr-cell">
+                    <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
+                  </td>
+                  <td>
+                    {{ if gt (len .BlockRoot) 0 }}
+                      <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                    {{ else }}
+                      {{ formatAddCommas .BlockNumber }}
+                    {{ end }}
+                  </td>
+                  <td data-timer="{{ .BlockTime.Unix }}">
+                    <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+                  </td>
+                  <td>
+                    {{ if .MethodName }}
+                      <span class="badge text-bg-secondary method-badge" data-bs-toggle="tooltip" title="{{ .MethodName }}">{{ .MethodName }}</span>
+                    {{ else }}
+                      <span class="text-muted">-</span>
+                    {{ end }}
+                  </td>
+                  <td class="text-monospace addr-cell">
+                    {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
+                  </td>
+                  <td class="text-center"><i class="fa fa-arrow-right text-muted"></i></td>
+                  <td class="text-monospace addr-cell">
+                    {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
+                  </td>
+                  <td class="text-nowrap">
+                    {{ if eq .TokenType 1 }}
+                      {{ formatTokenAmount .Amount .TokenSymbol }}
+                    {{ else }}
+                      <span class="badge text-bg-light">NFT</span> {{ formatTokenAmount .Amount .TokenSymbol }}
+                    {{ end }}
+                  </td>
+                  <td>
+                    <a href="/token/{{ formatEthAddressFull .Contract }}" data-bs-toggle="tooltip" title="{{ formatEthAddressFull .Contract }}">
+                      {{ if .TokenName }}{{ .TokenName }}{{ else if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}Unknown{{ end }}
+                    </a>
+                  </td>
+                  <td class="text-nowrap">
+                    {{ if .BlockOrphaned }}
+                      <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Block was orphaned">Orphaned</span>
+                    {{ else }}
+                      <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Block is canonical">Included</span>
+                    {{ end }}
+                  </td>
+                </tr>
+              {{ end }}
+            {{ else }}
+              <tr>
+                <td colspan="10" class="text-center py-4 text-muted">
+                  <i class="fas fa-coins fa-2x mb-2"></i>
+                  <br>No token transfers found
+                </td>
+              </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card-footer d-flex justify-content-end align-items-center">
+        <nav aria-label="Transfer pagination">
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item{{ if .IsDefaultPage }} disabled{{ end }}">
+              <a class="page-link" href="{{ .FirstPageLink }}">&laquo; Newest</a>
+            </li>
+            <li class="page-item{{ if not .HasMore }} disabled{{ end }}">
+              <a class="page-link" href="{{ if .HasMore }}{{ .NextPageLink }}{{ else }}#{{ end }}">Older &rsaquo;</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}
+
+{{ define "js" }}{{ end }}
+{{ define "css" }}{{ end }}

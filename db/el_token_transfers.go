@@ -86,56 +86,100 @@ func GetElTokenTransfersByTxUid(ctx context.Context, txUid uint64) ([]*dbtypes.E
 	return transfers, nil
 }
 
-// GetElTokenTransfersByTokenID returns token transfers for a given token,
-// ordered by tx_uid DESC. Backed by the (token_id, tx_uid DESC) index.
-func GetElTokenTransfersByTokenID(ctx context.Context, tokenID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTokenTransfer, uint64, error) {
+// elTokenTransferColumns is the column list for el_token_transfers queries.
+const elTokenTransferColumns = "tx_uid, tx_idx, token_id, token_type, token_index, from_id, to_id, amount, amount_raw"
+
+// GetElTokenTransfersByTokenID returns token transfers for a given token using
+// keyset pagination, ordered by (tx_uid, tx_idx) DESC. Pass beforeTxUid = 0 for
+// the first (newest) page, then the (tx_uid, tx_idx) of the last returned row.
+// Backed by the (token_id, tx_uid DESC) index. Returns the page (up to limit
+// rows) and whether more (older) rows exist.
+func GetElTokenTransfersByTokenID(ctx context.Context, tokenID uint64, beforeTxUid uint64, beforeTxIdx uint32, limit uint32) ([]*dbtypes.ElTokenTransfer, bool, error) {
 	var sql strings.Builder
 	args := []any{tokenID}
 
-	// Use window function for count - avoids double scan
-	// NULLS LAST matches the composite index definition to enable index scans.
-	fmt.Fprint(&sql, `
-		SELECT
-			tx_uid, tx_idx, token_id, token_type, token_index,
-			from_id, to_id, amount, amount_raw,
-			COUNT(*) OVER() AS total_count
-		FROM el_token_transfers
-		WHERE token_id = $1
-		ORDER BY tx_uid DESC NULLS LAST, tx_idx DESC
-		LIMIT $2`)
-	args = append(args, limit)
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
+	fmt.Fprintf(&sql, "SELECT %s FROM el_token_transfers WHERE token_id = $1", elTokenTransferColumns)
+	if beforeTxUid > 0 {
+		args = append(args, beforeTxUid, beforeTxIdx)
+		fmt.Fprintf(&sql, " AND (tx_uid < $%v OR (tx_uid = $%v AND tx_idx < $%v))", len(args)-1, len(args)-1, len(args))
 	}
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY tx_uid DESC, tx_idx DESC LIMIT $%v", len(args))
 
-	type resultRow struct {
-		dbtypes.ElTokenTransfer
-		TotalCount uint64 `db:"total_count"`
-	}
-
-	rows := []resultRow{}
-	err := ReaderDb.SelectContext(ctx, &rows, sql.String(), args...)
-	if err != nil {
+	transfers := []*dbtypes.ElTokenTransfer{}
+	if err := ReaderDb.SelectContext(ctx, &transfers, sql.String(), args...); err != nil {
 		logger.Errorf("Error while fetching el token transfers by token id: %v", err)
-		return nil, 0, err
+		return nil, false, err
 	}
 
-	if len(rows) == 0 {
-		return []*dbtypes.ElTokenTransfer{}, 0, nil
+	hasMore := false
+	if uint32(len(transfers)) > limit {
+		hasMore = true
+		transfers = transfers[:limit]
 	}
+	return transfers, hasMore, nil
+}
 
-	transfers := make([]*dbtypes.ElTokenTransfer, len(rows))
-	var totalCount uint64
-	for i, row := range rows {
-		transfers[i] = &row.ElTokenTransfer
-		if i == 0 {
-			totalCount = row.TotalCount
+// GetElTokenTransfersFiltered returns token transfers matching the given filter
+// using keyset pagination, ordered by (tx_uid, tx_idx) DESC. Pass
+// beforeTxUid = 0 for the first (newest) page, then the (tx_uid, tx_idx) of the
+// last returned row. Returns the page (up to limit rows) and whether more
+// (older) rows exist.
+func GetElTokenTransfersFiltered(ctx context.Context, filter *dbtypes.ElTokenTransferFilter, beforeTxUid uint64, beforeTxIdx uint32, limit uint32) ([]*dbtypes.ElTokenTransfer, bool, error) {
+	var sql strings.Builder
+	args := []any{}
+
+	fmt.Fprintf(&sql, "SELECT %s FROM el_token_transfers", elTokenTransferColumns)
+
+	filterOp := "WHERE"
+	if filter != nil {
+		if filter.TokenID != nil {
+			args = append(args, *filter.TokenID)
+			fmt.Fprintf(&sql, " %v token_id = $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
+		if filter.FromID > 0 {
+			args = append(args, filter.FromID)
+			fmt.Fprintf(&sql, " %v from_id = $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
+		if filter.ToID > 0 {
+			args = append(args, filter.ToID)
+			fmt.Fprintf(&sql, " %v to_id = $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
+		if filter.MinAmount != nil {
+			args = append(args, *filter.MinAmount)
+			fmt.Fprintf(&sql, " %v amount >= $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
+		if filter.MaxAmount != nil {
+			args = append(args, *filter.MaxAmount)
+			fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
+			filterOp = "AND"
 		}
 	}
+	if beforeTxUid > 0 {
+		args = append(args, beforeTxUid, beforeTxIdx)
+		fmt.Fprintf(&sql, " %v (tx_uid < $%v OR (tx_uid = $%v AND tx_idx < $%v))", filterOp, len(args)-1, len(args)-1, len(args))
+		filterOp = "AND"
+	}
 
-	return transfers, totalCount, nil
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY tx_uid DESC, tx_idx DESC LIMIT $%v", len(args))
+
+	transfers := []*dbtypes.ElTokenTransfer{}
+	if err := ReaderDb.SelectContext(ctx, &transfers, sql.String(), args...); err != nil {
+		logger.Errorf("Error while fetching filtered el token transfers: %v", err)
+		return nil, false, err
+	}
+
+	hasMore := false
+	if uint32(len(transfers)) > limit {
+		hasMore = true
+		transfers = transfers[:limit]
+	}
+	return transfers, hasMore, nil
 }
 
 // MaxAccountTokenTransferCount is the maximum count returned for address token transfer queries.

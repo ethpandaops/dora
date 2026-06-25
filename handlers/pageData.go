@@ -144,6 +144,25 @@ func createMenuItems(active string) []types.MainMenuItem {
 			*/
 		},
 	})
+	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Transactions",
+				Path:  "/transactions",
+				Icon:  "fa-right-left",
+			},
+			{
+				Label: "Transfers",
+				Path:  "/transfers",
+				Icon:  "fa-arrow-right-arrow-left",
+			},
+			{
+				Label: "Tokens",
+				Path:  "/tokens",
+				Icon:  "fa-coins",
+			},
+		},
+	})
 	if len(utils.Config.MevIndexer.Relays) > 0 {
 		blockchainMenu = append(blockchainMenu, types.NavigationGroup{
 			Links: []types.NavigationLink{

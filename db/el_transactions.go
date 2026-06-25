@@ -119,94 +119,67 @@ func GetElTransactionsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtyp
 	return txs, nil
 }
 
-// GetElTransactionsFiltered returns transactions matching the given filter,
-// paginated and ordered by block_uid DESC. The first returned row carries the
-// total count in its TxUid field (see the count/UNION ALL pattern below).
-func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.ElTransactionFilter) ([]*dbtypes.ElTransaction, uint64, error) {
+// GetElTransactionsFiltered returns transactions matching the given filter
+// using keyset (boundary) pagination, ordered by tx_uid DESC. Pass
+// beforeTxUid = 0 for the first (newest) page, then the tx_uid of the last
+// returned row to fetch the next (older) page. Returns the page (up to limit
+// rows) and whether more (older) rows exist. Fetches limit+1 rows to detect
+// the next page without a separate count scan.
+func GetElTransactionsFiltered(ctx context.Context, filter *dbtypes.ElTransactionFilter, beforeTxUid uint64, limit uint32) ([]*dbtypes.ElTransaction, bool, error) {
 	var sql strings.Builder
 	args := []any{}
 
-	fmt.Fprintf(&sql, `
-	WITH cte AS (
-		SELECT %s
-		FROM el_transactions
-	`, elTransactionColumns)
+	fmt.Fprintf(&sql, "SELECT %s FROM el_transactions", elTransactionColumns)
 
 	filterOp := "WHERE"
-	if filter.FromID > 0 {
-		args = append(args, filter.FromID)
-		fmt.Fprintf(&sql, " %v from_id = $%v", filterOp, len(args))
-		filterOp = "AND"
+	if filter != nil {
+		if filter.FromID > 0 {
+			args = append(args, filter.FromID)
+			fmt.Fprintf(&sql, " %v from_id = $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
+		if filter.ToID > 0 {
+			args = append(args, filter.ToID)
+			fmt.Fprintf(&sql, " %v to_id = $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
+		if filter.Reverted != nil {
+			args = append(args, *filter.Reverted)
+			fmt.Fprintf(&sql, " %v reverted = $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
+		if filter.MinGasUsed != nil {
+			args = append(args, *filter.MinGasUsed)
+			fmt.Fprintf(&sql, " %v gas_used >= $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
+		if filter.MaxGasUsed != nil {
+			args = append(args, *filter.MaxGasUsed)
+			fmt.Fprintf(&sql, " %v gas_used <= $%v", filterOp, len(args))
+			filterOp = "AND"
+		}
 	}
-	if filter.ToID > 0 {
-		args = append(args, filter.ToID)
-		fmt.Fprintf(&sql, " %v to_id = $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.Reverted != nil {
-		args = append(args, *filter.Reverted)
-		fmt.Fprintf(&sql, " %v reverted = $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.MinGasUsed != nil {
-		args = append(args, *filter.MinGasUsed)
-		fmt.Fprintf(&sql, " %v gas_used >= $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.MaxGasUsed != nil {
-		args = append(args, *filter.MaxGasUsed)
-		fmt.Fprintf(&sql, " %v gas_used <= $%v", filterOp, len(args))
+	if beforeTxUid > 0 {
+		args = append(args, beforeTxUid)
+		fmt.Fprintf(&sql, " %v tx_uid < $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 
-	fmt.Fprint(&sql, ")")
-
-	args = append(args, limit)
-	fmt.Fprintf(&sql, `
-	SELECT
-		count(*) AS tx_uid,
-		0 AS block_uid,
-		null AS tx_hash,
-		0 AS from_id,
-		0 AS to_id,
-		0 AS nonce,
-		false AS reverted,
-		0 AS amount,
-		null AS amount_raw,
-		null AS method_id,
-		0 AS gas_limit,
-		0 AS gas_used,
-		0 AS gas_price,
-		0 AS tip_price,
-		0 AS blob_count,
-		0 AS block_number,
-		0 AS tx_type,
-		0 AS eff_gas_price
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
-	LIMIT $%v`, len(args))
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
-	}
-	fmt.Fprint(&sql, ") AS t1")
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY tx_uid DESC LIMIT $%v", len(args))
 
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...)
-	if err != nil {
+	if err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...); err != nil {
 		logger.Errorf("Error while fetching filtered el transactions: %v", err)
-		return nil, 0, err
+		return nil, false, err
 	}
 
-	if len(txs) == 0 {
-		return []*dbtypes.ElTransaction{}, 0, nil
+	hasMore := false
+	if uint32(len(txs)) > limit {
+		hasMore = true
+		txs = txs[:limit]
 	}
-
-	count := txs[0].TxUid
-	return txs[1:], count, nil
+	return txs, hasMore, nil
 }
 
 // MaxAccountTransactionCount is the maximum count returned for address transaction queries.

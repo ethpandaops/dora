@@ -1,0 +1,77 @@
+{{ define "page" }}
+<div class="container mt-2">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="h4 mb-0">Tokens</h1>
+    <form class="d-flex" role="search" method="GET" action="/tokens">
+      <input type="hidden" name="c" value="{{ .PageSize }}">
+      <input class="form-control form-control-sm me-2" type="search" name="q" placeholder="Name or 0x contract" value="{{ .SearchQuery }}" aria-label="Search">
+      <button class="btn btn-sm btn-outline-secondary" type="submit">Search</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 el-data-table">
+          <thead>
+            <tr>
+              <th>Contract</th>
+              <th>Type</th>
+              <th>Name</th>
+              <th>Symbol</th>
+              <th>Decimals</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ if gt (len .Tokens) 0 }}
+              {{ range .Tokens }}
+                <tr>
+                  <td class="text-monospace addr-cell">
+                    <a href="/token/{{ formatEthAddressFull .Contract }}" data-bs-toggle="tooltip" title="{{ formatEthAddressFull .Contract }}">{{ formatEthAddressShort .Contract }}</a>
+                    <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .Contract }}"></i>
+                  </td>
+                  <td><span class="badge text-bg-secondary">{{ .TokenTypeName }}</span></td>
+                  <td>{{ if .Name }}{{ .Name }}{{ else }}<span class="text-muted">-</span>{{ end }}</td>
+                  <td>{{ if .Symbol }}{{ .Symbol }}{{ else }}<span class="text-muted">-</span>{{ end }}</td>
+                  <td>{{ if eq .TokenType 1 }}{{ .Decimals }}{{ else }}<span class="text-muted">-</span>{{ end }}</td>
+                </tr>
+              {{ end }}
+            {{ else }}
+              <tr>
+                <td colspan="5" class="text-center py-4 text-muted">
+                  <i class="fas fa-coins fa-2x mb-2"></i>
+                  <br>No tokens found
+                </td>
+              </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+
+      {{ if gt .TotalPages 1 }}
+      <div class="card-footer d-flex justify-content-between align-items-center">
+        <div>
+          Showing {{ formatAddCommas .FirstItem }} - {{ formatAddCommas .LastItem }} of {{ formatAddCommas .TotalCount }}
+        </div>
+        <nav aria-label="Token pagination">
+          <ul class="pagination pagination-sm mb-0">
+            {{ if gt .PageIndex 1 }}
+              <li class="page-item"><a class="page-link" href="{{ .FirstPageLink }}">&laquo;</a></li>
+              <li class="page-item"><a class="page-link" href="{{ .PrevPageLink }}">&lsaquo;</a></li>
+            {{ end }}
+            <li class="page-item disabled"><span class="page-link">{{ .PageIndex }} / {{ .TotalPages }}</span></li>
+            {{ if lt .PageIndex .TotalPages }}
+              <li class="page-item"><a class="page-link" href="{{ .NextPageLink }}">&rsaquo;</a></li>
+              <li class="page-item"><a class="page-link" href="{{ .LastPageLink }}">&raquo;</a></li>
+            {{ end }}
+          </ul>
+        </nav>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+</div>
+{{ end }}
+
+{{ define "js" }}{{ end }}
+{{ define "css" }}{{ end }}
