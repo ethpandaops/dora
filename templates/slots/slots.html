@@ -150,7 +150,7 @@
                     {{ end }}
                     {{ if $g.DisplayTime }}<td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>{{ end }}
                     {{ if $slot.Synchronized }}
-                      {{ if $g.DisplayProposer }}<td>{{ if gt $slot.Slot 0 }}{{ formatValidator $slot.Proposer $slot.ProposerName }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayProposer }}<td>{{ if gt $slot.Slot 0 }}{{ formatProposerWithBuildSource $slot.Status $slot.Proposer $slot.ProposerName $slot.HasBuilder $slot.BuilderIndex $slot.BuilderURL }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayAttestations }}<td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayDeposits }}<td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplaySlashings }}<td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>{{ end }}

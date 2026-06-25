@@ -33,20 +33,22 @@ import (
 )
 
 type ChainService struct {
-	ctx                  context.Context
-	logger               logrus.FieldLogger
-	consensusPool        *consensus.Pool
-	executionPool        *execution.Pool
-	beaconIndexer        *beacon.Indexer
-	validatorNames       *ValidatorNames
-	buildoorInventory    *BuildoorInventory
-	depositIndexer       *syscontracts.DepositIndexer
-	consolidationIndexer *syscontracts.ConsolidationIndexer
-	withdrawalIndexer    *syscontracts.WithdrawalIndexer
-	mevRelayIndexer      *mevrelay.MevIndexer
-	snooperManager       *snooper.SnooperManager
-	txIndexer            *txindexer.TxIndexer
-	started              bool
+	ctx                   context.Context
+	logger                logrus.FieldLogger
+	consensusPool         *consensus.Pool
+	executionPool         *execution.Pool
+	beaconIndexer         *beacon.Indexer
+	validatorNames        *ValidatorNames
+	buildoorInventory     *BuildoorInventory
+	depositIndexer        *syscontracts.DepositIndexer
+	consolidationIndexer  *syscontracts.ConsolidationIndexer
+	withdrawalIndexer     *syscontracts.WithdrawalIndexer
+	builderDepositIndexer *syscontracts.BuilderDepositIndexer
+	builderExitIndexer    *syscontracts.BuilderExitIndexer
+	mevRelayIndexer       *mevrelay.MevIndexer
+	snooperManager        *snooper.SnooperManager
+	txIndexer             *txindexer.TxIndexer
+	started               bool
 }
 
 var GlobalBeaconService *ChainService
@@ -336,6 +338,8 @@ func (cs *ChainService) StartService() error {
 	cs.depositIndexer = syscontracts.NewDepositIndexer(executionIndexerCtx)
 	cs.consolidationIndexer = syscontracts.NewConsolidationIndexer(executionIndexerCtx)
 	cs.withdrawalIndexer = syscontracts.NewWithdrawalIndexer(executionIndexerCtx)
+	cs.builderDepositIndexer = syscontracts.NewBuilderDepositIndexer(executionIndexerCtx)
+	cs.builderExitIndexer = syscontracts.NewBuilderExitIndexer(executionIndexerCtx)
 
 	// start EL transaction indexer if enabled
 	if utils.Config.ExecutionIndexer.Enabled {
@@ -392,6 +396,14 @@ func (bs *ChainService) GetWithdrawalIndexer() *syscontracts.WithdrawalIndexer {
 	return bs.withdrawalIndexer
 }
 
+func (bs *ChainService) GetBuilderDepositIndexer() *syscontracts.BuilderDepositIndexer {
+	return bs.builderDepositIndexer
+}
+
+func (bs *ChainService) GetBuilderExitIndexer() *syscontracts.BuilderExitIndexer {
+	return bs.builderExitIndexer
+}
+
 func (bs *ChainService) GetSnooperManager() *snooper.SnooperManager {
 	return bs.snooperManager
 }
@@ -436,10 +448,12 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 	result := make(map[common.Address]string, 5)
 
 	labels := map[string]string{
-		exerpc.WithdrawalRequestContract:    "Withdrawal Request (EIP-7002)",
-		exerpc.ConsolidationRequestContract: "Consolidation Request (EIP-7251)",
-		exerpc.BeaconRootsContract:          "Beacon Roots (EIP-4788)",
-		exerpc.HistoryStorageContract:       "Block Hash History (EIP-2935)",
+		exerpc.WithdrawalRequestContract:     "Withdrawal Request (EIP-7002)",
+		exerpc.ConsolidationRequestContract:  "Consolidation Request (EIP-7251)",
+		exerpc.BeaconRootsContract:           "Beacon Roots (EIP-4788)",
+		exerpc.HistoryStorageContract:        "Block Hash History (EIP-2935)",
+		exerpc.BuilderDepositRequestContract: "Builder Deposit (EIP-8282)",
+		exerpc.BuilderExitRequestContract:    "Builder Exit (EIP-8282)",
 	}
 
 	execChainState := bs.GetExecutionChainState()
@@ -467,6 +481,9 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 			result[depositAddr] = "Deposit Contract"
 		}
 	}
+
+	// Well-known static addresses (no on-chain config source)
+	result[common.HexToAddress("0x4e59b44847b379578588920ca78fbf26c0b4956c")] = "Arachnid CREATE2 Factory (EIP-7997)"
 
 	return result
 }

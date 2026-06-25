@@ -118,6 +118,7 @@ type Config struct {
 		LogBatchSize       int    `yaml:"logBatchSize" envconfig:"EXECUTIONAPI_LOG_BATCH_SIZE"`
 		DepositDeployBlock int    `yaml:"depositDeployBlock" envconfig:"EXECUTIONAPI_DEPOSIT_DEPLOY_BLOCK"` // el block number from where to crawl the deposit system contract (should be <=, but close to deposit contract deployment)
 		ElectraDeployBlock int    `yaml:"electraDeployBlock" envconfig:"EXECUTIONAPI_ELECTRA_DEPLOY_BLOCK"` // el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
+		GloasDeployBlock   int    `yaml:"gloasDeployBlock" envconfig:"EXECUTIONAPI_GLOAS_DEPLOY_BLOCK"`     // el block number from where to crawl the gloas builder system contracts (should be <=, but close to gloas fork activation block)
 		GenesisConfig      string `yaml:"genesisConfig" envconfig:"EXECUTIONAPI_GENESIS_CONFIG"`            // path or URL to genesis.json file in geth format
 	} `yaml:"executionapi"`
 
@@ -131,6 +132,7 @@ type Config struct {
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
 		DisableBlockDB                  bool   `yaml:"disableBlockDB" envconfig:"INDEXER_DISABLE_BLOCK_DB"`
+		DisableBlockDBDuties            bool   `yaml:"disableBlockDBDuties" envconfig:"INDEXER_DISABLE_BLOCK_DB_DUTIES"`
 		PubkeyCachePath                 string `yaml:"pubkeyCachePath" envconfig:"INDEXER_PUBKEY_CACHE_PATH"`
 
 		BadChainRoots []string `yaml:"badChainRoots" envconfig:"INDEXER_BAD_CHAIN_ROOTS"`

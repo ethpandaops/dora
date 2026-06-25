@@ -86,15 +86,9 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			header, err = beacon.LoadBeaconHeader(ctx, client, blockroot)
 			if header != nil {
 				break
-			} else if err != nil {
-				log := logrus.WithError(err)
-				if client != nil {
-					log = log.WithField("client", client.GetClient().GetName())
-				}
-				log.Warnf("Error loading block header for root 0x%x", blockroot)
 			}
 		}
-		if err != nil || header == nil {
+		if err != nil && header == nil {
 			return err
 		}
 		return nil
@@ -146,11 +140,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 				if block == nil {
 					block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
 					if err != nil {
-						log := logrus.WithError(err)
-						if client != nil {
-							log = log.WithField("client", client.GetClient().GetName())
-						}
-						log.Warnf("Error loading block body for root 0x%x", blockroot)
+						logrus.WithError(err).Debugf("could not load block body for root 0x%x from client %s", blockroot, client.GetClient().GetName())
 					}
 				}
 
@@ -159,11 +149,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 					if payload != nil {
 						break
 					} else if err != nil {
-						log := logrus.WithError(err)
-						if client != nil {
-							log = log.WithField("client", client.GetClient().GetName())
-						}
-						log.Warnf("Error loading block payload for root 0x%x", blockroot)
+						logrus.WithError(err).Debugf("could not load block payload for root 0x%x from client %s", blockroot, client.GetClient().GetName())
 					}
 				} else if block != nil {
 					break
@@ -248,17 +234,11 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		for ; headRetry < 3; headRetry++ {
 			client := clients[headRetry%len(clients)]
 			header, blockRoot, orphaned, err = beacon.LoadBeaconHeaderBySlot(ctx, client, slot)
-			if err != nil {
-				log := logrus.WithError(err)
-				if client != nil {
-					log = log.WithField("client", client.GetClient().GetName())
-				}
-				log.Warnf("Error loading block header for slot %v", slot)
-			} else {
+			if header != nil {
 				break
 			}
 		}
-		if err != nil || header == nil {
+		if err != nil && header == nil {
 			return err
 		}
 		return nil
@@ -311,11 +291,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 				client := clients[bodyRetry%len(clients)]
 				block, err = beacon.LoadBeaconBlock(ctx, client, blockRoot)
 				if err != nil {
-					log := logrus.WithError(err)
-					if client != nil {
-						log = log.WithField("client", client.GetClient().GetName())
-					}
-					log.Warnf("Error loading block body for slot %v", slot)
+					logrus.WithError(err).Debugf("could not load block body for slot %v from client %s", slot, client.GetClient().GetName())
 				}
 
 				if block != nil && block.Version >= spec.DataVersionGloas {
@@ -323,11 +299,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 					if payload != nil {
 						break
 					} else if err != nil {
-						log := logrus.WithError(err)
-						if client != nil {
-							log = log.WithField("client", client.GetClient().GetName())
-						}
-						log.Warnf("Error loading block payload for root 0x%x", blockRoot)
+						logrus.WithError(err).Debugf("could not load block payload for slot %v from client %s", slot, client.GetClient().GetName())
 					}
 				} else if block != nil {
 					break
@@ -505,7 +477,7 @@ func (bs *ChainService) populateBlockAccessList(ctx context.Context, result *Com
 
 	bal, err := beacon.UnmarshalBlockAccessList(blockData.BalVersion, blockData.BalData)
 	if err != nil {
-		logrus.WithError(err).Errorf("failed to decode BAL from blockdb for block 0x%x", result.Root[:])
+		logrus.WithError(err).Debugf("failed to decode BAL from blockdb for block 0x%x", result.Root[:])
 		return
 	}
 	result.BlockAccessList = bal
@@ -1145,7 +1117,21 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 				} else {
 					builderIndexInt64 = int64(builderIndex)
 				}
-				if builderIndexInt64 != *filter.BuilderIndex {
+				matches := builderIndexInt64 == *filter.BuilderIndex
+				if matches == filter.InvertBuilder {
+					continue
+				}
+			}
+
+			// filter by build source (self-built vs builder-built); mirrors the SQL clause in db/slots.go
+			if filter.WithBuilderBlock != 0 {
+				isSelfBuilt := blockIndex.BuilderIndex == math.MaxUint64
+				if filter.WithBuilderBlock == 1 && isSelfBuilt {
+					// builder-built blocks only
+					continue
+				}
+				if filter.WithBuilderBlock == 2 && !isSelfBuilt {
+					// self-built blocks only
 					continue
 				}
 			}
@@ -1204,7 +1190,7 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 &&
 			filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil &&
 			filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 &&
-			filter.BuilderIndex == nil && filter.WithPayloadMask&dbtypes.PayloadStatusMaskMissing != 0 && len(filter.EthBlockParentHash) == 0 && filter.MinGasUsed == nil &&
+			filter.BuilderIndex == nil && filter.WithBuilderBlock == 0 && filter.WithPayloadMask&dbtypes.PayloadStatusMaskMissing != 0 && len(filter.EthBlockParentHash) == 0 && filter.MinGasUsed == nil &&
 			filter.MaxGasUsed == nil && filter.MinGasLimit == nil && filter.MaxGasLimit == nil && filter.MinBlockSize == nil && filter.MaxBlockSize == nil &&
 			filter.WithMevBlock == 0
 
@@ -1429,8 +1415,11 @@ func (bs *ChainService) GetHighestElBlockNumber(ctx context.Context, overrideFor
 		if canonicalHead == nil {
 			break
 		}
-		if canonicalHead.GetBlockIndex(ctx) != nil {
-			return canonicalHead.GetBlockIndex(ctx).ExecutionNumber
+		// In Gloas/ePBS the execution payload is decoupled from the beacon block and may not be
+		// revealed yet for the most recent canonical head(s), in which case ExecutionNumber is 0.
+		// Walk back to the latest block that actually carries an execution number.
+		if blockIndex := canonicalHead.GetBlockIndex(ctx); blockIndex != nil && blockIndex.ExecutionNumber > 0 {
+			return blockIndex.ExecutionNumber
 		}
 
 		parentRoot := canonicalHead.GetParentRoot()

@@ -28,6 +28,25 @@ func Domain(genesisForkVersion phase0.Version) zrnt_common.BLSDomain {
 	)
 }
 
+// builderDepositDomainType is DOMAIN_BUILDER_DEPOSIT (Gloas/EIP-8282): a dedicated
+// domain type (0x0E000000) that prevents builder-deposit signatures from being
+// replayed against the regular deposit contract and vice versa.
+var builderDepositDomainType = zrnt_common.BLSDomainType{0x0E, 0x00, 0x00, 0x00}
+
+// BuilderDomain returns the builder-deposit signature domain
+// compute_domain(DOMAIN_BUILDER_DEPOSIT, genesisForkVersion, Root{}).
+//
+// Like regular deposits, builder-deposit proofs-of-possession are signed over a
+// fork-agnostic domain (zero genesis validators root), so the domain depends only
+// on the genesis fork version — just with the dedicated builder domain type.
+func BuilderDomain(genesisForkVersion phase0.Version) zrnt_common.BLSDomain {
+	return zrnt_common.ComputeDomain(
+		builderDepositDomainType,
+		zrnt_common.Version(genesisForkVersion),
+		zrnt_common.Root{},
+	)
+}
+
 // signingRoot computes the signing root of DepositMessage{pubkey, wc, amount}.
 func signingRoot(pubkey phase0.BLSPubKey, withdrawalCredentials []byte, amount phase0.Gwei, domain zrnt_common.BLSDomain) tree.Root {
 	msg := &zrnt_common.DepositMessage{

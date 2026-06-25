@@ -80,6 +80,7 @@ type BlockFilter struct {
 	EthBlockHash         []byte   // Filter by EL block hash
 	EthBlockParentHash   []byte   // Filter by EL block parent hash
 	BuilderIndex         *int64   // Filter by builder index (-1 for self-built blocks)
+	InvertBuilder        bool     // Invert the builder index filter (exclude matches)
 	MinGasUsed           *uint64  // Filter by minimum gas used
 	MaxGasUsed           *uint64  // Filter by maximum gas used
 	MinGasLimit          *uint64  // Filter by minimum gas limit
@@ -87,6 +88,7 @@ type BlockFilter struct {
 	MinBlockSize         *uint64  // Filter by minimum block size (bytes)
 	MaxBlockSize         *uint64  // Filter by maximum block size (bytes)
 	WithMevBlock         uint8    // 0=hide mev, 1=show all, 2=mev only
+	WithBuilderBlock     uint8    // 0=all (default), 1=builder-built only, 2=self-built only
 	MinEpoch             *uint64  // Filter by minimum epoch
 	MaxEpoch             *uint64  // Filter by maximum epoch
 	MinSlot              *uint64  // Filter by minimum slot (derived from MinEpoch)
@@ -202,6 +204,46 @@ type ConsolidationRequestTxFilter struct {
 	MaxTgtIndex      uint64
 	TgtValidatorName string
 	WithOrphaned     uint8
+}
+
+type BuilderDepositFilter struct {
+	MinSlot      uint64
+	MaxSlot      uint64
+	PublicKey    []byte
+	MinIndex     uint64
+	MaxIndex     uint64
+	MinAmount    *uint64
+	MaxAmount    *uint64
+	WithOrphaned uint8
+}
+
+type BuilderDepositTxFilter struct {
+	MinDequeue uint64
+	MaxDequeue uint64
+	PublicKey  []byte
+	MinIndex   uint64
+	MaxIndex   uint64
+	MinAmount  *uint64
+	MaxAmount  *uint64
+}
+
+type BuilderExitFilter struct {
+	MinSlot       uint64
+	MaxSlot       uint64
+	PublicKey     []byte
+	SourceAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
+	WithOrphaned  uint8
+}
+
+type BuilderExitTxFilter struct {
+	MinDequeue    uint64
+	MaxDequeue    uint64
+	PublicKey     []byte
+	SourceAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
 }
 
 type ValidatorOrder uint8

@@ -265,20 +265,16 @@ func (client *Client) pollClientHead() error {
 	ctx, cancel := context.WithTimeout(client.clientCtx, 10*time.Second)
 	defer cancel()
 
-	latestHeader, err := client.rpcClient.GetLatestHeader(ctx)
+	headNumber, headHash, err := client.rpcClient.GetLatestHead(ctx)
 	if err != nil {
-		return fmt.Errorf("could not get latest header: %v", err)
-	}
-
-	if latestHeader == nil {
-		return fmt.Errorf("could not find latest header")
+		return fmt.Errorf("could not get latest head: %v", err)
 	}
 
 	client.headMutex.Lock()
 	defer client.headMutex.Unlock()
 
-	client.headNumber = latestHeader.Number.Uint64()
-	client.headHash = latestHeader.Hash()
+	client.headNumber = headNumber
+	client.headHash = headHash
 
 	return nil
 }

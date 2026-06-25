@@ -33,6 +33,9 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
+// EIP-7708: ETH Transfer logger address — emits Transfer(address,address,uint256) on every ETH move.
+var ethTransferLogger = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
+
 // Transaction type names
 var txTypeNames = map[uint8]string{
 	0: "Legacy",
@@ -530,11 +533,17 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 
 	// Input data
 	pageData.InputData = ethTx.Data()
+	applyCalldataCosts(pageData)
 	methodID := []byte(nil)
 	if len(ethTx.Data()) >= 4 {
 		methodID = ethTx.Data()[:4]
 	}
 	applyCallTargetResolution(ctx, pageData, methodID)
+
+	// EIP-7976: calldata floor gas = 21000 + 64 × len(calldata)
+	if len(pageData.InputData) > 0 {
+		pageData.CalldataFloorGas = 21000 + uint64(len(pageData.InputData))*64
+	}
 
 	// Blob hashes
 	pageData.BlobCount = uint32(len(ethTx.BlobHashes()))
@@ -542,6 +551,11 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 	// Authorization data for type 4 (EIP-7702) transactions
 	if ethTx.Type() == ethtypes.SetCodeTxType {
 		loadAuthorizationData(pageData, ethTx)
+	}
+
+	// Access list data for type 1 (EIP-2930) transactions
+	if ethTx.Type() == ethtypes.AccessListTxType {
+		loadAccessListData(pageData, ethTx)
 	}
 
 	// Generate RLP and JSON
@@ -804,6 +818,31 @@ func buildEventsFromBlockdb(events bdbtypes.EventDataList) []*models.Transaction
 		}
 		if len(ev.Topics) > 4 {
 			event.Topic4 = ev.Topics[4]
+		}
+
+		// EIP-7708: ETH transfers emit a Transfer(address,address,uint256) event from
+		// 0xfffffffffffffffffffffffffffffffffffffffe (the ETH Transfer logger).
+		// Topic0 = keccak256("Transfer(address,address,uint256)") = 0xddf252ad...
+		// Topic1 = from address (padded), Topic2 = to address (padded), Data = uint256 wei.
+		if bytes.Equal(ev.Source[:], ethTransferLogger[:]) {
+			event.EventName = "ETH Transfer (EIP-7708)"
+			// Decode from/to/value from the Transfer event
+			if len(ev.Topics) >= 3 && len(ev.Topics[1]) == 32 && len(ev.Topics[2]) == 32 {
+				event.EthTransferFrom = ev.Topics[1][12:] // last 20 bytes
+				event.EthTransferTo = ev.Topics[2][12:]
+			}
+			if len(ev.Data) >= 32 {
+				weiVal := new(big.Int).SetBytes(ev.Data[:32])
+				// Format as ETH with up to 6 decimal places, trimming trailing zeros
+				eth := new(big.Float).Quo(new(big.Float).SetInt(weiVal), new(big.Float).SetInt(big.NewInt(1e18)))
+				event.EthTransferValue = fmt.Sprintf("%.6f", eth)
+				// Trim trailing zeros after decimal point
+				if strings.Contains(event.EthTransferValue, ".") {
+					event.EthTransferValue = strings.TrimRight(event.EthTransferValue, "0")
+					event.EthTransferValue = strings.TrimRight(event.EthTransferValue, ".")
+				}
+				event.EthTransferValue += " ETH"
+			}
 		}
 
 		result = append(result, event)
@@ -1277,6 +1316,12 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 
 	// Set input data from parsed transaction
 	pageData.InputData = ethTx.Data()
+	applyCalldataCosts(pageData)
+
+	// EIP-7976: calldata floor gas = 21000 + 64 × len(calldata)
+	if len(pageData.InputData) > 0 {
+		pageData.CalldataFloorGas = 21000 + uint64(len(pageData.InputData))*64
+	}
 
 	// Generate JSON using proper marshaling
 	generateTxJSON(pageData, &ethTx)
@@ -1289,6 +1334,11 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	// Load authorization data for type 4 (EIP-7702) transactions
 	if ethTx.Type() == ethtypes.SetCodeTxType {
 		loadAuthorizationData(pageData, &ethTx)
+	}
+
+	// Load access list data for type 1 (EIP-2930) transactions
+	if ethTx.Type() == ethtypes.AccessListTxType {
+		loadAccessListData(pageData, &ethTx)
 	}
 }
 
@@ -1398,6 +1448,35 @@ func applyCallTargetResolution(ctx context.Context, pageData *models.Transaction
 	}
 }
 
+// applyCalldataCosts computes calldata gas cost fields from pageData.InputData.
+// Covers three pricing regimes: pre-Prague standard, EIP-7623 (Prague floor), EIP-7976 (Amsterdam floor).
+// Must be called after InputData is set.
+func applyCalldataCosts(pageData *models.TransactionPageData) {
+	data := pageData.InputData
+	if len(data) == 0 {
+		return
+	}
+	z := 0
+	for _, b := range data {
+		if b == 0 {
+			z++
+		}
+	}
+	nz := len(data) - z
+	total := uint64(len(data))
+
+	tokens := nz*4 + z
+	pageData.CalldataZeroBytes = z
+	pageData.CalldataNonZeroBytes = nz
+	pageData.CalldataPragueTokens = tokens
+	// Standard intrinsic (pre-Prague): TX_BASE + 4×zero + 16×nonzero
+	pageData.CalldataStandardGas = 21000 + uint64(z)*4 + uint64(nz)*16
+	// EIP-7623 floor (Prague+): tokens = 4×nonzero + zero; floor = TX_BASE + tokens×10
+	pageData.CalldataPragueFloor = 21000 + uint64(tokens)*10
+	// EIP-7976 floor (Amsterdam+): flat 64 gas per byte regardless of zero/nonzero
+	pageData.CalldataAmsterdamFloor = 21000 + total*64
+}
+
 // loadAuthorizationData extracts EIP-7702 authorization list entries from a
 // parsed transaction and populates pageData.Authorizations.
 func loadAuthorizationData(
@@ -1428,6 +1507,39 @@ func loadAuthorizationData(
 
 		pageData.Authorizations[i] = entry
 	}
+}
+
+// loadAccessListData extracts EIP-2930 access list entries from a parsed
+// transaction and populates pageData.AccessListEntries and
+// pageData.AccessListStorageKeys.
+func loadAccessListData(
+	pageData *models.TransactionPageData,
+	ethTx *ethtypes.Transaction,
+) {
+	al := ethTx.AccessList()
+	if len(al) == 0 {
+		return
+	}
+
+	pageData.AccessListEntries = make([]models.TransactionAccessListEntry, len(al))
+	for i, entry := range al {
+		keys := make([][]byte, len(entry.StorageKeys))
+		for j, k := range entry.StorageKeys {
+			keyCopy := k // common.Hash is [32]byte
+			keys[j] = keyCopy[:]
+		}
+		pageData.AccessListEntries[i] = models.TransactionAccessListEntry{
+			Address:     entry.Address.Bytes(),
+			StorageKeys: keys,
+		}
+		pageData.AccessListStorageKeys += uint64(len(entry.StorageKeys))
+	}
+
+	// EIP-7981 (Amsterdam): ACCESS_LIST_STORAGE_KEY_COST 2400→1900, address cost unchanged at 2400
+	addrs := uint64(len(al))
+	pageData.AccessListGasAmsterdam = addrs*2400 + pageData.AccessListStorageKeys*1900
+	pageData.AccessListGasPrague = addrs*2400 + pageData.AccessListStorageKeys*2400
+	pageData.AccessListGasSavings = pageData.AccessListGasPrague - pageData.AccessListGasAmsterdam
 }
 
 // resolveAuthorizationValidity loads state diffs from blockdb and checks

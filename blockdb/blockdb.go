@@ -15,8 +15,9 @@ import (
 
 // BlockDb is the main wrapper for block database operations.
 type BlockDb struct {
-	engine     types.BlockDbEngine
-	execEngine types.ExecDataEngine // nil if engine doesn't support exec data
+	engine       types.BlockDbEngine
+	execEngine   types.ExecDataEngine // nil if engine doesn't support exec data
+	dutiesEngine types.DutiesEngine   // nil if engine doesn't support duties storage
 }
 
 // GlobalBlockDb is the global block database instance.
@@ -36,6 +37,9 @@ func InitWithPebble(config dtypes.PebbleBlockDBConfig) error {
 	// Pebble engine always supports exec data
 	if execEngine, ok := engine.(types.ExecDataEngine); ok {
 		db.execEngine = execEngine
+	}
+	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
+		db.dutiesEngine = dutiesEngine
 	}
 
 	GlobalBlockDb = db
@@ -58,6 +62,9 @@ func InitWithS3(config dtypes.S3BlockDBConfig) error {
 	if execEngine, ok := engine.(types.ExecDataEngine); ok {
 		db.execEngine = execEngine
 	}
+	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
+		db.dutiesEngine = dutiesEngine
+	}
 
 	GlobalBlockDb = db
 
@@ -78,6 +85,9 @@ func InitWithTiered(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogger
 	// Check if tiered engine supports exec data
 	if execEngine, ok := engine.(types.ExecDataEngine); ok {
 		db.execEngine = execEngine
+	}
+	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
+		db.dutiesEngine = dutiesEngine
 	}
 
 	GlobalBlockDb = db
@@ -210,4 +220,57 @@ func (db *BlockDb) PruneExecDataBefore(ctx context.Context, maxSlot uint64) (int
 		return 0, nil
 	}
 	return db.execEngine.PruneExecDataBefore(ctx, maxSlot)
+}
+
+// SupportsDuties returns true if the underlying engine supports duties storage.
+func (db *BlockDb) SupportsDuties() bool {
+	return db.dutiesEngine != nil
+}
+
+// AddEpochDuties stores the resolved per-epoch duties. Returns stored size.
+func (db *BlockDb) AddEpochDuties(ctx context.Context, duties *types.EpochDuties) (int64, error) {
+	if db.dutiesEngine == nil {
+		return 0, fmt.Errorf("duties storage not supported by engine")
+	}
+	return db.dutiesEngine.AddEpochDuties(ctx, duties)
+}
+
+// GetEpochDuties retrieves the full resolved duties for an epoch.
+func (db *BlockDb) GetEpochDuties(ctx context.Context, firstSlot uint64) (*types.EpochDuties, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetEpochDuties(ctx, firstSlot)
+}
+
+// GetSlotCommittees retrieves the attester committees for a single slot.
+func (db *BlockDb) GetSlotCommittees(ctx context.Context, firstSlot uint64, slot uint64) ([][]uint64, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetSlotCommittees(ctx, firstSlot, slot)
+}
+
+// GetSlotPtc retrieves the PTC members for a single slot.
+func (db *BlockDb) GetSlotPtc(ctx context.Context, firstSlot uint64, slot uint64) ([]uint64, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetSlotPtc(ctx, firstSlot, slot)
+}
+
+// HasEpochDuties checks if duties exist for an epoch.
+func (db *BlockDb) HasEpochDuties(ctx context.Context, firstSlot uint64) (bool, error) {
+	if db.dutiesEngine == nil {
+		return false, nil
+	}
+	return db.dutiesEngine.HasEpochDuties(ctx, firstSlot)
+}
+
+// PruneEpochDutiesBefore deletes duties objects for all epochs whose first slot is before maxFirstSlot.
+func (db *BlockDb) PruneEpochDutiesBefore(ctx context.Context, maxFirstSlot uint64) (int64, error) {
+	if db.dutiesEngine == nil {
+		return 0, nil
+	}
+	return db.dutiesEngine.PruneEpochDutiesBefore(ctx, maxFirstSlot)
 }

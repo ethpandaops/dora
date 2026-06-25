@@ -251,6 +251,46 @@ func (bs *ChainService) GetBuilderByIndex(index gloas.BuilderIndex) *gloas.Build
 	return bs.beaconIndexer.GetBuilderByIndex(index, nil)
 }
 
+// GetBuilderIndexByPubkey resolves a builder index from its pubkey via the dedicated
+// builder pubkey cache (separate from validators, see GetValidatorIndexByPubkey).
+func (bs *ChainService) GetBuilderIndexByPubkey(pubkey phase0.BLSPubKey) (gloas.BuilderIndex, bool) {
+	return bs.beaconIndexer.GetBuilderIndexByPubkey(pubkey)
+}
+
+// GetActiveBuildersByIndexes batch-resolves the builder currently occupying each of the given
+// indexes (cache first, then a single batched DB query for misses). Builder indexes can be
+// reused (EIP-8282), so callers compare the returned builder's pubkey against the pubkey they
+// expect to tell whether that pubkey still owns the index or was superseded.
+func (bs *ChainService) GetActiveBuildersByIndexes(ctx context.Context, indexes []gloas.BuilderIndex) map[gloas.BuilderIndex]*gloas.Builder {
+	result := make(map[gloas.BuilderIndex]*gloas.Builder, len(indexes))
+	missing := make([]uint64, 0)
+	seenMissing := make(map[uint64]bool)
+	for _, idx := range indexes {
+		if _, ok := result[idx]; ok {
+			continue
+		}
+		if builder := bs.beaconIndexer.GetBuilderByIndex(idx, nil); builder != nil {
+			result[idx] = builder
+		} else if !seenMissing[uint64(idx)] {
+			seenMissing[uint64(idx)] = true
+			missing = append(missing, uint64(idx))
+		}
+	}
+
+	if len(missing) > 0 {
+		db.StreamBuildersByIndexes(ctx, missing, func(dbBuilder *dbtypes.Builder) bool {
+			// the active occupant of an index is the non-superseded row
+			if dbBuilder.Superseded {
+				return true
+			}
+			result[gloas.BuilderIndex(dbBuilder.BuilderIndex)] = beacon.UnwrapDbBuilder(dbBuilder)
+			return true
+		})
+	}
+
+	return result
+}
+
 // GetBuilderBalances returns the current builder balances (epoch-start adjusted for in-epoch withdrawals).
 func (bs *ChainService) GetBuilderBalances() []phase0.Gwei {
 	return bs.beaconIndexer.GetRecentBuilderBalances(nil)

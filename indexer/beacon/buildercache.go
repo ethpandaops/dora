@@ -133,7 +133,7 @@ func (cache *builderCache) updateBuilderSet(slot phase0.Slot, dependentRoot phas
 			cachedBuilder = &builderEntry{}
 			cache.builderSetCache[i] = cachedBuilder
 
-			cache.indexer.pubkeyCache.Add(builders[i].PublicKey, phase0.ValidatorIndex(uint64(i)|BuilderIndexFlag))
+			_ = cache.indexer.builderPubkeyCache.Add(builders[i].PublicKey, phase0.ValidatorIndex(uint64(i)))
 		} else {
 			parentBuilder = cachedBuilder.finalBuilder
 			parentChecksum = cachedBuilder.finalChecksum
@@ -557,7 +557,7 @@ func (cache *builderCache) prepopulateFromDB() (uint64, error) {
 
 			cache.builderSetCache[dbBuilder.BuilderIndex] = builderEntry
 
-			cache.indexer.pubkeyCache.Add(builder.PublicKey, phase0.ValidatorIndex(dbBuilder.BuilderIndex|BuilderIndexFlag))
+			_ = cache.indexer.builderPubkeyCache.Add(builder.PublicKey, phase0.ValidatorIndex(dbBuilder.BuilderIndex))
 
 			restoreCount++
 		}

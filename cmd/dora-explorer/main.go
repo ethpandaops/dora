@@ -197,6 +197,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/slots/filtered", handlers.SlotsFiltered).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/tracoor", handlers.SlotTracoor).Methods("GET")
+	router.HandleFunc("/slot/{slotOrHash}/duties", handlers.SlotDuties).Methods("GET")
 	router.HandleFunc("/slot/{root}/blob/{index}", handlers.SlotBlob).Methods("GET")
 	router.HandleFunc("/blocks", handlers.Blocks).Methods("GET")
 	router.HandleFunc("/blocks/filtered", handlers.BlocksFiltered).Methods("GET")
@@ -236,6 +237,10 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
 	router.HandleFunc("/builders", handlers.Builders).Methods("GET")
+	router.HandleFunc("/builders/deposits", handlers.BuilderDeposits).Methods("GET")
+	router.HandleFunc("/builders/exits", handlers.BuilderExits).Methods("GET")
+	router.HandleFunc("/builders/submit_deposit", handlers.SubmitBuilderDeposit).Methods("GET")
+	router.HandleFunc("/builders/submit_exit", handlers.SubmitBuilderExit).Methods("GET")
 	router.HandleFunc("/builder/{idxOrPubKey}", handlers.BuilderDetail).Methods("GET")
 
 	if utils.Config.Frontend.Pprof {

@@ -33,6 +33,12 @@
           <tr data-topic0="{{ formatHexBytes $evt.Topic0 }}">
             <td class="px-3 text-center align-top">
               <span class="badge text-bg-secondary">{{ $evt.EventIndex }}</span>
+              {{ if $evt.EventName }}
+              <br><span class="badge bg-warning text-dark mt-1" style="font-size: 0.65rem; white-space: normal; word-break: break-word;" data-bs-toggle="tooltip" title="{{ $evt.EventName }}">{{ $evt.EventName }}</span>
+              {{ if $evt.EthTransferValue }}
+              <br><span class="badge bg-success mt-1" style="font-size: 0.65rem;" data-bs-toggle="tooltip" title="ETH amount transferred (EIP-7708 decoded)">{{ $evt.EthTransferValue }}</span>
+              {{ end }}
+              {{ end }}
             </td>
             <td class="px-3 py-2">
               <div class="mb-2">
@@ -48,6 +54,20 @@
                 <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull $evt.SourceAddr }}" style="font-size: 0.75rem;"></i>
                 {{ end }}
               </div>
+              {{ if $evt.EthTransferFrom }}
+              <div class="mb-2 p-2 rounded" style="background: var(--bs-success-bg-subtle); border: 1px solid var(--bs-success-border-subtle);">
+                <span class="small fw-bold text-success me-2">EIP-7708 ETH Transfer</span>
+                <span class="text-muted small">{{ $evt.EthTransferValue }}</span>
+                <div class="mt-1">
+                  <span class="text-muted small me-1">From:</span>
+                  <a href="/address/{{ formatEthAddressFull $evt.EthTransferFrom }}" class="text-monospace small">{{ formatEthAddressFull $evt.EthTransferFrom }}</a>
+                </div>
+                <div>
+                  <span class="text-muted small me-3">To:</span>
+                  <a href="/address/{{ formatEthAddressFull $evt.EthTransferTo }}" class="text-monospace small">{{ formatEthAddressFull $evt.EthTransferTo }}</a>
+                </div>
+              </div>
+              {{ end }}
               {{ if gt (len $evt.Topic0) 0 }}
               <div class="mb-1">
                 <span class="badge text-bg-primary me-1" style="font-size: 0.7rem;">Topic 0</span>
