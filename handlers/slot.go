@@ -866,6 +866,35 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageTransactions(ctx, pageData, executionPayload.Transactions, blockUid)
 		}
 
+		// EIP-7778: compute block gas delta = block.gasUsed - sum(receipt.gasUsed).
+		// Pre-Amsterdam these were always equal; Amsterdam introduces a 2D gas model:
+		//   block.gasUsed = max(sum_regular, sum_state)          [EIP-7778]
+		//   receipt.gasUsed per tx = regular + state - refund    [EIP-8037, EIP-3529]
+		// Only computed when EL indexing has enriched ALL tx receipts in this block.
+		if len(pageData.Transactions) > 0 {
+			var sumTxGas uint64
+			elDataCount := 0
+			for _, tx := range pageData.Transactions {
+				if tx.HasElData {
+					sumTxGas += tx.GasUsed
+					elDataCount++
+				}
+			}
+			if elDataCount == len(pageData.Transactions) {
+				blockGas := executionPayload.GasUsed
+				pageData.ExecutionData.SumTxGasUsed = &sumTxGas
+				if blockGas >= sumTxGas {
+					delta := blockGas - sumTxGas
+					pageData.ExecutionData.BlockGasDelta = &delta
+					pageData.ExecutionData.BlockGasDeltaExcess = true
+				} else {
+					delta := sumTxGas - blockGas
+					pageData.ExecutionData.BlockGasDelta = &delta
+					pageData.ExecutionData.BlockGasDeltaExcess = false
+				}
+			}
+		}
+
 		// EIP-7928 Block Access List — the chainservice sources the bytes
 		// either from the envelope (fresh from the node) or from blockdb
 		// (preserved after the node pruned it).

@@ -718,6 +718,60 @@
                 }
             }
         },
+        "/v1/epoch/{epoch}/health": {
+            "get": {
+                "description": "Returns the vote, proposal and payload participation rates for an epoch. The chain is only fully healthy when all three reach 100%. Post-ePBS (EIP-7732) payloads are revealed separately from beacon blocks and may be missing.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Epoch"
+                ],
+                "summary": "Get epoch health by number, latest, finalized",
+                "operationId": "getEpochHealth",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Epoch number, the string latest or the string finalized",
+                        "name": "epoch",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/api.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.APIEpochHealthResponseV1"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Failure",
+                        "schema": {
+                            "$ref": "#/definitions/api.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/epochs": {
             "get": {
                 "description": "Returns a list of epochs with detailed information and statistics",
@@ -3208,6 +3262,47 @@
                 }
             }
         },
+        "api.APIEpochHealthResponseV1": {
+            "type": "object",
+            "properties": {
+                "eligible_ether": {
+                    "type": "integer"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "finalized": {
+                    "type": "boolean"
+                },
+                "healthy": {
+                    "type": "boolean"
+                },
+                "payload_participation": {
+                    "type": "number"
+                },
+                "proposal_participation": {
+                    "type": "number"
+                },
+                "proposed_blocks": {
+                    "type": "integer"
+                },
+                "proposed_payloads": {
+                    "type": "integer"
+                },
+                "slots": {
+                    "type": "integer"
+                },
+                "ts": {
+                    "type": "integer"
+                },
+                "vote_participation": {
+                    "type": "number"
+                },
+                "voted_ether": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.APIEpochInfo": {
             "type": "object",
             "properties": {
@@ -3253,10 +3348,16 @@
                 "missed_blocks": {
                     "type": "integer"
                 },
+                "missed_payloads": {
+                    "type": "integer"
+                },
                 "orphaned_blocks": {
                     "type": "integer"
                 },
                 "proposed_blocks": {
+                    "type": "integer"
+                },
+                "proposed_payloads": {
                     "type": "integer"
                 },
                 "proposer_slashings": {
@@ -3330,10 +3431,16 @@
                 "missedblocks": {
                     "type": "integer"
                 },
+                "missedpayloads": {
+                    "type": "integer"
+                },
                 "orphanedblocks": {
                     "type": "integer"
                 },
                 "proposedblocks": {
+                    "type": "integer"
+                },
+                "proposedpayloads": {
                     "type": "integer"
                 },
                 "proposerslashingscount": {

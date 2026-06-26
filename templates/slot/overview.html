@@ -371,6 +371,22 @@
                   </div>
                 </div>
 
+                {{ if .BlockGasDelta }}
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7778 (Amsterdam): block.gasUsed = max(Σ regular, Σ state) instead of Σ receipt.gasUsed. Receipts include regular + state gas (EIP-8037) minus EIP-3529 refunds. The delta reveals how the 2D gas model shifts gas accounting: positive means the block header under-counts relative to receipts (refunds not reflected); negative means state gas inflated receipts beyond what the block header counts.">Block Gas Delta:</span></div>
+                  <div class="col-md-10 text-monospace">
+                    {{ if .BlockGasDeltaExcess }}
+                      <span class="text-success">+{{ formatAddCommas .BlockGasDelta }}</span>
+                      <span class="badge bg-info ms-2" data-bs-toggle="tooltip" title="block.gasUsed &gt; Σ receipt.gasUsed — regular gas dominates the block dimension. The gap equals gas refunds (EIP-3529) when no state gas is present, or refunds minus state gas in mixed blocks. Means senders were charged more in receipts than the block header reports.">EIP-7778 ▲</span>
+                    {{ else }}
+                      <span class="text-warning">−{{ formatAddCommas .BlockGasDelta }}</span>
+                      <span class="badge bg-warning text-dark ms-2" data-bs-toggle="tooltip" title="block.gasUsed &lt; Σ receipt.gasUsed — state gas (EIP-8037) dominates the block dimension. Receipts sum higher than block.gasUsed because receipts include both regular + state gas per tx, but the block header only reports max(regular, state).">EIP-7778 ▼</span>
+                    {{ end }}
+                    <small class="text-muted ms-2">(receipts sum: {{ formatAddCommas .SumTxGasUsed }})</small>
+                  </div>
+                </div>
+                {{ end }}
+
                 {{ if not $block.PayloadHeader }}
                   <div class="row py-1">
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas Limit">Gas Limit:</span></div>

@@ -52,9 +52,20 @@ func ClientsCL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// clClientsPageCacheKeyPrefix is the shared prefix of every cached consensus clients page
+// variant. Each request caches under "<prefix><sortOrder>", so deleting the prefix evicts
+// all variants regardless of which sort orders were requested.
+const clClientsPageCacheKeyPrefix = "clients/consensus/"
+
+// InvalidateCLClientsPageCache evicts all cached variants of the consensus clients page
+// so the next request rebuilds them from freshly refreshed client data.
+func InvalidateCLClientsPageCache() {
+	services.GlobalFrontendCache.RemoveCacheByPrefix(clClientsPageCacheKeyPrefix)
+}
+
 func getCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, error) {
 	pageData := &models.ClientsCLPageData{}
-	pageCacheKey := fmt.Sprintf("clients/consensus/%s", sortOrder)
+	pageCacheKey := fmt.Sprintf("%s%s", clClientsPageCacheKeyPrefix, sortOrder)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildCLClientsPageData(sortOrder)
 		pageCall.CacheTimeout = cacheTimeout

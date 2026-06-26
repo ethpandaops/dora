@@ -281,6 +281,17 @@ func (fc *FrontendCacheService) setFrontendCache(pageKey string, value interface
 	return fc.tieredCache.Set(pageKey, value, timeout)
 }
 
+// RemoveCacheByPrefix evicts every cached page whose key starts with pageKeyPrefix, so the
+// next request rebuilds them from fresh data. This is used to actively invalidate all
+// variants of a page (e.g. every sort order) after the underlying data has been
+// force-refreshed, instead of waiting for each page's cache timeout to expire.
+func (fc *FrontendCacheService) RemoveCacheByPrefix(pageKeyPrefix string) error {
+	if !fc.cachingEnabled {
+		return nil
+	}
+	return fc.tieredCache.DeleteByPrefix(pageKeyPrefix)
+}
+
 func (fc *FrontendCacheService) completePageLoad(pageKey string, processingPage *FrontendCacheProcessingPage) {
 	processingPage.modelMutex.Unlock()
 	fc.processingMutex.Lock()
