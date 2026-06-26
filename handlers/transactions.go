@@ -335,6 +335,7 @@ func enrichElTransactionRows(ctx context.Context, dbTxs []*dbtypes.ElTransaction
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.TransactionsPageDataTransaction{}
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+	revertIDMap := map[uint32][]*models.TransactionsPageDataTransaction{}
 
 	for _, tx := range dbTxs {
 		slot := tx.BlockUid >> 16
@@ -349,7 +350,10 @@ func enrichElTransactionRows(ctx context.Context, dbTxs []*dbtypes.ElTransaction
 			TxFee:       txFee,
 			GasUsed:     tx.GasUsed,
 			TxType:      tx.TxType & dbtypes.ElTxTypeMask,
-			Reverted:    tx.Reverted,
+			Reverted:    tx.RevertID > 0,
+		}
+		if tx.RevertID > 0 {
+			revertIDMap[tx.RevertID] = append(revertIDMap[tx.RevertID], txData)
 		}
 
 		if blockInfo, ok := blockMap[tx.BlockUid]; ok && blockInfo.Block != nil {
@@ -404,5 +408,28 @@ func enrichElTransactionRows(ctx context.Context, dbTxs []*dbtypes.ElTransaction
 		}
 	}
 
+	applyRevertReasons(ctx, revertIDMap)
+
 	return result
+}
+
+// applyRevertReasons batch-loads the deduped revert reasons for the collected
+// revert_ids and sets them on the rows for tooltip display.
+func applyRevertReasons(ctx context.Context, revertIDMap map[uint32][]*models.TransactionsPageDataTransaction) {
+	if len(revertIDMap) == 0 {
+		return
+	}
+	ids := make([]uint32, 0, len(revertIDMap))
+	for id := range revertIDMap {
+		ids = append(ids, id)
+	}
+	reasons, err := db.GetElRevertReasonsByIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for id, reason := range reasons {
+		for _, txData := range revertIDMap[id] {
+			txData.RevertReason = reason
+		}
+	}
 }

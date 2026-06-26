@@ -319,9 +319,12 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	slot := tx.BlockUid >> 16
 	blockTime := chainState.SlotToTime(phase0.Slot(slot))
 
-	pageData.Status = !tx.Reverted
-	if tx.Reverted {
+	pageData.Status = tx.RevertID == 0
+	if tx.RevertID > 0 {
 		pageData.StatusText = "Failed"
+		if reasons, err := db.GetElRevertReasonsByIDs(ctx, []uint32{tx.RevertID}); err == nil {
+			pageData.RevertReason = reasons[tx.RevertID]
+		}
 	} else {
 		pageData.StatusText = "Success"
 	}
@@ -418,6 +421,9 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	if elBlock, err := db.GetElBlock(ctx, tx.BlockUid); err == nil {
 		pageData.DataStatus = elBlock.DataStatus
 	}
+	// A call trace exists for this tx whenever its block stored call traces, even
+	// if it has only the single root frame (no internal calls aggregated).
+	pageData.HasTrace = pageData.DataStatus&dbtypes.ElBlockDataCallTraces != 0
 
 	// Event count comes straight off the tx row (logs emitted); full event
 	// data is loaded from blockdb when the events tab is opened.
@@ -1120,12 +1126,9 @@ var callTypeNames = map[uint8]string{
 // with rich call trace data from blockdb (depth, input, output, gas, status).
 // Falls back to loading from the DB index if blockdb data is unavailable.
 func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64, txUid uint64) {
-	if pageData.InternalTxCount == 0 {
-		return
-	}
-
 	// If the block says call trace data is unavailable (pruned / not stored),
-	// show the "not available" state instead of the DB-only fallback.
+	// show the "not available" state. Otherwise load the trace even when it has
+	// only the single root frame (no aggregated internal calls).
 	if pageData.DataStatus&dbtypes.ElBlockDataCallTraces == 0 {
 		pageData.InternalTxsNotAvailable = true
 		return

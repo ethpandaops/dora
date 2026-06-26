@@ -106,6 +106,7 @@ type AddressPageDataTransaction struct {
 	AmountRaw      []byte    `json:"amount_raw"`
 	TxFee          float64   `json:"tx_fee"` // Transaction fee in ETH
 	Reverted       bool      `json:"reverted"`
+	RevertReason   string    `json:"revert_reason,omitempty"`
 	MethodID       []byte    `json:"method_id"`
 	MethodName     string    `json:"method_name"`
 }

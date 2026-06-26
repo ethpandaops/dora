@@ -52,8 +52,9 @@ type TransactionPageData struct {
 	HasReceipt bool                `json:"has_receipt"` // Whether receipt data is available
 
 	// Status (only available with receipt)
-	Status     bool   `json:"status"` // true = success, false = reverted
-	StatusText string `json:"status_text"`
+	Status       bool   `json:"status"` // true = success, false = reverted
+	StatusText   string `json:"status_text"`
+	RevertReason string `json:"revert_reason,omitempty"` // decoded reason when reverted
 
 	// Block info (primary/canonical block)
 	BlockNumber uint64    `json:"block_number"`
@@ -154,6 +155,7 @@ type TransactionPageData struct {
 	TokenTransferCount uint64                              `json:"token_transfer_count"`
 
 	// Internal transactions tab
+	HasTrace                bool                             `json:"has_trace"` // a call trace exists (>=1 frame)
 	InternalTxs             []*TransactionPageDataInternalTx `json:"internal_txs"`
 	InternalTxCount         uint64                           `json:"internal_tx_count"`
 	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags

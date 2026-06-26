@@ -15,6 +15,7 @@ type CleanupStats struct {
 	InternalTxsDeleted    int64
 	TokenTransfersDeleted int64
 	BlocksDeleted         int64
+	RevertReasonsDeleted  int64
 }
 
 // DeleteElDataBeforeBlockUid deletes the relational EL data (transactions,
@@ -64,6 +65,15 @@ func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _
 		return stats, err
 	}
 	stats.BlocksDeleted = deleted
+
+	// Reclaim revert reasons no longer referenced by any surviving transaction
+	// (their most recent reference fell below the pruned tx_uid window). A single
+	// indexed range delete — no join back to el_transactions.
+	deleted, err = PruneElRevertReasonsBefore(ctx, txUidThreshold)
+	if err != nil {
+		return stats, err
+	}
+	stats.RevertReasonsDeleted = deleted
 
 	return stats, nil
 }

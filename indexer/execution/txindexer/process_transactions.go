@@ -3,11 +3,15 @@ package txindexer
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -124,6 +128,13 @@ type txProcessingResult struct {
 	fromAccount    *pendingAccount
 	toAccount      *pendingAccount
 
+	// Revert reason: reverted is set from the receipt status. revertReservedID is
+	// a reserved id for a well-known EVM error (else 0); revertReason is the
+	// decoded reason text for dynamic dedup (empty when not traced or none).
+	reverted         bool
+	revertReservedID uint32
+	revertReason     string
+
 	// Call trace data (populated in Mode Full + tracesEnabled)
 	internalAggregates map[*pendingAccount]*pendingInternalAggregate
 	callTraceData      []bdbtypes.FlatCallFrame // Flattened call trace for blockdb serialization
@@ -133,6 +144,75 @@ type txProcessingResult struct {
 
 	// Receipt metadata (populated in Mode Full for receipt reconstruction)
 	receiptMeta *bdbtypes.ReceiptMetaData
+}
+
+// panicSelector is the 4-byte selector of Panic(uint256) (0x4e487b71).
+var panicSelector = []byte{0x4e, 0x48, 0x7b, 0x71}
+
+// decodeRevertReason extracts a revert reason from the root call frame. It
+// returns either a reserved revert_id for a well-known EVM error (the full text
+// stays visible in the call-trace tab) or a reason string for dynamic dedup;
+// both are empty/zero when there is no decodable reason. Custom errors are
+// reduced to their 4-byte selector to keep the deduped reason set bounded.
+func decodeRevertReason(frame bdbtypes.FlatCallFrame) (reason string, reservedID uint32) {
+	out := frame.Output
+	if len(out) >= 4 {
+		if r, err := abi.UnpackRevert(out); err == nil && r != "" {
+			return truncateRevertReason(r), 0
+		}
+		if bytes.Equal(out[:4], panicSelector) && len(out) >= 36 {
+			code := new(big.Int).SetBytes(out[4:36])
+			return "Panic(0x" + code.Text(16) + ")", 0
+		}
+		// Custom error: keep only the selector (drop ABI args) to bound cardinality.
+		return "0x" + hex.EncodeToString(out[:4]), 0
+	}
+	if frame.Error != "" {
+		if id := reservedRevertID(frame.Error); id != 0 {
+			return "", id
+		}
+		return truncateRevertReason(frame.Error), 0
+	}
+	return "", 0
+}
+
+// reservedRevertID maps a well-known EVM execution error to a reserved revert_id
+// by substring match, or 0 if none match.
+func reservedRevertID(errText string) uint32 {
+	e := strings.ToLower(errText)
+	switch {
+	case strings.Contains(e, "out of gas"):
+		return dbtypes.RevertIDOutOfGas
+	case strings.Contains(e, "stack underflow"):
+		return dbtypes.RevertIDStackUnderflow
+	case strings.Contains(e, "stack overflow"):
+		return dbtypes.RevertIDStackOverflow
+	}
+	return 0
+}
+
+func truncateRevertReason(s string) string {
+	const maxLen = 1024
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
+}
+
+// resolveRevertID maps a decoded revert reason to a revert_id: the "unknown"
+// sentinel when no reason was decoded, else a deduped el_revert_reason id. On
+// error it falls back to the sentinel rather than failing the block.
+func (ctx *txProcessingContext) resolveRevertID(commitCtx context.Context, dbTx *sqlx.Tx, reason string, txUid uint64) uint32 {
+	if reason == "" {
+		return dbtypes.RevertIDUnknown
+	}
+	hash := sha256.Sum256([]byte(reason))
+	id, err := db.ResolveElRevertReason(commitCtx, dbTx, reason, hash[:16], txUid)
+	if err != nil {
+		ctx.indexer.logger.WithError(err).Warn("failed to resolve revert reason")
+		return dbtypes.RevertIDUnknown
+	}
+	return id
 }
 
 // pendingTxEvent represents an event collected in-memory for event index
@@ -276,7 +356,6 @@ func (ctx *txProcessingContext) processTransaction(
 		FromID:      fromAccount.id,
 		ToID:        toAccount.id,
 		Nonce:       txNonce,
-		Reverted:    receipt.Status == 0,
 		Amount:      weiToFloat(txValue, 18), // ETH uses 18 decimals
 		AmountRaw:   txValue.Bytes(),
 		MethodID:    methodID,
@@ -289,6 +368,7 @@ func (ctx *txProcessingContext) processTransaction(
 		TxType:      txType,
 		EffGasPrice: effGasPrice,
 	}
+	result.reverted = receipt.Status == 0
 
 	// Store pending accounts for resolving IDs at commit time
 	result.fromAccount = fromAccount
@@ -349,6 +429,13 @@ func (ctx *txProcessingContext) processTransaction(
 	// 6. Process call trace if available (Mode Full + tracesEnabled)
 	if callTrace != nil {
 		result.callTraceData, result.internalAggregates = ctx.processCallTrace(callTrace, fromAccount)
+	}
+
+	// Decode the revert reason from the root call frame (index 0 = depth 0).
+	// Only available when traces were collected; otherwise the reason stays empty
+	// and the tx maps to the "unknown" sentinel at commit time.
+	if result.reverted && len(result.callTraceData) > 0 {
+		result.revertReason, result.revertReservedID = decodeRevertReason(result.callTraceData[0])
 	}
 
 	// 7. Process state diffs (storage changes) if available (Mode Full + tracesEnabled)
@@ -1106,6 +1193,17 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 	if result.transaction != nil {
 		result.transaction.FromID = result.fromAccount.id
 		result.transaction.ToID = result.toAccount.id
+
+		// Resolve the revert reason to a revert_id. Well-known EVM errors use a
+		// reserved id directly; other reverts dedup into el_revert_reason; reverts
+		// with no decoded reason map to the "unknown" sentinel.
+		if result.reverted {
+			if result.revertReservedID != 0 {
+				result.transaction.RevertID = result.revertReservedID
+			} else {
+				result.transaction.RevertID = ctx.resolveRevertID(commitCtx, dbTx, result.revertReason, result.transaction.TxUid)
+			}
+		}
 
 		// event_count is the badge count for the events tab; full event data
 		// lives in blockdb (no separate searchable index table).

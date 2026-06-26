@@ -14,7 +14,7 @@ import (
 )
 
 // elTransactionColumns is the column list for el_transactions queries.
-const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price, event_count"
+const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, revert_id, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price, event_count"
 
 func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElTransaction) error {
 	if len(txs) == 0 {
@@ -27,7 +27,7 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_transactions ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_transactions ",
 		}),
-		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price, event_count)",
+		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, revert_id, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price, event_count)",
 		" VALUES ",
 	)
 	argIdx := 0
@@ -53,7 +53,7 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 		args[argIdx+3] = tx.FromID
 		args[argIdx+4] = tx.ToID
 		args[argIdx+5] = tx.Nonce
-		args[argIdx+6] = tx.Reverted
+		args[argIdx+6] = tx.RevertID
 		args[argIdx+7] = tx.Amount
 		args[argIdx+8] = tx.AmountRaw
 		args[argIdx+9] = tx.MethodID
@@ -69,7 +69,7 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (tx_uid) DO UPDATE SET block_uid = excluded.block_uid, tx_hash = excluded.tx_hash, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price, event_count = excluded.event_count",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (tx_uid) DO UPDATE SET block_uid = excluded.block_uid, tx_hash = excluded.tx_hash, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, revert_id = excluded.revert_id, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price, event_count = excluded.event_count",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -180,7 +180,12 @@ func appendElTransactionFilterConds(sql *strings.Builder, args *[]any, filter *d
 		add("to_id =", filter.ToID)
 	}
 	if filter.Reverted != nil {
-		add("reverted =", *filter.Reverted)
+		// revert_id 0 = success; any value > 0 = reverted.
+		if *filter.Reverted {
+			add("revert_id >", 0)
+		} else {
+			add("revert_id =", 0)
+		}
 	}
 	if filter.MinGasUsed != nil {
 		add("gas_used >=", *filter.MinGasUsed)

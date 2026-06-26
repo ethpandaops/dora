@@ -620,7 +620,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 						{
 							TxHash:      fmt.Sprintf("0x%x", txHashBytes),
 							BlockNumber: tx.BlockNumber,
-							Reverted:    tx.Reverted,
+							Reverted:    tx.RevertID > 0,
 						},
 					}
 				}
@@ -702,7 +702,7 @@ func buildTxSearchAheadResults(txs []*dbtypes.ElTransaction) []models.SearchAhea
 		if idx, exists := seen[key]; exists {
 			if tx.BlockNumber > results[idx].BlockNumber {
 				results[idx].BlockNumber = tx.BlockNumber
-				results[idx].Reverted = tx.Reverted
+				results[idx].Reverted = tx.RevertID > 0
 			}
 			continue
 		}
@@ -713,7 +713,7 @@ func buildTxSearchAheadResults(txs []*dbtypes.ElTransaction) []models.SearchAhea
 		results = append(results, models.SearchAheadTransactionResult{
 			TxHash:      fmt.Sprintf("0x%x", tx.TxHash),
 			BlockNumber: tx.BlockNumber,
-			Reverted:    tx.Reverted,
+			Reverted:    tx.RevertID > 0,
 		})
 	}
 	return results

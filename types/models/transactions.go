@@ -74,6 +74,7 @@ type TransactionsPageDataTransaction struct {
 	GasUsed        uint64    `json:"gas_used"`
 	TxType         uint8     `json:"tx_type"`
 	Reverted       bool      `json:"reverted"`
+	RevertReason   string    `json:"revert_reason,omitempty"`
 	MethodID       []byte    `json:"method_id"`
 	MethodName     string    `json:"method_name"`
 }

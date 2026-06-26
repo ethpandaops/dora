@@ -429,6 +429,7 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.AddressPageDataTransaction{}
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+	revertIDMap := map[uint32][]*models.AddressPageDataTransaction{}
 
 	for _, tx := range dbTxs {
 		slot := tx.BlockUid >> 16
@@ -449,7 +450,10 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 			Amount:      tx.Amount,
 			AmountRaw:   tx.AmountRaw,
 			TxFee:       txFee,
-			Reverted:    tx.Reverted,
+			Reverted:    tx.RevertID > 0,
+		}
+		if tx.RevertID > 0 {
+			revertIDMap[tx.RevertID] = append(revertIDMap[tx.RevertID], txData)
 		}
 
 		// Set block root and orphaned status from block lookup
@@ -508,6 +512,21 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 					txData.MethodName = sigLookup.Name
 				} else {
 					txData.MethodName = "call?"
+				}
+			}
+		}
+	}
+
+	// Batch-load revert reasons for the displayed reverted txs.
+	if len(revertIDMap) > 0 {
+		ids := make([]uint32, 0, len(revertIDMap))
+		for id := range revertIDMap {
+			ids = append(ids, id)
+		}
+		if reasons, rerr := db.GetElRevertReasonsByIDs(ctx, ids); rerr == nil {
+			for id, reason := range reasons {
+				for _, txData := range revertIDMap[id] {
+					txData.RevertReason = reason
 				}
 			}
 		}

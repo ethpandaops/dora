@@ -188,7 +188,7 @@
                       {{ end }}
                     {{ else }}
                       {{ if .Reverted }}
-                        <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="Included · execution reverted">Reverted</span>
+                        <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="{{ if .RevertReason }}Reverted: {{ .RevertReason }}{{ else }}Included · execution reverted{{ end }}">Reverted</span>
                       {{ else }}
                         <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Included · executed successfully">Success</span>
                       {{ end }}
