@@ -19,6 +19,9 @@ type BlockDb struct {
 	engine       types.BlockDbEngine
 	execEngine   types.ExecDataEngine // nil if engine doesn't support exec data
 	dutiesEngine types.DutiesEngine   // nil if engine doesn't support duties storage
+
+	txHashIndex       types.TxHashIndex // nil until detected natively or injected
+	txHashIndexNative bool              // true if provided by the engine (write post-commit), false if a relational adapter (write in-tx)
 }
 
 // GlobalBlockDb is the global block database instance.
@@ -56,6 +59,10 @@ func InitWithPebble(config dtypes.PebbleBlockDBConfig) error {
 	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
 		db.dutiesEngine = dutiesEngine
 	}
+	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
+		db.txHashIndex = txHashIndex
+		db.txHashIndexNative = true
+	}
 
 	GlobalBlockDb = db
 
@@ -80,6 +87,10 @@ func InitWithS3(config dtypes.S3BlockDBConfig) error {
 	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
 		db.dutiesEngine = dutiesEngine
 	}
+	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
+		db.txHashIndex = txHashIndex
+		db.txHashIndexNative = true
+	}
 
 	GlobalBlockDb = db
 
@@ -103,6 +114,10 @@ func InitWithTiered(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogger
 	}
 	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
 		db.dutiesEngine = dutiesEngine
+	}
+	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
+		db.txHashIndex = txHashIndex
+		db.txHashIndexNative = true
 	}
 
 	GlobalBlockDb = db
@@ -235,6 +250,69 @@ func (db *BlockDb) PruneExecDataBefore(ctx context.Context, maxSlot uint64) (int
 		return 0, nil
 	}
 	return db.execEngine.PruneExecDataBefore(ctx, maxSlot)
+}
+
+// SetTxHashIndex injects a tx-hash index implementation (e.g. the relational
+// adapter) and marks it non-native. Overrides any natively-detected index.
+func (db *BlockDb) SetTxHashIndex(idx types.TxHashIndex) {
+	db.txHashIndex = idx
+	db.txHashIndexNative = false
+}
+
+// SupportsTxHashIndex returns true if a tx-hash index is available.
+func (db *BlockDb) SupportsTxHashIndex() bool {
+	return db.txHashIndex != nil
+}
+
+// TxHashIndexNative reports whether the active index is engine-native (Pebble/
+// Tiered, written post-commit) rather than the relational adapter (written
+// in-transaction with el_transactions).
+func (db *BlockDb) TxHashIndexNative() bool {
+	return db.txHashIndexNative
+}
+
+// PutTxHashes writes tx-hash index entries.
+func (db *BlockDb) PutTxHashes(ctx context.Context, entries []types.TxHashEntry) error {
+	if db.txHashIndex == nil {
+		return fmt.Errorf("tx-hash index not available")
+	}
+	return db.txHashIndex.PutTxHashes(ctx, entries)
+}
+
+// LookupTxHash returns candidate tx_uids for an exact 10-byte prefix.
+func (db *BlockDb) LookupTxHash(ctx context.Context, prefix []byte) ([]uint64, error) {
+	if db.txHashIndex == nil {
+		return nil, nil
+	}
+	return db.txHashIndex.LookupTxHash(ctx, prefix)
+}
+
+// LookupTxHashRange returns candidate tx_uids for prefixes in [lo, hi).
+func (db *BlockDb) LookupTxHashRange(ctx context.Context, lo, hi []byte) ([]uint64, error) {
+	if db.txHashIndex == nil {
+		return nil, nil
+	}
+	return db.txHashIndex.LookupTxHashRange(ctx, lo, hi)
+}
+
+// PruneTxHashBefore prunes tx-hash index entries for slots before maxSlot.
+func (db *BlockDb) PruneTxHashBefore(ctx context.Context, maxSlot uint64) (int64, error) {
+	if db.txHashIndex == nil {
+		return 0, nil
+	}
+	return db.txHashIndex.PruneTxHashBefore(ctx, maxSlot)
+}
+
+// TxHashIndexDiskUsage returns the approximate on-disk size of a native
+// (engine-backed) tx-hash index, or 0 when the index is relational or absent.
+func (db *BlockDb) TxHashIndexDiskUsage() int64 {
+	if db.txHashIndex == nil || !db.txHashIndexNative {
+		return 0
+	}
+	if est, ok := db.engine.(interface{ EstimateTxHashIndexSize() int64 }); ok {
+		return est.EstimateTxHashIndexSize()
+	}
+	return 0
 }
 
 // SupportsDuties returns true if the underlying engine supports duties storage.

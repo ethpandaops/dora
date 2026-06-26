@@ -15,11 +15,9 @@ import (
 )
 
 const (
-	// KeyNamespaceLRU is the namespace for LRU tracking data.
-	KeyNamespaceLRU uint16 = 2
-
 	// LRU value format: [headerAccess (8B)] [bodyAccess (8B)] [payloadAccess (8B)] [balAccess (8B)]
 	// Each access time is a Unix nanosecond timestamp, 0 means never accessed.
+	// Stored under KeyNamespaceLRU (see pebble.go).
 	lruValueSize = 32
 
 	// Maximum number of LRU updates to buffer before forcing a flush.

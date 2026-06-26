@@ -588,6 +588,14 @@ type ElTransaction struct {
 	EventCount  uint16  `db:"event_count"`   // number of logs emitted (badge count; full event data in blockdb)
 }
 
+// ElTxHash is one entry of the long-lived tx-hash index: a 10-byte tx-hash
+// prefix mapped to its tx_uid. Backs by-hash lookups after el_transactions rows
+// are pruned; lives with the blockdb (details) retention.
+type ElTxHash struct {
+	Hash10 []byte `db:"hash10"`
+	TxUid  uint64 `db:"tx_uid"`
+}
+
 // el_transactions.tx_type packs a flag into the top bit so no extra column is
 // needed: the create flag is bit 7; the EVM tx type is everything below it.
 const (

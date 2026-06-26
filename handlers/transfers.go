@@ -221,6 +221,7 @@ func buildTransfersPageData(ctx context.Context, beforeTxUid uint64, beforeTxIdx
 		DisplayStatus:    colMask&0x20 != 0,
 		DisplayTokenType: colMask&0x40 != 0,
 	}
+	pageData.DataRange = getElDataRangeInfo()
 
 	filter := resolveTransferFilter(ctx, filterForm)
 	dbTransfers, hasNext, _ := db.GetElTokenTransfersFiltered(ctx, filter, beforeTxUid, beforeTxIdx, uint32(pageSize))

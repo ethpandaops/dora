@@ -174,6 +174,7 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		IsContract: account.IsContract,
 		LastNonce:  account.LastNonce,
 		TabView:    tabView,
+		DataRange:  getElDataRangeInfo(),
 	}
 
 	// If this address is a detected token contract, surface a link to its token page.

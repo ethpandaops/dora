@@ -6,6 +6,13 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
+// TransactionNotFoundData is the data passed to the transaction not-found page.
+type TransactionNotFoundData struct {
+	Reason             string // "disabled" or "notfound"
+	DetailsEnabled     bool   // whether details (blockdb) retention pruning is active
+	DetailsPrunedEpoch uint64 // epoch below which by-hash lookups may be unavailable
+}
+
 // TransactionViewMode represents the data availability mode for a transaction
 type TransactionViewMode uint8
 

@@ -17,9 +17,15 @@ type CleanupStats struct {
 	BlocksDeleted         int64
 }
 
-// DeleteElDataBeforeBlockUid deletes all EL data (transactions, internal txs,
-// event index, transfers, withdrawals, blocks) with block_uid less than the
-// specified threshold.
+// DeleteElDataBeforeBlockUid deletes the relational EL data (transactions,
+// internal txs, transfers, blocks) with block_uid less than the specified
+// threshold. This is the short (relational) retention boundary.
+//
+// It intentionally does NOT touch the el_txhash index: that index lives with the
+// longer blockdb (details) retention and is pruned separately by the indexer's
+// cleanupBlockdbRetention, so /tx/{hash} can resolve pruned transactions from
+// blockdb after their relational rows are gone.
+//
 // Returns statistics about deleted rows.
 // Uses batched deletes to avoid long locks - deletes in chunks and commits
 // between batches. Uses default batch size of 50000 rows per batch.

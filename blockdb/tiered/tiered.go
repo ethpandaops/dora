@@ -29,6 +29,7 @@ var (
 	_ types.BlockDbEngine  = (*TieredEngine)(nil)
 	_ types.ExecDataEngine = (*TieredEngine)(nil)
 	_ types.DutiesEngine   = (*TieredEngine)(nil)
+	_ types.TxHashIndex    = (*TieredEngine)(nil)
 )
 
 // SetTimeToSlotFn installs the time->slot resolver used by the Pebble cache's

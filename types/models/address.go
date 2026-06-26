@@ -9,6 +9,7 @@ type AddressPageData struct {
 	Address            []byte `json:"address"`
 	AccountID          uint64 `json:"account_id"`
 	IsContract         bool   `json:"is_contract"`
+	DataRange          *ElDataRangeInfo
 	IsToken            bool   `json:"is_token"`
 	TokenName          string `json:"token_name"`
 	TokenSymbol        string `json:"token_symbol"`

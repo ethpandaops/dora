@@ -166,6 +166,17 @@ type Config struct {
 		Retention       time.Duration `yaml:"retention" envconfig:"EXECUTIONINDEXER_RETENTION"`
 		CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"EXECUTIONINDEXER_CLEANUP_INTERVAL"`
 
+		// DetailsRetention is the (longer) retention for blockdb exec data and the
+		// tx-hash index, decoupled from the relational Retention above. When 0 or
+		// below Retention it falls back to Retention (single-tier behaviour).
+		DetailsRetention time.Duration `yaml:"detailsRetention" envconfig:"EXECUTIONINDEXER_DETAILS_RETENTION"`
+
+		// TxHashIndexStore selects where the tx-hash index lives: "pebble" (native
+		// blockdb namespaces, requires a local pebble), "postgres" (el_txhash
+		// table, durable), or "auto"/"" (pebble for the pebble backend, postgres
+		// for s3/tiered).
+		TxHashIndexStore string `yaml:"txHashIndexStore" envconfig:"EXECUTIONINDEXER_TXHASH_INDEX_STORE"`
+
 		// Detail storage (Mode 3 features)
 		DetailsEnabled bool   `yaml:"detailsEnabled" envconfig:"EXECUTIONINDEXER_DETAILS_ENABLED"`
 		TracesEnabled  bool   `yaml:"tracesEnabled" envconfig:"EXECUTIONINDEXER_TRACES_ENABLED"`

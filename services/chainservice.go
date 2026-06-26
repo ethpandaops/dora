@@ -290,6 +290,33 @@ func (cs *ChainService) StartService() error {
 		})
 	}
 
+	// Select where the long-lived tx-hash index lives. "pebble" uses the
+	// engine-native index (pebble backend, or pinned in the tiered cache);
+	// "postgres" forces the relational el_txhash table; "auto"/"" uses native
+	// only for the pebble backend (authoritative store) and postgres otherwise
+	// (s3/tiered, where the local pebble is absent or a disposable cache).
+	// Note: reconstruction of a pruned tx needs its block root from the beacon
+	// `slots` table, which must be retained at least as long as DetailsRetention.
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		store := strings.ToLower(strings.TrimSpace(utils.Config.ExecutionIndexer.TxHashIndexStore))
+		useDB := false
+		switch store {
+		case "postgres", "pg", "db":
+			useDB = true
+		case "pebble":
+			if !blockdb.GlobalBlockDb.TxHashIndexNative() {
+				cs.logger.Warnf("txHashIndexStore=pebble but the %q backend has no native index; using postgres", utils.Config.BlockDb.Engine)
+				useDB = true
+			}
+		default: // auto
+			useDB = utils.Config.BlockDb.Engine != "pebble"
+		}
+		if useDB {
+			blockdb.GlobalBlockDb.SetTxHashIndex(db.NewDBTxHashIndex())
+		}
+		cs.logger.Infof("tx-hash index store: native=%v", blockdb.GlobalBlockDb.TxHashIndexNative())
+	}
+
 	// reset sync state if configured
 	if utils.Config.Indexer.ResyncFromEpoch != nil {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {

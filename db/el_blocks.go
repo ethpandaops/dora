@@ -112,6 +112,19 @@ func GetTotalElBlockDataSize(ctx context.Context) (int64, error) {
 	return total, nil
 }
 
+// GetElBlockDataSizeBefore returns the summed blockdb exec-data size of blocks
+// with block_uid below the threshold (used to report freed bytes on prune).
+func GetElBlockDataSizeBefore(ctx context.Context, blockUidThreshold uint64) (int64, error) {
+	var total int64
+	err := ReaderDb.GetContext(ctx, &total,
+		"SELECT COALESCE(SUM(data_size), 0) FROM el_blocks WHERE block_uid < $1 AND data_size > 0",
+		blockUidThreshold)
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 // GetOldestElBlocksWithData returns the oldest blocks that have blockdb data,
 // ordered by block_uid ascending.
 func GetOldestElBlocksWithData(ctx context.Context, limit uint32) ([]*dbtypes.ElBlock, error) {

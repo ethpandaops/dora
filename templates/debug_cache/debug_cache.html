@@ -628,6 +628,17 @@
     {{ end }}
     {{ end }}
 
+    {{ with .TxHashIndex }}{{ if .Enabled }}
+    <h5 class="card-title mb-3 mt-4"><i class="fa fa-fingerprint me-1"></i> TX-Hash Index</h5>
+    <table class="table table-sm table-borderless" style="max-width: 400px;">
+      <tbody>
+        <tr><td class="text-muted" style="width:200px;">Store</td><td>{{ .StoreType }}</td></tr>
+        {{ if not .Native }}<tr><td class="text-muted">Entries (approx)</td><td>{{ formatNumber .Count }}</td></tr>{{ end }}
+        {{ if gt .SizeBytes 0 }}<tr><td class="text-muted">Size{{ if .Native }} (estimate){{ end }}</td><td>{{ formatByteSize .SizeBytes }}</td></tr>{{ end }}
+      </tbody>
+    </table>
+    {{ end }}{{ end }}
+
     {{ end }}
   </div>
 </div>
@@ -679,6 +690,16 @@
             <tr><td class="text-muted" style="width:200px;">Latest Indexed Slot</td><td>{{ formatNumber .LatestSlot }}</td></tr>
           </tbody>
         </table>
+        {{ with .Pruning }}
+        <h5 class="card-title mb-3 mt-4"><i class="fa fa-broom me-1"></i> Pruning</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Last Cleanup</td><td>{{ .LastCleanup }}</td></tr>
+            <tr><td class="text-muted">Relational Pruned Before</td><td>{{ if .RelationalEnabled }}epoch {{ formatNumber .RelationalPrunedEpoch }}{{ else }}<span class="text-muted">disabled</span>{{ end }}</td></tr>
+            <tr><td class="text-muted">Details Pruned Before</td><td>{{ if .DetailsEnabled }}epoch {{ formatNumber .DetailsPrunedEpoch }}{{ else }}<span class="text-muted">disabled</span>{{ end }}</td></tr>
+          </tbody>
+        </table>
+        {{ end }}
       </div>
     </div>
 
@@ -712,6 +733,32 @@
         </tbody>
       </table>
     </div>
+    {{ end }}
+
+    {{ with .Pruning }}
+    {{ if .Runs }}
+    <h6 class="mb-2">Recent Pruning Runs</h6>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr><th>Time</th><th>Duration</th><th>Cleared</th></tr>
+        </thead>
+        <tbody>
+          {{ range .Runs }}
+          <tr>
+            <td>{{ .Time }}</td>
+            <td>{{ .Duration }}</td>
+            <td>
+              {{ if .Objects }}
+              {{ range .Objects }}<span class="badge text-bg-secondary me-1 mb-1">{{ .Label }}: {{ formatNumber .Deleted }}{{ if gt .SizeBytes 0 }} ({{ formatByteSize .SizeBytes }}){{ end }}</span>{{ end }}
+              {{ else }}<span class="text-muted">nothing</span>{{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ end }}
     {{ end }}
     {{ end }}
   </div>

@@ -2,6 +2,14 @@ package models
 
 import "time"
 
+// ElDataRangeInfo describes the available epoch range for relational EL list
+// data when retention pruning is active. Nil/zero when no pruning applies.
+type ElDataRangeInfo struct {
+	Pruned    bool   `json:"pruned"`
+	FromEpoch uint64 `json:"from_epoch"`
+	ToEpoch   uint64 `json:"to_epoch"`
+}
+
 // TransactionsPageData is the data for the global execution transactions list
 // page. The list uses keyset (boundary) pagination on tx_uid (see PagerData).
 type TransactionsPageData struct {
@@ -9,6 +17,7 @@ type TransactionsPageData struct {
 	PageSize     uint64                             `json:"page_size"`
 	Filter       *TransactionsFilter                `json:"filter"`
 	Pager        *PagerData                         `json:"pager"`
+	DataRange    *ElDataRangeInfo                   `json:"data_range"`
 
 	// Columns toggled via the column selector "d" bitmask. Hash, From and To
 	// are always shown; everything below is selectable.

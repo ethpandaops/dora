@@ -195,6 +195,27 @@ func Transactions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// getElDataRangeInfo returns the available epoch range for relational EL list
+// data when retention pruning is active (nil when no pruning applies). Shared by
+// the transactions, transfers and address list views.
+func getElDataRangeInfo() *models.ElDataRangeInfo {
+	ti := services.GlobalBeaconService.GetTxIndexer()
+	if ti == nil {
+		return nil
+	}
+	status := ti.GetPruningStatus()
+	if !status.RelationalEnabled || status.RelationalPrunedEpoch == 0 {
+		return nil
+	}
+	// The tail (pruned epoch) comes from the cleanup status; the head moves
+	// independently, so read the latest indexed epoch live.
+	return &models.ElDataRangeInfo{
+		Pruned:    true,
+		FromEpoch: status.RelationalPrunedEpoch,
+		ToEpoch:   uint64(ti.GetSyncEpoch()),
+	}
+}
+
 func getTransactionsPageData(beforeTxUid uint64, pageNum uint64, pageSize uint64, filterForm *models.TransactionsFilter, filterSuffix string, colMask uint64) (*models.TransactionsPageData, error) {
 	pageData := &models.TransactionsPageData{}
 	pageCacheKey := fmt.Sprintf("transactions:%v:%v:%v:%v:%v", beforeTxUid, pageNum, pageSize, filterSuffix, colMask)
@@ -235,6 +256,7 @@ func buildTransactionsPageData(ctx context.Context, beforeTxUid uint64, pageNum 
 		DisplayType:    colMask&0x40 != 0,
 		DisplayNonce:   colMask&0x80 != 0,
 	}
+	pageData.DataRange = getElDataRangeInfo()
 
 	filter := resolveTransactionFilter(ctx, filterForm)
 	dbTxs, hasNext, _ := db.GetElTransactionsFiltered(ctx, filter, beforeTxUid, uint32(pageSize))

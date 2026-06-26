@@ -10,17 +10,8 @@ import (
 	"github.com/ethpandaops/dora/blockdb/types"
 )
 
-const (
-	// KeyNamespaceExecData is the namespace prefix for execution data keys.
-	// Each key stores the full DXTX blob for one block.
-	// Slot-first ordering enables efficient range deletion for pruning.
-	KeyNamespaceExecData uint16 = 2
-)
-
-const (
-	// execDataKeyLen: [ns:2][slot:8][blockHash:4] = 14 bytes
-	execDataKeyLen = 2 + 8 + 4
-)
+// execDataKeyLen: [ns:2][slot:8][blockHash:4] = 14 bytes
+const execDataKeyLen = 2 + 8 + 4
 
 // makeExecDataKey builds a Pebble key for execution data.
 // Format: [namespace:2][slot:8 big-endian][blockHash prefix:4]
@@ -30,27 +21,6 @@ func makeExecDataKey(slot uint64, blockHash []byte) []byte {
 	binary.BigEndian.PutUint64(key[2:10], slot)
 	copyHashPrefix(key[10:14], blockHash, 4)
 	return key
-}
-
-// makeNamespaceRangeStart returns the range start key for a namespace.
-func makeNamespaceRangeStart(ns uint16) []byte {
-	key := make([]byte, 2)
-	binary.BigEndian.PutUint16(key[0:2], ns)
-	return key
-}
-
-// makeNamespaceSlotKey returns [namespace:2][slot:8] for range operations.
-func makeNamespaceSlotKey(ns uint16, slot uint64) []byte {
-	key := make([]byte, 10)
-	binary.BigEndian.PutUint16(key[0:2], ns)
-	binary.BigEndian.PutUint64(key[2:10], slot)
-	return key
-}
-
-// copyHashPrefix copies up to n bytes from src to dst.
-func copyHashPrefix(dst []byte, src []byte, n int) {
-	l := min(len(src), n)
-	copy(dst[:l], src[:l])
 }
 
 // AddExecData stores execution data for a block as a full DXTX blob.

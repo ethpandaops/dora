@@ -33,6 +33,7 @@ type TransfersPageData struct {
 	PageSize  uint64           `json:"page_size"`
 	Filter    *TransfersFilter `json:"filter"`
 	Pager     *PagerData       `json:"pager"`
+	DataRange *ElDataRangeInfo `json:"data_range"`
 
 	// Columns toggled via the column selector "d" bitmask. Hash, From and To
 	// are always shown.

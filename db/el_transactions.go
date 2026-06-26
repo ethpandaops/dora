@@ -1,10 +1,14 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
@@ -65,7 +69,7 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET tx_uid = excluded.tx_uid, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price, event_count = excluded.event_count",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (tx_uid) DO UPDATE SET block_uid = excluded.block_uid, tx_hash = excluded.tx_hash, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price, event_count = excluded.event_count",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -76,13 +80,44 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 	return nil
 }
 
+// GetElTransactionsByHash resolves transactions by full hash via the tx-hash
+// index (the dedicated tx_hash column index was dropped). The index returns
+// candidate tx_uids for the 10-byte prefix; rows are then filtered by the full
+// hash to discard prefix collisions. Falls back to a direct lookup if no index
+// is available (e.g. blockdb disabled).
 func GetElTransactionsByHash(ctx context.Context, txHash []byte) ([]*dbtypes.ElTransaction, error) {
-	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.SelectContext(ctx, &txs, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsTxHashIndex() {
+		txs := []*dbtypes.ElTransaction{}
+		err := ReaderDb.SelectContext(ctx, &txs, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
+		if err != nil {
+			return nil, err
+		}
+		return txs, nil
+	}
+
+	uids, err := blockdb.GlobalBlockDb.LookupTxHash(ctx, bdbtypes.HashPrefix(txHash))
 	if err != nil {
 		return nil, err
 	}
-	return txs, nil
+	if len(uids) == 0 {
+		return []*dbtypes.ElTransaction{}, nil
+	}
+
+	rows, err := GetElTransactionsByTxUids(ctx, uids)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collision guard: keep only rows whose full hash matches, ordered by
+	// block_uid DESC (canonical first), preserving prior behaviour.
+	matched := make([]*dbtypes.ElTransaction, 0, len(rows))
+	for _, r := range rows {
+		if bytes.Equal(r.TxHash, txHash) {
+			matched = append(matched, r)
+		}
+	}
+	sort.Slice(matched, func(i, j int) bool { return matched[i].BlockUid > matched[j].BlockUid })
+	return matched, nil
 }
 
 // GetElTransactionsByTxUids returns all transaction records matching the given

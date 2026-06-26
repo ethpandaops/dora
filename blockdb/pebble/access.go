@@ -7,13 +7,10 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-const (
-	// KeyNamespaceAccessTrack stores last-access timestamps for slot-keyed cache
-	// entities (exec data, duties) so they can be evicted LRU-style. Block
-	// components track access in the ns2 LRU record (see cleanup.go) instead.
-	KeyNamespaceAccessTrack uint16 = 6
-)
-
+// Access-tracking records (KeyNamespaceAccessTrack, see pebble.go) hold
+// last-access timestamps for slot-keyed cache entities (exec data, duties) so
+// they can be evicted LRU-style. Block components track access in the ns2 LRU
+// record (see cleanup.go) instead.
 const (
 	// execEntityTailLen identifies one exec-data object: [slot:8][blockHash:4].
 	execEntityTailLen = execDataKeyLen - 2
