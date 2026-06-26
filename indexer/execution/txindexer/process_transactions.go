@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -146,26 +147,47 @@ type txProcessingResult struct {
 	receiptMeta *bdbtypes.ReceiptMetaData
 }
 
-// panicSelector is the 4-byte selector of Panic(uint256) (0x4e487b71).
-var panicSelector = []byte{0x4e, 0x48, 0x7b, 0x71}
+// solidityPanicReasons maps Panic(uint256) codes to readable descriptions.
+var solidityPanicReasons = map[uint64]string{
+	0x00: "generic panic",
+	0x01: "assertion failed",
+	0x11: "arithmetic overflow or underflow",
+	0x12: "division or modulo by zero",
+	0x21: "invalid enum conversion",
+	0x22: "corrupted storage byte array",
+	0x31: "pop on empty array",
+	0x32: "array index out of bounds",
+	0x41: "memory allocation overflow",
+	0x51: "call to invalid internal function",
+}
 
 // decodeRevertReason extracts a revert reason from the root call frame. It
 // returns either a reserved revert_id for a well-known EVM error (the full text
 // stays visible in the call-trace tab) or a reason string for dynamic dedup;
-// both are empty/zero when there is no decodable reason. Custom errors are
-// reduced to their 4-byte selector to keep the deduped reason set bounded.
+// both are empty/zero when there is no decodable reason. It decodes
+// Error(string) and Panic(uint256) payloads and reduces custom errors to their
+// 4-byte selector to keep the deduped reason set bounded.
 func decodeRevertReason(frame bdbtypes.FlatCallFrame) (reason string, reservedID uint32) {
 	out := frame.Output
 	if len(out) >= 4 {
-		if r, err := abi.UnpackRevert(out); err == nil && r != "" {
-			return truncateRevertReason(r), 0
+		switch binary.BigEndian.Uint32(out[:4]) {
+		case 0x08c379a0: // Error(string)
+			if r, err := abi.UnpackRevert(out); err == nil && r != "" {
+				return truncateRevertReason(r), 0
+			}
+		case 0x4e487b71: // Panic(uint256)
+			if len(out) >= 36 {
+				code := new(big.Int).SetBytes(out[4:36])
+				if code.IsUint64() {
+					if desc, ok := solidityPanicReasons[code.Uint64()]; ok {
+						return "Panic: " + desc, 0
+					}
+				}
+				return "Panic(0x" + code.Text(16) + ")", 0
+			}
+		default: // custom error: selector only, to bound cardinality
+			return "Custom(0x" + hex.EncodeToString(out[:4]) + ")", 0
 		}
-		if bytes.Equal(out[:4], panicSelector) && len(out) >= 36 {
-			code := new(big.Int).SetBytes(out[4:36])
-			return "Panic(0x" + code.Text(16) + ")", 0
-		}
-		// Custom error: keep only the selector (drop ABI args) to bound cardinality.
-		return "0x" + hex.EncodeToString(out[:4]), 0
 	}
 	if frame.Error != "" {
 		if id := reservedRevertID(frame.Error); id != 0 {
@@ -194,9 +216,11 @@ func reservedRevertID(errText string) uint32 {
 func truncateRevertReason(s string) string {
 	const maxLen = 1024
 	if len(s) > maxLen {
-		return s[:maxLen]
+		s = s[:maxLen]
 	}
-	return s
+	// Revert/error strings are attacker-controlled; sanitize to valid UTF-8 so
+	// the stored reason is safe to persist and render.
+	return strings.ToValidUTF8(s, "?")
 }
 
 // resolveRevertID maps a decoded revert reason to a revert_id: the "unknown"
