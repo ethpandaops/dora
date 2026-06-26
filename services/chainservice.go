@@ -259,7 +259,7 @@ func (cs *ChainService) StartService() error {
 	// initialize blockdb if configured
 	switch utils.Config.BlockDb.Engine {
 	case "pebble":
-		err := blockdb.InitWithPebble(utils.Config.BlockDb.Pebble)
+		err := blockdb.InitWithPebble(utils.Config.BlockDb.Pebble, cs.logger)
 		if err != nil {
 			return fmt.Errorf("failed initializing pebble blockdb: %v", err)
 		}
@@ -271,12 +271,12 @@ func (cs *ChainService) StartService() error {
 		}
 		cs.logger.Infof("S3 blockdb initialized at %v", utils.Config.BlockDb.S3.Bucket)
 	case "tiered":
-		err := blockdb.InitWithTiered(utils.Config.BlockDb.Tiered, cs.logger)
+		err := blockdb.InitWithTiered(utils.Config.BlockDb.Pebble, utils.Config.BlockDb.S3, cs.logger)
 		if err != nil {
 			return fmt.Errorf("failed initializing tiered blockdb: %v", err)
 		}
 		cs.logger.Infof("Tiered blockdb initialized (Pebble cache: %v, S3: %v)",
-			utils.Config.BlockDb.Tiered.Pebble.Path, utils.Config.BlockDb.Tiered.S3.Bucket)
+			utils.Config.BlockDb.Pebble.Path, utils.Config.BlockDb.S3.Bucket)
 	default:
 		cs.logger.Infof("Blockdb disabled")
 	}

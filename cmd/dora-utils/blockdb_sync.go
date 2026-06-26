@@ -82,7 +82,7 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 	// Initialize blockdb
 	switch cfg.BlockDb.Engine {
 	case "pebble":
-		err := blockdb.InitWithPebble(cfg.BlockDb.Pebble)
+		err := blockdb.InitWithPebble(cfg.BlockDb.Pebble, logger)
 		if err != nil {
 			logger.Fatalf("Failed initializing pebble blockdb: %v", err)
 		}

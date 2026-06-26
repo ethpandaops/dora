@@ -25,9 +25,11 @@ func (e *TieredEngine) AddEpochDuties(ctx context.Context, duties *types.EpochDu
 // GetEpochDuties retrieves the full duties, checking the cache first.
 func (e *TieredEngine) GetEpochDuties(ctx context.Context, firstSlot uint64) (*types.EpochDuties, error) {
 	if d, err := e.cache.GetEpochDuties(ctx, firstSlot); err == nil && d != nil {
+		e.recordTierRead(true)
 		e.cleanup.RecordDutiesAccess(firstSlot)
 		return d, nil
 	}
+	e.recordTierRead(false)
 
 	d, err := e.primary.GetEpochDuties(ctx, firstSlot)
 	if err != nil {

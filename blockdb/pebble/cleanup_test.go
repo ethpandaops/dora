@@ -65,7 +65,7 @@ func TestExecDataAgeEviction(t *testing.T) {
 			Enabled: true, CleanupMode: "age", RetentionTime: time.Hour,
 		},
 	})
-	cleanup := NewCacheCleanup(eng, logrus.New())
+	cleanup := NewCacheCleanup(eng, logrus.New(), true)
 	cleanup.SetTimeToSlotFn(func(time.Time) uint64 { return 100 })
 
 	oldRoot, newRoot := makeRoot(0x10), makeRoot(0x20)
@@ -111,7 +111,7 @@ func TestExecDataLRUEviction(t *testing.T) {
 			Enabled: true, CleanupMode: "lru",
 		},
 	})
-	cleanup := NewCacheCleanup(eng, logrus.New())
+	cleanup := NewCacheCleanup(eng, logrus.New(), true)
 
 	payload := make([]byte, 4096) // ~4KB each
 	rootOld, rootNew := makeRoot(0x10), makeRoot(0x20)
@@ -143,6 +143,38 @@ func TestExecDataLRUEviction(t *testing.T) {
 	}
 }
 
+// TestAuthoritativeModeSkipsExecData verifies that in pebble (authoritative)
+// mode the cleanup clears blocks/duties but leaves exec data alone (its
+// retention is owned by the EL indexer).
+func TestAuthoritativeModeSkipsExecData(t *testing.T) {
+	ctx := context.Background()
+	eng := testEngine(t, dtypes.PebbleBlockDBConfig{
+		ExecDataRetention: dtypes.BlockDbRetentionConfig{
+			Enabled: true, CleanupMode: "age", RetentionTime: time.Hour,
+		},
+		DutiesRetention: dtypes.BlockDbRetentionConfig{
+			Enabled: true, CleanupMode: "age", RetentionTime: time.Hour,
+		},
+	})
+	cleanup := NewCacheCleanup(eng, logrus.New(), false) // authoritative (pebble) mode
+	cleanup.SetTimeToSlotFn(func(time.Time) uint64 { return 100 })
+
+	if _, err := eng.AddExecData(ctx, 50, makeRoot(0x10), []byte("old-exec")); err != nil {
+		t.Fatalf("add exec: %v", err)
+	}
+	oldDuties := MakeDutiesKey(32, DutiesRecordMeta, 0)
+	mustSet(t, eng, oldDuties, []byte("d"))
+
+	cleanup.runCleanup()
+
+	if has, _ := eng.HasExecData(ctx, 50, makeRoot(0x10)); !has {
+		t.Fatal("exec data must NOT be cleared in authoritative mode (EL-indexer owned)")
+	}
+	if keyExists(t, eng, oldDuties) {
+		t.Fatal("old duties should be cleared in authoritative mode")
+	}
+}
+
 // TestDutiesAgeEvictionWholeEpoch verifies all keys of an epoch below the cutoff
 // are removed together while a newer epoch's keys survive.
 func TestDutiesAgeEvictionWholeEpoch(t *testing.T) {
@@ -151,7 +183,7 @@ func TestDutiesAgeEvictionWholeEpoch(t *testing.T) {
 			Enabled: true, CleanupMode: "age", RetentionTime: time.Hour,
 		},
 	})
-	cleanup := NewCacheCleanup(eng, logrus.New())
+	cleanup := NewCacheCleanup(eng, logrus.New(), true)
 	cleanup.SetTimeToSlotFn(func(time.Time) uint64 { return 100 })
 
 	// Old epoch (firstSlot 32): meta + two committee slots.

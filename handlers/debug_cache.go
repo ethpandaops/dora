@@ -15,6 +15,7 @@ import (
 	"github.com/ethpandaops/dora/blockdb"
 	bpebble "github.com/ethpandaops/dora/blockdb/pebble"
 	bs3 "github.com/ethpandaops/dora/blockdb/s3"
+	btiered "github.com/ethpandaops/dora/blockdb/tiered"
 	"github.com/ethpandaops/dora/cache"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -70,8 +71,16 @@ type BlockDBDebugData struct {
 	EngineName  string
 	PebbleStats *PebbleDebugData
 	S3Stats     *S3DebugData
+	TierStats   *TierStatsDebugData
 	StoredData  *BlockDbStoredData
 	TxHashIndex *TxHashIndexDebugData
+}
+
+// TierStatsDebugData holds tiered-engine read hit/miss stats.
+type TierStatsDebugData struct {
+	CacheHits   int64
+	CacheMisses int64
+	HitRatePct  float64
 }
 
 // TxHashIndexDebugData describes the tx-hash index store and its size.
@@ -321,6 +330,16 @@ func buildBlockDBDebugData() *BlockDBDebugData {
 	case *bs3.S3Engine:
 		data.EngineName = "S3"
 		data.S3Stats = buildS3DebugData(e)
+	case *btiered.TieredEngine:
+		data.EngineName = "Tiered (Pebble cache + S3)"
+		data.PebbleStats = buildPebbleDebugData(e.GetCache().GetDB())
+		data.S3Stats = buildS3DebugData(e.GetPrimary())
+		hits, misses := e.TierStats()
+		tier := &TierStatsDebugData{CacheHits: hits, CacheMisses: misses}
+		if total := hits + misses; total > 0 {
+			tier.HitRatePct = float64(hits) / float64(total) * 100
+		}
+		data.TierStats = tier
 	default:
 		data.EngineName = "Unknown"
 	}

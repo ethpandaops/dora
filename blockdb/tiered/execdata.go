@@ -27,9 +27,11 @@ func (e *TieredEngine) AddExecData(ctx context.Context, slot uint64, blockRoot [
 // populating it from S3 on a miss.
 func (e *TieredEngine) GetExecData(ctx context.Context, slot uint64, blockRoot []byte) ([]byte, error) {
 	if cached, err := e.cache.HasExecData(ctx, slot, blockRoot); err == nil && cached {
+		e.recordTierRead(true)
 		e.cleanup.RecordExecAccess(slot, blockRoot)
 		return e.cache.GetExecData(ctx, slot, blockRoot)
 	}
+	e.recordTierRead(false)
 
 	data, err := e.primary.GetExecData(ctx, slot, blockRoot)
 	if err != nil {
@@ -49,9 +51,11 @@ func (e *TieredEngine) GetExecData(ctx context.Context, slot uint64, blockRoot [
 // when the object is cached and falling back to S3 range reads otherwise.
 func (e *TieredEngine) GetExecDataRange(ctx context.Context, slot uint64, blockRoot []byte, offset int64, length int64) ([]byte, error) {
 	if cached, err := e.cache.HasExecData(ctx, slot, blockRoot); err == nil && cached {
+		e.recordTierRead(true)
 		e.cleanup.RecordExecAccess(slot, blockRoot)
 		return e.cache.GetExecDataRange(ctx, slot, blockRoot, offset, length)
 	}
+	e.recordTierRead(false)
 	return e.primary.GetExecDataRange(ctx, slot, blockRoot, offset, length)
 }
 
@@ -60,9 +64,11 @@ func (e *TieredEngine) GetExecDataRange(ctx context.Context, slot uint64, blockR
 // reads otherwise. A single-tx view is not worth pulling the full blob to cache.
 func (e *TieredEngine) GetExecDataTxSections(ctx context.Context, slot uint64, blockRoot []byte, txHash []byte, sections uint32) (*types.ExecDataTxSections, error) {
 	if cached, err := e.cache.HasExecData(ctx, slot, blockRoot); err == nil && cached {
+		e.recordTierRead(true)
 		e.cleanup.RecordExecAccess(slot, blockRoot)
 		return e.cache.GetExecDataTxSections(ctx, slot, blockRoot, txHash, sections)
 	}
+	e.recordTierRead(false)
 	return e.primary.GetExecDataTxSections(ctx, slot, blockRoot, txHash, sections)
 }
 

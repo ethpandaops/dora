@@ -22,27 +22,40 @@ type BlockDb struct {
 
 	txHashIndex       types.TxHashIndex // nil until detected natively or injected
 	txHashIndexNative bool              // true if provided by the engine (write post-commit), false if a relational adapter (write in-tx)
+
+	// cleanup is the authoritative retention worker for the pebble backend (the
+	// tiered engine owns its own cache-mode cleanup internally). Nil otherwise.
+	cleanup *pebble.CacheCleanup
 }
 
 // GlobalBlockDb is the global block database instance.
 var GlobalBlockDb *BlockDb
 
-// SetTimeToSlotFn forwards a time->slot resolver to the engine when it has a
-// cache that needs one for age-based eviction (currently the tiered engine).
-// No-op for engines without such a cache.
+// SetTimeToSlotFn forwards a time->slot resolver used for age-based retention of
+// the slot-keyed namespaces (exec data, duties) to whichever component runs the
+// cleanup: the tiered engine, or the pebble backend's authoritative cleanup.
 func (db *BlockDb) SetTimeToSlotFn(fn func(t time.Time) uint64) {
-	if db == nil || db.engine == nil {
+	if db == nil {
 		return
 	}
-	if s, ok := db.engine.(interface {
-		SetTimeToSlotFn(func(t time.Time) uint64)
-	}); ok {
-		s.SetTimeToSlotFn(fn)
+	if db.cleanup != nil {
+		db.cleanup.SetTimeToSlotFn(fn)
+	}
+	if db.engine != nil {
+		if s, ok := db.engine.(interface {
+			SetTimeToSlotFn(func(t time.Time) uint64)
+		}); ok {
+			s.SetTimeToSlotFn(fn)
+		}
 	}
 }
 
 // InitWithPebble initializes the block database with Pebble (local) storage.
-func InitWithPebble(config dtypes.PebbleBlockDBConfig) error {
+// Pebble is the authoritative store here, so its retention configs (block /
+// duties) delete data rather than evict cached copies. Exec-data retention is
+// owned by the EL indexer (executionIndexer.detailsRetention); a blockDb
+// exec-data retention is ignored with a warning.
+func InitWithPebble(config dtypes.PebbleBlockDBConfig, logger logrus.FieldLogger) error {
 	engine, err := pebble.NewPebbleEngine(config)
 	if err != nil {
 		return err
@@ -62,6 +75,15 @@ func InitWithPebble(config dtypes.PebbleBlockDBConfig) error {
 	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
 		db.txHashIndex = txHashIndex
 		db.txHashIndexNative = true
+	}
+
+	// Run the authoritative retention worker (pebble mode = not a cache).
+	if pe, ok := engine.(*pebble.PebbleEngine); ok {
+		if config.ExecDataRetention.Enabled {
+			logger.Warn("blockDb.pebble.execDataRetention is ignored in pebble mode; exec-data retention is controlled by executionIndexer.detailsRetention")
+		}
+		db.cleanup = pebble.NewCacheCleanup(pe, logger, false)
+		db.cleanup.Start()
 	}
 
 	GlobalBlockDb = db
@@ -97,9 +119,10 @@ func InitWithS3(config dtypes.S3BlockDBConfig) error {
 	return nil
 }
 
-// InitWithTiered initializes the block database with tiered storage (Pebble cache + S3 backend).
-func InitWithTiered(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogger) error {
-	engine, err := tiered.NewTieredEngine(config, logger)
+// InitWithTiered initializes the block database with tiered storage (Pebble
+// cache in front of an S3 backend), reusing the shared pebble and s3 configs.
+func InitWithTiered(pebbleConfig dtypes.PebbleBlockDBConfig, s3Config dtypes.S3BlockDBConfig, logger logrus.FieldLogger) error {
+	engine, err := tiered.NewTieredEngine(pebbleConfig, s3Config, logger)
 	if err != nil {
 		return err
 	}
@@ -131,6 +154,9 @@ func (db *BlockDb) GetEngine() types.BlockDbEngine {
 }
 
 func (db *BlockDb) Close() error {
+	if db.cleanup != nil {
+		db.cleanup.Stop()
+	}
 	return db.engine.Close()
 }
 

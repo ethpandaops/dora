@@ -30,6 +30,12 @@ type CacheCleanup struct {
 	config dtypes.PebbleBlockDBConfig
 	logger logrus.FieldLogger
 
+	// cacheMode is true when Pebble is a cache in front of S3 (tiered): eviction
+	// removes cached copies only, and exec data is cache-evictable. When false
+	// (Pebble is the authoritative store), the same retentions instead delete the
+	// data, and exec-data retention is left to the EL indexer (see runCleanup).
+	cacheMode bool
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -62,14 +68,16 @@ type lruUpdate struct {
 	balAccess     int64
 }
 
-// NewCacheCleanup creates a new cache cleanup manager.
-func NewCacheCleanup(engine *PebbleEngine, logger logrus.FieldLogger) *CacheCleanup {
+// NewCacheCleanup creates a new cleanup manager. cacheMode selects tiered
+// (cache eviction) vs pebble (authoritative deletion) semantics; see runCleanup.
+func NewCacheCleanup(engine *PebbleEngine, logger logrus.FieldLogger, cacheMode bool) *CacheCleanup {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &CacheCleanup{
 		engine:    engine,
 		config:    engine.GetConfig(),
 		logger:    logger.WithField("component", "pebble-cleanup"),
+		cacheMode: cacheMode,
 		ctx:       ctx,
 		cancel:    cancel,
 		lruBuffer: make(map[string]*lruUpdate, 100),
@@ -222,20 +230,26 @@ func makeLRUKey(root []byte) []byte {
 	return key
 }
 
-// runCleanup evicts cached data per namespace from the Pebble cache. Each
-// namespace is governed by its own combined retention config. Eviction only
-// removes cached copies; the authoritative data in S3 is untouched. The
-// tx-hash index namespaces (4/5) are intentionally never evicted here — they
-// are index data pruned by the EL details retention.
+// runCleanup applies the per-namespace retention configs. In tiered mode it
+// evicts cached copies (the authoritative data stays in S3); in pebble mode the
+// Pebble store is authoritative, so the same operation deletes the data. Either
+// way, block and duties data are governed here. Exec data is only handled in
+// cache (tiered) mode — in pebble mode its retention is owned by the EL indexer
+// (executionIndexer.detailsRetention), so blockDb exec-data retention is ignored
+// (a warning is logged at init). The tx-hash index namespaces (4/5) are never
+// touched here — they are pruned by the EL details retention.
 func (c *CacheCleanup) runCleanup() {
-	c.logger.Debug("starting cache cleanup")
+	c.logger.Debug("starting blockdb cleanup")
 
-	// Block components (header/body/payload/bal) are evicted together per block.
+	// Block components (header/body/payload/bal) are cleared together per block.
 	c.cleanupBlocks(&c.config.BlockRetention)
-
-	// Slot-keyed entities, each a single object class.
-	c.cleanupSlotNamespace(KeyNamespaceExecData, execDataKeyLen, execEntityTailLen, &c.config.ExecDataRetention)
 	c.cleanupSlotNamespace(KeyNamespaceDuties, DutiesKeyLen, dutiesEntityTailLen, &c.config.DutiesRetention)
+
+	// Exec data is only cache-evictable in tiered mode; in pebble mode it is
+	// authoritative and managed by the EL indexer's details retention.
+	if c.cacheMode {
+		c.cleanupSlotNamespace(KeyNamespaceExecData, execDataKeyLen, execEntityTailLen, &c.config.ExecDataRetention)
+	}
 }
 
 // cleanupBlocks evicts block-component data (namespace 1) by the configured mode.

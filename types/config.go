@@ -186,10 +186,12 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 
 	BlockDb struct {
-		Engine string              `yaml:"engine" envconfig:"BLOCKDB_ENGINE"` // "pebble", "s3", or "tiered"
+		// Engine selects which of the configs below are used: "pebble" (Pebble
+		// only), "s3" (S3 only), or "tiered" (Pebble as a cache in front of S3 —
+		// reuses both the pebble and s3 configs below).
+		Engine string              `yaml:"engine" envconfig:"BLOCKDB_ENGINE"`
 		Pebble PebbleBlockDBConfig `yaml:"pebble"`
 		S3     S3BlockDBConfig     `yaml:"s3"`
-		Tiered TieredBlockDBConfig `yaml:"tiered"` // For tiered storage (Pebble cache + S3 backend)
 	} `yaml:"blockDb"`
 
 	KillSwitch struct {
@@ -295,10 +297,13 @@ type PebbleBlockDBConfig struct {
 	Path      string `yaml:"path" envconfig:"BLOCKDB_PEBBLE_PATH"`
 	CacheSize int    `yaml:"cacheSize" envconfig:"BLOCKDB_PEBBLE_CACHE_SIZE"` // Pebble internal cache in MB
 
-	// Per-namespace cache retention (used in tiered mode). Each governs eviction
-	// of one entity class from the Pebble cache; the authoritative copy in S3 is
-	// untouched. BlockRetention covers all block components (header/body/payload/
-	// bal) as a unit so a block is never left with only some components cached.
+	// Per-namespace retention. In tiered mode these evict cached copies from the
+	// Pebble cache (the authoritative copy stays in S3); in pebble mode Pebble is
+	// authoritative, so they delete the data. BlockRetention covers all block
+	// components (header/body/payload/bal) as a unit. ExecDataRetention only
+	// applies in tiered mode — in pebble mode exec-data retention is owned by
+	// executionIndexer.detailsRetention and this setting is ignored (with a
+	// warning). The tx-hash index is never governed here.
 	BlockRetention    BlockDbRetentionConfig `yaml:"blockRetention"`
 	ExecDataRetention BlockDbRetentionConfig `yaml:"execDataRetention"`
 	DutiesRetention   BlockDbRetentionConfig `yaml:"dutiesRetention"`
@@ -317,12 +322,6 @@ type S3BlockDBConfig struct {
 	SecretKey           string   `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
 	Path                string   `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
 	EnableRangeRequests bool     `yaml:"enableRangeRequests" envconfig:"BLOCKDB_S3_ENABLE_RANGE_REQUESTS"` // Use HTTP Range requests for selective loading
-}
-
-// TieredBlockDBConfig configures tiered storage (Pebble cache + S3 backend).
-type TieredBlockDBConfig struct {
-	Pebble PebbleBlockDBConfig `yaml:"pebble"`
-	S3     S3BlockDBConfig     `yaml:"s3"`
 }
 
 // YamlBool is a bool type that can be unmarshalled from both

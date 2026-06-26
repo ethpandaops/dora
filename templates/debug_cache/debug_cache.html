@@ -477,6 +477,21 @@
       </div>
     </div>
 
+    {{ with .TierStats }}
+    <div class="row mb-3">
+      <div class="col-md-12">
+        <h5 class="card-title mb-3">Cache Tier (Pebble &rarr; S3 fallback)</h5>
+        <table class="table table-sm table-borderless" style="max-width: 400px;">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Cache Hits</td><td>{{ formatNumber .CacheHits }}</td></tr>
+            <tr><td class="text-muted">Cache Misses (S3 reads)</td><td>{{ formatNumber .CacheMisses }}</td></tr>
+            <tr><td class="text-muted">Hit Rate</td><td>{{ if gt (addI64 .CacheHits .CacheMisses) 0 }}{{ printf "%.1f" .HitRatePct }}%{{ else }}N/A{{ end }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {{ end }}
+
     {{ if .PebbleStats }}
     {{ with .PebbleStats }}
     <div class="row">

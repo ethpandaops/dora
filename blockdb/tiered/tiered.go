@@ -3,6 +3,7 @@ package tiered
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -21,6 +22,30 @@ type TieredEngine struct {
 	primary *s3.S3Engine
 	cleanup *pebble.CacheCleanup
 	logger  logrus.FieldLogger
+
+	// Tier-level read counters: how often an object read was served from the
+	// Pebble cache vs. fell through to S3.
+	cacheHits   atomic.Int64
+	cacheMisses atomic.Int64
+}
+
+// GetCache returns the Pebble cache tier (for metrics/debug).
+func (e *TieredEngine) GetCache() *pebble.PebbleEngine { return e.cache }
+
+// GetPrimary returns the S3 primary tier (for metrics/debug).
+func (e *TieredEngine) GetPrimary() *s3.S3Engine { return e.primary }
+
+// TierStats returns the tier-level cache hit/miss counts.
+func (e *TieredEngine) TierStats() (hits, misses int64) {
+	return e.cacheHits.Load(), e.cacheMisses.Load()
+}
+
+func (e *TieredEngine) recordTierRead(hit bool) {
+	if hit {
+		e.cacheHits.Add(1)
+	} else {
+		e.cacheMisses.Add(1)
+	}
 }
 
 // Compile-time guarantees that the tiered engine exposes every capability of
@@ -38,10 +63,11 @@ func (e *TieredEngine) SetTimeToSlotFn(fn func(t time.Time) uint64) {
 	e.cleanup.SetTimeToSlotFn(fn)
 }
 
-// NewTieredEngine creates a new tiered storage engine.
-func NewTieredEngine(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogger) (types.BlockDbEngine, error) {
+// NewTieredEngine creates a new tiered storage engine from the shared pebble
+// (cache) and s3 (primary) configs.
+func NewTieredEngine(pebbleConfig dtypes.PebbleBlockDBConfig, s3Config dtypes.S3BlockDBConfig, logger logrus.FieldLogger) (types.BlockDbEngine, error) {
 	// Initialize Pebble cache
-	cacheEngine, err := pebble.NewPebbleEngine(config.Pebble)
+	cacheEngine, err := pebble.NewPebbleEngine(pebbleConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize pebble cache: %w", err)
 	}
@@ -52,7 +78,7 @@ func NewTieredEngine(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogge
 	}
 
 	// Initialize S3 primary storage
-	primaryEngine, err := s3.NewS3Engine(config.S3)
+	primaryEngine, err := s3.NewS3Engine(s3Config)
 	if err != nil {
 		cacheEngine.Close()
 		return nil, fmt.Errorf("failed to initialize s3 primary storage: %w", err)
@@ -64,8 +90,8 @@ func NewTieredEngine(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogge
 		return nil, fmt.Errorf("unexpected s3 engine type")
 	}
 
-	// Initialize cache cleanup
-	cleanup := pebble.NewCacheCleanup(pebbleEngine, logger)
+	// Initialize cache cleanup (cache mode: Pebble is a cache backed by S3)
+	cleanup := pebble.NewCacheCleanup(pebbleEngine, logger, true)
 	cleanup.Start()
 
 	return &TieredEngine{
@@ -135,6 +161,10 @@ func (e *TieredEngine) GetBlock(
 	// Determine what we can get from cache vs S3
 	cacheRequestFlags := flags & cacheFlags
 	s3RequestFlags := flags &^ cacheFlags
+
+	if flags != 0 {
+		e.recordTierRead(s3RequestFlags == 0) // hit only if everything requested was cached
+	}
 
 	result := &types.BlockData{}
 
