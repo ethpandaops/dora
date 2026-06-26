@@ -65,6 +65,8 @@ type IndexPageDataEpochs struct {
 	BlockCount            uint64    `json:"blocks"`
 	SlotsPerEpoch         uint64    `json:"slots_per_epoch"`
 	ProposalParticipation float64   `json:"proposalp"`
+	PayloadCount          uint64    `json:"payloads"`
+	PayloadParticipation  float64   `json:"payloadp"`
 }
 
 type IndexPageDataBlocks struct {

@@ -54,6 +54,8 @@ type APIEpochInfo struct {
 	ProposedBlocks        uint64  `json:"proposed_blocks"`
 	MissedBlocks          uint64  `json:"missed_blocks"`
 	OrphanedBlocks        uint64  `json:"orphaned_blocks"`
+	ProposedPayloads      uint64  `json:"proposed_payloads"`
+	MissedPayloads        uint64  `json:"missed_payloads"`
 	MinSyncCommitteeSize  uint64  `json:"min_sync_committee_size,omitempty"`
 	MaxSyncCommitteeSize  uint64  `json:"max_sync_committee_size,omitempty"`
 	WithdrawalRequests    uint64  `json:"withdrawal_requests,omitempty"`
@@ -152,6 +154,11 @@ func APIEpochsV1(w http.ResponseWriter, r *http.Request) {
 		specs := chainState.GetSpecs()
 		firstSlot := epoch * specs.SlotsPerEpoch
 
+		// Pre-ePBS the execution payload is bundled inside the beacon block, so every
+		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are revealed
+		// separately and may be missing.
+		gloasActive := chainState.IsEip7732Enabled(phase0.Epoch(epoch))
+
 		// Get blocks for this epoch
 		blocks := services.GlobalBeaconService.GetDbBlocksForSlots(r.Context(), firstSlot, uint32(specs.SlotsPerEpoch), true, true)
 
@@ -166,6 +173,12 @@ func APIEpochsV1(w http.ResponseWriter, r *http.Request) {
 
 			// Canonical block
 			epochInfo.ProposedBlocks++
+			if !gloasActive || slot.PayloadStatus == dbtypes.PayloadStatusCanonical {
+				epochInfo.ProposedPayloads++
+			} else {
+				// proposed block whose payload was not revealed (ePBS-specific failure)
+				epochInfo.MissedPayloads++
+			}
 			epochInfo.Attestations += slot.AttestationCount
 			epochInfo.Deposits += slot.DepositCount
 			epochInfo.ProposerSlashings += slot.ProposerSlashingCount
