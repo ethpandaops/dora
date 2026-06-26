@@ -281,6 +281,15 @@ func (cs *ChainService) StartService() error {
 		cs.logger.Infof("Blockdb disabled")
 	}
 
+	// Provide the blockdb cache with a time->slot resolver so it can derive
+	// cutoff slots for age-based eviction of slot-keyed namespaces (exec/duties).
+	if blockdb.GlobalBlockDb != nil {
+		chainState := cs.consensusPool.GetChainState()
+		blockdb.GlobalBlockDb.SetTimeToSlotFn(func(t time.Time) uint64 {
+			return uint64(chainState.TimeToSlot(t))
+		})
+	}
+
 	// reset sync state if configured
 	if utils.Config.Indexer.ResyncFromEpoch != nil {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {

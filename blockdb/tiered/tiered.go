@@ -3,6 +3,7 @@ package tiered
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -20,6 +21,20 @@ type TieredEngine struct {
 	primary *s3.S3Engine
 	cleanup *pebble.CacheCleanup
 	logger  logrus.FieldLogger
+}
+
+// Compile-time guarantees that the tiered engine exposes every capability of
+// its underlying tiers (block data, exec data, duties).
+var (
+	_ types.BlockDbEngine  = (*TieredEngine)(nil)
+	_ types.ExecDataEngine = (*TieredEngine)(nil)
+	_ types.DutiesEngine   = (*TieredEngine)(nil)
+)
+
+// SetTimeToSlotFn installs the time->slot resolver used by the Pebble cache's
+// age-based eviction of slot-keyed namespaces (exec data, duties).
+func (e *TieredEngine) SetTimeToSlotFn(fn func(t time.Time) uint64) {
+	e.cleanup.SetTimeToSlotFn(fn)
 }
 
 // NewTieredEngine creates a new tiered storage engine.

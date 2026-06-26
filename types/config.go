@@ -284,11 +284,13 @@ type PebbleBlockDBConfig struct {
 	Path      string `yaml:"path" envconfig:"BLOCKDB_PEBBLE_PATH"`
 	CacheSize int    `yaml:"cacheSize" envconfig:"BLOCKDB_PEBBLE_CACHE_SIZE"` // Pebble internal cache in MB
 
-	// Per-object-type retention configuration (used in tiered mode)
-	HeaderRetention  BlockDbRetentionConfig `yaml:"headerRetention"`
-	BodyRetention    BlockDbRetentionConfig `yaml:"bodyRetention"`
-	PayloadRetention BlockDbRetentionConfig `yaml:"payloadRetention"`
-	BalRetention     BlockDbRetentionConfig `yaml:"balRetention"`
+	// Per-namespace cache retention (used in tiered mode). Each governs eviction
+	// of one entity class from the Pebble cache; the authoritative copy in S3 is
+	// untouched. BlockRetention covers all block components (header/body/payload/
+	// bal) as a unit so a block is never left with only some components cached.
+	BlockRetention    BlockDbRetentionConfig `yaml:"blockRetention"`
+	ExecDataRetention BlockDbRetentionConfig `yaml:"execDataRetention"`
+	DutiesRetention   BlockDbRetentionConfig `yaml:"dutiesRetention"`
 
 	// Cleanup configuration
 	CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"BLOCKDB_PEBBLE_CLEANUP_INTERVAL"`

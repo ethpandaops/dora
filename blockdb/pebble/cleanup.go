@@ -36,9 +36,23 @@ type CacheCleanup struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// LRU update buffer
-	lruMu     sync.Mutex
-	lruBuffer map[string]*lruUpdate // root hex -> update
+	// timeToSlotFn resolves a wall-clock time to a slot number, used to derive
+	// the cutoff slot for age-based eviction of slot-keyed namespaces (exec
+	// data, duties). Nil until set via SetTimeToSlotFn; age eviction of those
+	// namespaces is skipped while nil.
+	timeToSlotFn func(t time.Time) uint64
+
+	// LRU update buffers (guarded by lruMu)
+	lruMu        sync.Mutex
+	lruBuffer    map[string]*lruUpdate // root hex -> block-component access update
+	accessBuffer map[string]int64      // access-record key -> Unix nano (exec/duties)
+}
+
+// SetTimeToSlotFn installs the time->slot resolver used by age-based eviction of
+// the slot-keyed namespaces. Safe to call once after construction, before the
+// cleanup loop needs it.
+func (c *CacheCleanup) SetTimeToSlotFn(fn func(t time.Time) uint64) {
+	c.timeToSlotFn = fn
 }
 
 // lruUpdate holds pending LRU timestamp updates for a block.
@@ -144,9 +158,10 @@ func (c *CacheCleanup) FlushLRU() {
 	c.flushLRULocked()
 }
 
-// flushLRULocked flushes LRU buffer (must hold lruMu).
+// flushLRULocked flushes the block-component LRU buffer and the slot-keyed
+// access-record buffer (must hold lruMu).
 func (c *CacheCleanup) flushLRULocked() {
-	if len(c.lruBuffer) == 0 {
+	if len(c.lruBuffer) == 0 && len(c.accessBuffer) == 0 {
 		return
 	}
 
@@ -185,13 +200,20 @@ func (c *CacheCleanup) flushLRULocked() {
 		batch.Set(key, value, nil)
 	}
 
+	for accessKey, ts := range c.accessBuffer {
+		value := make([]byte, 8)
+		binary.BigEndian.PutUint64(value, uint64(ts))
+		batch.Set([]byte(accessKey), value, nil)
+	}
+
 	if err := batch.Commit(nil); err != nil {
 		c.logger.Errorf("failed to flush LRU updates: %v", err)
 	}
 	batch.Close()
 
-	// Clear buffer
+	// Clear buffers
 	c.lruBuffer = make(map[string]*lruUpdate, 100)
+	c.accessBuffer = make(map[string]int64, 100)
 }
 
 // makeLRUKey creates the key for LRU data.
@@ -202,33 +224,39 @@ func makeLRUKey(root []byte) []byte {
 	return key
 }
 
-// runCleanup performs cleanup for all configured component types.
+// runCleanup evicts cached data per namespace from the Pebble cache. Each
+// namespace is governed by its own combined retention config. Eviction only
+// removes cached copies; the authoritative data in S3 is untouched. The
+// tx-hash index namespaces (4/5) are intentionally never evicted here — they
+// are index data pruned by the EL details retention.
 func (c *CacheCleanup) runCleanup() {
 	c.logger.Debug("starting cache cleanup")
 
-	componentConfigs := map[uint16]*dtypes.BlockDbRetentionConfig{
-		BlockTypeHeader:  &c.config.HeaderRetention,
-		BlockTypeBody:    &c.config.BodyRetention,
-		BlockTypePayload: &c.config.PayloadRetention,
-		BlockTypeBal:     &c.config.BalRetention,
+	// Block components (header/body/payload/bal) are evicted together per block.
+	c.cleanupBlocks(&c.config.BlockRetention)
+
+	// Slot-keyed entities, each a single object class.
+	c.cleanupSlotNamespace(KeyNamespaceExecData, execDataKeyLen, execEntityTailLen, &c.config.ExecDataRetention)
+	c.cleanupSlotNamespace(KeyNamespaceDuties, DutiesKeyLen, dutiesEntityTailLen, &c.config.DutiesRetention)
+}
+
+// cleanupBlocks evicts block-component data (namespace 1) by the configured mode.
+func (c *CacheCleanup) cleanupBlocks(config *dtypes.BlockDbRetentionConfig) {
+	if config == nil || !config.Enabled {
+		return
 	}
 
-	for blockType, config := range componentConfigs {
-		if config == nil || !config.Enabled {
-			continue
-		}
-
-		switch config.CleanupMode {
-		case "age":
-			c.cleanupByAge(blockType, config.RetentionTime)
-		case "lru":
-			c.cleanupByLRU(blockType, config.MaxSize*1024*1024) // Convert MB to bytes
-		}
+	switch config.CleanupMode {
+	case "age":
+		c.cleanupBlocksByAge(config.RetentionTime)
+	case "lru":
+		c.cleanupBlocksByLRU(config.MaxSize * 1024 * 1024) // MB -> bytes
 	}
 }
 
-// cleanupByAge removes entries older than the retention time based on storage timestamp.
-func (c *CacheCleanup) cleanupByAge(blockType uint16, retention time.Duration) {
+// cleanupBlocksByAge removes any block component older than the retention time
+// based on its stored write timestamp.
+func (c *CacheCleanup) cleanupBlocksByAge(retention time.Duration) {
 	if retention == 0 {
 		return
 	}
@@ -250,22 +278,13 @@ func (c *CacheCleanup) cleanupByAge(blockType uint16, retention time.Duration) {
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 
-		// Check if this key is in the block namespace
 		if len(key) < 36 { // 2 (namespace) + 32 (root) + 2 (type)
 			continue
 		}
-
-		namespace := binary.BigEndian.Uint16(key[:2])
-		if namespace != KeyNamespaceBlock {
+		if binary.BigEndian.Uint16(key[:2]) != KeyNamespaceBlock {
 			continue
 		}
 
-		keyType := binary.BigEndian.Uint16(key[len(key)-2:])
-		if keyType != blockType {
-			continue
-		}
-
-		// Check timestamp from value (stored at offset 8)
 		value := iter.Value()
 		if len(value) < valueHeaderSize {
 			continue
@@ -282,148 +301,288 @@ func (c *CacheCleanup) cleanupByAge(blockType uint16, retention time.Duration) {
 
 	if deleted > 0 {
 		if err := batch.Commit(nil); err != nil {
-			c.logger.Errorf("failed to commit age cleanup batch: %v", err)
+			c.logger.Errorf("failed to commit block age cleanup batch: %v", err)
 		} else {
-			c.logger.Infof("cleaned up %d entries for block type %d (age-based)", deleted, blockType)
+			c.logger.Infof("cleaned up %d cached block components (age-based)", deleted)
 		}
 	}
 }
 
-// lruEntry represents an entry for LRU cleanup sorting.
-type lruEntry struct {
-	root       []byte
-	key        []byte
+// blockEntry aggregates all cached components of a single block (by root) for
+// whole-block LRU eviction.
+type blockEntry struct {
+	keys       [][]byte
 	size       int64
 	lastAccess int64
 }
 
-// cleanupByLRU removes least recently used entries when size exceeds limit.
-func (c *CacheCleanup) cleanupByLRU(blockType uint16, maxSize int64) {
+// cleanupBlocksByLRU evicts whole blocks (all components for a root) least
+// recently used first, until the cached block data is under maxSize.
+func (c *CacheCleanup) cleanupBlocksByLRU(maxSize int64) {
 	if maxSize == 0 {
 		return
 	}
 
 	db := c.engine.GetDB()
 
-	// First pass: collect all entries with their sizes and LRU timestamps
-	entries := make([]*lruEntry, 0, 1000)
+	blocks := make(map[string]*blockEntry)
+	order := make([]*blockEntry, 0, 1024)
 	var totalSize int64
 
-	iter, err := db.NewIter(&pebble.IterOptions{})
+	lower, upper := makeNamespaceBounds(KeyNamespaceBlock)
+	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		c.logger.Errorf("failed to create iterator: %v", err)
 		return
 	}
 
-	// Scan block entries
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-
 		if len(key) < 36 {
 			continue
 		}
 
-		namespace := binary.BigEndian.Uint16(key[:2])
-		if namespace != KeyNamespaceBlock {
-			continue
-		}
-
-		keyType := binary.BigEndian.Uint16(key[len(key)-2:])
-		if keyType != blockType {
-			continue
-		}
-
-		// Extract root from key
 		root := key[2 : len(key)-2]
-		value := iter.Value()
-		size := int64(len(value))
-		totalSize += size
-
-		// Get LRU timestamp for this entry
-		lastAccess := c.getLRUTimestamp(db, root, blockType)
+		id := string(root)
+		ent, ok := blocks[id]
+		if !ok {
+			ent = &blockEntry{lastAccess: c.getBlockLRUTimestamp(db, root)}
+			blocks[id] = ent
+			order = append(order, ent)
+		}
 
 		keyCopy := make([]byte, len(key))
 		copy(keyCopy, key)
-		rootCopy := make([]byte, len(root))
-		copy(rootCopy, root)
-
-		entries = append(entries, &lruEntry{
-			root:       rootCopy,
-			key:        keyCopy,
-			size:       size,
-			lastAccess: lastAccess,
-		})
+		ent.keys = append(ent.keys, keyCopy)
+		size := int64(len(key) + len(iter.Value()))
+		ent.size += size
+		totalSize += size
 	}
 	iter.Close()
 
-	// Check if we need to clean up
 	if totalSize <= maxSize {
 		return
 	}
 
-	// Sort by last access time (oldest first, 0 = never accessed = oldest)
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].lastAccess < entries[j].lastAccess
+	sort.Slice(order, func(i, j int) bool {
+		return order[i].lastAccess < order[j].lastAccess
 	})
 
-	// Delete oldest entries until we're under the limit
 	batch := db.NewBatch()
 	defer batch.Close()
 
-	deleted := 0
-	freedSize := int64(0)
-	targetFree := totalSize - maxSize
+	evicted := 0
+	freed := int64(0)
+	target := totalSize - maxSize
 
-	for _, entry := range entries {
-		if freedSize >= targetFree {
+	for _, ent := range order {
+		if freed >= target {
 			break
 		}
-
-		batch.Delete(entry.key, nil)
-		freedSize += entry.size
-		deleted++
+		for _, k := range ent.keys {
+			batch.Delete(k, nil)
+		}
+		freed += ent.size
+		evicted++
 	}
 
-	if deleted > 0 {
+	if evicted > 0 {
 		if err := batch.Commit(nil); err != nil {
-			c.logger.Errorf("failed to commit LRU cleanup batch: %v", err)
+			c.logger.Errorf("failed to commit block LRU cleanup batch: %v", err)
 		} else {
-			c.logger.Infof("cleaned up %d entries for block type %d (LRU-based, freed %d bytes)",
-				deleted, blockType, freedSize)
+			c.logger.Infof("evicted %d cached blocks (LRU, freed %d bytes)", evicted, freed)
 		}
 	}
 }
 
-// getLRUTimestamp retrieves the LRU timestamp for a specific component.
-func (c *CacheCleanup) getLRUTimestamp(db *pebble.DB, root []byte, blockType uint16) int64 {
-	key := makeLRUKey(root)
-
-	res, closer, err := db.Get(key)
+// getBlockLRUTimestamp returns the most recent access across a root's cached
+// components (0 = never accessed = oldest).
+func (c *CacheCleanup) getBlockLRUTimestamp(db *pebble.DB, root []byte) int64 {
+	res, closer, err := db.Get(makeLRUKey(root))
 	if err != nil {
-		return 0 // Never accessed
+		return 0
 	}
-	defer closer.Close()
+	defer func() { _ = closer.Close() }()
 
 	if len(res) < lruValueSize {
 		return 0
 	}
 
-	// Extract timestamp based on block type
-	var offset int
-	switch blockType {
-	case BlockTypeHeader:
-		offset = 0
-	case BlockTypeBody:
-		offset = 8
-	case BlockTypePayload:
-		offset = 16
-	case BlockTypeBal:
-		offset = 24
-	default:
-		return 0
+	var maxTs int64
+	for offset := 0; offset+8 <= lruValueSize; offset += 8 {
+		if ts := int64(binary.BigEndian.Uint64(res[offset : offset+8])); ts > maxTs {
+			maxTs = ts
+		}
+	}
+	return maxTs
+}
+
+// cleanupSlotNamespace evicts a slot-keyed namespace (exec data, duties) from
+// the cache by the configured mode. dataKeyLen filters out co-located records
+// in a shared namespace (e.g. the ns2 LRU records). entityTailLen is the number
+// of key bytes after the 2-byte namespace prefix that identify one entity (so
+// an epoch's several duties keys evict together).
+func (c *CacheCleanup) cleanupSlotNamespace(ns uint16, dataKeyLen, entityTailLen int, config *dtypes.BlockDbRetentionConfig) {
+	if config == nil || !config.Enabled {
+		return
 	}
 
-	return int64(binary.BigEndian.Uint64(res[offset : offset+8]))
+	switch config.CleanupMode {
+	case "age":
+		c.cleanupSlotNamespaceByAge(ns, dataKeyLen, config.RetentionTime)
+	case "lru":
+		c.cleanupSlotNamespaceByLRU(ns, dataKeyLen, entityTailLen, config.MaxSize*1024*1024)
+	}
+}
+
+// cleanupSlotNamespaceByAge deletes cached entries whose slot is below the
+// cutoff derived from the retention time. Iterates and length-filters rather
+// than range-deleting so co-located records in a shared namespace are not hit.
+func (c *CacheCleanup) cleanupSlotNamespaceByAge(ns uint16, dataKeyLen int, retention time.Duration) {
+	if retention == 0 {
+		return
+	}
+	if c.timeToSlotFn == nil {
+		c.logger.Warnf("skipping age cleanup for namespace %d: slot resolver not set", ns)
+		return
+	}
+
+	cutoffSlot := c.timeToSlotFn(time.Now().Add(-retention))
+	if cutoffSlot == 0 {
+		return
+	}
+
+	db := c.engine.GetDB()
+	lower := makeNamespaceRangeStart(ns)
+	upper := makeNamespaceSlotKey(ns, cutoffSlot) // slot is the first tail field
+
+	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	if err != nil {
+		c.logger.Errorf("failed to create iterator: %v", err)
+		return
+	}
+
+	batch := db.NewBatch()
+	defer batch.Close()
+
+	deleted := 0
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) != dataKeyLen {
+			continue // skip co-located records (e.g. ns2 LRU records)
+		}
+		keyCopy := make([]byte, len(key))
+		copy(keyCopy, key)
+		batch.Delete(keyCopy, nil)
+		deleted++
+	}
+	iter.Close()
+
+	// Drop the matching access records (their own namespace — range-delete safe).
+	if err := db.DeleteRange(makeAccessRangeStart(ns), makeAccessSlotKey(ns, cutoffSlot), pebble.Sync); err != nil {
+		c.logger.Debugf("failed to drop access records for namespace %d: %v", ns, err)
+	}
+
+	if deleted > 0 {
+		if err := batch.Commit(pebble.Sync); err != nil {
+			c.logger.Errorf("failed to age-evict namespace %d: %v", ns, err)
+		} else {
+			c.logger.Infof("cleaned up %d cached entries for namespace %d (age-based)", deleted, ns)
+		}
+	}
+}
+
+// cleanupSlotNamespaceByLRU evicts least-recently-accessed entities of a
+// slot-keyed namespace until the cached data is under maxSize.
+func (c *CacheCleanup) cleanupSlotNamespaceByLRU(ns uint16, dataKeyLen, entityTailLen int, maxSize int64) {
+	if maxSize == 0 {
+		return
+	}
+
+	db := c.engine.GetDB()
+
+	type slotEntity struct {
+		tail       []byte
+		keys       [][]byte
+		size       int64
+		lastAccess int64
+	}
+
+	entities := make(map[string]*slotEntity)
+	order := make([]*slotEntity, 0, 1024)
+	var totalSize int64
+
+	lower, upper := makeNamespaceBounds(ns)
+	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	if err != nil {
+		c.logger.Errorf("failed to create iterator: %v", err)
+		return
+	}
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) != dataKeyLen {
+			continue // skip co-located records (e.g. ns2 LRU records)
+		}
+
+		tail := key[2 : 2+entityTailLen]
+		id := string(tail)
+		ent, ok := entities[id]
+		if !ok {
+			tailCopy := make([]byte, len(tail))
+			copy(tailCopy, tail)
+			ent = &slotEntity{tail: tailCopy}
+			entities[id] = ent
+			order = append(order, ent)
+		}
+
+		keyCopy := make([]byte, len(key))
+		copy(keyCopy, key)
+		ent.keys = append(ent.keys, keyCopy)
+		size := int64(len(key) + len(iter.Value()))
+		ent.size += size
+		totalSize += size
+	}
+	iter.Close()
+
+	if totalSize <= maxSize {
+		return
+	}
+
+	for _, ent := range order {
+		ent.lastAccess = c.getAccessTime(db, makeAccessKey(ns, ent.tail))
+	}
+
+	sort.Slice(order, func(i, j int) bool {
+		return order[i].lastAccess < order[j].lastAccess
+	})
+
+	batch := db.NewBatch()
+	defer batch.Close()
+
+	evicted := 0
+	freed := int64(0)
+	target := totalSize - maxSize
+
+	for _, ent := range order {
+		if freed >= target {
+			break
+		}
+		for _, k := range ent.keys {
+			batch.Delete(k, nil)
+		}
+		batch.Delete(makeAccessKey(ns, ent.tail), nil)
+		freed += ent.size
+		evicted++
+	}
+
+	if evicted > 0 {
+		if err := batch.Commit(pebble.Sync); err != nil {
+			c.logger.Errorf("failed to commit LRU eviction for namespace %d: %v", ns, err)
+		} else {
+			c.logger.Infof("evicted %d cached entities for namespace %d (LRU, freed %d bytes)", evicted, ns, freed)
+		}
+	}
 }
 
 // DeleteLRU removes LRU data for a block (call when deleting block data).

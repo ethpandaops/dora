@@ -3,6 +3,7 @@ package blockdb
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -22,6 +23,20 @@ type BlockDb struct {
 
 // GlobalBlockDb is the global block database instance.
 var GlobalBlockDb *BlockDb
+
+// SetTimeToSlotFn forwards a time->slot resolver to the engine when it has a
+// cache that needs one for age-based eviction (currently the tiered engine).
+// No-op for engines without such a cache.
+func (db *BlockDb) SetTimeToSlotFn(fn func(t time.Time) uint64) {
+	if db == nil || db.engine == nil {
+		return
+	}
+	if s, ok := db.engine.(interface {
+		SetTimeToSlotFn(func(t time.Time) uint64)
+	}); ok {
+		s.SetTimeToSlotFn(fn)
+	}
+}
 
 // InitWithPebble initializes the block database with Pebble (local) storage.
 func InitWithPebble(config dtypes.PebbleBlockDBConfig) error {
