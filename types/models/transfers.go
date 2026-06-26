@@ -56,6 +56,7 @@ type TransfersFilter struct {
 	To          string `json:"to"`
 	MinAmount   string `json:"min_amount"`
 	MaxAmount   string `json:"max_amount"`
+	Direction   string `json:"direction"` // "", "out", "in" (address page only)
 	TypeERC20   bool   `json:"type_erc20"`
 	TypeERC721  bool   `json:"type_erc721"`
 	TypeERC1155 bool   `json:"type_erc1155"`

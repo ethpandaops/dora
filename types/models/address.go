@@ -45,52 +45,32 @@ type AddressPageData struct {
 	TxPager      *PagerData                    `json:"tx_pager"`
 
 	// ERC20 Token Transfers tab
-	ERC20Transfers     []*AddressPageDataTokenTransfer `json:"erc20_transfers"`
-	ERC20TransferCount uint64                          `json:"erc20_transfer_count"`
-	ERC20CountCapped   bool                            `json:"erc20_count_capped"`
-	ERC20PageIndex     uint64                          `json:"erc20_page_index"`
-	ERC20PageSize      uint64                          `json:"erc20_page_size"`
-	ERC20TotalPages    uint64                          `json:"erc20_total_pages"`
-	ERC20FirstItem     uint64                          `json:"erc20_first_item"`
-	ERC20LastItem      uint64                          `json:"erc20_last_item"`
+	ERC20Transfers []*AddressPageDataTokenTransfer `json:"erc20_transfers"`
+	ERC20PageSize  uint64                          `json:"erc20_page_size"`
+	ERC20Filter    *TransfersFilter                `json:"erc20_filter"`
+	ERC20Pager     *PagerData                      `json:"erc20_pager"`
 
 	// NFT Transfers tab (ERC721/ERC1155)
-	NFTTransfers     []*AddressPageDataTokenTransfer `json:"nft_transfers"`
-	NFTTransferCount uint64                          `json:"nft_transfer_count"`
-	NFTCountCapped   bool                            `json:"nft_count_capped"`
-	NFTPageIndex     uint64                          `json:"nft_page_index"`
-	NFTPageSize      uint64                          `json:"nft_page_size"`
-	NFTTotalPages    uint64                          `json:"nft_total_pages"`
-	NFTFirstItem     uint64                          `json:"nft_first_item"`
-	NFTLastItem      uint64                          `json:"nft_last_item"`
+	NFTTransfers []*AddressPageDataTokenTransfer `json:"nft_transfers"`
+	NFTPageSize  uint64                          `json:"nft_page_size"`
+	NFTFilter    *TransfersFilter                `json:"nft_filter"`
+	NFTPager     *PagerData                      `json:"nft_pager"`
 
 	// Internal Transactions tab
-	HasInternalTxs       bool                                  `json:"has_internal_txs"`
-	InternalTxs          []*AddressPageDataInternalTransaction `json:"internal_txs"`
-	InternalTxCount      uint64                                `json:"internal_tx_count"`
-	InternalTxPageIndex  uint64                                `json:"internal_tx_page_index"`
-	InternalTxPageSize   uint64                                `json:"internal_tx_page_size"`
-	InternalTxTotalPages uint64                                `json:"internal_tx_total_pages"`
-	InternalTxFirstItem  uint64                                `json:"internal_tx_first_item"`
-	InternalTxLastItem   uint64                                `json:"internal_tx_last_item"`
+	HasInternalTxs     bool                                  `json:"has_internal_txs"`
+	InternalTxs        []*AddressPageDataInternalTransaction `json:"internal_txs"`
+	InternalTxPageSize uint64                                `json:"internal_tx_page_size"`
+	InternalTxPager    *PagerData                            `json:"internal_tx_pager"`
 
 	// Beacon Withdrawals tab
-	Withdrawals     []*AddressPageDataWithdrawal `json:"withdrawals"`
-	WithdrawalCount uint64                       `json:"withdrawal_count"`
-	WdPageIndex     uint64                       `json:"wd_page_index"`
-	WdPageSize      uint64                       `json:"wd_page_size"`
-	WdTotalPages    uint64                       `json:"wd_total_pages"`
-	WdFirstItem     uint64                       `json:"wd_first_item"`
-	WdLastItem      uint64                       `json:"wd_last_item"`
+	Withdrawals []*AddressPageDataWithdrawal `json:"withdrawals"`
+	WdPageSize  uint64                       `json:"wd_page_size"`
+	WdPager     *PagerData                   `json:"wd_pager"`
 
 	// Block Fees tab
-	BlockFees     []*AddressPageDataBlockFee `json:"block_fees"`
-	BlockFeeCount uint64                     `json:"block_fee_count"`
-	BfPageIndex   uint64                     `json:"bf_page_index"`
-	BfPageSize    uint64                     `json:"bf_page_size"`
-	BfTotalPages  uint64                     `json:"bf_total_pages"`
-	BfFirstItem   uint64                     `json:"bf_first_item"`
-	BfLastItem    uint64                     `json:"bf_last_item"`
+	BlockFees  []*AddressPageDataBlockFee `json:"block_fees"`
+	BfPageSize uint64                     `json:"bf_page_size"`
+	BfPager    *PagerData                 `json:"bf_pager"`
 }
 
 // AddressPageDataTokenBalance represents a token balance in the sidebar

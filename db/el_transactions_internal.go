@@ -83,56 +83,54 @@ func HasElTransactionsInternalByAccount(ctx context.Context, accountID uint64) (
 	return exists, nil
 }
 
-// MaxAccountInternalTxCount is the maximum count returned for address internal transaction queries.
-// If the actual count exceeds this, the query returns this limit and sets the "more" flag.
-const MaxAccountInternalTxCount = 100000
-
-// GetElTransactionsInternalByAccount returns per-tx aggregate rows involving
-// the given account, ordered by tx_uid DESC. The (account_id, tx_uid DESC)
-// index makes this a direct index scan.
-func GetElTransactionsInternalByAccount(
-	ctx context.Context,
-	accountID uint64,
-	offset uint64,
-	limit uint32,
-) ([]*dbtypes.ElTransactionInternal, uint64, error) {
+// GetElTransactionsInternalByAccountKeyset returns the account's internal-call
+// aggregates keyset-paginated by tx_uid DESC.
+func GetElTransactionsInternalByAccountKeyset(ctx context.Context, accountID uint64, beforeTxUid uint64, limit uint32) ([]*dbtypes.ElTransactionInternal, bool, error) {
 	var sql strings.Builder
-	args := []any{accountID, limit}
-
-	fmt.Fprint(&sql, `
-		SELECT tx_uid, account_id, in_count, out_count, call_type_mask, value_in, value_out, gas_used
-		FROM el_transactions_internal
-		WHERE account_id = $1
-		ORDER BY tx_uid DESC
-		LIMIT $2`)
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
+	args := []any{accountID}
+	fmt.Fprint(&sql, `SELECT tx_uid, account_id, in_count, out_count, call_type_mask, value_in, value_out, gas_used
+		FROM el_transactions_internal WHERE account_id = $1`)
+	if beforeTxUid > 0 {
+		args = append(args, beforeTxUid)
+		fmt.Fprintf(&sql, " AND tx_uid < $%d", len(args))
 	}
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY tx_uid DESC LIMIT $%d", len(args))
 
 	entries := []*dbtypes.ElTransactionInternal{}
-	err := ReaderDb.SelectContext(ctx, &entries, sql.String(), args...)
-	if err != nil {
-		return nil, 0, err
+	if err := ReaderDb.SelectContext(ctx, &entries, sql.String(), args...); err != nil {
+		return nil, false, err
 	}
-
-	// Count query: capped at MaxAccountInternalTxCount.
-	countSQL := `
-		SELECT COUNT(*) FROM (
-			SELECT 1 FROM el_transactions_internal WHERE account_id = $1 LIMIT $2
-		) a`
-	var totalCount uint64
-	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, accountID, MaxAccountInternalTxCount)
-	if err != nil {
-		return nil, 0, err
+	hasMore := false
+	if uint32(len(entries)) > limit {
+		hasMore = true
+		entries = entries[:limit]
 	}
+	return entries, hasMore, nil
+}
 
-	if totalCount > MaxAccountInternalTxCount {
-		totalCount = MaxAccountInternalTxCount
+// GetElTransactionsInternalByAccountPrevAnchor probes rows newer than afterTxUid
+// to drive the First/< controls (see GetElTransactionsByAccountPrevAnchor).
+func GetElTransactionsInternalByAccountPrevAnchor(ctx context.Context, accountID uint64, afterTxUid uint64, limit uint32) (uint64, bool, bool, error) {
+	var sql strings.Builder
+	args := []any{accountID}
+	fmt.Fprint(&sql, `SELECT tx_uid FROM el_transactions_internal WHERE account_id = $1`)
+	if afterTxUid > 0 {
+		args = append(args, afterTxUid)
+		fmt.Fprintf(&sql, " AND tx_uid > $%d", len(args))
 	}
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY tx_uid ASC LIMIT $%d", len(args))
 
-	return entries, totalCount, nil
+	uids := []uint64{}
+	if err := ReaderDb.SelectContext(ctx, &uids, sql.String(), args...); err != nil {
+		return 0, false, false, err
+	}
+	hasPrev := len(uids) > 0
+	if uint32(len(uids)) > limit {
+		return uids[limit], hasPrev, false, nil
+	}
+	return 0, hasPrev, true, nil
 }
 
 // GetElTransactionsInternalCountByTxUid returns the number of distinct

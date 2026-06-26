@@ -246,13 +246,6 @@ func GetElTransactionsPrevAnchor(ctx context.Context, filter *dbtypes.ElTransact
 	return 0, hasPrev, true, nil
 }
 
-// MaxAccountTransactionCount is the maximum count returned for account transaction queries.
-// If the actual count exceeds this, the query returns this limit and sets the "more" flag.
-const MaxAccountTransactionCount = 100000
-
-// GetElTransactionsByAccountIDCombined fetches transactions where the account is either
-// sender (from_id) or receiver (to_id). Results are sorted by tx_uid DESC.
-// Returns transactions, total count (capped at MaxAccountTransactionCount), whether count is capped, and error.
 // Account transaction direction: which side of the tx the account is on.
 const (
 	AccountDirectionAll uint8 = 0
@@ -359,69 +352,4 @@ func GetElTransactionsByAccountPrevAnchor(ctx context.Context, accountID uint64,
 		return uids[limit], hasPrev, false, nil
 	}
 	return 0, hasPrev, true, nil
-}
-
-func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, bool, error) {
-	// Use UNION ALL instead of OR for better index usage.
-	// The second query excludes rows where from_id = accountID to avoid duplicates
-	// (handles self-transfers where from_id = to_id = accountID).
-	// Push LIMIT into each UNION branch so PG can use composite indexes
-	// (from_id, block_uid DESC) and (to_id, block_uid DESC) efficiently.
-	// NULLS LAST is required to match the index definition and enable index scans.
-	var sql strings.Builder
-	innerLimit := offset + uint64(limit)
-	// Placeholders must stay in ascending appearance order (see query_helpers.go).
-	args := []any{accountID, innerLimit, accountID, accountID, innerLimit}
-
-	fmt.Fprintf(&sql, `
-		SELECT %s
-		FROM (
-			SELECT * FROM (SELECT %s
-			FROM el_transactions WHERE from_id = $1
-			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $2) AS a
-			UNION ALL
-			SELECT * FROM (SELECT %s
-			FROM el_transactions WHERE to_id = $3 AND from_id != $4
-			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $5) AS b
-		) combined
-		ORDER BY tx_uid DESC
-		LIMIT $6`, elTransactionColumns, elTransactionColumns, elTransactionColumns)
-	args = append(args, limit)
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
-	}
-
-	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching el transactions by account id (combined): %v", err)
-		return nil, 0, false, err
-	}
-
-	// Count using separate index-only scans per direction, capped at MaxAccountTransactionCount.
-	// Counts from_id and to_id separately (without from_id != exclusion) for index-only scan
-	// performance. May slightly overcount self-transfers, which is acceptable since the count
-	// is already an approximation (capped).
-	countSQL := `
-		SELECT
-			(SELECT COUNT(*) FROM (SELECT 1 FROM el_transactions WHERE from_id = $1 LIMIT $2) AS a) +
-			(SELECT COUNT(*) FROM (SELECT 1 FROM el_transactions WHERE to_id = $1 LIMIT $2) AS b)`
-	var totalCount uint64
-	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, accountID, MaxAccountTransactionCount)
-	if err != nil {
-		logger.Errorf("Error while counting el transactions by account id (combined): %v", err)
-		return nil, 0, false, err
-	}
-
-	if totalCount > MaxAccountTransactionCount {
-		totalCount = MaxAccountTransactionCount
-	}
-
-	moreAvailable := totalCount >= MaxAccountTransactionCount
-
-	return txs, totalCount, moreAvailable, nil
 }

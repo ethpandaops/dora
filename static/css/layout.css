@@ -219,7 +219,8 @@ header nav .dropdown-item .nav-icon {
   }
 }
 
-.tab-content .tab-pane > .card:first-child {
+.tab-content .tab-pane > .card:first-child,
+.tab-content .tab-pane > form:first-child > .card:first-child {
   border-top: none;
   border-top-left-radius: 0;
   border-top-right-radius: 0;

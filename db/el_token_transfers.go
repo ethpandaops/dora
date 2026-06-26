@@ -205,108 +205,104 @@ func GetElTokenTransfersFiltered(ctx context.Context, filter *dbtypes.ElTokenTra
 	return transfers, hasMore, nil
 }
 
-// MaxAccountTokenTransferCount is the maximum count returned for address token transfer queries.
-// If the actual count exceeds this, the query returns this limit and sets the "more" flag.
-const MaxAccountTokenTransferCount = 100000
+// buildElAccountTransferQuery builds the keyset query for an account's token
+// transfers, mirroring buildElAccountTxQuery but with the (tx_uid, tx_idx)
+// composite cursor. direction restricts to the from-side, to-side, or both; the
+// filter's FromID/ToID are counterparty filters applied to the opposite side.
+func buildElAccountTransferQuery(accountID uint64, direction uint8, filter *dbtypes.ElTokenTransferFilter, curUid uint64, curIdx uint32, limit uint32, reverse bool, colList string) (string, []any) {
+	args := []any{}
+	cmp, order := "<", "DESC"
+	if reverse {
+		cmp, order = ">", "ASC"
+	}
 
-// GetElTokenTransfersByAccountIDCombined returns all token transfers where the account is either sender or receiver.
-// Results are sorted by tx_uid DESC, tx_idx DESC.
-// tokenTypes filters by token type (empty = all types).
-// Returns transfers, total count (capped at MaxAccountTokenTransferCount), whether count is capped, and error.
-func GetElTokenTransfersByAccountIDCombined(ctx context.Context, accountID uint64, tokenTypes []uint8, offset uint64, limit uint32) ([]*dbtypes.ElTokenTransfer, uint64, bool, error) {
-	// Use UNION ALL instead of OR for better index usage.
-	// The second query excludes rows where from_id = accountID to avoid duplicates.
-	// Push LIMIT into each UNION branch so PG can use composite indexes efficiently.
-	// NULLS LAST is required to match the index definition and enable index scans.
+	var counterFrom, counterTo uint64
+	uniform := dbtypes.ElTokenTransferFilter{}
+	if filter != nil {
+		counterFrom, counterTo = filter.FromID, filter.ToID
+		uniform = *filter
+		uniform.FromID, uniform.ToID = 0, 0
+	}
+
+	branch := func(sql *strings.Builder, accountIsFrom bool) {
+		fmt.Fprintf(sql, "SELECT %s FROM el_token_transfers WHERE ", colList)
+		if accountIsFrom {
+			args = append(args, accountID)
+			fmt.Fprintf(sql, "from_id = $%d", len(args))
+			if counterTo > 0 {
+				args = append(args, counterTo)
+				fmt.Fprintf(sql, " AND to_id = $%d", len(args))
+			}
+		} else {
+			args = append(args, accountID, accountID)
+			fmt.Fprintf(sql, "to_id = $%d AND from_id != $%d", len(args)-1, len(args))
+			if counterFrom > 0 {
+				args = append(args, counterFrom)
+				fmt.Fprintf(sql, " AND from_id = $%d", len(args))
+			}
+		}
+		appendElTokenTransferFilterConds(sql, &args, &uniform, "AND")
+		if curUid > 0 {
+			args = append(args, curUid, curUid, curIdx)
+			fmt.Fprintf(sql, " AND (tx_uid %s $%d OR (tx_uid = $%d AND tx_idx %s $%d))", cmp, len(args)-2, len(args)-1, cmp, len(args))
+		}
+		args = append(args, limit+1)
+		fmt.Fprintf(sql, " ORDER BY tx_uid %s, tx_idx %s LIMIT $%d", order, order, len(args))
+	}
+
 	var sql strings.Builder
-	innerLimit := offset + uint64(limit)
-	args := []any{accountID, accountID, accountID}
-
-	// Build token type filter clause
-	tokenTypeFilter := ""
-	if len(tokenTypes) > 0 {
-		var tokenTypeArgs strings.Builder
-		for i, tt := range tokenTypes {
-			if i > 0 {
-				fmt.Fprint(&tokenTypeArgs, ", ")
-			}
-			args = append(args, tt)
-			fmt.Fprintf(&tokenTypeArgs, "$%v", len(args))
-		}
-		tokenTypeFilter = fmt.Sprintf(" AND token_type IN (%s)", tokenTypeArgs.String())
+	switch direction {
+	case AccountDirectionOut, AccountDirectionIn:
+		fmt.Fprintf(&sql, "SELECT %s FROM (", colList)
+		branch(&sql, direction == AccountDirectionOut)
+		args = append(args, limit+1)
+		fmt.Fprintf(&sql, ") AS x ORDER BY tx_uid %s, tx_idx %s LIMIT $%d", order, order, len(args))
+	default:
+		fmt.Fprintf(&sql, "SELECT %s FROM (SELECT * FROM (", colList)
+		branch(&sql, true)
+		fmt.Fprint(&sql, ") AS a UNION ALL SELECT * FROM (")
+		branch(&sql, false)
+		args = append(args, limit+1)
+		fmt.Fprintf(&sql, ") AS b) combined ORDER BY tx_uid %s, tx_idx %s LIMIT $%d", order, order, len(args))
 	}
+	return sql.String(), args
+}
 
-	args = append(args, innerLimit)
-	innerLimitIdx := len(args)
-
-	fmt.Fprintf(&sql, `
-		SELECT tx_uid, tx_idx, token_id, token_type, token_index,
-			from_id, to_id, amount, amount_raw
-		FROM (
-			SELECT * FROM (SELECT tx_uid, tx_idx, token_id, token_type, token_index,
-				from_id, to_id, amount, amount_raw
-			FROM el_token_transfers WHERE from_id = $1%s
-			ORDER BY tx_uid DESC NULLS LAST
-			LIMIT $%d) AS a
-			UNION ALL
-			SELECT * FROM (SELECT tx_uid, tx_idx, token_id, token_type, token_index,
-				from_id, to_id, amount, amount_raw
-			FROM el_token_transfers WHERE to_id = $2 AND from_id != $3%s
-			ORDER BY tx_uid DESC NULLS LAST
-			LIMIT $%d) AS b
-		) combined
-		ORDER BY tx_uid DESC, tx_idx DESC
-		LIMIT $%d`, tokenTypeFilter, innerLimitIdx, tokenTypeFilter, innerLimitIdx, len(args)+1)
-	args = append(args, limit)
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
-	}
-
+// GetElTokenTransfersByAccount returns the account's token transfers with keyset
+// pagination, restricted by direction and filter. Returns the page (up to limit)
+// and whether more (older) rows exist.
+func GetElTokenTransfersByAccount(ctx context.Context, accountID uint64, direction uint8, filter *dbtypes.ElTokenTransferFilter, beforeTxUid uint64, beforeTxIdx uint32, limit uint32) ([]*dbtypes.ElTokenTransfer, bool, error) {
+	sqlStr, args := buildElAccountTransferQuery(accountID, direction, filter, beforeTxUid, beforeTxIdx, limit, false, elTokenTransferColumns)
 	transfers := []*dbtypes.ElTokenTransfer{}
-	err := ReaderDb.SelectContext(ctx, &transfers, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching el token transfers by account id combined: %v", err)
-		return nil, 0, false, err
+	if err := ReaderDb.SelectContext(ctx, &transfers, sqlStr, args...); err != nil {
+		logger.Errorf("Error while fetching el token transfers by account: %v", err)
+		return nil, false, err
 	}
-
-	// Count using separate index-only scans per direction, capped at MaxAccountTokenTransferCount.
-	countArgs := []any{accountID}
-	countTokenTypeFilter := ""
-	if len(tokenTypes) > 0 {
-		var tokenTypeArgs strings.Builder
-		for i, tt := range tokenTypes {
-			if i > 0 {
-				fmt.Fprint(&tokenTypeArgs, ", ")
-			}
-			countArgs = append(countArgs, tt)
-			fmt.Fprintf(&tokenTypeArgs, "$%v", len(countArgs))
-		}
-		countTokenTypeFilter = fmt.Sprintf(" AND token_type IN (%s)", tokenTypeArgs.String())
+	hasMore := false
+	if uint32(len(transfers)) > limit {
+		hasMore = true
+		transfers = transfers[:limit]
 	}
+	return transfers, hasMore, nil
+}
 
-	countLimitIdx := len(countArgs) + 1
-	countArgs = append(countArgs, MaxAccountTokenTransferCount)
-
-	countSQL := fmt.Sprintf(`
-		SELECT
-			(SELECT COUNT(*) FROM (SELECT 1 FROM el_token_transfers WHERE from_id = $1%s LIMIT $%d) AS a) +
-			(SELECT COUNT(*) FROM (SELECT 1 FROM el_token_transfers WHERE to_id = $1%s LIMIT $%d) AS b)`,
-		countTokenTypeFilter, countLimitIdx, countTokenTypeFilter, countLimitIdx)
-
-	var totalCount uint64
-	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, countArgs...)
-	if err != nil {
-		logger.Errorf("Error while counting el token transfers by account id combined: %v", err)
-		return nil, 0, false, err
+// GetElTokenTransfersByAccountPrevAnchor probes for rows newer than the current
+// page's top to drive the First/< controls. Returns the previous page's boundary
+// cursor (when not atFirst), whether any newer row exists, and whether the
+// previous page is the newest page.
+func GetElTokenTransfersByAccountPrevAnchor(ctx context.Context, accountID uint64, direction uint8, filter *dbtypes.ElTokenTransferFilter, afterTxUid uint64, afterTxIdx uint32, limit uint32) (uint64, uint32, bool, bool, error) {
+	sqlStr, args := buildElAccountTransferQuery(accountID, direction, filter, afterTxUid, afterTxIdx, limit, true, "tx_uid, tx_idx")
+	rows := []struct {
+		TxUid uint64 `db:"tx_uid"`
+		TxIdx uint32 `db:"tx_idx"`
+	}{}
+	if err := ReaderDb.SelectContext(ctx, &rows, sqlStr, args...); err != nil {
+		logger.Errorf("Error while probing previous account transfer anchor: %v", err)
+		return 0, 0, false, false, err
 	}
-
-	if totalCount > MaxAccountTokenTransferCount {
-		totalCount = MaxAccountTokenTransferCount
+	hasPrev := len(rows) > 0
+	if uint32(len(rows)) > limit {
+		return rows[limit].TxUid, rows[limit].TxIdx, hasPrev, false, nil
 	}
-
-	moreAvailable := totalCount >= MaxAccountTokenTransferCount
-
-	return transfers, totalCount, moreAvailable, nil
+	return 0, 0, hasPrev, true, nil
 }

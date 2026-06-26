@@ -11,10 +11,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
-	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
@@ -37,6 +37,7 @@ func Token(w http.ResponseWriter, r *http.Request) {
 	var templateFiles = append(layoutTemplateFiles,
 		"token/token.html",
 		"_shared/pager.html",
+		"_shared/el_filter_assets.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"token/notfound.html",
@@ -63,12 +64,14 @@ func Token(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	beforeTxUid, beforeTxIdx, pageNum := parseElPageParam(urlArgs.Get("p"))
+	filterForm, filterSuffix := parseTransfersFilterForm(urlArgs)
+	colMask := utils.DecodeUint64BitfieldFromQuery(r.URL.RawQuery, "d")
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	var pageData *models.TokenPageData
 	if pageError == nil {
-		pageData, pageError = getTokenPageData(addressBytes, beforeTxUid, beforeTxIdx, pageNum, pageSize)
+		pageData, pageError = getTokenPageData(addressBytes, beforeTxUid, beforeTxIdx, pageNum, pageSize, filterForm, filterSuffix, colMask)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -90,11 +93,11 @@ func Token(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getTokenPageData(contract []byte, beforeTxUid uint64, beforeTxIdx uint32, pageNum uint64, pageSize uint64) (*models.TokenPageData, error) {
+func getTokenPageData(contract []byte, beforeTxUid uint64, beforeTxIdx uint32, pageNum uint64, pageSize uint64, filterForm *models.TransfersFilter, filterSuffix string, colMask uint64) (*models.TokenPageData, error) {
 	pageData := &models.TokenPageData{}
-	pageCacheKey := fmt.Sprintf("token:%x:%v:%v:%v:%v", contract, beforeTxUid, beforeTxIdx, pageNum, pageSize)
+	pageCacheKey := fmt.Sprintf("token:%x:%v:%v:%v:%v:%v:%v", contract, beforeTxUid, beforeTxIdx, pageNum, pageSize, filterSuffix, colMask)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildTokenPageData(pageCall.CallCtx, contract, beforeTxUid, beforeTxIdx, pageNum, pageSize)
+		pageData, cacheTimeout := buildTokenPageData(pageCall.CallCtx, contract, beforeTxUid, beforeTxIdx, pageNum, pageSize, filterForm, filterSuffix, colMask)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -115,13 +118,19 @@ func getTokenPageData(contract []byte, beforeTxUid uint64, beforeTxIdx uint32, p
 	return pageData, nil
 }
 
-func buildTokenPageData(ctx context.Context, contract []byte, beforeTxUid uint64, beforeTxIdx uint32, pageNum uint64, pageSize uint64) (*models.TokenPageData, time.Duration) {
+func buildTokenPageData(ctx context.Context, contract []byte, beforeTxUid uint64, beforeTxIdx uint32, pageNum uint64, pageSize uint64, filterForm *models.TransfersFilter, filterSuffix string, colMask uint64) (*models.TokenPageData, time.Duration) {
 	logrus.Debugf("token page called: 0x%x before=%v/%v page=%v", contract, beforeTxUid, beforeTxIdx, pageNum)
 
 	token, err := db.GetElTokenByContract(ctx, contract)
 	if err != nil || token == nil {
 		// Not found - return empty page data (nil contract) with a short cache.
 		return &models.TokenPageData{}, 12 * time.Second
+	}
+
+	// Default columns when none specified: Block, Age, Method, Amount, Status.
+	const defaultColMask = 0x1f
+	if colMask == 0 {
+		colMask = defaultColMask
 	}
 
 	pageData := &models.TokenPageData{
@@ -132,15 +141,28 @@ func buildTokenPageData(ctx context.Context, contract []byte, beforeTxUid uint64
 		Symbol:        token.Symbol,
 		Decimals:      uint8(token.Decimals),
 		PageSize:      pageSize,
+		Filter:        filterForm,
+		ColumnMask:    colMask,
+		DisplayBlock:  colMask&0x1 != 0,
+		DisplayAge:    colMask&0x2 != 0,
+		DisplayMethod: colMask&0x4 != 0,
+		DisplayAmount: colMask&0x8 != 0,
+		DisplayStatus: colMask&0x10 != 0,
 	}
 
+	// The token is fixed to this page; the form's token field is ignored.
 	tokenID := token.ID
-	filter := &dbtypes.ElTokenTransferFilter{TokenID: &tokenID}
+	filter := resolveTransferFilter(ctx, filterForm)
+	filter.TokenID = &tokenID
+	filter.TokenTypes = nil
 	dbTransfers, hasNext, _ := db.GetElTokenTransfersFiltered(ctx, filter, beforeTxUid, beforeTxIdx, uint32(pageSize))
 	pageData.Transfers = enrichElTokenTransferRows(ctx, dbTransfers)
 
 	tokenHex := common.BytesToAddress(token.Contract).Hex()
 	suffix := fmt.Sprintf("c=%v", pageSize)
+	if filterSuffix != "" {
+		suffix += "&" + filterSuffix
+	}
 	var nextA uint64
 	var nextB uint32
 	hasPrev, atFirst := false, true

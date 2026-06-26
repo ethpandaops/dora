@@ -1,26 +1,25 @@
 {{ define "transactions" }}
 <form method="get" action="/address/{{ formatEthAddressFull .Address }}" class="el-filter-form" data-ajax-target="#transactions">
   <input type="hidden" name="v" value="transactions">
-  <div class="d-flex justify-content-end align-items-center mb-2 gap-2">
-    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addrTxFilters">
-      <i class="fas fa-filter me-1"></i>Filters{{ if .TxFilter.Active }} <span class="badge text-bg-primary">on</span>{{ end }}
-    </button>
-    <div class="d-inline-flex align-items-center">
-      <span class="text-muted small me-1">Show</span>
-      <select name="c" class="form-select form-select-sm w-auto" onchange="$(this.form).trigger('submit')">
-        <option value="{{ .TxPageSize }}" selected>{{ .TxPageSize }}</option>
-        <option value="10">10</option>
-        <option value="25">25</option>
-        <option value="50">50</option>
-        <option value="100">100</option>
-      </select>
+  <div class="card">
+    <div class="card-header d-flex justify-content-end align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addrTxFilters">
+        <i class="fas fa-filter me-1"></i>Filters{{ if .TxFilter.Active }} <span class="badge text-bg-primary">on</span>{{ end }}
+      </button>
+      <div class="d-inline-flex align-items-center">
+        <span class="text-muted small me-1">Show</span>
+        <select name="c" class="form-select form-select-sm w-auto" onchange="$(this.form).trigger('submit')">
+          <option value="{{ .TxPageSize }}" selected>{{ .TxPageSize }}</option>
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
     </div>
-  </div>
 
-  <div class="collapse{{ if .TxFilter.Active }} show{{ end }}" id="addrTxFilters">
-    <div class="card mb-3">
-      <div class="card-header">Transaction Filters</div>
-      <div class="card-body p-2">
+    <div class="collapse{{ if .TxFilter.Active }} show{{ end }}" id="addrTxFilters">
+      <div class="card-body p-2 border-bottom">
         <div class="row">
           <div class="col-sm-12 col-md-6">
             <div class="container">
@@ -108,9 +107,7 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <div class="card">
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-hover mb-0 el-data-table">
