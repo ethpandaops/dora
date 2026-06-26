@@ -19,7 +19,7 @@
         <input type="hidden" class="column-mask">
         <div class="d-inline-flex align-items-center">
           <span class="text-muted small me-1">Show</span>
-          <select name="c" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+          <select name="c" class="form-select form-select-sm w-auto" onchange="$(this.form).submit()">
             <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
             <option value="10">10</option>
             <option value="25">25</option>

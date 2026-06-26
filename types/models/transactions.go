@@ -12,16 +12,15 @@ type TransactionsPageData struct {
 
 	// Columns toggled via the column selector "d" bitmask. Hash, From and To
 	// are always shown; everything below is selectable.
-	ColumnMask        uint64 `json:"column_mask"`
-	DisplayBlock      bool   `json:"display_block"`
-	DisplayAge        bool   `json:"display_age"`
-	DisplayMethod     bool   `json:"display_method"`
-	DisplayValue      bool   `json:"display_value"`
-	DisplayFee        bool   `json:"display_fee"`
-	DisplayGasUsed    bool   `json:"display_gas_used"`
-	DisplayType       bool   `json:"display_type"`
-	DisplayNonce      bool   `json:"display_nonce"`
-	DisplayInclStatus bool   `json:"display_incl_status"`
+	ColumnMask     uint64 `json:"column_mask"`
+	DisplayBlock   bool   `json:"display_block"`
+	DisplayAge     bool   `json:"display_age"`
+	DisplayMethod  bool   `json:"display_method"`
+	DisplayValue   bool   `json:"display_value"`
+	DisplayFee     bool   `json:"display_fee"`
+	DisplayGasUsed bool   `json:"display_gas_used"`
+	DisplayType    bool   `json:"display_type"`
+	DisplayNonce   bool   `json:"display_nonce"`
 }
 
 // TransactionsFilter holds the current filter values as strings so the filter

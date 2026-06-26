@@ -49,8 +49,8 @@ $(function() {
     });
   });
   $('.el-filter-form').on('submit', function() {
-    // Drop empty text/number inputs from the query string.
-    $(this).find('input[type="text"],input[type="number"]').filter(function() {
+    // Drop empty text/number inputs and empty single-selects from the query string.
+    $(this).find('input[type="text"],input[type="number"],select:not([multiple])').filter(function() {
       return !this.value;
     }).prop('name', '');
     // Encode the column selector into the "d" bitmask param.

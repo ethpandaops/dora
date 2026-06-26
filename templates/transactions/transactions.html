@@ -16,12 +16,11 @@
           <option value="6" {{ if .DisplayGasUsed }}selected{{ end }}>Gas Used</option>
           <option value="7" {{ if .DisplayType }}selected{{ end }}>Type</option>
           <option value="8" {{ if .DisplayNonce }}selected{{ end }}>Nonce</option>
-          <option value="9" {{ if .DisplayInclStatus }}selected{{ end }}>Incl. Status</option>
         </select>
         <input type="hidden" class="column-mask">
         <div class="d-inline-flex align-items-center">
           <span class="text-muted small me-1">Show</span>
-          <select name="c" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+          <select name="c" class="form-select form-select-sm w-auto" onchange="$(this.form).submit()">
             <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
             <option value="10">10</option>
             <option value="25">25</option>
@@ -142,7 +141,6 @@
               {{ if .DisplayType }}<th>Type</th>{{ end }}
               {{ if .DisplayNonce }}<th>Nonce</th>{{ end }}
               <th>Status</th>
-              {{ if .DisplayInclStatus }}<th>Incl. Status</th>{{ end }}
             </tr>
           </thead>
           <tbody>
@@ -195,21 +193,20 @@
                   {{ if $.DisplayType }}<td class="text-nowrap">{{ if eq .TxType 0 }}Legacy{{ else if eq .TxType 1 }}AccessList{{ else if eq .TxType 2 }}DynFee{{ else if eq .TxType 3 }}Blob{{ else if eq .TxType 4 }}SetCode{{ else }}{{ .TxType }}{{ end }}</td>{{ end }}
                   {{ if $.DisplayNonce }}<td class="text-nowrap">{{ .Nonce }}</td>{{ end }}
                   <td class="text-nowrap">
-                    {{ if .Reverted }}
-                      <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="Transaction execution failed">Reverted</span>
-                    {{ else }}
-                      <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Transaction executed successfully">Success</span>
-                    {{ end }}
-                  </td>
-                  {{ if $.DisplayInclStatus }}
-                  <td class="text-nowrap">
                     {{ if .BlockOrphaned }}
-                      <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Block was orphaned">Orphaned</span>
+                      {{ if .Reverted }}
+                        <span class="badge status-split" data-bs-toggle="tooltip" title="Orphaned block · execution reverted">Orphaned</span>
+                      {{ else }}
+                        <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Orphaned block · executed successfully">Orphaned</span>
+                      {{ end }}
                     {{ else }}
-                      <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Block is canonical">Included</span>
+                      {{ if .Reverted }}
+                        <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="Included · execution reverted">Reverted</span>
+                      {{ else }}
+                        <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Included · executed successfully">Success</span>
+                      {{ end }}
                     {{ end }}
                   </td>
-                  {{ end }}
                 </tr>
               {{ end }}
             {{ else }}

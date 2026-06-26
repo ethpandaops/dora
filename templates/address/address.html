@@ -26,6 +26,11 @@
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Type of address">Type:</span></div>
               <div class="col-md-9">
                 <span class="badge rounded-pill text-bg-info">Contract</span>
+                {{ if .IsToken }}
+                <a href="/token/{{ formatEthAddressFull .Address }}" class="badge rounded-pill text-bg-primary text-decoration-none ms-1" data-bs-toggle="tooltip" title="View token page">
+                  <i class="fas fa-coins me-1"></i>Token{{ if .TokenSymbol }} · {{ .TokenSymbol }}{{ end }}
+                </a>
+                {{ end }}
               </div>
             </div>
             {{ end }}
@@ -127,6 +132,13 @@
         </a>
       </li>
       {{ end }}
+      {{ if .IsContract }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "contract" }} active{{ end }}" id="contract-tab" data-lazy-tab="contract" data-bs-toggle="tab" data-bs-target="#contract" href="?v=contract" role="tab" aria-controls="contract" aria-selected="{{ if eq .TabView "contract" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-file-code me-2"></i> Contract
+        </a>
+      </li>
+      {{ end }}
     </ul>
 
     <div class="tab-content" id="tabContent">
@@ -166,12 +178,21 @@
         {{ end }}
       </div>
       {{ end }}
+      {{ if .IsContract }}
+      <div class="tab-pane fade{{ if eq .TabView "contract" }} show active{{ end }}" id="contract" role="tabpanel" aria-labelledby="contract-tab" data-loaded="{{ if eq .TabView "contract" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "contract" }}
+          {{ template "addressContract" . }}
+        {{ end }}
+      </div>
+      {{ end }}
     </div>
   </div>
 {{ end }}
 {{ define "lazyPage" }}
   {{ if eq .TabView "transactions" }}
     {{ template "transactions" . }}
+  {{ else if eq .TabView "contract" }}
+    {{ template "addressContract" . }}
   {{ else if eq .TabView "erc20" }}
     {{ template "erc20Transfers" . }}
   {{ else if eq .TabView "nft" }}

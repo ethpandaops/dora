@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -43,6 +44,7 @@ func Address(w http.ResponseWriter, r *http.Request) {
 		"address/nft_transfers.html",
 		"address/internal_txs.html",
 		"address/system_deposits.html",
+		"address/contract.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"address/notfound.html",
@@ -164,6 +166,14 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		TabView:    tabView,
 	}
 
+	// If this address is a detected token contract, surface a link to its token page.
+	if token, err := db.GetElTokenByContract(ctx, addressBytes); err == nil && token != nil {
+		pageData.IsToken = true
+		pageData.TokenName = token.Name
+		pageData.TokenSymbol = token.Symbol
+		pageData.TokenType = token.TokenType
+	}
+
 	// Get first funded info
 	if account.Funded > 0 {
 		pageData.FirstFunded = account.Funded >> 16 // Extract slot from block_uid
@@ -265,12 +275,49 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 			loadWithdrawalsTab(ctx, pageData, account, chainState, uint32(pageSize), pageIdx)
 		case "blockfees":
 			loadBlockFeesTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		case "contract":
+			loadContractTab(ctx, pageData, account)
 		default:
 			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		}
 	}
 
 	return pageData, 2 * time.Minute
+}
+
+// getReadyEthClient returns an EL JSON-RPC eth client from a ready execution
+// client, or nil if none is available.
+func getReadyEthClient() *ethclient.Client {
+	txIndexer := services.GlobalBeaconService.GetTxIndexer()
+	if txIndexer == nil {
+		return nil
+	}
+	for _, client := range txIndexer.GetReadyClients() {
+		rpcClient := client.GetRPCClient()
+		if rpcClient == nil {
+			continue
+		}
+		if ethClient := rpcClient.GetEthClient(); ethClient != nil {
+			return ethClient
+		}
+	}
+	return nil
+}
+
+// loadContractTab fetches the deployed (runtime) bytecode via eth_getCode.
+func loadContractTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	ethClient := getReadyEthClient()
+	if ethClient == nil {
+		pageData.ContractRpcUnavailable = true
+		return
+	}
+
+	if code, err := ethClient.CodeAt(ctx, common.BytesToAddress(account.Address), nil); err == nil {
+		pageData.ContractBytecode = code
+	}
 }
 
 func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {

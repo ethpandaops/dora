@@ -9,6 +9,10 @@ type AddressPageData struct {
 	Address            []byte `json:"address"`
 	AccountID          uint64 `json:"account_id"`
 	IsContract         bool   `json:"is_contract"`
+	IsToken            bool   `json:"is_token"`
+	TokenName          string `json:"token_name"`
+	TokenSymbol        string `json:"token_symbol"`
+	TokenType          uint8  `json:"token_type"`
 	FirstFunded        uint64 `json:"first_funded"`
 	FundedBy           []byte `json:"funded_by"`
 	FundedByID         uint64 `json:"funded_by_id"`
@@ -29,6 +33,10 @@ type AddressPageData struct {
 	// Tab visibility
 	HasWithdrawals bool `json:"has_withdrawals"`
 	HasBlockFees   bool `json:"has_block_fees"`
+
+	// Contract tab (loaded on demand for contract addresses)
+	ContractRpcUnavailable bool   `json:"contract_rpc_unavailable"` // EL RPC not reachable
+	ContractBytecode       []byte `json:"contract_bytecode"`        // deployed (runtime) code
 
 	// Transactions tab
 	Transactions     []*AddressPageDataTransaction `json:"transactions"`

@@ -229,18 +229,17 @@ func buildTransactionsPageData(ctx context.Context, beforeTxUid uint64, pageNum 
 	}
 
 	pageData := &models.TransactionsPageData{
-		PageSize:          pageSize,
-		Filter:            filterForm,
-		ColumnMask:        colMask,
-		DisplayBlock:      colMask&0x1 != 0,
-		DisplayAge:        colMask&0x2 != 0,
-		DisplayMethod:     colMask&0x4 != 0,
-		DisplayValue:      colMask&0x8 != 0,
-		DisplayFee:        colMask&0x10 != 0,
-		DisplayGasUsed:    colMask&0x20 != 0,
-		DisplayType:       colMask&0x40 != 0,
-		DisplayNonce:      colMask&0x80 != 0,
-		DisplayInclStatus: colMask&0x100 != 0,
+		PageSize:       pageSize,
+		Filter:         filterForm,
+		ColumnMask:     colMask,
+		DisplayBlock:   colMask&0x1 != 0,
+		DisplayAge:     colMask&0x2 != 0,
+		DisplayMethod:  colMask&0x4 != 0,
+		DisplayValue:   colMask&0x8 != 0,
+		DisplayFee:     colMask&0x10 != 0,
+		DisplayGasUsed: colMask&0x20 != 0,
+		DisplayType:    colMask&0x40 != 0,
+		DisplayNonce:   colMask&0x80 != 0,
 	}
 
 	filter := resolveTransactionFilter(ctx, filterForm)

@@ -376,3 +376,9 @@ span.validator-label {
 a.addr-hl {
   background-color: rgba(var(--bs-warning-rgb), 0.25);
 }
+
+/* Combined tx status badge: orphaned (info/blue) + reverted (danger/red). */
+.badge.status-split {
+  background: linear-gradient(90deg, var(--bs-danger) 50%, var(--bs-info) 50%);
+  color: #fff;
+}
