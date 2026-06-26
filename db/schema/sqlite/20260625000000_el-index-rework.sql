@@ -70,7 +70,7 @@ INSERT OR IGNORE INTO "el_revert_reason" (id, reason, reason_hash, last_tx_uid) 
     (1, 'unknown',         X'00000000000000000000000000000001', 0),
     (2, 'out of gas',      X'00000000000000000000000000000002', 0),
     (3, 'stack underflow', X'00000000000000000000000000000003', 0),
-    (4, 'stack overflow',  X'00000000000000000000000000000004', 0);
+    (4, 'invalid opcode',  X'00000000000000000000000000000004', 0);
 UPDATE sqlite_sequence SET seq = 99 WHERE name = 'el_revert_reason';
 
 -- 3b. Replace el_transactions.reverted (bool) with revert_id (0 = success,

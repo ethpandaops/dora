@@ -598,7 +598,7 @@ const (
 	RevertIDUnknown        uint32 = 1   // reverted, reason unavailable (no trace)
 	RevertIDOutOfGas       uint32 = 2   // "out of gas"
 	RevertIDStackUnderflow uint32 = 3   // "stack underflow"
-	RevertIDStackOverflow  uint32 = 4   // "stack overflow"
+	RevertIDInvalidOpcode  uint32 = 4   // "invalid opcode"
 	RevertIDDynamicMin     uint32 = 100 // first id assigned to a deduped reason
 )
 

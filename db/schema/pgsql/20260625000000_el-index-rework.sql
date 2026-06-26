@@ -84,7 +84,7 @@ INSERT INTO public."el_revert_reason" (id, reason, reason_hash, last_tx_uid) VAL
     (1, 'unknown',         '\x00000000000000000000000000000001'::bytea, 0),
     (2, 'out of gas',      '\x00000000000000000000000000000002'::bytea, 0),
     (3, 'stack underflow', '\x00000000000000000000000000000003'::bytea, 0),
-    (4, 'stack overflow',  '\x00000000000000000000000000000004'::bytea, 0)
+    (4, 'invalid opcode',  '\x00000000000000000000000000000004'::bytea, 0)
     ON CONFLICT DO NOTHING;
 
 -- Dynamic reasons start at 100 (ids 1-99 reserved for well-known errors).

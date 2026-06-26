@@ -207,8 +207,8 @@ func reservedRevertID(errText string) uint32 {
 		return dbtypes.RevertIDOutOfGas
 	case strings.Contains(e, "stack underflow"):
 		return dbtypes.RevertIDStackUnderflow
-	case strings.Contains(e, "stack overflow"):
-		return dbtypes.RevertIDStackOverflow
+	case strings.Contains(e, "invalid opcode"):
+		return dbtypes.RevertIDInvalidOpcode
 	}
 	return 0
 }
