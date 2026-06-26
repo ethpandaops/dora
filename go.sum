@@ -120,8 +120,8 @@ github.com/ethpandaops/ethcore v0.0.0-20260604021418-f61e8ea2d4ab h1:B3gbA1Jf9pC
 github.com/ethpandaops/ethcore v0.0.0-20260604021418-f61e8ea2d4ab/go.mod h1:jMel7Tumm/0Ni44yb4OTGC6MsMiK7FBQDP/n/GOthpw=
 github.com/ethpandaops/ethwallclock v0.4.0 h1:+sgnhf4pk6hLPukP076VxkiLloE4L0Yk1yat+ZyHh1g=
 github.com/ethpandaops/ethwallclock v0.4.0/go.mod h1:y0Cu+mhGLlem19vnAV2x0hpFS5KZ7oOi2SWYayv9l24=
-github.com/ethpandaops/go-eth2-client v0.1.6-0.20260625153230-8e3053a9f385 h1:qGTCDJ8LZGHHoVie+qvdE6XNh2aOXCI+5YsrlarJ2E4=
-github.com/ethpandaops/go-eth2-client v0.1.6-0.20260625153230-8e3053a9f385/go.mod h1:97Oq3omOQSGPPYgrbsOIIw2Pc4T5Ph21f8ZRyHJQBHU=
+github.com/ethpandaops/go-eth2-client v0.1.6-0.20260626230839-ae969c72f9db h1:hlzCLuJ/VZ/AkaEhGfDMHF8fIHiy7Vs+28nzMkAnv2U=
+github.com/ethpandaops/go-eth2-client v0.1.6-0.20260626230839-ae969c72f9db/go.mod h1:97Oq3omOQSGPPYgrbsOIIw2Pc4T5Ph21f8ZRyHJQBHU=
 github.com/ferranbt/fastssz v1.0.0 h1:9EXXYsracSqQRBQiHeaVsG/KQeYblPf40hsQPb9Dzk8=
 github.com/ferranbt/fastssz v1.0.0/go.mod h1:Ea3+oeoRGGLGm5shYAeDgu6PGUlcvQhE2fILyD9+tGg=
 github.com/filecoin-project/go-clock v0.1.0 h1:SFbYIM75M8NnFm1yMHhN9Ahy3W5bEZV9gd6MPfXbKVU=
