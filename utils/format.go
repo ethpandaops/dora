@@ -963,9 +963,11 @@ func formatBuilder(index uint64, name string, externalURL string, icon string, w
 		return template.HTML("<span class=\"builder-label builder-index\"><i class=\"fas fa-house mr-2\"></i> Self-built</span>")
 	}
 
-	externalLink := ""
+	// When the builder exposes an external URL, its "name" is often the full API URL, which is
+	// far too long for the table columns. Collapse it to the hyperlinked builder index and show
+	// the full API URL on hover instead of printing it inline.
 	if externalURL != "" {
-		externalLink = fmt.Sprintf(` <a href="%v" target="_blank" rel="noopener noreferrer" class="builder-external-link text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Open buildoor instance"><i class="fas fa-external-link-alt"></i></a>`, html.EscapeString(externalURL))
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\">%v</a></span>", icon, index, html.EscapeString(externalURL), index))
 	}
 
 	if name != "" {
@@ -975,9 +977,9 @@ func formatBuilder(index uint64, name string, externalURL string, icon string, w
 		} else {
 			nameLabel = html.EscapeString(name)
 		}
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, nameLabel, externalLink))
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", icon, index, nameLabel))
 	}
-	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a>%v</span>", icon, index, index, externalLink))
+	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", icon, index, index))
 }
 
 func FormatRecentTimeShort(ts time.Time) template.HTML {

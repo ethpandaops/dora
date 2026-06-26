@@ -272,11 +272,11 @@
                     {{- if $g.DisplayStatus }}
                     <td>
                       {{- if eq $block.Status 1 }}
-                        <span class="badge rounded-pill text-bg-success">Proposed</span>
+                        <span class="badge rounded-pill text-bg-success {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $block.Status $block.PayloadStatus }}">Proposed</span>
                       {{- else if eq $block.Status 2 }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                        <span class="badge rounded-pill text-bg-info {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $block.Status $block.PayloadStatus }}">Orphaned</span>
                       {{- else }}
-                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                        <span class="badge rounded-pill text-bg-dark {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $block.Status $block.PayloadStatus }}">Unknown</span>
                       {{- end }}
                     </td>
                     {{- end }}
