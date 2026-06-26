@@ -1,0 +1,67 @@
+{{ define "elFilterCss" }}
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
+<style>
+  .filter-multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container.btn-group>.btn {
+    text-align: left;
+  }
+  .filter-multiselect-container .multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label {
+    padding: 4px 8px;
+    width: 100%;
+    white-space: nowrap;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label>input {
+    margin: 0 4px;
+  }
+  .filter-separator {
+    width: 20px;
+    text-align: center;
+  }
+</style>
+{{ end }}
+
+{{ define "elFilterJs" }}
+<script src="/js/bootstrap-multiselect.js"></script>
+<script type="text/javascript">
+$(function() {
+  function decorate() {
+    this.$button.attr("data-bs-toggle", "dropdown");
+    this.$container.addClass("filter-multiselect-container");
+  }
+  // Value multiselects (tx type / token type): submit selected option values.
+  $('.el-filter-form .filter-multiselect').not('.column-multiselect').each(function() {
+    $(this).multiselect({ onInitialized: decorate });
+  });
+  // Column selector: auto-apply when the dropdown closes after a change.
+  $('.el-filter-form .column-multiselect').each(function() {
+    var form = $(this).closest('form');
+    var changed = false;
+    $(this).multiselect({
+      nonSelectedText: 'Columns',
+      onInitialized: decorate,
+      onChange: function() { changed = true; },
+      onDropdownHidden: function() { if (changed) { form.submit(); } }
+    });
+  });
+  $('.el-filter-form').on('submit', function() {
+    // Drop empty text/number inputs from the query string.
+    $(this).find('input[type="text"],input[type="number"]').filter(function() {
+      return !this.value;
+    }).prop('name', '');
+    // Encode the column selector into the "d" bitmask param.
+    var col = $(this).find('select.column-multiselect');
+    if (col.length) {
+      var mask = 0;
+      col.find('option:selected').each(function() { mask |= 1 << (parseInt(this.value) - 1); });
+      col.prop('name', '');
+      $(this).find('input.column-mask').prop('name', 'd').val('0x' + mask.toString(16));
+    }
+  });
+});
+</script>
+{{ end }}

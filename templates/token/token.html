@@ -32,10 +32,22 @@
   </div>
 
   <div class="card">
-    <div class="card-header">Transfers</div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>Transfers</span>
+      <form method="get" action="/token/{{ formatEthAddressFull .Contract }}" class="d-inline-flex align-items-center mb-0">
+        <span class="text-muted small me-1">Show</span>
+        <select name="c" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+          <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </form>
+    </div>
     <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table table-hover mb-0 el-data-table">
+        <table class="table table-hover table-nobr mb-0 el-data-table">
           <thead>
             <tr>
               <th>Txn Hash</th>
@@ -53,26 +65,28 @@
             {{ if gt (len .Transfers) 0 }}
               {{ range .Transfers }}
                 <tr>
-                  <td class="text-monospace addr-cell">
+                  {{ if gt .TxHashRowspan 0 }}
+                  <td class="text-monospace addr-cell align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                     <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
                   </td>
-                  <td>
+                  <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                     {{ if gt (len .BlockRoot) 0 }}
                       <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
                     {{ else }}
                       {{ formatAddCommas .BlockNumber }}
                     {{ end }}
                   </td>
-                  <td data-timer="{{ .BlockTime.Unix }}">
+                  <td class="align-top" data-timer="{{ .BlockTime.Unix }}"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                     <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
                   </td>
-                  <td>
+                  <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                     {{ if .MethodName }}
-                      <span class="badge text-bg-secondary method-badge" data-bs-toggle="tooltip" title="{{ .MethodName }}">{{ .MethodName }}</span>
+                      <span class="badge text-bg-secondary method-badge" data-bs-toggle="tooltip" title="{{ .MethodName }}{{ if gt (len .MethodID) 0 }} (0x{{ printf "%x" .MethodID }}){{ end }}">{{ .MethodName }}</span>
                     {{ else }}
                       <span class="text-muted">-</span>
                     {{ end }}
                   </td>
+                  {{ end }}
                   <td class="text-monospace addr-cell">
                     {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
                   </td>
@@ -80,8 +94,16 @@
                   <td class="text-monospace addr-cell">
                     {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
                   </td>
-                  <td class="text-nowrap">{{ formatTokenAmount .Amount .TokenSymbol }}</td>
-                  <td class="text-nowrap">
+                  <td>
+                    {{ if eq .TokenType 1 }}
+                      {{ formatTokenAmount .Amount .TokenSymbol }}
+                    {{ else if eq .TokenType 3 }}
+                      {{ formatNFTTokenID .AmountRaw }}x <span class="text-muted">#{{ if gt (len .TokenIndex) 0 }}{{ formatNFTTokenID .TokenIndex }}{{ else }}0{{ end }}</span>
+                    {{ else }}
+                      <span class="text-muted">#{{ if gt (len .TokenIndex) 0 }}{{ formatNFTTokenID .TokenIndex }}{{ else }}0{{ end }}</span>
+                    {{ end }}
+                  </td>
+                  <td>
                     {{ if .BlockOrphaned }}
                       <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Block was orphaned">Orphaned</span>
                     {{ else }}
@@ -103,16 +125,7 @@
       </div>
 
       <div class="card-footer d-flex justify-content-end align-items-center">
-        <nav aria-label="Transfer pagination">
-          <ul class="pagination pagination-sm mb-0">
-            <li class="page-item{{ if .IsDefaultPage }} disabled{{ end }}">
-              <a class="page-link" href="{{ .FirstPageLink }}">&laquo; Newest</a>
-            </li>
-            <li class="page-item{{ if not .HasMore }} disabled{{ end }}">
-              <a class="page-link" href="{{ if .HasMore }}{{ .NextPageLink }}{{ else }}#{{ end }}">Older &rsaquo;</a>
-            </li>
-          </ul>
-        </nav>
+        {{ template "pager" .Pager }}
       </div>
     </div>
   </div>

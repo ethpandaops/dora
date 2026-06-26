@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethpandaops/dora/db"
@@ -23,10 +26,147 @@ const (
 	maxElListPageSize     = 100
 )
 
+// parseTransactionsFilterForm parses the transaction list filter query params
+// into a form model (for repopulating the inputs) and a canonical query suffix
+// (cache key + pager links). from/to stay as hex strings here; they are
+// resolved to account IDs in resolveTransactionFilter (which needs DB access).
+func parseTransactionsFilterForm(q url.Values) (*models.TransactionsFilter, string) {
+	form := &models.TransactionsFilter{}
+	var parts []string
+	keep := func(key, val string) { parts = append(parts, key+"="+url.QueryEscape(val)) }
+
+	num := func(key string, set *string) {
+		if v := q.Get(key); v != "" {
+			if _, err := strconv.ParseFloat(v, 64); err == nil {
+				*set = v
+				keep(key, v)
+			}
+		}
+	}
+	num("minslot", &form.MinSlot)
+	num("maxslot", &form.MaxSlot)
+	num("minamount", &form.MinAmount)
+	num("maxamount", &form.MaxAmount)
+	num("mingas", &form.MinGas)
+	num("maxgas", &form.MaxGas)
+	num("mintip", &form.MinTip)
+	num("maxtip", &form.MaxTip)
+
+	if v := q.Get("from"); v != "" {
+		form.From = v
+		keep("from", v)
+	}
+	if v := q.Get("to"); v != "" {
+		form.To = v
+		keep("to", v)
+	}
+	switch q.Get("reverted") {
+	case "1":
+		form.Reverted = "1"
+		keep("reverted", "1")
+	case "0":
+		form.Reverted = "0"
+		keep("reverted", "0")
+	}
+	for _, v := range q["type"] {
+		switch v {
+		case "0":
+			form.Type0 = true
+		case "1":
+			form.Type1 = true
+		case "2":
+			form.Type2 = true
+		case "3":
+			form.Type3 = true
+		case "4":
+			form.Type4 = true
+		default:
+			continue
+		}
+		keep("type", v)
+	}
+
+	form.Active = len(parts) > 0
+	return form, strings.Join(parts, "&")
+}
+
+// resolveTransactionFilter converts the string form into a DB filter, resolving
+// the from/to addresses to their account IDs.
+func resolveTransactionFilter(ctx context.Context, form *models.TransactionsFilter) *dbtypes.ElTransactionFilter {
+	filter := &dbtypes.ElTransactionFilter{}
+	if form == nil {
+		return filter
+	}
+	if n, err := strconv.ParseUint(form.MinSlot, 10, 64); err == nil {
+		filter.MinSlot = &n
+	}
+	if n, err := strconv.ParseUint(form.MaxSlot, 10, 64); err == nil {
+		filter.MaxSlot = &n
+	}
+	if f, err := strconv.ParseFloat(form.MinAmount, 64); err == nil {
+		filter.MinAmount = &f
+	}
+	if f, err := strconv.ParseFloat(form.MaxAmount, 64); err == nil {
+		filter.MaxAmount = &f
+	}
+	if n, err := strconv.ParseUint(form.MinGas, 10, 64); err == nil {
+		filter.MinGasUsed = &n
+	}
+	if n, err := strconv.ParseUint(form.MaxGas, 10, 64); err == nil {
+		filter.MaxGasUsed = &n
+	}
+	if f, err := strconv.ParseFloat(form.MinTip, 64); err == nil {
+		filter.MinTip = &f
+	}
+	if f, err := strconv.ParseFloat(form.MaxTip, 64); err == nil {
+		filter.MaxTip = &f
+	}
+	if form.From != "" {
+		if b, err := hex.DecodeString(strings.TrimPrefix(form.From, "0x")); err == nil && len(b) == 20 {
+			if acc, err := db.GetElAccountByAddress(ctx, b); err == nil && acc != nil {
+				filter.FromID = acc.ID
+			}
+		}
+	}
+	if form.To != "" {
+		if b, err := hex.DecodeString(strings.TrimPrefix(form.To, "0x")); err == nil && len(b) == 20 {
+			if acc, err := db.GetElAccountByAddress(ctx, b); err == nil && acc != nil {
+				filter.ToID = acc.ID
+			}
+		}
+	}
+	switch form.Reverted {
+	case "1":
+		t := true
+		filter.Reverted = &t
+	case "0":
+		f := false
+		filter.Reverted = &f
+	}
+	if form.Type0 {
+		filter.TxTypes = append(filter.TxTypes, 0)
+	}
+	if form.Type1 {
+		filter.TxTypes = append(filter.TxTypes, 1)
+	}
+	if form.Type2 {
+		filter.TxTypes = append(filter.TxTypes, 2)
+	}
+	if form.Type3 {
+		filter.TxTypes = append(filter.TxTypes, 3)
+	}
+	if form.Type4 {
+		filter.TxTypes = append(filter.TxTypes, 4)
+	}
+	return filter
+}
+
 // Transactions renders the global execution-layer transactions list page.
 func Transactions(w http.ResponseWriter, r *http.Request) {
 	var templateFiles = append(layoutTemplateFiles,
 		"transactions/transactions.html",
+		"_shared/pager.html",
+		"_shared/el_filter_assets.html",
 	)
 
 	var pageTemplate = templates.GetTemplate(templateFiles...)
@@ -42,21 +182,14 @@ func Transactions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	var beforeTxUid uint64
-	if urlArgs.Has("before") {
-		beforeTxUid, _ = strconv.ParseUint(urlArgs.Get("before"), 10, 64)
-	}
-	reverted := ""
-	if urlArgs.Has("reverted") {
-		if v := urlArgs.Get("reverted"); v == "0" || v == "1" {
-			reverted = v
-		}
-	}
+	beforeTxUid, _, pageNum := parseElPageParam(urlArgs.Get("p"))
+	filterForm, filterSuffix := parseTransactionsFilterForm(urlArgs)
+	colMask := utils.DecodeUint64BitfieldFromQuery(r.URL.RawQuery, "d")
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getTransactionsPageData(beforeTxUid, pageSize, reverted)
+		data.Data, pageError = getTransactionsPageData(beforeTxUid, pageNum, pageSize, filterForm, filterSuffix, colMask)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -68,11 +201,11 @@ func Transactions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getTransactionsPageData(beforeTxUid uint64, pageSize uint64, reverted string) (*models.TransactionsPageData, error) {
+func getTransactionsPageData(beforeTxUid uint64, pageNum uint64, pageSize uint64, filterForm *models.TransactionsFilter, filterSuffix string, colMask uint64) (*models.TransactionsPageData, error) {
 	pageData := &models.TransactionsPageData{}
-	pageCacheKey := fmt.Sprintf("transactions:%v:%v:%v", beforeTxUid, pageSize, reverted)
+	pageCacheKey := fmt.Sprintf("transactions:%v:%v:%v:%v:%v", beforeTxUid, pageNum, pageSize, filterSuffix, colMask)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildTransactionsPageData(pageCall.CallCtx, beforeTxUid, pageSize, reverted)
+		pageData, cacheTimeout := buildTransactionsPageData(pageCall.CallCtx, beforeTxUid, pageNum, pageSize, filterForm, filterSuffix, colMask)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -86,41 +219,49 @@ func getTransactionsPageData(beforeTxUid uint64, pageSize uint64, reverted strin
 	return pageData, pageErr
 }
 
-func buildTransactionsPageData(ctx context.Context, beforeTxUid uint64, pageSize uint64, reverted string) (*models.TransactionsPageData, time.Duration) {
-	logrus.Debugf("transactions page called: before=%v size=%v", beforeTxUid, pageSize)
+func buildTransactionsPageData(ctx context.Context, beforeTxUid uint64, pageNum uint64, pageSize uint64, filterForm *models.TransactionsFilter, filterSuffix string, colMask uint64) (*models.TransactionsPageData, time.Duration) {
+	logrus.Debugf("transactions page called: before=%v page=%v size=%v", beforeTxUid, pageNum, pageSize)
+
+	// Default columns when none specified: Block, Age, Method, Value, Fee.
+	const defaultColMask = 0x1f
+	if colMask == 0 {
+		colMask = defaultColMask
+	}
 
 	pageData := &models.TransactionsPageData{
-		PageSize:       pageSize,
-		IsDefaultPage:  beforeTxUid == 0,
-		FilterReverted: reverted,
+		PageSize:          pageSize,
+		Filter:            filterForm,
+		ColumnMask:        colMask,
+		DisplayBlock:      colMask&0x1 != 0,
+		DisplayAge:        colMask&0x2 != 0,
+		DisplayMethod:     colMask&0x4 != 0,
+		DisplayValue:      colMask&0x8 != 0,
+		DisplayFee:        colMask&0x10 != 0,
+		DisplayGasUsed:    colMask&0x20 != 0,
+		DisplayType:       colMask&0x40 != 0,
+		DisplayNonce:      colMask&0x80 != 0,
+		DisplayInclStatus: colMask&0x100 != 0,
 	}
 
-	filter := &dbtypes.ElTransactionFilter{}
-	if reverted == "1" {
-		t := true
-		filter.Reverted = &t
-	} else if reverted == "0" {
-		f := false
-		filter.Reverted = &f
-	}
-
-	dbTxs, hasMore, _ := db.GetElTransactionsFiltered(ctx, filter, beforeTxUid, uint32(pageSize))
-	pageData.HasMore = hasMore
-	if len(dbTxs) > 0 {
-		pageData.NextCursor = dbTxs[len(dbTxs)-1].TxUid
-	}
-
+	filter := resolveTransactionFilter(ctx, filterForm)
+	dbTxs, hasNext, _ := db.GetElTransactionsFiltered(ctx, filter, beforeTxUid, uint32(pageSize))
 	pageData.Transactions = enrichElTransactionRows(ctx, dbTxs)
 
-	// Build pagination links (preserve filter + page size).
 	suffix := fmt.Sprintf("c=%v", pageSize)
-	if reverted != "" {
-		suffix += "&reverted=" + reverted
+	if filterSuffix != "" {
+		suffix += "&" + filterSuffix
 	}
-	pageData.FirstPageLink = "/transactions?" + suffix
-	if hasMore {
-		pageData.NextPageLink = fmt.Sprintf("/transactions?%v&before=%v", suffix, pageData.NextCursor)
+	if colMask != defaultColMask {
+		suffix += fmt.Sprintf("&d=0x%x", colMask)
 	}
+
+	var nextA uint64
+	hasPrev, atFirst, prevA := false, true, uint64(0)
+	if len(dbTxs) > 0 {
+		nextA = dbTxs[len(dbTxs)-1].TxUid
+		prevA, hasPrev, atFirst, _ = db.GetElTransactionsPrevAnchor(ctx, filter, dbTxs[0].TxUid, uint32(pageSize))
+	}
+	pageData.Pager = buildElPager("/transactions", suffix, pageNum, hasNext, nextA, 0, hasPrev, atFirst, prevA, 0, false)
 
 	// First page changes constantly; deeper (older) pages are effectively final.
 	cacheTimeout := 5 * time.Minute
@@ -191,6 +332,8 @@ func enrichElTransactionRows(ctx context.Context, dbTxs []*dbtypes.ElTransaction
 			Nonce:       tx.Nonce,
 			Amount:      tx.Amount,
 			TxFee:       txFee,
+			GasUsed:     tx.GasUsed,
+			TxType:      tx.TxType,
 			Reverted:    tx.Reverted,
 		}
 

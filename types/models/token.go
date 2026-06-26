@@ -11,12 +11,7 @@ type TokenPageData struct {
 	Symbol        string `json:"symbol"`
 	Decimals      uint8  `json:"decimals"`
 
-	Transfers       []*TransferRow `json:"transfers"`
-	PageSize        uint64         `json:"page_size"`
-	HasMore         bool           `json:"has_more"`
-	NextCursorTxUid uint64         `json:"next_cursor_tx_uid"`
-	NextCursorTxIdx uint32         `json:"next_cursor_tx_idx"`
-	IsDefaultPage   bool           `json:"is_default_page"`
-	FirstPageLink   string         `json:"first_page_link"`
-	NextPageLink    string         `json:"next_page_link"`
+	Transfers []*TransferRow `json:"transfers"`
+	PageSize  uint64         `json:"page_size"`
+	Pager     *PagerData     `json:"pager"`
 }

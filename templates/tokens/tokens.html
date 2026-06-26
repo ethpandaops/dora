@@ -12,7 +12,7 @@
   <div class="card">
     <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table table-hover mb-0 el-data-table">
+        <table class="table table-hover table-nobr mb-0 el-data-table">
           <thead>
             <tr>
               <th>Contract</th>
@@ -48,24 +48,12 @@
         </table>
       </div>
 
-      {{ if gt .TotalPages 1 }}
+      {{ if gt .TotalCount 0 }}
       <div class="card-footer d-flex justify-content-between align-items-center">
         <div>
           Showing {{ formatAddCommas .FirstItem }} - {{ formatAddCommas .LastItem }} of {{ formatAddCommas .TotalCount }}
         </div>
-        <nav aria-label="Token pagination">
-          <ul class="pagination pagination-sm mb-0">
-            {{ if gt .PageIndex 1 }}
-              <li class="page-item"><a class="page-link" href="{{ .FirstPageLink }}">&laquo;</a></li>
-              <li class="page-item"><a class="page-link" href="{{ .PrevPageLink }}">&lsaquo;</a></li>
-            {{ end }}
-            <li class="page-item disabled"><span class="page-link">{{ .PageIndex }} / {{ .TotalPages }}</span></li>
-            {{ if lt .PageIndex .TotalPages }}
-              <li class="page-item"><a class="page-link" href="{{ .NextPageLink }}">&rsaquo;</a></li>
-              <li class="page-item"><a class="page-link" href="{{ .LastPageLink }}">&raquo;</a></li>
-            {{ end }}
-          </ul>
-        </nav>
+        {{ template "pager" .Pager }}
       </div>
       {{ end }}
     </div>

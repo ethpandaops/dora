@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethpandaops/dora/db"
@@ -18,10 +22,136 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// parseTransfersFilterForm parses the transfer filter query params into a form
+// model (for repopulating inputs) and a canonical query suffix (cache key +
+// pager links). Token/from/to remain hex strings here; they are resolved to IDs
+// in resolveTransferFilter (which needs DB access).
+func parseTransfersFilterForm(q url.Values) (*models.TransfersFilter, string) {
+	form := &models.TransfersFilter{}
+	var parts []string
+	keep := func(k, v string) { parts = append(parts, k+"="+url.QueryEscape(v)) }
+
+	if v := q.Get("minslot"); v != "" {
+		if _, err := strconv.ParseUint(v, 10, 64); err == nil {
+			form.MinSlot = v
+			keep("minslot", v)
+		}
+	}
+	if v := q.Get("maxslot"); v != "" {
+		if _, err := strconv.ParseUint(v, 10, 64); err == nil {
+			form.MaxSlot = v
+			keep("maxslot", v)
+		}
+	}
+	if v := q.Get("minamount"); v != "" {
+		if _, err := strconv.ParseFloat(v, 64); err == nil {
+			form.MinAmount = v
+			keep("minamount", v)
+		}
+	}
+	if v := q.Get("maxamount"); v != "" {
+		if _, err := strconv.ParseFloat(v, 64); err == nil {
+			form.MaxAmount = v
+			keep("maxamount", v)
+		}
+	}
+	if v := q.Get("token"); v != "" {
+		form.Token = v
+		keep("token", v)
+	}
+	if v := q.Get("from"); v != "" {
+		form.From = v
+		keep("from", v)
+	}
+	if v := q.Get("to"); v != "" {
+		form.To = v
+		keep("to", v)
+	}
+	for _, v := range q["ttype"] {
+		switch v {
+		case "1":
+			form.TypeERC20 = true
+		case "2":
+			form.TypeERC721 = true
+		case "3":
+			form.TypeERC1155 = true
+		default:
+			continue
+		}
+		keep("ttype", v)
+	}
+
+	form.Active = len(parts) > 0
+	return form, strings.Join(parts, "&")
+}
+
+// resolveTransferFilter converts the string form into a DB filter, resolving
+// the token contract and from/to addresses to their internal IDs.
+func resolveTransferFilter(ctx context.Context, form *models.TransfersFilter) *dbtypes.ElTokenTransferFilter {
+	filter := &dbtypes.ElTokenTransferFilter{}
+	if form == nil {
+		return filter
+	}
+	if form.MinSlot != "" {
+		if n, err := strconv.ParseUint(form.MinSlot, 10, 64); err == nil {
+			filter.MinSlot = &n
+		}
+	}
+	if form.MaxSlot != "" {
+		if n, err := strconv.ParseUint(form.MaxSlot, 10, 64); err == nil {
+			filter.MaxSlot = &n
+		}
+	}
+	if form.MinAmount != "" {
+		if f, err := strconv.ParseFloat(form.MinAmount, 64); err == nil {
+			filter.MinAmount = &f
+		}
+	}
+	if form.MaxAmount != "" {
+		if f, err := strconv.ParseFloat(form.MaxAmount, 64); err == nil {
+			filter.MaxAmount = &f
+		}
+	}
+	if form.Token != "" {
+		if b, err := hex.DecodeString(strings.TrimPrefix(form.Token, "0x")); err == nil && len(b) == 20 {
+			if tok, err := db.GetElTokenByContract(ctx, b); err == nil && tok != nil {
+				id := tok.ID
+				filter.TokenID = &id
+			}
+		}
+	}
+	if form.From != "" {
+		if b, err := hex.DecodeString(strings.TrimPrefix(form.From, "0x")); err == nil && len(b) == 20 {
+			if acc, err := db.GetElAccountByAddress(ctx, b); err == nil && acc != nil {
+				filter.FromID = acc.ID
+			}
+		}
+	}
+	if form.To != "" {
+		if b, err := hex.DecodeString(strings.TrimPrefix(form.To, "0x")); err == nil && len(b) == 20 {
+			if acc, err := db.GetElAccountByAddress(ctx, b); err == nil && acc != nil {
+				filter.ToID = acc.ID
+			}
+		}
+	}
+	if form.TypeERC20 {
+		filter.TokenTypes = append(filter.TokenTypes, 1)
+	}
+	if form.TypeERC721 {
+		filter.TokenTypes = append(filter.TokenTypes, 2)
+	}
+	if form.TypeERC1155 {
+		filter.TokenTypes = append(filter.TokenTypes, 3)
+	}
+	return filter
+}
+
 // Transfers renders the global token-transfers list page.
 func Transfers(w http.ResponseWriter, r *http.Request) {
 	var templateFiles = append(layoutTemplateFiles,
 		"transfers/transfers.html",
+		"_shared/pager.html",
+		"_shared/el_filter_assets.html",
 	)
 
 	var pageTemplate = templates.GetTemplate(templateFiles...)
@@ -37,19 +167,14 @@ func Transfers(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	var beforeTxUid uint64
-	var beforeTxIdx uint64
-	if urlArgs.Has("before") {
-		beforeTxUid, _ = strconv.ParseUint(urlArgs.Get("before"), 10, 64)
-	}
-	if urlArgs.Has("beforeidx") {
-		beforeTxIdx, _ = strconv.ParseUint(urlArgs.Get("beforeidx"), 10, 32)
-	}
+	beforeTxUid, beforeTxIdx, pageNum := parseElPageParam(urlArgs.Get("p"))
+	filterForm, filterSuffix := parseTransfersFilterForm(urlArgs)
+	colMask := utils.DecodeUint64BitfieldFromQuery(r.URL.RawQuery, "d")
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getTransfersPageData(beforeTxUid, uint32(beforeTxIdx), pageSize)
+		data.Data, pageError = getTransfersPageData(beforeTxUid, beforeTxIdx, pageNum, pageSize, filterForm, filterSuffix, colMask)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -61,11 +186,11 @@ func Transfers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getTransfersPageData(beforeTxUid uint64, beforeTxIdx uint32, pageSize uint64) (*models.TransfersPageData, error) {
+func getTransfersPageData(beforeTxUid uint64, beforeTxIdx uint32, pageNum uint64, pageSize uint64, filterForm *models.TransfersFilter, filterSuffix string, colMask uint64) (*models.TransfersPageData, error) {
 	pageData := &models.TransfersPageData{}
-	pageCacheKey := fmt.Sprintf("transfers:%v:%v:%v", beforeTxUid, beforeTxIdx, pageSize)
+	pageCacheKey := fmt.Sprintf("transfers:%v:%v:%v:%v:%v:%v", beforeTxUid, beforeTxIdx, pageNum, pageSize, filterSuffix, colMask)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildTransfersPageData(pageCall.CallCtx, beforeTxUid, beforeTxIdx, pageSize)
+		pageData, cacheTimeout := buildTransfersPageData(pageCall.CallCtx, beforeTxUid, beforeTxIdx, pageNum, pageSize, filterForm, filterSuffix, colMask)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -79,28 +204,51 @@ func getTransfersPageData(beforeTxUid uint64, beforeTxIdx uint32, pageSize uint6
 	return pageData, pageErr
 }
 
-func buildTransfersPageData(ctx context.Context, beforeTxUid uint64, beforeTxIdx uint32, pageSize uint64) (*models.TransfersPageData, time.Duration) {
-	logrus.Debugf("transfers page called: before=%v/%v size=%v", beforeTxUid, beforeTxIdx, pageSize)
+func buildTransfersPageData(ctx context.Context, beforeTxUid uint64, beforeTxIdx uint32, pageNum uint64, pageSize uint64, filterForm *models.TransfersFilter, filterSuffix string, colMask uint64) (*models.TransfersPageData, time.Duration) {
+	logrus.Debugf("transfers page called: before=%v/%v page=%v size=%v", beforeTxUid, beforeTxIdx, pageNum, pageSize)
+
+	// Default columns when none specified: Block, Age, Method, Amount, Token, Status.
+	const defaultColMask = 0x3f
+	if colMask == 0 {
+		colMask = defaultColMask
+	}
 
 	pageData := &models.TransfersPageData{
-		PageSize:      pageSize,
-		IsDefaultPage: beforeTxUid == 0,
+		PageSize:         pageSize,
+		Filter:           filterForm,
+		ColumnMask:       colMask,
+		DisplayBlock:     colMask&0x1 != 0,
+		DisplayAge:       colMask&0x2 != 0,
+		DisplayMethod:    colMask&0x4 != 0,
+		DisplayAmount:    colMask&0x8 != 0,
+		DisplayToken:     colMask&0x10 != 0,
+		DisplayStatus:    colMask&0x20 != 0,
+		DisplayTokenType: colMask&0x40 != 0,
 	}
 
-	dbTransfers, hasMore, _ := db.GetElTokenTransfersFiltered(ctx, &dbtypes.ElTokenTransferFilter{}, beforeTxUid, beforeTxIdx, uint32(pageSize))
-	pageData.HasMore = hasMore
-	if len(dbTransfers) > 0 {
-		last := dbTransfers[len(dbTransfers)-1]
-		pageData.NextCursorTxUid = last.TxUid
-		pageData.NextCursorTxIdx = last.TxIdx
-	}
-
+	filter := resolveTransferFilter(ctx, filterForm)
+	dbTransfers, hasNext, _ := db.GetElTokenTransfersFiltered(ctx, filter, beforeTxUid, beforeTxIdx, uint32(pageSize))
 	pageData.Transfers = enrichElTokenTransferRows(ctx, dbTransfers)
 
-	pageData.FirstPageLink = fmt.Sprintf("/transfers?c=%v", pageSize)
-	if hasMore {
-		pageData.NextPageLink = fmt.Sprintf("/transfers?c=%v&before=%v&beforeidx=%v", pageSize, pageData.NextCursorTxUid, pageData.NextCursorTxIdx)
+	suffix := fmt.Sprintf("c=%v", pageSize)
+	if filterSuffix != "" {
+		suffix += "&" + filterSuffix
 	}
+	if colMask != defaultColMask {
+		suffix += fmt.Sprintf("&d=0x%x", colMask)
+	}
+	var nextA uint64
+	var nextB uint32
+	hasPrev, atFirst := false, true
+	var prevA uint64
+	var prevB uint32
+	if len(dbTransfers) > 0 {
+		last := dbTransfers[len(dbTransfers)-1]
+		nextA, nextB = last.TxUid, last.TxIdx
+		first := dbTransfers[0]
+		prevA, prevB, hasPrev, atFirst, _ = db.GetElTokenTransfersPrevAnchor(ctx, filter, first.TxUid, first.TxIdx, uint32(pageSize))
+	}
+	pageData.Pager = buildElPager("/transfers", suffix, pageNum, hasNext, nextA, nextB, hasPrev, atFirst, prevA, prevB, true)
 
 	cacheTimeout := 5 * time.Minute
 	if beforeTxUid == 0 {
@@ -262,6 +410,9 @@ func enrichElTokenTransferRows(ctx context.Context, dbTransfers []*dbtypes.ElTok
 		}
 		if info, ok := txInfoMap[t.TxUid]; ok {
 			row.TxHash = info.TxHash
+			if len(info.MethodID) >= 4 {
+				row.MethodID = info.MethodID[:4]
+			}
 		}
 		if blockInfo, ok := blockMap[blockUid]; ok && blockInfo.Block != nil {
 			row.BlockRoot = blockInfo.Block.Root
@@ -286,5 +437,25 @@ func enrichElTokenTransferRows(ctx context.Context, dbTransfers []*dbtypes.ElTok
 		result = append(result, row)
 	}
 
+	calculateTransferRowspans(result)
 	return result
+}
+
+// calculateTransferRowspans sets TxHashRowspan on the first row of each run of
+// consecutive transfers sharing a tx hash (rows are already grouped by tx_uid),
+// and 0 on the rest, so the tx/block/age cells can be merged with rowspan.
+func calculateTransferRowspans(transfers []*models.TransferRow) {
+	i := len(transfers) - 1
+	for i >= 0 {
+		currentTxHash := transfers[i].TxHash
+		groupStart := i
+		for groupStart > 0 && bytes.Equal(transfers[groupStart-1].TxHash, currentTxHash) {
+			groupStart--
+		}
+		transfers[groupStart].TxHashRowspan = i - groupStart + 1
+		for j := groupStart + 1; j <= i; j++ {
+			transfers[j].TxHashRowspan = 0
+		}
+		i = groupStart - 1
+	}
 }

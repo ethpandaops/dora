@@ -119,6 +119,64 @@ func GetElTransactionsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtyp
 	return txs, nil
 }
 
+// appendElTransactionFilterConds appends the WHERE conditions for an
+// ElTransactionFilter and returns the filterOp ("WHERE"/"AND") to continue with.
+// Slot bounds map onto the tx_uid sort key (tx_uid = slot<<32 | ...), so they
+// are a free range on the primary index; the rest are predicates.
+func appendElTransactionFilterConds(sql *strings.Builder, args *[]any, filter *dbtypes.ElTransactionFilter, filterOp string) string {
+	if filter == nil {
+		return filterOp
+	}
+	add := func(cond string, val any) {
+		*args = append(*args, val)
+		fmt.Fprintf(sql, " %s %s $%d", filterOp, cond, len(*args))
+		filterOp = "AND"
+	}
+	if filter.MinSlot != nil {
+		add("tx_uid >=", *filter.MinSlot<<32)
+	}
+	if filter.MaxSlot != nil {
+		add("tx_uid <", (*filter.MaxSlot+1)<<32)
+	}
+	if filter.FromID > 0 {
+		add("from_id =", filter.FromID)
+	}
+	if filter.ToID > 0 {
+		add("to_id =", filter.ToID)
+	}
+	if filter.Reverted != nil {
+		add("reverted =", *filter.Reverted)
+	}
+	if filter.MinGasUsed != nil {
+		add("gas_used >=", *filter.MinGasUsed)
+	}
+	if filter.MaxGasUsed != nil {
+		add("gas_used <=", *filter.MaxGasUsed)
+	}
+	if filter.MinAmount != nil {
+		add("amount >=", *filter.MinAmount)
+	}
+	if filter.MaxAmount != nil {
+		add("amount <=", *filter.MaxAmount)
+	}
+	if filter.MinTip != nil {
+		add("tip_price >=", *filter.MinTip)
+	}
+	if filter.MaxTip != nil {
+		add("tip_price <=", *filter.MaxTip)
+	}
+	if len(filter.TxTypes) > 0 {
+		placeholders := make([]string, len(filter.TxTypes))
+		for i, t := range filter.TxTypes {
+			*args = append(*args, t)
+			placeholders[i] = fmt.Sprintf("$%d", len(*args))
+		}
+		fmt.Fprintf(sql, " %s tx_type IN (%s)", filterOp, strings.Join(placeholders, ", "))
+		filterOp = "AND"
+	}
+	return filterOp
+}
+
 // GetElTransactionsFiltered returns transactions matching the given filter
 // using keyset (boundary) pagination, ordered by tx_uid DESC. Pass
 // beforeTxUid = 0 for the first (newest) page, then the tx_uid of the last
@@ -131,38 +189,10 @@ func GetElTransactionsFiltered(ctx context.Context, filter *dbtypes.ElTransactio
 
 	fmt.Fprintf(&sql, "SELECT %s FROM el_transactions", elTransactionColumns)
 
-	filterOp := "WHERE"
-	if filter != nil {
-		if filter.FromID > 0 {
-			args = append(args, filter.FromID)
-			fmt.Fprintf(&sql, " %v from_id = $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-		if filter.ToID > 0 {
-			args = append(args, filter.ToID)
-			fmt.Fprintf(&sql, " %v to_id = $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-		if filter.Reverted != nil {
-			args = append(args, *filter.Reverted)
-			fmt.Fprintf(&sql, " %v reverted = $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-		if filter.MinGasUsed != nil {
-			args = append(args, *filter.MinGasUsed)
-			fmt.Fprintf(&sql, " %v gas_used >= $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-		if filter.MaxGasUsed != nil {
-			args = append(args, *filter.MaxGasUsed)
-			fmt.Fprintf(&sql, " %v gas_used <= $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-	}
+	filterOp := appendElTransactionFilterConds(&sql, &args, filter, "WHERE")
 	if beforeTxUid > 0 {
 		args = append(args, beforeTxUid)
 		fmt.Fprintf(&sql, " %v tx_uid < $%v", filterOp, len(args))
-		filterOp = "AND"
 	}
 
 	args = append(args, limit+1)
@@ -182,7 +212,40 @@ func GetElTransactionsFiltered(ctx context.Context, filter *dbtypes.ElTransactio
 	return txs, hasMore, nil
 }
 
-// MaxAccountTransactionCount is the maximum count returned for address transaction queries.
+// GetElTransactionsPrevAnchor supports backward navigation for the keyset
+// transactions list. Given afterTxUid (the tx_uid of the current page's top
+// row), it probes for the rows immediately newer (ascending) and returns:
+//   - prevBeforeTxUid: the boundary cursor for the previous page (the
+//     (limit+1)-th newer row), valid only when atFirst is false;
+//   - hasPrev: whether any newer row exists at all (drives enabling First/<);
+//   - atFirst: true when fewer than limit+1 newer rows exist, i.e. the previous
+//     page is the newest page.
+func GetElTransactionsPrevAnchor(ctx context.Context, filter *dbtypes.ElTransactionFilter, afterTxUid uint64, limit uint32) (uint64, bool, bool, error) {
+	var sql strings.Builder
+	args := []any{}
+
+	fmt.Fprint(&sql, "SELECT tx_uid FROM el_transactions")
+
+	filterOp := appendElTransactionFilterConds(&sql, &args, filter, "WHERE")
+	args = append(args, afterTxUid)
+	fmt.Fprintf(&sql, " %v tx_uid > $%v", filterOp, len(args))
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY tx_uid ASC LIMIT $%v", len(args))
+
+	uids := []uint64{}
+	if err := ReaderDb.SelectContext(ctx, &uids, sql.String(), args...); err != nil {
+		logger.Errorf("Error while probing previous tx anchor: %v", err)
+		return 0, false, false, err
+	}
+
+	hasPrev := len(uids) > 0
+	if uint32(len(uids)) > limit {
+		return uids[limit], hasPrev, false, nil
+	}
+	return 0, hasPrev, true, nil
+}
+
+// MaxAccountTransactionCount is the maximum count returned for account transaction queries.
 // If the actual count exceeds this, the query returns this limit and sets the "more" flag.
 const MaxAccountTransactionCount = 100000
 

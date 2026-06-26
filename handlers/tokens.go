@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +22,7 @@ import (
 func Tokens(w http.ResponseWriter, r *http.Request) {
 	var templateFiles = append(layoutTemplateFiles,
 		"tokens/tokens.html",
+		"_shared/pager.html",
 	)
 
 	var pageTemplate = templates.GetTemplate(templateFiles...)
@@ -84,7 +84,6 @@ func buildTokensPageData(ctx context.Context, pageIdx uint64, pageSize uint64, s
 
 	pageData := &models.TokensPageData{
 		PageSize:    pageSize,
-		PageIndex:   pageIdx,
 		SearchQuery: search,
 	}
 
@@ -107,7 +106,7 @@ func buildTokensPageData(ctx context.Context, pageIdx uint64, pageSize uint64, s
 	dbTokens, totalCount, _ := db.GetElTokensFiltered(ctx, offset, uint32(pageSize), filter)
 
 	pageData.TotalCount = totalCount
-	pageData.TotalPages = uint64(math.Ceil(float64(totalCount) / float64(pageSize)))
+	totalPages := uint64(math.Ceil(float64(totalCount) / float64(pageSize)))
 	if totalCount > 0 {
 		pageData.FirstItem = offset + 1
 		pageData.LastItem = min(offset+pageSize, totalCount)
@@ -125,19 +124,12 @@ func buildTokensPageData(ctx context.Context, pageIdx uint64, pageSize uint64, s
 		})
 	}
 
-	// Pagination links (preserve page size + search).
-	suffix := fmt.Sprintf("c=%v", pageSize)
+	// Pagination via the shared offset pager (preserves page size + search).
+	params := []models.UrlParam{{Key: "c", Value: strconv.FormatUint(pageSize, 10)}}
 	if search != "" {
-		suffix += "&q=" + url.QueryEscape(search)
+		params = append(params, models.UrlParam{Key: "q", Value: search})
 	}
-	pageData.FirstPageLink = fmt.Sprintf("/tokens?p=1&%v", suffix)
-	if pageIdx > 1 {
-		pageData.PrevPageLink = fmt.Sprintf("/tokens?p=%v&%v", pageIdx-1, suffix)
-	}
-	if pageIdx < pageData.TotalPages {
-		pageData.NextPageLink = fmt.Sprintf("/tokens?p=%v&%v", pageIdx+1, suffix)
-		pageData.LastPageLink = fmt.Sprintf("/tokens?p=%v&%v", pageData.TotalPages, suffix)
-	}
+	pageData.Pager = buildOffsetPager("/tokens", params, pageIdx, totalPages)
 
 	return pageData, 1 * time.Minute
 }

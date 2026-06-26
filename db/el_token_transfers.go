@@ -89,35 +89,86 @@ func GetElTokenTransfersByTxUid(ctx context.Context, txUid uint64) ([]*dbtypes.E
 // elTokenTransferColumns is the column list for el_token_transfers queries.
 const elTokenTransferColumns = "tx_uid, tx_idx, token_id, token_type, token_index, from_id, to_id, amount, amount_raw"
 
-// GetElTokenTransfersByTokenID returns token transfers for a given token using
-// keyset pagination, ordered by (tx_uid, tx_idx) DESC. Pass beforeTxUid = 0 for
-// the first (newest) page, then the (tx_uid, tx_idx) of the last returned row.
-// Backed by the (token_id, tx_uid DESC) index. Returns the page (up to limit
-// rows) and whether more (older) rows exist.
-func GetElTokenTransfersByTokenID(ctx context.Context, tokenID uint64, beforeTxUid uint64, beforeTxIdx uint32, limit uint32) ([]*dbtypes.ElTokenTransfer, bool, error) {
+// appendElTokenTransferFilterConds appends the WHERE conditions for an
+// ElTokenTransferFilter and returns the filterOp ("WHERE"/"AND") to continue
+// with. Slot bounds map onto the tx_uid sort key (free range on the index);
+// token_id / from_id / to_id use existing composite indexes; the rest are
+// predicates.
+func appendElTokenTransferFilterConds(sql *strings.Builder, args *[]any, filter *dbtypes.ElTokenTransferFilter, filterOp string) string {
+	if filter == nil {
+		return filterOp
+	}
+	add := func(cond string, val any) {
+		*args = append(*args, val)
+		fmt.Fprintf(sql, " %s %s $%d", filterOp, cond, len(*args))
+		filterOp = "AND"
+	}
+	if filter.MinSlot != nil {
+		add("tx_uid >=", *filter.MinSlot<<32)
+	}
+	if filter.MaxSlot != nil {
+		add("tx_uid <", (*filter.MaxSlot+1)<<32)
+	}
+	if filter.TokenID != nil {
+		add("token_id =", *filter.TokenID)
+	}
+	if filter.FromID > 0 {
+		add("from_id =", filter.FromID)
+	}
+	if filter.ToID > 0 {
+		add("to_id =", filter.ToID)
+	}
+	if filter.MinAmount != nil {
+		add("amount >=", *filter.MinAmount)
+	}
+	if filter.MaxAmount != nil {
+		add("amount <=", *filter.MaxAmount)
+	}
+	if len(filter.TokenTypes) > 0 {
+		placeholders := make([]string, len(filter.TokenTypes))
+		for i, t := range filter.TokenTypes {
+			*args = append(*args, t)
+			placeholders[i] = fmt.Sprintf("$%d", len(*args))
+		}
+		fmt.Fprintf(sql, " %s token_type IN (%s)", filterOp, strings.Join(placeholders, ", "))
+		filterOp = "AND"
+	}
+	return filterOp
+}
+
+// GetElTokenTransfersPrevAnchor supports backward navigation for the keyset
+// token-transfers list (global or token-scoped via filter.TokenID). Given the
+// current page's top cursor (afterTxUid, afterTxIdx) it probes the rows
+// immediately newer (ascending) and returns the previous page's boundary
+// cursor, whether any newer row exists (hasPrev), and whether the previous page
+// is the newest page (atFirst).
+func GetElTokenTransfersPrevAnchor(ctx context.Context, filter *dbtypes.ElTokenTransferFilter, afterTxUid uint64, afterTxIdx uint32, limit uint32) (uint64, uint32, bool, bool, error) {
 	var sql strings.Builder
-	args := []any{tokenID}
+	args := []any{}
 
-	fmt.Fprintf(&sql, "SELECT %s FROM el_token_transfers WHERE token_id = $1", elTokenTransferColumns)
-	if beforeTxUid > 0 {
-		args = append(args, beforeTxUid, beforeTxIdx)
-		fmt.Fprintf(&sql, " AND (tx_uid < $%v OR (tx_uid = $%v AND tx_idx < $%v))", len(args)-1, len(args)-1, len(args))
-	}
+	fmt.Fprint(&sql, "SELECT tx_uid, tx_idx FROM el_token_transfers")
+
+	filterOp := appendElTokenTransferFilterConds(&sql, &args, filter, "WHERE")
+	args = append(args, afterTxUid, afterTxIdx)
+	fmt.Fprintf(&sql, " %v (tx_uid > $%v OR (tx_uid = $%v AND tx_idx > $%v))", filterOp, len(args)-1, len(args)-1, len(args))
 	args = append(args, limit+1)
-	fmt.Fprintf(&sql, " ORDER BY tx_uid DESC, tx_idx DESC LIMIT $%v", len(args))
+	fmt.Fprintf(&sql, " ORDER BY tx_uid ASC, tx_idx ASC LIMIT $%v", len(args))
 
-	transfers := []*dbtypes.ElTokenTransfer{}
-	if err := ReaderDb.SelectContext(ctx, &transfers, sql.String(), args...); err != nil {
-		logger.Errorf("Error while fetching el token transfers by token id: %v", err)
-		return nil, false, err
+	type cursorRow struct {
+		TxUid uint64 `db:"tx_uid"`
+		TxIdx uint32 `db:"tx_idx"`
+	}
+	rows := []cursorRow{}
+	if err := ReaderDb.SelectContext(ctx, &rows, sql.String(), args...); err != nil {
+		logger.Errorf("Error while probing previous transfer anchor: %v", err)
+		return 0, 0, false, false, err
 	}
 
-	hasMore := false
-	if uint32(len(transfers)) > limit {
-		hasMore = true
-		transfers = transfers[:limit]
+	hasPrev := len(rows) > 0
+	if uint32(len(rows)) > limit {
+		return rows[limit].TxUid, rows[limit].TxIdx, hasPrev, false, nil
 	}
-	return transfers, hasMore, nil
+	return 0, 0, hasPrev, true, nil
 }
 
 // GetElTokenTransfersFiltered returns token transfers matching the given filter
@@ -131,38 +182,10 @@ func GetElTokenTransfersFiltered(ctx context.Context, filter *dbtypes.ElTokenTra
 
 	fmt.Fprintf(&sql, "SELECT %s FROM el_token_transfers", elTokenTransferColumns)
 
-	filterOp := "WHERE"
-	if filter != nil {
-		if filter.TokenID != nil {
-			args = append(args, *filter.TokenID)
-			fmt.Fprintf(&sql, " %v token_id = $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-		if filter.FromID > 0 {
-			args = append(args, filter.FromID)
-			fmt.Fprintf(&sql, " %v from_id = $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-		if filter.ToID > 0 {
-			args = append(args, filter.ToID)
-			fmt.Fprintf(&sql, " %v to_id = $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-		if filter.MinAmount != nil {
-			args = append(args, *filter.MinAmount)
-			fmt.Fprintf(&sql, " %v amount >= $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-		if filter.MaxAmount != nil {
-			args = append(args, *filter.MaxAmount)
-			fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
-			filterOp = "AND"
-		}
-	}
+	filterOp := appendElTokenTransferFilterConds(&sql, &args, filter, "WHERE")
 	if beforeTxUid > 0 {
 		args = append(args, beforeTxUid, beforeTxIdx)
 		fmt.Fprintf(&sql, " %v (tx_uid < $%v OR (tx_uid = $%v AND tx_idx < $%v))", filterOp, len(args)-1, len(args)-1, len(args))
-		filterOp = "AND"
 	}
 
 	args = append(args, limit+1)

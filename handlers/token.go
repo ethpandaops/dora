@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -35,6 +36,7 @@ func tokenTypeName(tokenType uint8) string {
 func Token(w http.ResponseWriter, r *http.Request) {
 	var templateFiles = append(layoutTemplateFiles,
 		"token/token.html",
+		"_shared/pager.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"token/notfound.html",
@@ -60,20 +62,13 @@ func Token(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	var beforeTxUid uint64
-	var beforeTxIdx uint64
-	if urlArgs.Has("before") {
-		beforeTxUid, _ = strconv.ParseUint(urlArgs.Get("before"), 10, 64)
-	}
-	if urlArgs.Has("beforeidx") {
-		beforeTxIdx, _ = strconv.ParseUint(urlArgs.Get("beforeidx"), 10, 32)
-	}
+	beforeTxUid, beforeTxIdx, pageNum := parseElPageParam(urlArgs.Get("p"))
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	var pageData *models.TokenPageData
 	if pageError == nil {
-		pageData, pageError = getTokenPageData(addressBytes, beforeTxUid, uint32(beforeTxIdx), pageSize)
+		pageData, pageError = getTokenPageData(addressBytes, beforeTxUid, beforeTxIdx, pageNum, pageSize)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -95,11 +90,11 @@ func Token(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getTokenPageData(contract []byte, beforeTxUid uint64, beforeTxIdx uint32, pageSize uint64) (*models.TokenPageData, error) {
+func getTokenPageData(contract []byte, beforeTxUid uint64, beforeTxIdx uint32, pageNum uint64, pageSize uint64) (*models.TokenPageData, error) {
 	pageData := &models.TokenPageData{}
-	pageCacheKey := fmt.Sprintf("token:%x:%v:%v:%v", contract, beforeTxUid, beforeTxIdx, pageSize)
+	pageCacheKey := fmt.Sprintf("token:%x:%v:%v:%v:%v", contract, beforeTxUid, beforeTxIdx, pageNum, pageSize)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildTokenPageData(pageCall.CallCtx, contract, beforeTxUid, beforeTxIdx, pageSize)
+		pageData, cacheTimeout := buildTokenPageData(pageCall.CallCtx, contract, beforeTxUid, beforeTxIdx, pageNum, pageSize)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -120,8 +115,8 @@ func getTokenPageData(contract []byte, beforeTxUid uint64, beforeTxIdx uint32, p
 	return pageData, nil
 }
 
-func buildTokenPageData(ctx context.Context, contract []byte, beforeTxUid uint64, beforeTxIdx uint32, pageSize uint64) (*models.TokenPageData, time.Duration) {
-	logrus.Debugf("token page called: 0x%x before=%v/%v", contract, beforeTxUid, beforeTxIdx)
+func buildTokenPageData(ctx context.Context, contract []byte, beforeTxUid uint64, beforeTxIdx uint32, pageNum uint64, pageSize uint64) (*models.TokenPageData, time.Duration) {
+	logrus.Debugf("token page called: 0x%x before=%v/%v page=%v", contract, beforeTxUid, beforeTxIdx, pageNum)
 
 	token, err := db.GetElTokenByContract(ctx, contract)
 	if err != nil || token == nil {
@@ -137,23 +132,27 @@ func buildTokenPageData(ctx context.Context, contract []byte, beforeTxUid uint64
 		Symbol:        token.Symbol,
 		Decimals:      uint8(token.Decimals),
 		PageSize:      pageSize,
-		IsDefaultPage: beforeTxUid == 0,
 	}
 
-	dbTransfers, hasMore, _ := db.GetElTokenTransfersByTokenID(ctx, token.ID, beforeTxUid, beforeTxIdx, uint32(pageSize))
-	pageData.HasMore = hasMore
-	if len(dbTransfers) > 0 {
-		last := dbTransfers[len(dbTransfers)-1]
-		pageData.NextCursorTxUid = last.TxUid
-		pageData.NextCursorTxIdx = last.TxIdx
-	}
+	tokenID := token.ID
+	filter := &dbtypes.ElTokenTransferFilter{TokenID: &tokenID}
+	dbTransfers, hasNext, _ := db.GetElTokenTransfersFiltered(ctx, filter, beforeTxUid, beforeTxIdx, uint32(pageSize))
 	pageData.Transfers = enrichElTokenTransferRows(ctx, dbTransfers)
 
 	tokenHex := common.BytesToAddress(token.Contract).Hex()
-	pageData.FirstPageLink = fmt.Sprintf("/token/%s?c=%v", tokenHex, pageSize)
-	if hasMore {
-		pageData.NextPageLink = fmt.Sprintf("/token/%s?c=%v&before=%v&beforeidx=%v", tokenHex, pageSize, pageData.NextCursorTxUid, pageData.NextCursorTxIdx)
+	suffix := fmt.Sprintf("c=%v", pageSize)
+	var nextA uint64
+	var nextB uint32
+	hasPrev, atFirst := false, true
+	var prevA uint64
+	var prevB uint32
+	if len(dbTransfers) > 0 {
+		last := dbTransfers[len(dbTransfers)-1]
+		nextA, nextB = last.TxUid, last.TxIdx
+		first := dbTransfers[0]
+		prevA, prevB, hasPrev, atFirst, _ = db.GetElTokenTransfersPrevAnchor(ctx, filter, first.TxUid, first.TxIdx, uint32(pageSize))
 	}
+	pageData.Pager = buildElPager("/token/"+tokenHex, suffix, pageNum, hasNext, nextA, nextB, hasPrev, atFirst, prevA, prevB, true)
 
 	cacheTimeout := 5 * time.Minute
 	if beforeTxUid == 0 {

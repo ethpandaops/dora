@@ -11,6 +11,8 @@ type TransferRow struct {
 	BlockOrphaned  bool      `json:"block_orphaned"`
 	BlockTime      time.Time `json:"block_time"`
 	MethodName     string    `json:"method_name"`
+	MethodID       []byte    `json:"method_id"`
+	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 render the tx/block/age cells with rowspan; 0 skip
 	FromAddr       []byte    `json:"from_addr"`
 	FromIsContract bool      `json:"from_is_contract"`
 	ToAddr         []byte    `json:"to_addr"`
@@ -25,14 +27,37 @@ type TransferRow struct {
 }
 
 // TransfersPageData is the data for the global token-transfers list page. The
-// list uses keyset pagination on (tx_uid, tx_idx).
+// list uses keyset pagination on (tx_uid, tx_idx) (see PagerData).
 type TransfersPageData struct {
-	Transfers       []*TransferRow `json:"transfers"`
-	PageSize        uint64         `json:"page_size"`
-	HasMore         bool           `json:"has_more"`
-	NextCursorTxUid uint64         `json:"next_cursor_tx_uid"`
-	NextCursorTxIdx uint32         `json:"next_cursor_tx_idx"`
-	IsDefaultPage   bool           `json:"is_default_page"`
-	FirstPageLink   string         `json:"first_page_link"`
-	NextPageLink    string         `json:"next_page_link"`
+	Transfers []*TransferRow   `json:"transfers"`
+	PageSize  uint64           `json:"page_size"`
+	Filter    *TransfersFilter `json:"filter"`
+	Pager     *PagerData       `json:"pager"`
+
+	// Columns toggled via the column selector "d" bitmask. Hash, From and To
+	// are always shown.
+	ColumnMask       uint64 `json:"column_mask"`
+	DisplayBlock     bool   `json:"display_block"`
+	DisplayAge       bool   `json:"display_age"`
+	DisplayMethod    bool   `json:"display_method"`
+	DisplayAmount    bool   `json:"display_amount"`
+	DisplayToken     bool   `json:"display_token"`
+	DisplayStatus    bool   `json:"display_status"`
+	DisplayTokenType bool   `json:"display_token_type"`
+}
+
+// TransfersFilter holds the current transfer filter values as strings so the
+// filter form can repopulate them (token/from/to are contract/address hex).
+type TransfersFilter struct {
+	MinSlot     string `json:"min_slot"`
+	MaxSlot     string `json:"max_slot"`
+	Token       string `json:"token"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	MinAmount   string `json:"min_amount"`
+	MaxAmount   string `json:"max_amount"`
+	TypeERC20   bool   `json:"type_erc20"`
+	TypeERC721  bool   `json:"type_erc721"`
+	TypeERC1155 bool   `json:"type_erc1155"`
+	Active      bool   `json:"active"`
 }
