@@ -264,6 +264,11 @@ func (ctx *txProcessingContext) processTransaction(
 		methodID = tx.Data()[:4]
 	}
 
+	txType := tx.Type()
+	if isContractCreation {
+		txType |= dbtypes.ElTxFlagCreate
+	}
+
 	result.transaction = &dbtypes.ElTransaction{
 		TxUid:       ctx.block.BlockUID<<16 | uint64(receipt.TransactionIndex),
 		BlockUid:    ctx.block.BlockUID,
@@ -281,7 +286,7 @@ func (ctx *txProcessingContext) processTransaction(
 		TipPrice:    tipPrice,
 		BlobCount:   blobCount,
 		BlockNumber: receipt.BlockNumber.Uint64(),
-		TxType:      tx.Type(),
+		TxType:      txType,
 		EffGasPrice: effGasPrice,
 	}
 

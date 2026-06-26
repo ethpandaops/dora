@@ -36,7 +36,8 @@ type TransactionsFilter struct {
 	MaxGas    string `json:"max_gas"`
 	MinTip    string `json:"min_tip"`
 	MaxTip    string `json:"max_tip"`
-	Reverted  string `json:"reverted"` // "", "0" (success), "1" (reverted)
+	Direction string `json:"direction"` // "", "out", "in" (address page only)
+	Reverted  string `json:"reverted"`  // "", "0" (success), "1" (reverted)
 	Type0     bool   `json:"type0"`
 	Type1     bool   `json:"type1"`
 	Type2     bool   `json:"type2"`

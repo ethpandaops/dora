@@ -583,10 +583,17 @@ type ElTransaction struct {
 	TipPrice    float64 `db:"tip_price"` // maxPriorityFeePerGas (in Gwei)
 	BlobCount   uint32  `db:"blob_count"`
 	BlockNumber uint64  `db:"block_number"`
-	TxType      uint8   `db:"tx_type"`
+	TxType      uint8   `db:"tx_type"`       // EVM tx type in bits 0-6; create flag in bit 7 (see ElTxType* below)
 	EffGasPrice float64 `db:"eff_gas_price"` // Effective gas price actually paid (in Gwei)
 	EventCount  uint16  `db:"event_count"`   // number of logs emitted (badge count; full event data in blockdb)
 }
+
+// el_transactions.tx_type packs a flag into the top bit so no extra column is
+// needed: the create flag is bit 7; the EVM tx type is everything below it.
+const (
+	ElTxTypeMask   uint8 = 0x7F // bits 0-6: EVM tx type
+	ElTxFlagCreate uint8 = 0x80 // bit 7: contract-creation tx (raw recipient was null)
+)
 
 // ElTransactionInternal is a per-account aggregate of internal calls within a
 // transaction. One row per (tx_uid, account_id) regardless of how many sub-

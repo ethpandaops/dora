@@ -166,10 +166,11 @@ func appendElTransactionFilterConds(sql *strings.Builder, args *[]any, filter *d
 		add("tip_price <=", *filter.MaxTip)
 	}
 	if len(filter.TxTypes) > 0 {
-		placeholders := make([]string, len(filter.TxTypes))
-		for i, t := range filter.TxTypes {
-			*args = append(*args, t)
-			placeholders[i] = fmt.Sprintf("$%d", len(*args))
+		// Match each type both plain and with the create flag set (one extra value).
+		placeholders := make([]string, 0, len(filter.TxTypes)*2)
+		for _, t := range filter.TxTypes {
+			*args = append(*args, t, t|dbtypes.ElTxFlagCreate)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(*args)-1), fmt.Sprintf("$%d", len(*args)))
 		}
 		fmt.Fprintf(sql, " %s tx_type IN (%s)", filterOp, strings.Join(placeholders, ", "))
 		filterOp = "AND"
@@ -252,6 +253,114 @@ const MaxAccountTransactionCount = 100000
 // GetElTransactionsByAccountIDCombined fetches transactions where the account is either
 // sender (from_id) or receiver (to_id). Results are sorted by tx_uid DESC.
 // Returns transactions, total count (capped at MaxAccountTransactionCount), whether count is capped, and error.
+// Account transaction direction: which side of the tx the account is on.
+const (
+	AccountDirectionAll uint8 = 0
+	AccountDirectionOut uint8 = 1 // account is sender (from_id)
+	AccountDirectionIn  uint8 = 2 // account is recipient (to_id)
+)
+
+// buildElAccountTxQuery builds the keyset query for an account's transactions.
+// direction restricts to the from-side, to-side, or both (UNION). The filter's
+// FromID/ToID are counterparty filters applied to the opposite side; the other
+// filter fields apply uniformly. cursor + reverse drive keyset pagination
+// (forward: tx_uid < cursor DESC; reverse/prev-probe: tx_uid > cursor ASC).
+// colList selects the projected columns (full row vs just tx_uid for probes).
+func buildElAccountTxQuery(accountID uint64, direction uint8, filter *dbtypes.ElTransactionFilter, cursor uint64, limit uint32, reverse bool, colList string) (string, []any) {
+	args := []any{}
+	cmp, order := "<", "DESC"
+	if reverse {
+		cmp, order = ">", "ASC"
+	}
+
+	var counterFrom, counterTo uint64
+	uniform := dbtypes.ElTransactionFilter{}
+	if filter != nil {
+		counterFrom, counterTo = filter.FromID, filter.ToID
+		uniform = *filter
+		uniform.FromID, uniform.ToID = 0, 0
+	}
+
+	branch := func(sql *strings.Builder, accountIsFrom bool) {
+		fmt.Fprintf(sql, "SELECT %s FROM el_transactions WHERE ", colList)
+		if accountIsFrom {
+			args = append(args, accountID)
+			fmt.Fprintf(sql, "from_id = $%d", len(args))
+			if counterTo > 0 {
+				args = append(args, counterTo)
+				fmt.Fprintf(sql, " AND to_id = $%d", len(args))
+			}
+		} else {
+			args = append(args, accountID, accountID)
+			fmt.Fprintf(sql, "to_id = $%d AND from_id != $%d", len(args)-1, len(args))
+			if counterFrom > 0 {
+				args = append(args, counterFrom)
+				fmt.Fprintf(sql, " AND from_id = $%d", len(args))
+			}
+		}
+		appendElTransactionFilterConds(sql, &args, &uniform, "AND")
+		if cursor > 0 {
+			args = append(args, cursor)
+			fmt.Fprintf(sql, " AND tx_uid %s $%d", cmp, len(args))
+		}
+		args = append(args, limit+1)
+		fmt.Fprintf(sql, " ORDER BY block_uid %s NULLS LAST LIMIT $%d", order, len(args))
+	}
+
+	var sql strings.Builder
+	switch direction {
+	case AccountDirectionOut, AccountDirectionIn:
+		fmt.Fprintf(&sql, "SELECT %s FROM (", colList)
+		branch(&sql, direction == AccountDirectionOut)
+		args = append(args, limit+1)
+		fmt.Fprintf(&sql, ") AS x ORDER BY tx_uid %s LIMIT $%d", order, len(args))
+	default:
+		fmt.Fprintf(&sql, "SELECT %s FROM (SELECT * FROM (", colList)
+		branch(&sql, true)
+		fmt.Fprint(&sql, ") AS a UNION ALL SELECT * FROM (")
+		branch(&sql, false)
+		args = append(args, limit+1)
+		fmt.Fprintf(&sql, ") AS b) combined ORDER BY tx_uid %s LIMIT $%d", order, len(args))
+	}
+	return sql.String(), args
+}
+
+// GetElTransactionsByAccount returns the account's transactions with keyset
+// pagination, restricted by direction and filter. Returns the page (up to
+// limit) and whether more (older) rows exist.
+func GetElTransactionsByAccount(ctx context.Context, accountID uint64, direction uint8, filter *dbtypes.ElTransactionFilter, beforeTxUid uint64, limit uint32) ([]*dbtypes.ElTransaction, bool, error) {
+	sqlStr, args := buildElAccountTxQuery(accountID, direction, filter, beforeTxUid, limit, false, elTransactionColumns)
+	txs := []*dbtypes.ElTransaction{}
+	if err := ReaderDb.SelectContext(ctx, &txs, sqlStr, args...); err != nil {
+		logger.Errorf("Error while fetching el transactions by account: %v", err)
+		return nil, false, err
+	}
+	hasMore := false
+	if uint32(len(txs)) > limit {
+		hasMore = true
+		txs = txs[:limit]
+	}
+	return txs, hasMore, nil
+}
+
+// GetElTransactionsByAccountPrevAnchor probes for rows newer than afterTxUid
+// (the current page's top) to drive the First/< controls. Returns the previous
+// page's boundary cursor (when atFirst is false), whether any newer row exists,
+// and whether the previous page is the newest page.
+func GetElTransactionsByAccountPrevAnchor(ctx context.Context, accountID uint64, direction uint8, filter *dbtypes.ElTransactionFilter, afterTxUid uint64, limit uint32) (uint64, bool, bool, error) {
+	sqlStr, args := buildElAccountTxQuery(accountID, direction, filter, afterTxUid, limit, true, "tx_uid")
+	uids := []uint64{}
+	if err := ReaderDb.SelectContext(ctx, &uids, sqlStr, args...); err != nil {
+		logger.Errorf("Error while probing previous account tx anchor: %v", err)
+		return 0, false, false, err
+	}
+	hasPrev := len(uids) > 0
+	if uint32(len(uids)) > limit {
+		return uids[limit], hasPrev, false, nil
+	}
+	return 0, hasPrev, true, nil
+}
+
 func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, bool, error) {
 	// Use UNION ALL instead of OR for better index usage.
 	// The second query excludes rows where from_id = accountID to avoid duplicates

@@ -28,38 +28,58 @@
 {{ define "elFilterJs" }}
 <script src="/js/bootstrap-multiselect.js"></script>
 <script type="text/javascript">
+function decorateFilterMultiselect() {
+  this.$button.attr("data-bs-toggle", "dropdown");
+  this.$container.addClass("filter-multiselect-container");
+}
+
+// initElFilters inits the multiselects within root (default document). Safe to
+// call repeatedly (e.g. after AJAX-loading a tab) — already-inited selects are
+// skipped.
+function initElFilters(root) {
+  root = root || document;
+  $(root).find('.el-filter-form .filter-multiselect').each(function() {
+    if ($(this).data('ms-init')) { return; }
+    $(this).data('ms-init', true);
+    var opts = { onInitialized: decorateFilterMultiselect };
+    if ($(this).hasClass('column-multiselect')) {
+      // Column selector: auto-apply when the dropdown closes after a change.
+      var form = $(this).closest('form');
+      var changed = false;
+      opts.nonSelectedText = 'Columns';
+      opts.onChange = function() { changed = true; };
+      opts.onDropdownHidden = function() { if (changed) { changed = false; $(form).trigger('submit'); } };
+    }
+    $(this).multiselect(opts);
+  });
+}
+window.initElFilters = initElFilters;
+
+// cleanElFilter drops empty inputs and encodes every bitmask multiselect into
+// its hidden companion input before the form is serialized/submitted.
+function cleanElFilter(form) {
+  $(form).find('input[type="text"],input[type="number"],select:not([multiple])').filter(function() {
+    return !this.value;
+  }).prop('name', '');
+  $(form).find('select.bitmask-multiselect').each(function() {
+    var name = this.getAttribute('data-mask-name');
+    var base = parseInt(this.getAttribute('data-mask-base') || '0');
+    var mask = 0;
+    $(this).find('option:selected').each(function() { mask |= 1 << (parseInt(this.value) - base); });
+    $(this).prop('name', '');
+    var hidden = $(form).find('input[data-mask-for="' + name + '"]');
+    if (mask) { hidden.prop('name', name).val('0x' + mask.toString(16)); } else { hidden.prop('name', ''); }
+  });
+}
+
 $(function() {
-  function decorate() {
-    this.$button.attr("data-bs-toggle", "dropdown");
-    this.$container.addClass("filter-multiselect-container");
-  }
-  // Value multiselects (tx type / token type): submit selected option values.
-  $('.el-filter-form .filter-multiselect').not('.column-multiselect').each(function() {
-    $(this).multiselect({ onInitialized: decorate });
-  });
-  // Column selector: auto-apply when the dropdown closes after a change.
-  $('.el-filter-form .column-multiselect').each(function() {
-    var form = $(this).closest('form');
-    var changed = false;
-    $(this).multiselect({
-      nonSelectedText: 'Columns',
-      onInitialized: decorate,
-      onChange: function() { changed = true; },
-      onDropdownHidden: function() { if (changed) { form.submit(); } }
-    });
-  });
-  $('.el-filter-form').on('submit', function() {
-    // Drop empty text/number inputs and empty single-selects from the query string.
-    $(this).find('input[type="text"],input[type="number"],select:not([multiple])').filter(function() {
-      return !this.value;
-    }).prop('name', '');
-    // Encode the column selector into the "d" bitmask param.
-    var col = $(this).find('select.column-multiselect');
-    if (col.length) {
-      var mask = 0;
-      col.find('option:selected').each(function() { mask |= 1 << (parseInt(this.value) - 1); });
-      col.prop('name', '');
-      $(this).find('input.column-mask').prop('name', 'd').val('0x' + mask.toString(16));
+  initElFilters(document);
+  // Delegated so AJAX-injected forms (address tabs) are handled too.
+  $(document).on('submit', '.el-filter-form', function(e) {
+    cleanElFilter(this);
+    if (this.getAttribute('data-ajax-target') && window.elFilterAjaxSubmit) {
+      e.preventDefault();
+      window.elFilterAjaxSubmit(this);
     }
   });
 });

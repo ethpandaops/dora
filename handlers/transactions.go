@@ -68,22 +68,16 @@ func parseTransactionsFilterForm(q url.Values) (*models.TransactionsFilter, stri
 		form.Reverted = "0"
 		keep("reverted", "0")
 	}
-	for _, v := range q["type"] {
-		switch v {
-		case "0":
-			form.Type0 = true
-		case "1":
-			form.Type1 = true
-		case "2":
-			form.Type2 = true
-		case "3":
-			form.Type3 = true
-		case "4":
-			form.Type4 = true
-		default:
-			continue
+	// Tx type is a bitmask (bit N = type N), matching the multiselect encoding.
+	if tv := q.Get("type"); tv != "" {
+		if tb, err := strconv.ParseUint(strings.TrimPrefix(tv, "0x"), 16, 64); err == nil && tb != 0 {
+			form.Type0 = tb&0x1 != 0
+			form.Type1 = tb&0x2 != 0
+			form.Type2 = tb&0x4 != 0
+			form.Type3 = tb&0x8 != 0
+			form.Type4 = tb&0x10 != 0
+			keep("type", tv)
 		}
-		keep("type", v)
 	}
 
 	form.Active = len(parts) > 0
@@ -332,7 +326,7 @@ func enrichElTransactionRows(ctx context.Context, dbTxs []*dbtypes.ElTransaction
 			Amount:      tx.Amount,
 			TxFee:       txFee,
 			GasUsed:     tx.GasUsed,
-			TxType:      tx.TxType,
+			TxType:      tx.TxType & dbtypes.ElTxTypeMask,
 			Reverted:    tx.Reverted,
 		}
 
@@ -352,7 +346,7 @@ func enrichElTransactionRows(ctx context.Context, dbTxs []*dbtypes.ElTransaction
 				txData.HasTo = true
 			}
 		}
-		txData.IsCreate = !txData.HasTo
+		txData.IsCreate = tx.TxType&dbtypes.ElTxFlagCreate != 0
 
 		if len(tx.MethodID) >= 4 {
 			txData.MethodID = tx.MethodID[:4]

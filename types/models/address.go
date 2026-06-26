@@ -39,14 +39,10 @@ type AddressPageData struct {
 	ContractBytecode       []byte `json:"contract_bytecode"`        // deployed (runtime) code
 
 	// Transactions tab
-	Transactions     []*AddressPageDataTransaction `json:"transactions"`
-	TransactionCount uint64                        `json:"transaction_count"`
-	TxCountCapped    bool                          `json:"tx_count_capped"`
-	TxPageIndex      uint64                        `json:"tx_page_index"`
-	TxPageSize       uint64                        `json:"tx_page_size"`
-	TxTotalPages     uint64                        `json:"tx_total_pages"`
-	TxFirstItem      uint64                        `json:"tx_first_item"`
-	TxLastItem       uint64                        `json:"tx_last_item"`
+	Transactions []*AddressPageDataTransaction `json:"transactions"`
+	TxPageSize   uint64                        `json:"tx_page_size"`
+	TxFilter     *TransactionsFilter           `json:"tx_filter"`
+	TxPager      *PagerData                    `json:"tx_pager"`
 
 	// ERC20 Token Transfers tab
 	ERC20Transfers     []*AddressPageDataTokenTransfer `json:"erc20_transfers"`

@@ -7,7 +7,7 @@
         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#txFilters">
           <i class="fas fa-filter me-1"></i>Filters{{ if .Filter.Active }} <span class="badge text-bg-primary">on</span>{{ end }}
         </button>
-        <select name="d" multiple="multiple" class="filter-multiselect column-multiselect">
+        <select multiple="multiple" class="filter-multiselect column-multiselect bitmask-multiselect" data-mask-name="d" data-mask-base="1">
           <option value="1" {{ if .DisplayBlock }}selected{{ end }}>Block</option>
           <option value="2" {{ if .DisplayAge }}selected{{ end }}>Age</option>
           <option value="3" {{ if .DisplayMethod }}selected{{ end }}>Method</option>
@@ -17,7 +17,7 @@
           <option value="7" {{ if .DisplayType }}selected{{ end }}>Type</option>
           <option value="8" {{ if .DisplayNonce }}selected{{ end }}>Nonce</option>
         </select>
-        <input type="hidden" class="column-mask">
+        <input type="hidden" data-mask-for="d">
         <div class="d-inline-flex align-items-center">
           <span class="text-muted small me-1">Show</span>
           <select name="c" class="form-select form-select-sm w-auto" onchange="$(this.form).submit()">
@@ -73,13 +73,14 @@
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4"><nobr>Type</nobr></div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <select name="type" multiple="multiple" class="filter-multiselect">
+                    <select multiple="multiple" class="filter-multiselect bitmask-multiselect" data-mask-name="type" data-mask-base="0">
                       <option value="0" {{ if .Filter.Type0 }}selected{{ end }}>Legacy</option>
                       <option value="1" {{ if .Filter.Type1 }}selected{{ end }}>Access List</option>
                       <option value="2" {{ if .Filter.Type2 }}selected{{ end }}>Dynamic Fee</option>
                       <option value="3" {{ if .Filter.Type3 }}selected{{ end }}>Blob</option>
                       <option value="4" {{ if .Filter.Type4 }}selected{{ end }}>Set Code</option>
                     </select>
+                    <input type="hidden" data-mask-for="type">
                   </div>
                 </div>
                 <div class="row mt-1">

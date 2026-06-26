@@ -67,18 +67,14 @@ func parseTransfersFilterForm(q url.Values) (*models.TransfersFilter, string) {
 		form.To = v
 		keep("to", v)
 	}
-	for _, v := range q["ttype"] {
-		switch v {
-		case "1":
-			form.TypeERC20 = true
-		case "2":
-			form.TypeERC721 = true
-		case "3":
-			form.TypeERC1155 = true
-		default:
-			continue
+	// Token type is a bitmask (bit N = type N+1), matching the multiselect encoding.
+	if tv := q.Get("ttype"); tv != "" {
+		if tb, err := strconv.ParseUint(strings.TrimPrefix(tv, "0x"), 16, 64); err == nil && tb != 0 {
+			form.TypeERC20 = tb&0x1 != 0
+			form.TypeERC721 = tb&0x2 != 0
+			form.TypeERC1155 = tb&0x4 != 0
+			keep("ttype", tv)
 		}
-		keep("ttype", v)
 	}
 
 	form.Active = len(parts) > 0

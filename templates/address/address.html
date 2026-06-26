@@ -294,8 +294,31 @@
         $(tabEl).data("loaded", true);
         bindPaginationLinks(tabEl);
         explorer.initControls();
+        if (window.initElFilters) { window.initElFilters(tabEl); }
+        applyDirectionDisable(tabEl);
       });
     }
+
+    // Disable the counterparty field that is fixed by the chosen direction.
+    function applyDirectionDisable(scope) {
+      $(scope).find('select.direction-select').each(function() {
+        var v = this.value;
+        var form = $(this).closest('form');
+        form.find('[data-dir-field="from"]').prop('disabled', v === 'out');
+        form.find('[data-dir-field="to"]').prop('disabled', v === 'in');
+      });
+    }
+    $(document).on('change', 'select.direction-select', function() {
+      applyDirectionDisable($(this).closest('form'));
+    });
+
+    // AJAX filter apply (keeps the tab in place and reflects filters in the URL).
+    window.elFilterAjaxSubmit = function(form) {
+      var tabEl = $(form.getAttribute('data-ajax-target'));
+      var url = form.getAttribute('action') + '?' + $(form).serialize();
+      loadTabContent(tabEl, url);
+      window.history.replaceState(null, document.title, url);
+    };
 
     // Handle pagination within tabs via AJAX
     function bindPaginationLinks(container) {
@@ -310,10 +333,13 @@
 
     // Bind pagination for initially loaded tab
     bindPaginationLinks($('#' + currentTab));
+    applyDirectionDisable($('#' + currentTab));
   });
 </script>
+{{ template "elFilterJs" . }}
 {{ end }}
 {{ define "css" }}
+{{ template "elFilterCss" . }}
 <style>
 /* Smaller font size for data tables */
 .el-data-table {

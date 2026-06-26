@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,8 @@ func Address(w http.ResponseWriter, r *http.Request) {
 		"address/internal_txs.html",
 		"address/system_deposits.html",
 		"address/contract.html",
+		"_shared/pager.html",
+		"_shared/el_filter_assets.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"address/notfound.html",
@@ -96,9 +99,15 @@ func Address(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 
+	// Keyset/filter params are tab-specific; pass the whole query down and key
+	// the cache on it (excluding the AJAX-only "lazy" flag).
+	urlArgs := r.URL.Query()
+	cacheArgs := r.URL.Query()
+	cacheArgs.Del("lazy")
+
 	var pageData *models.AddressPageData
 	if pageError == nil {
-		pageData, pageError = getAddressPageData(addressBytes, tabView, pageIdx, pageSize)
+		pageData, pageError = getAddressPageData(addressBytes, tabView, pageIdx, pageSize, urlArgs, cacheArgs.Encode())
 	}
 
 	if pageError != nil {
@@ -118,11 +127,11 @@ func Address(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getAddressPageData(addressBytes []byte, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, error) {
+func getAddressPageData(addressBytes []byte, tabView string, pageIdx, pageSize uint64, urlArgs url.Values, cacheKeyArgs string) (*models.AddressPageData, error) {
 	pageData := &models.AddressPageData{}
-	pageCacheKey := fmt.Sprintf("address:%x:%v:%v:%v", addressBytes, tabView, pageIdx, pageSize)
+	pageCacheKey := fmt.Sprintf("address:%x:%v", addressBytes, cacheKeyArgs)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildAddressPageData(pageCall.CallCtx, addressBytes, tabView, pageIdx, pageSize)
+		pageData, cacheTimeout := buildAddressPageData(pageCall.CallCtx, addressBytes, tabView, pageIdx, pageSize, urlArgs)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -136,7 +145,7 @@ func getAddressPageData(addressBytes []byte, tabView string, pageIdx, pageSize u
 	return pageData, pageErr
 }
 
-func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, time.Duration) {
+func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView string, pageIdx, pageSize uint64, urlArgs url.Values) (*models.AddressPageData, time.Duration) {
 	logrus.Debugf("address page called: 0x%x (tab: %v)", addressBytes, tabView)
 
 	// Try to get the account from the database, but don't error if not found
@@ -264,7 +273,7 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		// Load tab-specific data
 		switch tabView {
 		case "transactions":
-			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadTransactionsTab(ctx, pageData, account, chainState, pageSize, urlArgs)
 		case "erc20":
 			loadERC20TransfersTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		case "nft":
@@ -278,7 +287,7 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		case "contract":
 			loadContractTab(ctx, pageData, account)
 		default:
-			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadTransactionsTab(ctx, pageData, account, chainState, pageSize, urlArgs)
 		}
 	}
 
@@ -320,17 +329,58 @@ func loadContractTab(ctx context.Context, pageData *models.AddressPageData, acco
 	}
 }
 
-func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	// Get transactions using combined query (sorted by block_uid DESC, tx_index DESC)
-	dbTxs, totalCount, countCapped, _ := db.GetElTransactionsByAccountIDCombined(ctx, account.ID, offset, limit)
+// parseAccountDirection maps the "dir" query value to a direction constant.
+func parseAccountDirection(s string) uint8 {
+	switch s {
+	case "out":
+		return db.AccountDirectionOut
+	case "in":
+		return db.AccountDirectionIn
+	default:
+		return db.AccountDirectionAll
+	}
+}
 
-	pageData.TransactionCount = totalCount
-	pageData.TxCountCapped = countCapped
-	pageData.TxPageIndex = pageIdx
-	pageData.TxPageSize = uint64(limit)
-	pageData.TxTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-	pageData.TxFirstItem = (pageIdx-1)*uint64(limit) + 1
-	pageData.TxLastItem = min(pageIdx*uint64(limit), totalCount)
+// accountDirectionStr is the inverse of parseAccountDirection.
+func accountDirectionStr(d uint8) string {
+	switch d {
+	case db.AccountDirectionOut:
+		return "out"
+	case db.AccountDirectionIn:
+		return "in"
+	default:
+		return ""
+	}
+}
+
+func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, pageSize uint64, urlArgs url.Values) {
+	limit := uint32(pageSize)
+	beforeTxUid, _, pageNum := parseElPageParam(urlArgs.Get("p"))
+	direction := parseAccountDirection(urlArgs.Get("dir"))
+	filterForm, filterSuffix := parseTransactionsFilterForm(urlArgs)
+	filterForm.Direction = accountDirectionStr(direction)
+	filter := resolveTransactionFilter(ctx, filterForm)
+
+	dbTxs, hasNext, _ := db.GetElTransactionsByAccount(ctx, account.ID, direction, filter, beforeTxUid, limit)
+
+	pageData.TxPageSize = pageSize
+	pageData.TxFilter = filterForm
+
+	// Keyset pager (links are relative to the address page; the tab AJAX follows them).
+	suffix := "v=transactions&c=" + strconv.FormatUint(pageSize, 10)
+	if d := accountDirectionStr(direction); d != "" {
+		suffix += "&dir=" + d
+	}
+	if filterSuffix != "" {
+		suffix += "&" + filterSuffix
+	}
+	var nextA uint64
+	hasPrev, atFirst, prevA := false, true, uint64(0)
+	if len(dbTxs) > 0 {
+		nextA = dbTxs[len(dbTxs)-1].TxUid
+		prevA, hasPrev, atFirst, _ = db.GetElTransactionsByAccountPrevAnchor(ctx, account.ID, direction, filter, dbTxs[0].TxUid, limit)
+	}
+	pageData.TxPager = buildElPager("", suffix, pageNum, hasNext, nextA, 0, hasPrev, atFirst, prevA, 0, false)
 
 	// Collect account IDs and block UIDs for batch lookup
 	accountIDs := make(map[uint64]bool, len(dbTxs)*2)
@@ -420,9 +470,10 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 				txData.HasTo = true
 			}
 		}
+		// Deployment is flagged on tx_type at index time (raw recipient was null).
+		isCreate := tx.TxType&dbtypes.ElTxFlagCreate != 0
 
 		// Extract method ID from stored method_id field (first 4 bytes only)
-		isCreate := !txData.HasTo
 		if len(tx.MethodID) >= 4 {
 			txData.MethodID = tx.MethodID[:4]
 

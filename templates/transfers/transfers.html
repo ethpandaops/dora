@@ -7,7 +7,7 @@
         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#trFilters">
           <i class="fas fa-filter me-1"></i>Filters{{ if .Filter.Active }} <span class="badge text-bg-primary">on</span>{{ end }}
         </button>
-        <select name="d" multiple="multiple" class="filter-multiselect column-multiselect">
+        <select multiple="multiple" class="filter-multiselect column-multiselect bitmask-multiselect" data-mask-name="d" data-mask-base="1">
           <option value="1" {{ if .DisplayBlock }}selected{{ end }}>Block</option>
           <option value="2" {{ if .DisplayAge }}selected{{ end }}>Age</option>
           <option value="3" {{ if .DisplayMethod }}selected{{ end }}>Method</option>
@@ -16,7 +16,7 @@
           <option value="6" {{ if .DisplayStatus }}selected{{ end }}>Status</option>
           <option value="7" {{ if .DisplayTokenType }}selected{{ end }}>Token Type</option>
         </select>
-        <input type="hidden" class="column-mask">
+        <input type="hidden" data-mask-for="d">
         <div class="d-inline-flex align-items-center">
           <span class="text-muted small me-1">Show</span>
           <select name="c" class="form-select form-select-sm w-auto" onchange="$(this.form).submit()">
@@ -72,11 +72,12 @@
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4"><nobr>Token Type</nobr></div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <select name="ttype" multiple="multiple" class="filter-multiselect">
+                    <select multiple="multiple" class="filter-multiselect bitmask-multiselect" data-mask-name="ttype" data-mask-base="1">
                       <option value="1" {{ if .Filter.TypeERC20 }}selected{{ end }}>ERC20</option>
                       <option value="2" {{ if .Filter.TypeERC721 }}selected{{ end }}>ERC721</option>
                       <option value="3" {{ if .Filter.TypeERC1155 }}selected{{ end }}>ERC1155</option>
                     </select>
+                    <input type="hidden" data-mask-for="ttype">
                   </div>
                 </div>
                 <div class="row mt-1">
