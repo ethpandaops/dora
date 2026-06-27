@@ -17,7 +17,7 @@
           </tr>
         </thead>
         <tbody>
-          {{ if gt .InternalTxCount 0 }}
+          {{ if gt (len .InternalTxs) 0 }}
             {{ range .InternalTxs }}
               <tr>
                 <td class="text-monospace addr-cell">
@@ -78,36 +78,9 @@
       </table>
     </div>
 
-    {{ if gt .InternalTxTotalPages 1 }}
-    <div class="card-footer d-flex justify-content-between align-items-center">
-      <div>
-        Showing {{ formatAddCommas .InternalTxFirstItem }} - {{ formatAddCommas .InternalTxLastItem }} of {{ formatAddCommas .InternalTxCount }}
-      </div>
-      <nav aria-label="Internal transaction pagination">
-        <ul class="pagination pagination-sm mb-0">
-          {{ if gt .InternalTxPageIndex 1 }}
-            <li class="page-item">
-              <a class="page-link" href="?v=internaltxs&p=1&c={{ .InternalTxPageSize }}">&laquo;</a>
-            </li>
-            <li class="page-item">
-              <a class="page-link" href="?v=internaltxs&p={{ subUI64 .InternalTxPageIndex 1 }}&c={{ .InternalTxPageSize }}">&lsaquo;</a>
-            </li>
-          {{ end }}
-          <li class="page-item disabled">
-            <span class="page-link">{{ .InternalTxPageIndex }} / {{ .InternalTxTotalPages }}</span>
-          </li>
-          {{ if lt .InternalTxPageIndex .InternalTxTotalPages }}
-            <li class="page-item">
-              <a class="page-link" href="?v=internaltxs&p={{ addUI64 .InternalTxPageIndex 1 }}&c={{ .InternalTxPageSize }}">&rsaquo;</a>
-            </li>
-            <li class="page-item">
-              <a class="page-link" href="?v=internaltxs&p={{ .InternalTxTotalPages }}&c={{ .InternalTxPageSize }}">&raquo;</a>
-            </li>
-          {{ end }}
-        </ul>
-      </nav>
+    <div class="card-footer d-flex justify-content-end align-items-center">
+      {{ template "pager" .InternalTxPager }}
     </div>
-    {{ end }}
   </div>
 </div>
 {{ end }}

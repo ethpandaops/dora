@@ -58,11 +58,6 @@ type syncState struct {
 	CurrentEpoch uint64 `json:"current_epoch"`
 }
 
-// cleanupState represents the persisted cleanup state.
-type cleanupState struct {
-	LastCleanup int64 `json:"last_cleanup"` // Unix timestamp
-}
-
 // BlockRef represents a reference to a block for EL indexing.
 type BlockRef struct {
 	Slot        phase0.Slot
@@ -104,6 +99,10 @@ type TxIndexer struct {
 
 	// cleanup state
 	lastCleanup time.Time
+
+	// pruning status (persisted, exposed for UI)
+	pruningMutex  sync.RWMutex
+	pruningStatus ElPruningStatus
 
 	// balance lookup service
 	balanceLookup *BalanceLookupService
@@ -230,7 +229,7 @@ func (t *TxIndexer) Start() error {
 	t.loadSyncState()
 
 	// Load cleanup state from database
-	t.loadCleanupState()
+	t.loadPruningStatus()
 
 	// Start the processing loop (goroutine 1)
 	go t.runProcessingLoop()
@@ -293,34 +292,6 @@ func (t *TxIndexer) saveSyncState(epoch phase0.Epoch) {
 	})
 	if err != nil {
 		t.logger.WithError(err).Error("failed to save sync state")
-	}
-}
-
-// loadCleanupState loads the cleanup state from the database.
-func (t *TxIndexer) loadCleanupState() {
-	state := cleanupState{}
-	_, err := db.GetExplorerState(t.ctx, cleanupStateKey, &state)
-	if err != nil {
-		t.logger.WithError(err).Debug("no existing cleanup state found, starting fresh")
-		t.lastCleanup = time.Time{} // Zero time means never cleaned up
-		return
-	}
-
-	t.lastCleanup = time.Unix(state.LastCleanup, 0)
-	t.logger.WithField("lastCleanup", t.lastCleanup).Info("restored cleanup state from database")
-}
-
-// saveCleanupState saves the cleanup state to the database.
-func (t *TxIndexer) saveCleanupState() {
-	state := cleanupState{
-		LastCleanup: t.lastCleanup.Unix(),
-	}
-
-	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.SetExplorerState(t.ctx, tx, cleanupStateKey, &state)
-	})
-	if err != nil {
-		t.logger.WithError(err).Error("failed to save cleanup state")
 	}
 }
 
@@ -804,6 +775,7 @@ func (t *TxIndexer) checkAndRunCleanup() {
 
 	t.logger.Debug("starting cleanup routine")
 	t.lastCleanup = now
+	start := now
 
 	// 1. Delete zero balances
 	zeroBalancesDeleted := t.cleanupZeroBalances()
@@ -811,33 +783,58 @@ func (t *TxIndexer) checkAndRunCleanup() {
 	// 2. Delete old EL data based on retention period
 	retentionStats := t.cleanupRetentionData()
 
-	// 3. Time-based blockdb pruning (Mode 3 only)
-	blockdbPruned := t.cleanupBlockdbRetention()
+	// 3. Time-based blockdb + tx-hash index pruning
+	execPruned, txhashPruned, execFreed := t.cleanupBlockdbRetention()
 
-	// 4. Size-based blockdb eviction (Mode 3 only)
-	blockdbEvicted := t.cleanupBlockdbSize()
+	// 4. Size-based blockdb eviction (Mode Full only)
+	sizeReset, sizeFreed, sizeCutoffEpoch := t.cleanupBlockdbSize()
 
-	// Save cleanup state
-	t.saveCleanupState()
+	durationMs := time.Since(start).Milliseconds()
+
+	// Build per-object stats for this cleanup cycle.
+	objects := make([]ElPruningObjectStat, 0, 7)
+	addObj := func(typ string, deleted, sizeBytes int64) {
+		if deleted > 0 || sizeBytes > 0 {
+			objects = append(objects, ElPruningObjectStat{Type: typ, Deleted: deleted, SizeBytes: sizeBytes})
+		}
+	}
+	addObj(PruneObjZeroBalances, zeroBalancesDeleted, 0)
+	if retentionStats != nil {
+		addObj(PruneObjTransactions, retentionStats.TransactionsDeleted, 0)
+		addObj(PruneObjInternalTxs, retentionStats.InternalTxsDeleted, 0)
+		addObj(PruneObjTokenTransfers, retentionStats.TokenTransfersDeleted, 0)
+		addObj(PruneObjBlocks, retentionStats.BlocksDeleted, 0)
+	}
+	addObj(PruneObjExecData, execPruned+sizeReset, execFreed+sizeFreed)
+	addObj(PruneObjTxHashIndex, txhashPruned, 0)
+
+	// Compute the pruned-epoch bounds (the boundaries below which data is gone).
+	relRetention := utils.Config.ExecutionIndexer.Retention
+	detRetention := utils.Config.ExecutionIndexer.DetailsRetention
+	if detRetention < relRetention {
+		detRetention = relRetention
+	}
+	relEpoch := t.retentionCutoffEpoch(relRetention)
+	detEpoch := t.retentionCutoffEpoch(detRetention)
+	if sizeCutoffEpoch > detEpoch {
+		detEpoch = sizeCutoffEpoch // size-based eviction may prune further
+	}
+
+	run := ElPruningRun{Time: start.Unix(), DurationMs: durationMs, Objects: objects}
+	t.recordPruningRun(run, relRetention > 0, relEpoch, detRetention > 0, detEpoch)
+	t.savePruningStatus()
 
 	// Log summary
-	if zeroBalancesDeleted > 0 || retentionStats != nil || blockdbPruned > 0 || blockdbEvicted > 0 {
-		fields := logrus.Fields{
-			"zeroBalances": zeroBalancesDeleted,
-		}
+	if len(objects) > 0 {
+		fields := logrus.Fields{"zeroBalances": zeroBalancesDeleted}
 		if retentionStats != nil {
 			fields["transactions"] = retentionStats.TransactionsDeleted
 			fields["internalTxs"] = retentionStats.InternalTxsDeleted
-			fields["eventIndices"] = retentionStats.EventIndicesDeleted
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted
 		}
-		if blockdbPruned > 0 {
-			fields["blockdbPruned"] = blockdbPruned
-		}
-		if blockdbEvicted > 0 {
-			fields["blockdbEvicted"] = blockdbEvicted
-		}
+		fields["blockdbPruned"] = execPruned + sizeReset
+		fields["txhashPruned"] = txhashPruned
 		t.logger.WithFields(fields).Info("execution indexer cleanup completed")
 	} else {
 		t.logger.Debug("cleanup completed, no items deleted")
@@ -936,48 +933,82 @@ func (t *TxIndexer) cleanupRetentionData() *db.CleanupStats {
 	return stats
 }
 
-// cleanupBlockdbRetention prunes blockdb exec data older than the retention period.
-// Also resets data_status and data_size in the DB for pruned blocks.
-// Returns the number of blockdb objects pruned.
-func (t *TxIndexer) cleanupBlockdbRetention() int64 {
-	if t.mode != ModeFull {
-		return 0
-	}
-
-	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
-		return 0
-	}
-
-	retention := utils.Config.ExecutionIndexer.Retention
-	if retention == 0 {
-		return 0
+// cleanupBlockdbRetention prunes blockdb exec data and the tx-hash index on the
+// details retention, which is decoupled from (and never shorter than) the
+// relational retention. The tx-hash index is pruned in any mode (it is written
+// whenever transactions are indexed); exec data is pruned only in Mode Full.
+// Returns (execPruned, txhashPruned, execFreedBytes).
+func (t *TxIndexer) cleanupBlockdbRetention() (int64, int64, int64) {
+	if blockdb.GlobalBlockDb == nil {
+		return 0, 0, 0
 	}
 
 	chainState := t.indexerCtx.ChainState
 	if chainState == nil {
-		return 0
+		return 0, 0, 0
 	}
 
-	cutoffTime := time.Now().Add(-retention)
+	// DetailsRetention governs blockdb exec data + the tx-hash index; it falls
+	// back to (and is clamped up to) the relational Retention.
+	retention := utils.Config.ExecutionIndexer.Retention
+	detailsRetention := utils.Config.ExecutionIndexer.DetailsRetention
+	if detailsRetention < retention {
+		if detailsRetention != 0 {
+			t.logger.Warnf("detailsRetention (%v) < retention (%v); using retention for blockdb/index pruning", detailsRetention, retention)
+		}
+		detailsRetention = retention
+	}
+	if detailsRetention == 0 {
+		return 0, 0, 0
+	}
+
+	cutoffTime := time.Now().Add(-detailsRetention)
 	cutoffSlot := chainState.TimeToSlot(cutoffTime)
 	if cutoffSlot == 0 {
-		return 0
+		return 0, 0, 0
+	}
+
+	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
+	defer cancel()
+
+	// Prune the tx-hash index (any mode, whenever an index is present).
+	var txhashPruned int64
+	if blockdb.GlobalBlockDb.SupportsTxHashIndex() {
+		if n, err := blockdb.GlobalBlockDb.PruneTxHashBefore(ctx, uint64(cutoffSlot)); err != nil {
+			t.logger.WithError(err).Warn("failed to prune tx-hash index")
+		} else {
+			txhashPruned = n
+			if n > 0 {
+				t.logger.WithFields(logrus.Fields{
+					"pruned":     n,
+					"cutoffSlot": cutoffSlot,
+				}).Info("pruned tx-hash index by details retention")
+			}
+		}
+	}
+
+	// Exec data only exists in Mode Full.
+	if t.mode != ModeFull || !blockdb.GlobalBlockDb.SupportsExecData() {
+		return 0, txhashPruned, 0
 	}
 
 	blockUidThreshold := uint64(cutoffSlot) << 16
 
-	// Prune blockdb exec data for all slots before cutoff
-	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
-	defer cancel()
+	// Capture the freed exec-data bytes before resetting the rows.
+	freedBytes, err := db.GetElBlockDataSizeBefore(t.ctx, blockUidThreshold)
+	if err != nil {
+		t.logger.WithError(err).Debug("failed to sum exec data size before prune")
+		freedBytes = 0
+	}
 
 	pruned, err := blockdb.GlobalBlockDb.PruneExecDataBefore(ctx, uint64(cutoffSlot))
 	if err != nil {
 		t.logger.WithError(err).Warn("failed to prune blockdb exec data")
-		return 0
+		return 0, txhashPruned, 0
 	}
 
 	if pruned == 0 {
-		return 0
+		return 0, txhashPruned, 0
 	}
 
 	// Reset data_status and data_size in DB for pruned blocks
@@ -994,36 +1025,36 @@ func (t *TxIndexer) cleanupBlockdbRetention() int64 {
 		"cutoffSlot": cutoffSlot,
 	}).Info("pruned blockdb exec data by retention")
 
-	return pruned
+	return pruned, txhashPruned, freedBytes
 }
 
 // cleanupBlockdbSize enforces the detailsMaxSize limit by evicting
 // the oldest blocks' exec data from blockdb when total size exceeds the limit.
 // Uses slot-based batch pruning to avoid needing individual block hash lookups.
-// Returns the number of DB blocks whose data_status was reset.
-func (t *TxIndexer) cleanupBlockdbSize() int64 {
+// Returns (dbReset, freedBytes, cutoffEpoch).
+func (t *TxIndexer) cleanupBlockdbSize() (int64, int64, uint64) {
 	if t.mode != ModeFull {
-		return 0
+		return 0, 0, 0
 	}
 
 	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
-		return 0
+		return 0, 0, 0
 	}
 
 	maxSize := parseByteSize(utils.Config.ExecutionIndexer.DetailsMaxSize)
 	if maxSize == 0 {
-		return 0 // Unlimited
+		return 0, 0, 0 // Unlimited
 	}
 
 	// Get total current size from DB
 	totalSize, err := db.GetTotalElBlockDataSize(t.ctx)
 	if err != nil {
 		t.logger.WithError(err).Warn("failed to get total exec data size")
-		return 0
+		return 0, 0, 0
 	}
 
 	if totalSize <= maxSize {
-		return 0 // Within limit
+		return 0, 0, 0 // Within limit
 	}
 
 	bytesToFree := totalSize - maxSize
@@ -1059,7 +1090,7 @@ func (t *TxIndexer) cleanupBlockdbSize() int64 {
 	}
 
 	if cutoffBlockUid == 0 {
-		return 0
+		return 0, 0, 0
 	}
 
 	// Prune all blockdb exec data up to the cutoff slot (inclusive).
@@ -1072,7 +1103,7 @@ func (t *TxIndexer) cleanupBlockdbSize() int64 {
 
 	if pruneErr != nil {
 		t.logger.WithError(pruneErr).Warn("failed to prune blockdb exec data for size eviction")
-		return 0
+		return 0, 0, 0
 	}
 
 	// Reset data_status and data_size for all blocks up to the cutoff
@@ -1088,13 +1119,15 @@ func (t *TxIndexer) cleanupBlockdbSize() int64 {
 		t.logger.WithError(err).Warn("failed to reset data status for evicted blocks")
 	}
 
+	cutoffEpoch := uint64(t.indexerCtx.ChainState.EpochOfSlot(phase0.Slot(cutoffSlot)))
+
 	t.logger.WithFields(logrus.Fields{
 		"blockdbPruned": pruned,
 		"dbReset":       dbReset,
 		"cutoffSlot":    cutoffSlot,
 	}).Info("evicted blockdb exec data for size limit")
 
-	return dbReset
+	return dbReset, accumulated, cutoffEpoch
 }
 
 // parseByteSize parses a human-readable byte size string (e.g., "100GB", "50MB", "1TB")

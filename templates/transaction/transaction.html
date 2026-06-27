@@ -84,6 +84,7 @@
             <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
             {{ else }}
             <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
+            {{ if .RevertReason }}<span class="text-monospace text-break ms-2">{{ .RevertReason }}</span>{{ end }}
             {{ end }}
           </div>
         </div>
@@ -143,10 +144,10 @@
           <i class="fa fa-cog me-2"></i> Details
         </a>
       </li>
-      {{ if gt .InternalTxCount 0 }}
+      {{ if .HasTrace }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
-          <i class="fa fa-sitemap me-2"></i> Internal Txs ({{ .InternalTxCount }})
+          <i class="fa fa-sitemap me-2"></i> Internal Txs{{ if gt .InternalTxCount 0 }} ({{ .InternalTxCount }}){{ end }}
         </a>
       </li>
       {{ end }}

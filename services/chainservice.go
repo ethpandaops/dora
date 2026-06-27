@@ -259,7 +259,7 @@ func (cs *ChainService) StartService() error {
 	// initialize blockdb if configured
 	switch utils.Config.BlockDb.Engine {
 	case "pebble":
-		err := blockdb.InitWithPebble(utils.Config.BlockDb.Pebble)
+		err := blockdb.InitWithPebble(utils.Config.BlockDb.Pebble, cs.logger)
 		if err != nil {
 			return fmt.Errorf("failed initializing pebble blockdb: %v", err)
 		}
@@ -271,14 +271,50 @@ func (cs *ChainService) StartService() error {
 		}
 		cs.logger.Infof("S3 blockdb initialized at %v", utils.Config.BlockDb.S3.Bucket)
 	case "tiered":
-		err := blockdb.InitWithTiered(utils.Config.BlockDb.Tiered, cs.logger)
+		err := blockdb.InitWithTiered(utils.Config.BlockDb.Pebble, utils.Config.BlockDb.S3, cs.logger)
 		if err != nil {
 			return fmt.Errorf("failed initializing tiered blockdb: %v", err)
 		}
 		cs.logger.Infof("Tiered blockdb initialized (Pebble cache: %v, S3: %v)",
-			utils.Config.BlockDb.Tiered.Pebble.Path, utils.Config.BlockDb.Tiered.S3.Bucket)
+			utils.Config.BlockDb.Pebble.Path, utils.Config.BlockDb.S3.Bucket)
 	default:
 		cs.logger.Infof("Blockdb disabled")
+	}
+
+	// Provide the blockdb cache with a time->slot resolver so it can derive
+	// cutoff slots for age-based eviction of slot-keyed namespaces (exec/duties).
+	if blockdb.GlobalBlockDb != nil {
+		chainState := cs.consensusPool.GetChainState()
+		blockdb.GlobalBlockDb.SetTimeToSlotFn(func(t time.Time) uint64 {
+			return uint64(chainState.TimeToSlot(t))
+		})
+	}
+
+	// Select where the long-lived tx-hash index lives. "pebble" uses the
+	// engine-native index (pebble backend, or pinned in the tiered cache);
+	// "postgres" forces the relational el_txhash table; "auto"/"" uses native
+	// only for the pebble backend (authoritative store) and postgres otherwise
+	// (s3/tiered, where the local pebble is absent or a disposable cache).
+	// Note: reconstruction of a pruned tx needs its block root from the beacon
+	// `slots` table, which must be retained at least as long as DetailsRetention.
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		store := strings.ToLower(strings.TrimSpace(utils.Config.ExecutionIndexer.TxHashIndexStore))
+		useDB := false
+		switch store {
+		case "postgres", "pg", "db":
+			useDB = true
+		case "pebble":
+			if !blockdb.GlobalBlockDb.TxHashIndexNative() {
+				cs.logger.Warnf("txHashIndexStore=pebble but the %q backend has no native index; using postgres", utils.Config.BlockDb.Engine)
+				useDB = true
+			}
+		default: // auto
+			useDB = utils.Config.BlockDb.Engine != "pebble"
+		}
+		if useDB {
+			blockdb.GlobalBlockDb.SetTxHashIndex(db.NewDBTxHashIndex())
+		}
+		cs.logger.Infof("tx-hash index store: native=%v", blockdb.GlobalBlockDb.TxHashIndexNative())
 	}
 
 	// reset sync state if configured

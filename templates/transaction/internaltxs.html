@@ -29,8 +29,7 @@
         min-width: 165px;
         flex-shrink: 0;
       }
-      .itx-addr { font-family: monospace; font-size: 0.84rem; white-space: nowrap; border-radius: 3px; padding: 1px 2px; transition: background-color 0.1s; }
-      .itx-addr.itx-hl { background-color: rgba(var(--bs-warning-rgb), 0.25); }
+      .itx-addr { font-family: monospace; font-size: 0.84rem; white-space: nowrap; border-radius: 3px; padding: 1px 2px; }
       .itx-arrow { color: var(--bs-secondary); font-size: 0.72rem; }
       .itx-right {
         margin-left: auto;
@@ -277,27 +276,6 @@
       }
     }
 
-    // Address hover highlighting
-    (function() {
-      var wrap = document.querySelector('.itx-wrap');
-      if (!wrap) return;
-      var prevHl = [];
-      wrap.addEventListener('mouseover', function(ev) {
-        var addrEl = ev.target.closest('.itx-addr[data-itx-addr]');
-        if (!addrEl) return;
-        var addr = addrEl.getAttribute('data-itx-addr');
-        if (!addr) return;
-        var all = wrap.querySelectorAll('.itx-addr[data-itx-addr="' + addr + '"]');
-        for (var i = 0; i < all.length; i++) all[i].classList.add('itx-hl');
-        prevHl = all;
-      });
-      wrap.addEventListener('mouseout', function(ev) {
-        var addrEl = ev.target.closest('.itx-addr[data-itx-addr]');
-        if (!addrEl) return;
-        for (var i = 0; i < prevHl.length; i++) prevHl[i].classList.remove('itx-hl');
-        prevHl = [];
-      });
-    })();
     </script>
     {{ else }}
     <div class="p-4 text-center text-muted">
