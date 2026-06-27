@@ -1,24 +1,27 @@
 {{ define "nftTransfers" }}
-<div class="card">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 el-data-table">
-        <thead>
-          <tr>
-            <th>Txn Hash</th>
-            <th>Block</th>
-            <th data-timecol="duration">Age</th>
-            <th>Method</th>
-            <th>From</th>
-            <th></th>
-            <th>To</th>
-            <th>Item</th>
-            <th>Type</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{ if gt .NFTTransferCount 0 }}
+<form method="get" action="/address/{{ formatEthAddressFull .Address }}" class="el-filter-form" data-ajax-target="#nft">
+  <input type="hidden" name="v" value="nft">
+  <div class="card">
+    {{ template "addressTransferFilter" dict "Filter" .NFTFilter "PageSize" .NFTPageSize "Collapse" "addrNftFilters" "Tab" "nft" }}
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 el-data-table">
+          <thead>
+            <tr>
+              <th>Txn Hash</th>
+              <th>Block</th>
+              <th data-timecol="duration">Age</th>
+              <th>Method</th>
+              <th>From</th>
+              <th></th>
+              <th>To</th>
+              <th>Item</th>
+              <th>Type</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ if gt (len .NFTTransfers) 0 }}
             {{ range .NFTTransfers }}
               <tr>
                 {{ if gt .TxHashRowspan 0 }}
@@ -98,41 +101,15 @@
               </td>
             </tr>
           {{ end }}
-        </tbody>
-      </table>
-    </div>
-
-    {{ if gt .NFTTotalPages 1 }}
-    <div class="card-footer d-flex justify-content-between align-items-center">
-      <div>
-        Showing {{ formatAddCommas .NFTFirstItem }} - {{ formatAddCommas .NFTLastItem }} of {{ if .NFTCountCapped }}more than {{ end }}{{ formatAddCommas .NFTTransferCount }}
+          </tbody>
+        </table>
       </div>
-      <nav aria-label="NFT transfer pagination">
-        <ul class="pagination pagination-sm mb-0">
-          {{ if gt .NFTPageIndex 1 }}
-            <li class="page-item">
-              <a class="page-link" href="?v=nft&p=1&c={{ .NFTPageSize }}">&laquo;</a>
-            </li>
-            <li class="page-item">
-              <a class="page-link" href="?v=nft&p={{ subUI64 .NFTPageIndex 1 }}&c={{ .NFTPageSize }}">&lsaquo;</a>
-            </li>
-          {{ end }}
-          <li class="page-item disabled">
-            <span class="page-link">{{ .NFTPageIndex }} / {{ .NFTTotalPages }}</span>
-          </li>
-          {{ if lt .NFTPageIndex .NFTTotalPages }}
-            <li class="page-item">
-              <a class="page-link" href="?v=nft&p={{ addUI64 .NFTPageIndex 1 }}&c={{ .NFTPageSize }}">&rsaquo;</a>
-            </li>
-            <li class="page-item">
-              <a class="page-link" href="?v=nft&p={{ .NFTTotalPages }}&c={{ .NFTPageSize }}">&raquo;</a>
-            </li>
-          {{ end }}
-        </ul>
-      </nav>
+
+      <div class="card-footer d-flex justify-content-end align-items-center">
+        {{ template "pager" .NFTPager }}
+      </div>
     </div>
-    {{ end }}
   </div>
-</div>
+</form>
 {{ end }}
 

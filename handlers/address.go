@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -43,6 +45,10 @@ func Address(w http.ResponseWriter, r *http.Request) {
 		"address/nft_transfers.html",
 		"address/internal_txs.html",
 		"address/system_deposits.html",
+		"address/contract.html",
+		"address/transfer_filter.html",
+		"_shared/pager.html",
+		"_shared/el_filter_assets.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"address/notfound.html",
@@ -94,9 +100,15 @@ func Address(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 
+	// Keyset/filter params are tab-specific; pass the whole query down and key
+	// the cache on it (excluding the AJAX-only "lazy" flag).
+	urlArgs := r.URL.Query()
+	cacheArgs := r.URL.Query()
+	cacheArgs.Del("lazy")
+
 	var pageData *models.AddressPageData
 	if pageError == nil {
-		pageData, pageError = getAddressPageData(addressBytes, tabView, pageIdx, pageSize)
+		pageData, pageError = getAddressPageData(addressBytes, tabView, pageIdx, pageSize, urlArgs, cacheArgs.Encode())
 	}
 
 	if pageError != nil {
@@ -116,11 +128,11 @@ func Address(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getAddressPageData(addressBytes []byte, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, error) {
+func getAddressPageData(addressBytes []byte, tabView string, pageIdx, pageSize uint64, urlArgs url.Values, cacheKeyArgs string) (*models.AddressPageData, error) {
 	pageData := &models.AddressPageData{}
-	pageCacheKey := fmt.Sprintf("address:%x:%v:%v:%v", addressBytes, tabView, pageIdx, pageSize)
+	pageCacheKey := fmt.Sprintf("address:%x:%v", addressBytes, cacheKeyArgs)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildAddressPageData(pageCall.CallCtx, addressBytes, tabView, pageIdx, pageSize)
+		pageData, cacheTimeout := buildAddressPageData(pageCall.CallCtx, addressBytes, tabView, pageIdx, pageSize, urlArgs)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -134,7 +146,7 @@ func getAddressPageData(addressBytes []byte, tabView string, pageIdx, pageSize u
 	return pageData, pageErr
 }
 
-func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, time.Duration) {
+func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView string, pageIdx, pageSize uint64, urlArgs url.Values) (*models.AddressPageData, time.Duration) {
 	logrus.Debugf("address page called: 0x%x (tab: %v)", addressBytes, tabView)
 
 	// Try to get the account from the database, but don't error if not found
@@ -162,6 +174,15 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		IsContract: account.IsContract,
 		LastNonce:  account.LastNonce,
 		TabView:    tabView,
+		DataRange:  getElDataRangeInfo(),
+	}
+
+	// If this address is a detected token contract, surface a link to its token page.
+	if token, err := db.GetElTokenByContract(ctx, addressBytes); err == nil && token != nil {
+		pageData.IsToken = true
+		pageData.TokenName = token.Name
+		pageData.TokenSymbol = token.Symbol
+		pageData.TokenType = token.TokenType
 	}
 
 	// Get first funded info
@@ -249,41 +270,117 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 			pageData.HasBlockFees = true
 		}
 
-		offset := (pageIdx - 1) * pageSize
-
 		// Load tab-specific data
 		switch tabView {
 		case "transactions":
-			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadTransactionsTab(ctx, pageData, account, chainState, pageSize, urlArgs)
 		case "erc20":
-			loadERC20TransfersTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadERC20TransfersTab(ctx, pageData, account, chainState, pageSize, urlArgs)
 		case "nft":
-			loadNFTTransfersTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadNFTTransfersTab(ctx, pageData, account, chainState, pageSize, urlArgs)
 		case "internaltxs":
-			loadInternalTxsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadInternalTxsTab(ctx, pageData, account, chainState, pageSize, urlArgs)
 		case "withdrawals":
 			loadWithdrawalsTab(ctx, pageData, account, chainState, uint32(pageSize), pageIdx)
 		case "blockfees":
-			loadBlockFeesTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadBlockFeesTab(ctx, pageData, account, chainState, pageSize, urlArgs)
+		case "contract":
+			loadContractTab(ctx, pageData, account)
 		default:
-			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+			loadTransactionsTab(ctx, pageData, account, chainState, pageSize, urlArgs)
 		}
 	}
 
 	return pageData, 2 * time.Minute
 }
 
-func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	// Get transactions using combined query (sorted by block_uid DESC, tx_index DESC)
-	dbTxs, totalCount, countCapped, _ := db.GetElTransactionsByAccountIDCombined(ctx, account.ID, offset, limit)
+// getReadyEthClient returns an EL JSON-RPC eth client from a ready execution
+// client, or nil if none is available.
+func getReadyEthClient() *ethclient.Client {
+	txIndexer := services.GlobalBeaconService.GetTxIndexer()
+	if txIndexer == nil {
+		return nil
+	}
+	for _, client := range txIndexer.GetReadyClients() {
+		rpcClient := client.GetRPCClient()
+		if rpcClient == nil {
+			continue
+		}
+		if ethClient := rpcClient.GetEthClient(); ethClient != nil {
+			return ethClient
+		}
+	}
+	return nil
+}
 
-	pageData.TransactionCount = totalCount
-	pageData.TxCountCapped = countCapped
-	pageData.TxPageIndex = pageIdx
-	pageData.TxPageSize = uint64(limit)
-	pageData.TxTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-	pageData.TxFirstItem = (pageIdx-1)*uint64(limit) + 1
-	pageData.TxLastItem = min(pageIdx*uint64(limit), totalCount)
+// loadContractTab fetches the deployed (runtime) bytecode via eth_getCode.
+func loadContractTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	ethClient := getReadyEthClient()
+	if ethClient == nil {
+		pageData.ContractRpcUnavailable = true
+		return
+	}
+
+	if code, err := ethClient.CodeAt(ctx, common.BytesToAddress(account.Address), nil); err == nil {
+		pageData.ContractBytecode = code
+	}
+}
+
+// parseAccountDirection maps the "dir" query value to a direction constant.
+func parseAccountDirection(s string) uint8 {
+	switch s {
+	case "out":
+		return db.AccountDirectionOut
+	case "in":
+		return db.AccountDirectionIn
+	default:
+		return db.AccountDirectionAll
+	}
+}
+
+// accountDirectionStr is the inverse of parseAccountDirection.
+func accountDirectionStr(d uint8) string {
+	switch d {
+	case db.AccountDirectionOut:
+		return "out"
+	case db.AccountDirectionIn:
+		return "in"
+	default:
+		return ""
+	}
+}
+
+func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, pageSize uint64, urlArgs url.Values) {
+	limit := uint32(pageSize)
+	beforeTxUid, _, pageNum := parseElPageParam(urlArgs.Get("p"))
+	direction := parseAccountDirection(urlArgs.Get("dir"))
+	filterForm, filterSuffix := parseTransactionsFilterForm(urlArgs)
+	filterForm.Direction = accountDirectionStr(direction)
+	filter := resolveTransactionFilter(ctx, filterForm)
+
+	dbTxs, hasNext, _ := db.GetElTransactionsByAccount(ctx, account.ID, direction, filter, beforeTxUid, limit)
+
+	pageData.TxPageSize = pageSize
+	pageData.TxFilter = filterForm
+
+	// Keyset pager (links are relative to the address page; the tab AJAX follows them).
+	suffix := "v=transactions&c=" + strconv.FormatUint(pageSize, 10)
+	if d := accountDirectionStr(direction); d != "" {
+		suffix += "&dir=" + d
+	}
+	if filterSuffix != "" {
+		suffix += "&" + filterSuffix
+	}
+	var nextA uint64
+	hasPrev, atFirst, prevA := false, true, uint64(0)
+	if len(dbTxs) > 0 {
+		nextA = dbTxs[len(dbTxs)-1].TxUid
+		prevA, hasPrev, atFirst, _ = db.GetElTransactionsByAccountPrevAnchor(ctx, account.ID, direction, filter, dbTxs[0].TxUid, limit)
+	}
+	pageData.TxPager = buildElPager("", suffix, pageNum, hasNext, nextA, 0, hasPrev, atFirst, prevA, 0, false)
 
 	// Collect account IDs and block UIDs for batch lookup
 	accountIDs := make(map[uint64]bool, len(dbTxs)*2)
@@ -332,6 +429,7 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.AddressPageDataTransaction{}
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+	revertIDMap := map[uint32][]*models.AddressPageDataTransaction{}
 
 	for _, tx := range dbTxs {
 		slot := tx.BlockUid >> 16
@@ -352,7 +450,10 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 			Amount:      tx.Amount,
 			AmountRaw:   tx.AmountRaw,
 			TxFee:       txFee,
-			Reverted:    tx.Reverted,
+			Reverted:    tx.RevertID > 0,
+		}
+		if tx.RevertID > 0 {
+			revertIDMap[tx.RevertID] = append(revertIDMap[tx.RevertID], txData)
 		}
 
 		// Set block root and orphaned status from block lookup
@@ -373,9 +474,10 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 				txData.HasTo = true
 			}
 		}
+		// Deployment is flagged on tx_type at index time (raw recipient was null).
+		isCreate := tx.TxType&dbtypes.ElTxFlagCreate != 0
 
 		// Extract method ID from stored method_id field (first 4 bytes only)
-		isCreate := !txData.HasTo
 		if len(tx.MethodID) >= 4 {
 			txData.MethodID = tx.MethodID[:4]
 
@@ -414,28 +516,46 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 			}
 		}
 	}
+
+	// Batch-load revert reasons for the displayed reverted txs.
+	if len(revertIDMap) > 0 {
+		ids := make([]uint32, 0, len(revertIDMap))
+		for id := range revertIDMap {
+			ids = append(ids, id)
+		}
+		if reasons, rerr := db.GetElRevertReasonsByIDs(ctx, ids); rerr == nil {
+			for id, reason := range reasons {
+				for _, txData := range revertIDMap[id] {
+					txData.RevertReason = reason
+				}
+			}
+		}
+	}
 }
 
-func loadERC20TransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	loadTokenTransfersTab(ctx, pageData, account, chainState, offset, limit, pageIdx, tokenTypeERC20, true)
+func loadERC20TransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, pageSize uint64, urlArgs url.Values) {
+	loadTokenTransfersTab(ctx, pageData, account, chainState, pageSize, urlArgs, tokenTypeERC20, true)
 }
 
-func loadNFTTransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	loadTokenTransfersTab(ctx, pageData, account, chainState, offset, limit, pageIdx, 0, false) // 0 means ERC721 + ERC1155
+func loadNFTTransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, pageSize uint64, urlArgs url.Values) {
+	loadTokenTransfersTab(ctx, pageData, account, chainState, pageSize, urlArgs, 0, false) // 0 means ERC721 + ERC1155
 }
 
-func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64, filterTokenType uint8, isERC20 bool) {
-	// Build token type filter
-	var tokenTypes []uint8
+func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, pageSize uint64, urlArgs url.Values, filterTokenType uint8, isERC20 bool) {
+	limit := uint32(pageSize)
+	beforeTxUid, beforeTxIdx, pageNum := parseElPageParam(urlArgs.Get("p"))
+	direction := parseAccountDirection(urlArgs.Get("dir"))
+	filterForm, filterSuffix := parseTransfersFilterForm(urlArgs)
+	filterForm.Direction = accountDirectionStr(direction)
+	filter := resolveTransferFilter(ctx, filterForm)
+	// Token type is fixed per tab (ERC20, or NFT = ERC721 + ERC1155).
 	if filterTokenType > 0 {
-		tokenTypes = []uint8{filterTokenType}
+		filter.TokenTypes = []uint8{filterTokenType}
 	} else {
-		// NFT tab: ERC721 + ERC1155
-		tokenTypes = []uint8{tokenTypeERC721, tokenTypeERC1155}
+		filter.TokenTypes = []uint8{tokenTypeERC721, tokenTypeERC1155}
 	}
 
-	// Get token transfers using combined query (sorted by tx_uid DESC, tx_idx DESC)
-	dbTransfers, totalCount, countCapped, _ := db.GetElTokenTransfersByAccountIDCombined(ctx, account.ID, tokenTypes, offset, limit)
+	dbTransfers, hasNext, _ := db.GetElTokenTransfersByAccount(ctx, account.ID, direction, filter, beforeTxUid, beforeTxIdx, limit)
 
 	// Collect IDs for batch lookup
 	accountIDs := make(map[uint64]bool, len(dbTransfers)*2)
@@ -644,24 +764,38 @@ func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData
 	// Calculate TxHashRowspan for consecutive transfers with same txhash
 	calculateTxHashRowspans(transfers)
 
+	tabView := "erc20"
+	if !isERC20 {
+		tabView = "nft"
+	}
+	suffix := "v=" + tabView + "&c=" + strconv.FormatUint(pageSize, 10)
+	if d := accountDirectionStr(direction); d != "" {
+		suffix += "&dir=" + d
+	}
+	if filterSuffix != "" {
+		suffix += "&" + filterSuffix
+	}
+	var nextA, prevA uint64
+	var nextB, prevB uint32
+	hasPrev, atFirst := false, true
+	if len(dbTransfers) > 0 {
+		last := dbTransfers[len(dbTransfers)-1]
+		nextA, nextB = last.TxUid, last.TxIdx
+		first := dbTransfers[0]
+		prevA, prevB, hasPrev, atFirst, _ = db.GetElTokenTransfersByAccountPrevAnchor(ctx, account.ID, direction, filter, first.TxUid, first.TxIdx, limit)
+	}
+	pager := buildElPager("", suffix, pageNum, hasNext, nextA, nextB, hasPrev, atFirst, prevA, prevB, true)
+
 	if isERC20 {
 		pageData.ERC20Transfers = transfers
-		pageData.ERC20TransferCount = totalCount
-		pageData.ERC20CountCapped = countCapped
-		pageData.ERC20PageIndex = pageIdx
-		pageData.ERC20PageSize = uint64(limit)
-		pageData.ERC20TotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-		pageData.ERC20FirstItem = (pageIdx-1)*uint64(limit) + 1
-		pageData.ERC20LastItem = min(pageIdx*uint64(limit), totalCount)
+		pageData.ERC20PageSize = pageSize
+		pageData.ERC20Filter = filterForm
+		pageData.ERC20Pager = pager
 	} else {
 		pageData.NFTTransfers = transfers
-		pageData.NFTTransferCount = totalCount
-		pageData.NFTCountCapped = countCapped
-		pageData.NFTPageIndex = pageIdx
-		pageData.NFTPageSize = uint64(limit)
-		pageData.NFTTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-		pageData.NFTFirstItem = (pageIdx-1)*uint64(limit) + 1
-		pageData.NFTLastItem = min(pageIdx*uint64(limit), totalCount)
+		pageData.NFTPageSize = pageSize
+		pageData.NFTFilter = filterForm
+		pageData.NFTPager = pager
 	}
 }
 
@@ -698,16 +832,21 @@ func calculateTxHashRowspans(transfers []*models.AddressPageDataTokenTransfer) {
 	}
 }
 
-func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, pageSize uint64, urlArgs url.Values) {
+	limit := uint32(pageSize)
+	beforeTxUid, _, pageNum := parseElPageParam(urlArgs.Get("p"))
 	// Get per-tx aggregate rows where this account was involved
-	dbEntries, totalCount, _ := db.GetElTransactionsInternalByAccount(ctx, account.ID, offset, limit)
+	dbEntries, hasNext, _ := db.GetElTransactionsInternalByAccountKeyset(ctx, account.ID, beforeTxUid, limit)
 
-	pageData.InternalTxCount = totalCount
-	pageData.InternalTxPageIndex = pageIdx
-	pageData.InternalTxPageSize = uint64(limit)
-	pageData.InternalTxTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-	pageData.InternalTxFirstItem = (pageIdx-1)*uint64(limit) + 1
-	pageData.InternalTxLastItem = min(pageIdx*uint64(limit), totalCount)
+	pageData.InternalTxPageSize = pageSize
+	suffix := "v=internaltxs&c=" + strconv.FormatUint(pageSize, 10)
+	var nextA, prevA uint64
+	hasPrev, atFirst := false, true
+	if len(dbEntries) > 0 {
+		nextA = dbEntries[len(dbEntries)-1].TxUid
+		prevA, hasPrev, atFirst, _ = db.GetElTransactionsInternalByAccountPrevAnchor(ctx, account.ID, dbEntries[0].TxUid, limit)
+	}
+	pageData.InternalTxPager = buildElPager("", suffix, pageNum, hasNext, nextA, 0, hasPrev, atFirst, prevA, 0, false)
 
 	// Collect block UIDs and tx UIDs for batch lookup (account_id is implicit = page address)
 	blockUidSet := make(map[uint64]bool, len(dbEntries))
@@ -821,12 +960,14 @@ func loadWithdrawalsTab(ctx context.Context, pageData *models.AddressPageData, a
 	}
 	dbWithdrawals, totalCount := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, pageIdx-1, limit)
 
-	pageData.WithdrawalCount = totalCount
-	pageData.WdPageIndex = pageIdx
+	// Withdrawals come through the cache-merging beacon service (offset-based), so
+	// they use the shared offset pager rather than a keyset cursor.
 	pageData.WdPageSize = uint64(limit)
-	pageData.WdTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-	pageData.WdFirstItem = (pageIdx-1)*uint64(limit) + 1
-	pageData.WdLastItem = min(pageIdx*uint64(limit), totalCount)
+	totalPages := uint64(math.Ceil(float64(totalCount) / float64(limit)))
+	pageData.WdPager = buildOffsetPager("", []models.UrlParam{
+		{Key: "v", Value: "withdrawals"},
+		{Key: "c", Value: strconv.FormatUint(uint64(limit), 10)},
+	}, pageIdx, totalPages)
 
 	// Collect block UIDs for batch lookup
 	blockUids := make([]uint64, 0, len(dbWithdrawals))
@@ -881,15 +1022,20 @@ func loadWithdrawalsTab(ctx context.Context, pageData *models.AddressPageData, a
 	}
 }
 
-func loadBlockFeesTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	dbBlocks, totalCount, _ := db.GetBlockFeesByAccountID(ctx, account.ID, offset, limit)
+func loadBlockFeesTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, pageSize uint64, urlArgs url.Values) {
+	limit := uint32(pageSize)
+	beforeBlockUid, _, pageNum := parseElPageParam(urlArgs.Get("p"))
+	dbBlocks, hasNext, _ := db.GetBlockFeesByAccountKeyset(ctx, account.ID, beforeBlockUid, limit)
 
-	pageData.BlockFeeCount = totalCount
-	pageData.BfPageIndex = pageIdx
-	pageData.BfPageSize = uint64(limit)
-	pageData.BfTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-	pageData.BfFirstItem = (pageIdx-1)*uint64(limit) + 1
-	pageData.BfLastItem = min(pageIdx*uint64(limit), totalCount)
+	pageData.BfPageSize = pageSize
+	suffix := "v=blockfees&c=" + strconv.FormatUint(pageSize, 10)
+	var nextA, prevA uint64
+	hasPrev, atFirst := false, true
+	if len(dbBlocks) > 0 {
+		nextA = dbBlocks[len(dbBlocks)-1].BlockUid
+		prevA, hasPrev, atFirst, _ = db.GetBlockFeesByAccountPrevAnchor(ctx, account.ID, dbBlocks[0].BlockUid, limit)
+	}
+	pageData.BfPager = buildElPager("", suffix, pageNum, hasNext, nextA, 0, hasPrev, atFirst, prevA, 0, false)
 
 	// Collect block UIDs for batch lookup (to get roots)
 	blockUids := make([]uint64, 0, len(dbBlocks))

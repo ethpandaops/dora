@@ -52,7 +52,7 @@
             {{ if $transaction.HasElData }}
             <td>
               {{ if $transaction.Reverted }}
-              <span class="badge text-bg-danger" style="font-size: 11px;"><i class="fas fa-times me-1"></i>Failed</span>
+              <span class="badge text-bg-danger" style="font-size: 11px;" data-bs-toggle="tooltip" title="{{ if $transaction.RevertReason }}Reverted: {{ $transaction.RevertReason }}{{ else }}execution reverted{{ end }}"><i class="fas fa-times me-1"></i>Failed</span>
               {{ else }}
               <span class="badge text-bg-success" style="font-size: 11px;"><i class="fas fa-check me-1"></i>Success</span>
               {{ end }}

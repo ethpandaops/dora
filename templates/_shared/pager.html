@@ -1,0 +1,31 @@
+{{ define "pager" }}
+<ul class="pagination mb-0 align-items-center">
+  <li class="page-item{{ if not .HasPrev }} disabled{{ end }}">
+    <a class="page-link" href="{{ if .HasPrev }}{{ .FirstLink }}{{ else }}#{{ end }}">First</a>
+  </li>
+  <li class="page-item{{ if not .HasPrev }} disabled{{ end }}">
+    <a class="page-link" href="{{ if .HasPrev }}{{ .PrevLink }}{{ else }}#{{ end }}" aria-label="Previous"><i class="fas fa-chevron-left"></i></a>
+  </li>
+  {{ if .ShowInput }}
+    <li class="page-item">
+      <form method="get" action="{{ .JumpAction }}" class="d-flex mb-0">
+        {{ range .JumpParams }}<input type="hidden" name="{{ .Key }}" value="{{ .Value }}">{{ end }}
+        <input type="number" name="{{ .JumpPageField }}" class="form-control text-center" style="width: 80px; border-radius: 0;" value="{{ .PageNum }}" min="1"{{ if .TotalPages }} max="{{ .TotalPages }}"{{ end }} onchange="this.form.submit()" aria-label="Page number">
+      </form>
+    </li>
+    {{ if .TotalPages }}<li class="page-item disabled"><span class="page-link" style="background-color: transparent;">of {{ .TotalPages }}</span></li>{{ end }}
+  {{ else }}
+    <li class="page-item disabled">
+      <span class="page-link" style="background-color: transparent;">{{ if .TotalPages }}{{ .PageNum }} of {{ .TotalPages }}{{ else }}Page {{ .PageNum }}{{ end }}</span>
+    </li>
+  {{ end }}
+  <li class="page-item{{ if not .HasNext }} disabled{{ end }}">
+    <a class="page-link" href="{{ if .HasNext }}{{ .NextLink }}{{ else }}#{{ end }}" aria-label="Next"><i class="fas fa-chevron-right"></i></a>
+  </li>
+  {{ if .HasLast }}
+    <li class="page-item{{ if not .HasLast }} disabled{{ end }}">
+      <a class="page-link" href="{{ .LastLink }}">Last</a>
+    </li>
+  {{ end }}
+</ul>
+{{ end }}

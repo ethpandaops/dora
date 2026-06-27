@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/execution"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
@@ -252,9 +253,31 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	// Update procCtx to use commit context for getBalanceUpdates (reads from DB)
 	procCtx.ctx = commitCtx
 
+	// Build tx-hash index entries for this block. The relational store is written
+	// inside the block transaction below (atomic with el_transactions); the
+	// native (pebble) store is written post-commit (best-effort), like exec data.
+	var txHashEntries []bdbtypes.TxHashEntry
+	txHashIndexNative := false
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsTxHashIndex() {
+		txHashEntries = collectTxHashEntries(procCtx.txResults)
+		txHashIndexNative = blockdb.GlobalBlockDb.TxHashIndexNative()
+	}
+
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		for _, cb := range dbCommitCallbacks {
 			if err := cb(commitCtx, tx); err != nil {
+				return err
+			}
+		}
+
+		// Relational tx-hash index: atomic with the el_transactions rows just
+		// committed by the callbacks above.
+		if len(txHashEntries) > 0 && !txHashIndexNative {
+			rows := make([]dbtypes.ElTxHash, len(txHashEntries))
+			for i, e := range txHashEntries {
+				rows[i] = dbtypes.ElTxHash{Hash10: e.Prefix, TxUid: e.TxUid}
+			}
+			if err := db.InsertElTxHashes(commitCtx, tx, rows); err != nil {
 				return err
 			}
 		}
@@ -319,6 +342,16 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		return stats, fmt.Errorf("failed to insert block: %w", err)
 	}
 
+	// Native (pebble/tiered) tx-hash index: written post-commit, best-effort
+	// (Pebble cannot join the SQL transaction), mirroring the exec-data write.
+	if len(txHashEntries) > 0 && txHashIndexNative {
+		idxCtx, idxCancel := context.WithTimeout(t.ctx, 30*time.Second)
+		if err := blockdb.GlobalBlockDb.PutTxHashes(idxCtx, txHashEntries); err != nil {
+			t.logger.WithError(err).WithField("blockUid", ref.BlockUID).Warn("failed to write tx-hash index")
+		}
+		idxCancel()
+	}
+
 	// Build and write execution data object to blockdb (Mode Full only)
 	if t.mode == ModeFull {
 		execData, dataStatus := procCtx.buildExecDataObject()
@@ -349,6 +382,22 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	}
 
 	return stats, nil
+}
+
+// collectTxHashEntries builds tx-hash index entries from processed transaction
+// results (those that produced an el_transactions row).
+func collectTxHashEntries(results []*txProcessingResult) []bdbtypes.TxHashEntry {
+	entries := make([]bdbtypes.TxHashEntry, 0, len(results))
+	for _, result := range results {
+		if result.transaction == nil {
+			continue
+		}
+		entries = append(entries, bdbtypes.TxHashEntry{
+			Prefix: bdbtypes.HashPrefix(result.transaction.TxHash),
+			TxUid:  result.transaction.TxUid,
+		})
+	}
+	return entries
 }
 
 // processBlockRewards processes fee recipient rewards from beacon block data.

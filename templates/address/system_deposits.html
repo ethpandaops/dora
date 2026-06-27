@@ -13,7 +13,7 @@
           </tr>
         </thead>
         <tbody>
-          {{ if gt .WithdrawalCount 0 }}
+          {{ if gt (len .Withdrawals) 0 }}
             {{ range .Withdrawals }}
             <tr>
               <td>
@@ -78,36 +78,9 @@
         </tbody>
       </table>
     </div>
-    {{ if gt .WdTotalPages 1 }}
-    <div class="card-footer d-flex justify-content-between align-items-center">
-      <div>
-        Showing {{ formatAddCommas .WdFirstItem }} - {{ formatAddCommas .WdLastItem }} of {{ formatAddCommas .WithdrawalCount }}
-      </div>
-      <nav aria-label="Withdrawals pagination">
-        <ul class="pagination pagination-sm mb-0">
-          {{ if gt .WdPageIndex 1 }}
-            <li class="page-item">
-              <a class="page-link" href="?v=withdrawals&p=1&c={{ .WdPageSize }}">&laquo;</a>
-            </li>
-            <li class="page-item">
-              <a class="page-link" href="?v=withdrawals&p={{ subUI64 .WdPageIndex 1 }}&c={{ .WdPageSize }}">&lsaquo;</a>
-            </li>
-          {{ end }}
-          <li class="page-item disabled">
-            <span class="page-link">{{ .WdPageIndex }} / {{ .WdTotalPages }}</span>
-          </li>
-          {{ if lt .WdPageIndex .WdTotalPages }}
-            <li class="page-item">
-              <a class="page-link" href="?v=withdrawals&p={{ addUI64 .WdPageIndex 1 }}&c={{ .WdPageSize }}">&rsaquo;</a>
-            </li>
-            <li class="page-item">
-              <a class="page-link" href="?v=withdrawals&p={{ .WdTotalPages }}&c={{ .WdPageSize }}">&raquo;</a>
-            </li>
-          {{ end }}
-        </ul>
-      </nav>
+    <div class="card-footer d-flex justify-content-end align-items-center">
+      {{ template "pager" .WdPager }}
     </div>
-    {{ end }}
   </div>
 </div>
 {{ end }}
@@ -125,7 +98,7 @@
           </tr>
         </thead>
         <tbody>
-          {{ if gt .BlockFeeCount 0 }}
+          {{ if gt (len .BlockFees) 0 }}
             {{ range .BlockFees }}
             <tr>
               <td>
@@ -154,36 +127,9 @@
         </tbody>
       </table>
     </div>
-    {{ if gt .BfTotalPages 1 }}
-    <div class="card-footer d-flex justify-content-between align-items-center">
-      <div>
-        Showing {{ formatAddCommas .BfFirstItem }} - {{ formatAddCommas .BfLastItem }} of {{ formatAddCommas .BlockFeeCount }}
-      </div>
-      <nav aria-label="Block fees pagination">
-        <ul class="pagination pagination-sm mb-0">
-          {{ if gt .BfPageIndex 1 }}
-            <li class="page-item">
-              <a class="page-link" href="?v=blockfees&p=1&c={{ .BfPageSize }}">&laquo;</a>
-            </li>
-            <li class="page-item">
-              <a class="page-link" href="?v=blockfees&p={{ subUI64 .BfPageIndex 1 }}&c={{ .BfPageSize }}">&lsaquo;</a>
-            </li>
-          {{ end }}
-          <li class="page-item disabled">
-            <span class="page-link">{{ .BfPageIndex }} / {{ .BfTotalPages }}</span>
-          </li>
-          {{ if lt .BfPageIndex .BfTotalPages }}
-            <li class="page-item">
-              <a class="page-link" href="?v=blockfees&p={{ addUI64 .BfPageIndex 1 }}&c={{ .BfPageSize }}">&rsaquo;</a>
-            </li>
-            <li class="page-item">
-              <a class="page-link" href="?v=blockfees&p={{ .BfTotalPages }}&c={{ .BfPageSize }}">&raquo;</a>
-            </li>
-          {{ end }}
-        </ul>
-      </nav>
+    <div class="card-footer d-flex justify-content-end align-items-center">
+      {{ template "pager" .BfPager }}
     </div>
-    {{ end }}
   </div>
 </div>
 {{ end }}

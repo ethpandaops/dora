@@ -6,18 +6,18 @@ import (
 
 // ClientsELPageData is a struct to hold info for the clients page
 type ClientsELPageData struct {
-	Clients                []*ClientsELPageDataClient        `json:"clients"`
-	ClientCount            uint64                            `json:"client_count"`
-	PeerMap                *ClientELPageDataPeerMap          `json:"peer_map"`
-	ShowSensitivePeerInfos bool                              `json:"show_sensitive_peer_infos"`
-	Nodes                  map[string]*ClientsELPageDataNode `json:"nodes"`
-	Sorting                string                            `json:"sorting"`
-	IsDefaultSorting       bool                              `json:"is_default_sorting"`
-	ExpectedEthConfig      *ClientELPageDataForkConfig       `json:"expected_eth_config"`
+	Clients                []*ClientsELPageDataClient  `json:"clients"`
+	ClientCount            uint64                      `json:"client_count"`
+	PeerMap                *ClientELPageDataPeerMap    `json:"peer_map"`
+	ShowSensitivePeerInfos bool                        `json:"show_sensitive_peer_infos"`
+	Nodes                  []*ClientsELPageDataNode    `json:"nodes"`
+	Sorting                string                      `json:"sorting"`
+	IsDefaultSorting       bool                        `json:"is_default_sorting"`
+	ExpectedEthConfig      *ClientELPageDataForkConfig `json:"expected_eth_config"`
 }
 
 type ClientsELPageDataClient struct {
-	Index                int                         `json:"index"`
+	Index                int32                       `json:"index"`
 	Name                 string                      `json:"name"`
 	Version              string                      `json:"version"`
 	HeadSlot             uint64                      `json:"head_slot"`
@@ -61,22 +61,37 @@ type EthConfigObject struct {
 		Target                uint64 `json:"target"`
 		BaseFeeUpdateFraction uint64 `json:"baseFeeUpdateFraction"`
 	} `json:"blobSchedule"`
-	ChainId         string            `json:"chainId"`
-	ForkId          string            `json:"forkId"`
-	Precompiles     map[string]string `json:"precompiles"`
-	SystemContracts map[string]string `json:"systemContracts"`
+	ChainId         string               `json:"chainId"`
+	ForkId          string               `json:"forkId"`
+	Precompiles     []*EthConfigKeyValue `json:"precompiles"`
+	SystemContracts []*EthConfigKeyValue `json:"systemContracts"`
+}
+
+// EthConfigKeyValue is a single entry of an eth config map (precompiles, system
+// contracts), modelled as a list element so the page model stays SSZ-compatible.
+type EthConfigKeyValue struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type ClientELPageDataNodePeers struct {
-	ID        string                 `json:"id"`
-	Alias     string                 `json:"alias"`
-	Enode     string                 `json:"enode"`
-	Name      string                 `json:"name"`
-	Type      string                 `json:"type"`
-	State     string                 `json:"state"`
-	Direction string                 `json:"direction"`
-	Caps      []string               `json:"caps"`
-	Protocols map[string]interface{} `json:"protocols"`
+	ID        string                          `json:"id"`
+	Alias     string                          `json:"alias"`
+	Enode     string                          `json:"enode"`
+	Name      string                          `json:"name"`
+	Type      string                          `json:"type"`
+	State     string                          `json:"state"`
+	Direction string                          `json:"direction"`
+	Caps      []string                        `json:"caps"`
+	Protocols []*ClientELPageDataNodeProtocol `json:"protocols"`
+}
+
+// ClientELPageDataNodeProtocol holds a single sub-protocol metadata entry of a
+// peer. Value carries the JSON-encoded metadata so the page model stays
+// SSZ-compatible (no maps or interface values).
+type ClientELPageDataNodeProtocol struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 type ClientELPageDataPeerMap struct {
@@ -88,7 +103,7 @@ type ClientELPageDataPeerMapNode struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Group string `json:"group"`
-	Value int    `json:"value"`
+	Value int32  `json:"value"`
 }
 
 type ClientELDataMapPeerMapEdge struct {

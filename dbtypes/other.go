@@ -324,23 +324,14 @@ type ElTransactionFilter struct {
 	Reverted   *bool
 	MinGasUsed *uint64
 	MaxGasUsed *uint64
-}
-
-type ElEventIndexFilter struct {
-	SourceID uint64
-	Topic1   []byte
-}
-
-type ElTransactionInternalFilter struct {
-	FromID uint64
-	ToID   uint64
-}
-
-type ElAccountFilter struct {
-	FunderID   uint64
-	IsContract *bool
-	MinFunded  uint64
-	MaxFunded  uint64
+	// MinSlot/MaxSlot bound the tx_uid sort key directly (free range scan).
+	MinSlot   *uint64
+	MaxSlot   *uint64
+	MinAmount *float64
+	MaxAmount *float64
+	MinTip    *float64
+	MaxTip    *float64
+	TxTypes   []uint8 // tx_type IN (...) (predicate)
 }
 
 type ElTokenFilter struct {
@@ -349,18 +340,15 @@ type ElTokenFilter struct {
 	Symbol   string
 }
 
-type ElBalanceFilter struct {
-	TokenID    *uint64
-	MinBalance *float64
-	MaxBalance *float64
-}
-
 type ElTokenTransferFilter struct {
-	TokenID   *uint64
-	FromID    uint64
-	ToID      uint64
-	MinAmount *float64
-	MaxAmount *float64
+	TokenID    *uint64
+	FromID     uint64
+	ToID       uint64
+	MinAmount  *float64
+	MaxAmount  *float64
+	MinSlot    *uint64 // bounds tx_uid sort key (free range scan)
+	MaxSlot    *uint64
+	TokenTypes []uint8 // token_type IN (...)
 }
 
 type WithdrawalFilter struct {

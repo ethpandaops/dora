@@ -573,7 +573,7 @@ type ElTransaction struct {
 	FromID      uint64  `db:"from_id"`
 	ToID        uint64  `db:"to_id"`
 	Nonce       uint64  `db:"nonce"`
-	Reverted    bool    `db:"reverted"`
+	RevertID    uint32  `db:"revert_id"` // 0 = success, 1 = reverted/unknown, >=10 = el_revert_reason id
 	Amount      float64 `db:"amount"`
 	AmountRaw   []byte  `db:"amount_raw"`
 	MethodID    []byte  `db:"method_id"`
@@ -583,9 +583,49 @@ type ElTransaction struct {
 	TipPrice    float64 `db:"tip_price"` // maxPriorityFeePerGas (in Gwei)
 	BlobCount   uint32  `db:"blob_count"`
 	BlockNumber uint64  `db:"block_number"`
-	TxType      uint8   `db:"tx_type"`
+	TxType      uint8   `db:"tx_type"`       // EVM tx type in bits 0-6; create flag in bit 7 (see ElTxType* below)
 	EffGasPrice float64 `db:"eff_gas_price"` // Effective gas price actually paid (in Gwei)
+	EventCount  uint16  `db:"event_count"`   // number of logs emitted (badge count; full event data in blockdb)
 }
+
+// Reserved revert_id values on el_transactions. 0 = success; 1-99 are fixed
+// sentinels for well-known errors; dynamic deduped reasons are assigned ids
+// >= RevertIDDynamicMin. Well-known EVM errors map to a reserved id (matched by
+// substring) instead of a dynamic reason row, bounding cardinality — their full
+// message is still visible in the internal-transactions (call trace) tab.
+const (
+	RevertIDSuccess        uint32 = 0   // not reverted
+	RevertIDUnknown        uint32 = 1   // reverted, reason unavailable (no trace)
+	RevertIDOutOfGas       uint32 = 2   // "out of gas"
+	RevertIDStackUnderflow uint32 = 3   // "stack underflow"
+	RevertIDInvalidOpcode  uint32 = 4   // "invalid opcode"
+	RevertIDDynamicMin     uint32 = 100 // first id assigned to a deduped reason
+)
+
+// ElRevertReason is one deduplicated transaction revert reason. reason_hash is
+// the first 16 bytes of sha256(reason); last_tx_uid is the highest tx_uid that
+// referenced it (drives orphan reclaim).
+type ElRevertReason struct {
+	ID         uint32 `db:"id"`
+	Reason     string `db:"reason"`
+	ReasonHash []byte `db:"reason_hash"`
+	LastTxUid  uint64 `db:"last_tx_uid"`
+}
+
+// ElTxHash is one entry of the long-lived tx-hash index: a 10-byte tx-hash
+// prefix mapped to its tx_uid. Backs by-hash lookups after el_transactions rows
+// are pruned; lives with the blockdb (details) retention.
+type ElTxHash struct {
+	Hash10 []byte `db:"hash10"`
+	TxUid  uint64 `db:"tx_uid"`
+}
+
+// el_transactions.tx_type packs a flag into the top bit so no extra column is
+// needed: the create flag is bit 7; the EVM tx type is everything below it.
+const (
+	ElTxTypeMask   uint8 = 0x7F // bits 0-6: EVM tx type
+	ElTxFlagCreate uint8 = 0x80 // bit 7: contract-creation tx (raw recipient was null)
+)
 
 // ElTransactionInternal is a per-account aggregate of internal calls within a
 // transaction. One row per (tx_uid, account_id) regardless of how many sub-
@@ -599,14 +639,6 @@ type ElTransactionInternal struct {
 	ValueIn      float64 `db:"value_in"`       // sum of value where account was callee (ETH)
 	ValueOut     float64 `db:"value_out"`      // sum of value where account was caller (ETH)
 	GasUsed      uint64  `db:"gas_used"`       // sum of gas_used across calls involving the account
-}
-
-// ElEventIndex is a lightweight searchable index for events (full data in blockdb).
-type ElEventIndex struct {
-	TxUid      uint64 `db:"tx_uid"` // block_uid << 16 | tx_index
-	EventIndex uint32 `db:"event_index"`
-	SourceID   uint64 `db:"source_id"`
-	Topic1     []byte `db:"topic1"`
 }
 
 type ElAccount struct {

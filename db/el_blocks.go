@@ -89,26 +89,6 @@ func GetElBlocksByUids(ctx context.Context, blockUids []uint64) ([]*dbtypes.ElBl
 	return blocks, nil
 }
 
-// ResetElBlockDataStatus resets data_status and data_size for blocks
-// that have been evicted from blockdb.
-func ResetElBlockDataStatus(ctx context.Context, dbTx *sqlx.Tx, blockUids []uint64) error {
-	if len(blockUids) == 0 {
-		return nil
-	}
-
-	var sql strings.Builder
-	args := make([]any, len(blockUids))
-	fmt.Fprint(&sql, "UPDATE el_blocks SET data_status = 0, data_size = 0 WHERE block_uid IN (")
-	for i, uid := range blockUids {
-		args[i] = uid
-	}
-	appendDollarPlaceholders(&sql, 1, len(blockUids), ", ")
-	fmt.Fprint(&sql, ")")
-
-	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
-	return err
-}
-
 // ResetElBlockDataStatusBefore resets data_status and data_size for all blocks
 // with block_uid below the given threshold (used for time-based pruning).
 func ResetElBlockDataStatusBefore(ctx context.Context, dbTx *sqlx.Tx, blockUidThreshold uint64) (int64, error) {
@@ -126,6 +106,19 @@ func ResetElBlockDataStatusBefore(ctx context.Context, dbTx *sqlx.Tx, blockUidTh
 func GetTotalElBlockDataSize(ctx context.Context) (int64, error) {
 	var total int64
 	err := ReaderDb.GetContext(ctx, &total, "SELECT COALESCE(SUM(data_size), 0) FROM el_blocks WHERE data_size > 0")
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// GetElBlockDataSizeBefore returns the summed blockdb exec-data size of blocks
+// with block_uid below the threshold (used to report freed bytes on prune).
+func GetElBlockDataSizeBefore(ctx context.Context, blockUidThreshold uint64) (int64, error) {
+	var total int64
+	err := ReaderDb.GetContext(ctx, &total,
+		"SELECT COALESCE(SUM(data_size), 0) FROM el_blocks WHERE block_uid < $1 AND data_size > 0",
+		blockUidThreshold)
 	if err != nil {
 		return 0, err
 	}
@@ -159,42 +152,54 @@ func HasBlockFeesByAccountID(ctx context.Context, accountID uint64) (bool, error
 	return exists, nil
 }
 
-// GetBlockFeesByAccountID returns block fee entries for a given account.
-func GetBlockFeesByAccountID(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElBlock, uint64, error) {
+// GetBlockFeesByAccountKeyset returns the account's fee-earning blocks keyset-
+// paginated by block_uid DESC.
+func GetBlockFeesByAccountKeyset(ctx context.Context, accountID uint64, beforeBlockUid uint64, limit uint32) ([]*dbtypes.ElBlock, bool, error) {
 	var sql strings.Builder
 	args := []any{accountID}
-
-	fmt.Fprint(&sql, `
-		SELECT `+elBlockColumns+`
-		FROM el_blocks
-		WHERE fee_account_id = $1 AND fee_amount > 0
-		ORDER BY block_uid DESC
-		LIMIT $2`)
-	args = append(args, limit)
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
+	fmt.Fprint(&sql, `SELECT `+elBlockColumns+` FROM el_blocks WHERE fee_account_id = $1 AND fee_amount > 0`)
+	if beforeBlockUid > 0 {
+		args = append(args, beforeBlockUid)
+		fmt.Fprintf(&sql, " AND block_uid < $%d", len(args))
 	}
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY block_uid DESC LIMIT $%d", len(args))
 
 	blocks := []*dbtypes.ElBlock{}
-	err := ReaderDb.SelectContext(ctx, &blocks, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching block fees by account id: %v", err)
-		return nil, 0, err
+	if err := ReaderDb.SelectContext(ctx, &blocks, sql.String(), args...); err != nil {
+		logger.Errorf("Error while fetching block fees by account (keyset): %v", err)
+		return nil, false, err
 	}
-
-	var totalCount uint64
-	err = ReaderDb.GetContext(ctx, &totalCount,
-		"SELECT COUNT(*) FROM (SELECT 1 FROM el_blocks WHERE fee_account_id = $1 AND fee_amount > 0 LIMIT $2) AS a",
-		accountID, 100000,
-	)
-	if err != nil {
-		logger.Errorf("Error while counting block fees by account id: %v", err)
-		return nil, 0, err
+	hasMore := false
+	if uint32(len(blocks)) > limit {
+		hasMore = true
+		blocks = blocks[:limit]
 	}
+	return blocks, hasMore, nil
+}
 
-	return blocks, totalCount, nil
+// GetBlockFeesByAccountPrevAnchor probes blocks newer than afterBlockUid to
+// drive the First/< controls (see GetElTransactionsByAccountPrevAnchor).
+func GetBlockFeesByAccountPrevAnchor(ctx context.Context, accountID uint64, afterBlockUid uint64, limit uint32) (uint64, bool, bool, error) {
+	var sql strings.Builder
+	args := []any{accountID}
+	fmt.Fprint(&sql, `SELECT block_uid FROM el_blocks WHERE fee_account_id = $1 AND fee_amount > 0`)
+	if afterBlockUid > 0 {
+		args = append(args, afterBlockUid)
+		fmt.Fprintf(&sql, " AND block_uid > $%d", len(args))
+	}
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY block_uid ASC LIMIT $%d", len(args))
+
+	uids := []uint64{}
+	if err := ReaderDb.SelectContext(ctx, &uids, sql.String(), args...); err != nil {
+		return 0, false, false, err
+	}
+	hasPrev := len(uids) > 0
+	if uint32(len(uids)) > limit {
+		return uids[limit], hasPrev, false, nil
+	}
+	return 0, hasPrev, true, nil
 }
 
 // UpdateElBlockDataStatus updates the data_status and data_size for a block
@@ -204,10 +209,5 @@ func UpdateElBlockDataStatus(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64
 		"UPDATE el_blocks SET data_status = $1, data_size = $2 WHERE block_uid = $3",
 		dataStatus, dataSize, blockUid,
 	)
-	return err
-}
-
-func DeleteElBlock(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64) error {
-	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_blocks WHERE block_uid = $1", blockUid)
 	return err
 }

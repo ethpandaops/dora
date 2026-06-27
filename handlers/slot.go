@@ -1174,6 +1174,7 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 	if utils.Config.ExecutionIndexer.Enabled && len(pageData.Transactions) > 0 {
 		elTxs, err := db.GetElTransactionsByBlockUid(ctx, blockUid)
 		if err == nil && len(elTxs) > 0 {
+			revertIDMap := map[uint32][]*models.SlotPageTransaction{}
 			for _, elTx := range elTxs {
 				txData := txHashMap[string(elTx.TxHash)]
 				if txData == nil {
@@ -1181,13 +1182,30 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 				}
 
 				txData.HasElData = true
-				txData.Reverted = elTx.Reverted
+				txData.Reverted = elTx.RevertID > 0
+				if elTx.RevertID > 0 {
+					revertIDMap[elTx.RevertID] = append(revertIDMap[elTx.RevertID], txData)
+				}
 				txData.GasUsed = elTx.GasUsed
 				txData.EffGasPrice = elTx.EffGasPrice
 
 				// Calculate tx fee in ETH: gas_used * eff_gas_price (Gwei) / 1e9
 				if elTx.GasUsed > 0 && elTx.EffGasPrice > 0 {
 					txData.TxFee = float64(elTx.GasUsed) * elTx.EffGasPrice / 1e9
+				}
+			}
+
+			if len(revertIDMap) > 0 {
+				ids := make([]uint32, 0, len(revertIDMap))
+				for id := range revertIDMap {
+					ids = append(ids, id)
+				}
+				if reasons, rerr := db.GetElRevertReasonsByIDs(ctx, ids); rerr == nil {
+					for id, reason := range reasons {
+						for _, txData := range revertIDMap[id] {
+							txData.RevertReason = reason
+						}
+					}
 				}
 			}
 		}

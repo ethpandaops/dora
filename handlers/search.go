@@ -15,6 +15,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -618,44 +620,25 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 						{
 							TxHash:      fmt.Sprintf("0x%x", txHashBytes),
 							BlockNumber: tx.BlockNumber,
-							Reverted:    tx.Reverted,
+							Reverted:    tx.RevertID > 0,
 						},
 					}
 				}
 			}
 		} else if len(search) >= 2 && len(search) < 64 {
-			// Search by transaction hash prefix in DB
-			transactions := &dbtypes.SearchAheadTransactionResult{}
-			err = db.ReaderDb.SelectContext(ctx, transactions, db.EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql: `
-					SELECT DISTINCT ON (tx_hash) tx_hash, block_number, reverted
-					FROM el_transactions
-					WHERE ENCODE(tx_hash, 'hex') ILIKE $1
-					ORDER BY tx_hash, block_number DESC
-					LIMIT 10`,
-				dbtypes.DBEngineSqlite: `
-					SELECT t1.tx_hash, t1.block_number, t1.reverted
-					FROM el_transactions t1
-					INNER JOIN (
-						SELECT tx_hash, MAX(block_number) as max_block_number
-						FROM el_transactions
-						WHERE HEX(tx_hash) LIKE UPPER($1)
-						GROUP BY tx_hash
-					) t2 ON t1.tx_hash = t2.tx_hash AND t1.block_number = t2.max_block_number
-					WHERE HEX(t1.tx_hash) LIKE UPPER($1)
-					ORDER BY t1.block_number DESC
-					LIMIT 10`,
-			}), search+"%")
-			if err == nil {
-				model := make([]models.SearchAheadTransactionResult, len(*transactions))
-				for i, entry := range *transactions {
-					model[i] = models.SearchAheadTransactionResult{
-						TxHash:      fmt.Sprintf("0x%x", entry.TxHash),
-						BlockNumber: entry.BlockNumber,
-						Reverted:    entry.Reverted,
+			// Partial hash: resolve via the tx-hash prefix index (the dedicated
+			// tx_hash column index was dropped). Covers prefixes up to 20 hex
+			// chars; the result set is then resolved to currently-stored rows.
+			if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsTxHashIndex() {
+				if lo, hi, ok := txHashPrefixBounds(search); ok {
+					uids, lerr := blockdb.GlobalBlockDb.LookupTxHashRange(ctx, lo, hi)
+					if lerr == nil && len(uids) > 0 {
+						txs, terr := db.GetElTransactionsByTxUids(ctx, uids)
+						if terr == nil {
+							result = buildTxSearchAheadResults(txs)
+						}
 					}
 				}
-				result = model
 			}
 		}
 	}
@@ -664,4 +647,74 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 		return &searchAheadCached{Err: err.Error()}, cacheTimeout
 	}
 	return &searchAheadCached{Data: result}, cacheTimeout
+}
+
+// txHashPrefixBounds converts a hex hash prefix (no 0x, up to 20 chars) into the
+// [lo, hi) byte range covering every hash with that prefix. ok is false for an
+// undecodable or all-0xFF prefix.
+func txHashPrefixBounds(hexPrefix string) (lo, hi []byte, ok bool) {
+	p := strings.ToLower(strings.TrimPrefix(hexPrefix, "0x"))
+	if maxLen := 2 * bdbtypes.TxHashPrefixLen; len(p) > maxLen {
+		p = p[:maxLen]
+	}
+
+	loStr, hiStr := p, p
+	if len(p)%2 != 0 {
+		loStr += "0"
+		hiStr += "f"
+	}
+
+	loBytes, err := hex.DecodeString(loStr)
+	if err != nil {
+		return nil, nil, false
+	}
+	hiBytes, err := hex.DecodeString(hiStr)
+	if err != nil {
+		return nil, nil, false
+	}
+	hiBytes = incrementBytes(hiBytes)
+	if hiBytes == nil {
+		return nil, nil, false // all-0xFF prefix
+	}
+	return loBytes, hiBytes, true
+}
+
+// incrementBytes returns b+1 as a big-endian integer, or nil on overflow.
+func incrementBytes(b []byte) []byte {
+	out := make([]byte, len(b))
+	copy(out, b)
+	for i := len(out) - 1; i >= 0; i-- {
+		out[i]++
+		if out[i] != 0 {
+			return out
+		}
+	}
+	return nil
+}
+
+// buildTxSearchAheadResults dedupes resolved transactions by hash (keeping the
+// highest block), capped to 10 search-ahead entries.
+func buildTxSearchAheadResults(txs []*dbtypes.ElTransaction) []models.SearchAheadTransactionResult {
+	seen := make(map[string]int, len(txs))
+	results := make([]models.SearchAheadTransactionResult, 0, 10)
+	for _, tx := range txs {
+		key := string(tx.TxHash)
+		if idx, exists := seen[key]; exists {
+			if tx.BlockNumber > results[idx].BlockNumber {
+				results[idx].BlockNumber = tx.BlockNumber
+				results[idx].Reverted = tx.RevertID > 0
+			}
+			continue
+		}
+		if len(results) >= 10 {
+			continue
+		}
+		seen[key] = len(results)
+		results = append(results, models.SearchAheadTransactionResult{
+			TxHash:      fmt.Sprintf("0x%x", tx.TxHash),
+			BlockNumber: tx.BlockNumber,
+			Reverted:    tx.RevertID > 0,
+		})
+	}
+	return results
 }
