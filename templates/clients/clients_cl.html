@@ -1,6 +1,8 @@
 {{ define "page" }}
 
 {{ $root := . }}
+{{ $nodeMap := dict }}
+{{ range $node := $root.Nodes }}{{ $_ := set $nodeMap $node.PeerID $node }}{{ end }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-server mx-2"></i>Consensus clients</h1>
@@ -137,7 +139,7 @@
                         {{ range $i, $p := $root.PeerDASInfos.Warnings.MissingCGCFromENRPeers }}
                           <li>
                             <code class="peerdetails-modal-peer" onclick="showPeerDetailsModal('{{ $p }}')">{{ $p }}</code>
-                            {{ $peer := index $root.Nodes $p}}
+                            {{ $peer := index $nodeMap $p}}
                             {{ if ne $peer.Alias $peer.PeerID }}
                             ( <code>{{ $peer.Alias }}</code> )
                             {{ end }}
@@ -161,14 +163,14 @@
 
             <!-- Hidden template for PeerDAS table -->
             <div id="peerdas-table-template" style="display: none;">
-              {{ range $i := until $root.PeerDASInfos.TotalRows }}
+              {{ range $i := until (int $root.PeerDASInfos.TotalRows) }}
               <div class="table-responsive">
                 <table class="bg-dark text-white-50" style="margin: 0 auto; text-align: center; border: 1px solid">
                   <thead>
                     <tr style="border-bottom: 1px dashed;">
                       {{ range $j := until 32 }}
                         {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
-                        {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
+                        {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution $idx }}
                         {{ $peerCount := len $peersPerColumn }}
                         <th style="border-right: 1px solid; font-size: 0.8rem;"
                           class="
@@ -189,13 +191,13 @@
                     <tr>
                       {{ range $j := until 32 }}
                         {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
-                        {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
+                        {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution $idx }}
                         {{ $peerCount := len $peersPerColumn }}
                         <td style="border-right: 1px solid; vertical-align: top; min-width: 39px;">
                           <div style="display: flex; flex-flow: wrap; margin: 0 auto;">
                           {{ with $peers := $peersPerColumn }}
                             {{ range $i, $p := $peers}}
-                              {{ $peerData := index $root.Nodes $p }}
+                              {{ $peerData := index $nodeMap $p }}
                               <svg class="peer-table-icon dastablenode node-{{ $p }} {{ $peerData.Type}} {{ if $peerData.PeerDAS.IsSuperNode }}supernode{{end}}"
                                    data-jdenticon-value="{{ $p }}"
                                    data-peerid="{{ $p }}" data-alias="{{ $peerData.Alias }}"
@@ -938,7 +940,24 @@
   var peerGraphData = {{ .PeerMap }};
   var peerGraph, peerGraphRendered = false;
 
-  var nodes = {{ .Nodes }};
+  // Rebuild an object keyed by a JSON-encoded [{key, value}] list. Used to
+  // decode the SSZ-compatible spec representation back into the object the rest
+  // of the page expects (values are JSON-encoded strings).
+  function specListToObject(list) {
+    var obj = {};
+    (list || []).forEach(function(kv) {
+      try { obj[kv.key] = JSON.parse(kv.value); }
+      catch(e) { obj[kv.key] = kv.value; }
+    });
+    return obj;
+  }
+
+  var nodesList = {{ .Nodes }};
+  var nodes = {};
+  (nodesList || []).forEach(function(node) {
+    if (node.client_specs) node.client_specs = specListToObject(node.client_specs);
+    nodes[node.peer_id] = node;
+  });
 
   function renderPeerGraph() {
     var container = document.getElementById("nodemap");
@@ -1225,7 +1244,7 @@
   // Spec mismatch modal
   (function() {
     // Store expected spec data only
-    window.expectedSpec = JSON.parse({{ includeJSON .ExpectedChainSpec false }});
+    window.expectedSpec = specListToObject(JSON.parse({{ includeJSON .ExpectedChainSpec false }}));
     window.expectedConfigFields = JSON.parse({{ includeJSON .ExpectedConfigFields false }});
     window.expectedPresetFields = JSON.parse({{ includeJSON .ExpectedPresetFields false }});
     window.expectedDomainTypeFields = JSON.parse({{ includeJSON .ExpectedDomainTypeFields false }});

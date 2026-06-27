@@ -14,17 +14,25 @@ type ClientsCLPageData struct {
 	PeerDASInfos           *ClientCLPagePeerDAS       `json:"peer_das"`
 
 	// DAS Guardian configuration
-	DisableDasGuardianCheck   bool                             `json:"disable_das_guardian_check"`
-	EnableDasGuardianMassScan bool                             `json:"enable_das_guardian_mass_scan"`
-	Nodes                     map[string]*ClientCLPageDataNode `json:"nodes"`
-	Sorting                   string                           `json:"sorting"`
-	IsDefaultSorting          bool                             `json:"is_default_sorting"`
-	CurrentForkDigest         []byte                           `json:"current_fork_digest"`
-	FuluActivationEpoch       uint64                           `json:"fulu_activation_epoch"`
-	ExpectedChainSpec         map[string]interface{}           `json:"expected_chain_spec"`
-	ExpectedConfigFields      []string                         `json:"expected_config_fields"`
-	ExpectedPresetFields      []string                         `json:"expected_preset_fields"`
-	ExpectedDomainTypeFields  []string                         `json:"expected_domain_type_fields"`
+	DisableDasGuardianCheck   bool                         `json:"disable_das_guardian_check"`
+	EnableDasGuardianMassScan bool                         `json:"enable_das_guardian_mass_scan"`
+	Nodes                     []*ClientCLPageDataNode      `json:"nodes"`
+	Sorting                   string                       `json:"sorting"`
+	IsDefaultSorting          bool                         `json:"is_default_sorting"`
+	CurrentForkDigest         []byte                       `json:"current_fork_digest"`
+	FuluActivationEpoch       uint64                       `json:"fulu_activation_epoch"`
+	ExpectedChainSpec         []*ClientCLPageDataSpecValue `json:"expected_chain_spec"`
+	ExpectedConfigFields      []string                     `json:"expected_config_fields"`
+	ExpectedPresetFields      []string                     `json:"expected_preset_fields"`
+	ExpectedDomainTypeFields  []string                     `json:"expected_domain_type_fields"`
+}
+
+// ClientCLPageDataSpecValue is a single chain spec entry, modelled as a list
+// element so the page model stays SSZ-compatible. Value carries the JSON-encoded
+// spec value (scalar, list or object) as a string.
+type ClientCLPageDataSpecValue struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // ## Peer graph data
@@ -41,7 +49,7 @@ type ClientCLPageDataPeerMapNode struct {
 	Label string `json:"label"`
 	Group string `json:"group"`
 	Shape string `json:"shape"`
-	Value int    `json:"value"`
+	Value int32  `json:"value"`
 }
 
 // ClientCLDataMapPeerMapEdge represents an edge in the peer graph
@@ -56,8 +64,8 @@ type ClientCLDataMapPeerMapEdge struct {
 // ClientCLPagePeerDAS represents the DAS information from all clients and peers.
 // Used to construct the PeerDAS column custody view.
 type ClientCLPagePeerDAS struct {
-	ColumnDistribution           map[uint64][]string             `json:"column_distribution"`              // Column index -> list of peer IDs             // Peer ID -> Peer info
-	TotalRows                    int                             `json:"total_rows"`                       // Amount of rows to show on the webpage. Each row has 32 columns
+	ColumnDistribution           [][]string                      `json:"column_distribution"`              // Indexed by column: list of peer IDs custodying that column
+	TotalRows                    int32                           `json:"total_rows"`                       // Amount of rows to show on the webpage. Each row has 32 columns
 	NumberOfColumns              uint64                          `json:"number_of_columns"`                // Should match NUMBER_OF_COLUMNS from spec
 	CustodyRequirement           uint64                          `json:"custody_requirement"`              // Should match CUSTODY_REQUIREMENT from spec
 	DataColumnSidecarSubnetCount uint64                          `json:"data_column_sidecar_subnet_count"` // Should match DATA_COLUMN_SIDECAR_SUBNET_COUNT from spec
@@ -82,7 +90,7 @@ type ClientCLPageDataPeerDASWarnings struct {
 
 // ClientsCLPageDataClient represents a configured endpoint CL client
 type ClientsCLPageDataClient struct {
-	Index                int       `json:"index"`
+	Index                int32     `json:"index"`
 	Name                 string    `json:"name"`
 	Version              string    `json:"version"`
 	HeadSlot             uint64    `json:"head_slot"`
@@ -113,7 +121,7 @@ type ClientCLPageDataNode struct {
 	PeersIn           []string                        `json:"peers_in"`
 	PeersOut          []string                        `json:"peers_out"`
 	Metadata          *ClientCLPageDataNodeMetadata   `json:"metadata,omitempty"`
-	ClientSpecs       map[string]interface{}          `json:"client_specs"`
+	ClientSpecs       []*ClientCLPageDataSpecValue    `json:"client_specs"`
 }
 
 // ClientCLPageDataNodeMetadata represents the metadata from the node identity
@@ -135,8 +143,8 @@ type ClientCLPageDataNodePeers struct {
 }
 
 type ClientCLPageDataNodeENRValue struct {
-	Key   string      `json:"key"`
-	Value interface{} `json:"value"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type ClientCLPageDataNodePeerDAS struct {

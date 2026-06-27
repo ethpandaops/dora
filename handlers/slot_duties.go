@@ -37,9 +37,9 @@ func SlotDuties(w http.ResponseWriter, r *http.Request) {
 	isPtc := r.URL.Query().Get("ptc") == "1"
 	committeesParam := r.URL.Query().Get("committees")
 
-	cacheKey := fmt.Sprintf("slotduties-%d-ptc", slot)
+	cacheKey := fmt.Sprintf("slotduties:%d:ptc", slot)
 	if !isPtc {
-		cacheKey = fmt.Sprintf("slotduties-%d-c-%s", slot, committeesParam)
+		cacheKey = fmt.Sprintf("slotduties:%d:c:%s", slot, committeesParam)
 	}
 
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotDutiesResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
