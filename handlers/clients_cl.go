@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -55,7 +56,7 @@ func ClientsCL(w http.ResponseWriter, r *http.Request) {
 // clClientsPageCacheKeyPrefix is the shared prefix of every cached consensus clients page
 // variant. Each request caches under "<prefix><sortOrder>", so deleting the prefix evicts
 // all variants regardless of which sort orders were requested.
-const clClientsPageCacheKeyPrefix = "clients/consensus/"
+const clClientsPageCacheKeyPrefix = "clients_consensus:"
 
 // InvalidateCLClientsPageCache evicts all cached variants of the consensus clients page
 // so the next request rebuilds them from freshly refreshed client data.
@@ -180,12 +181,14 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 				EmptyColumns:           []uint64{},
 			},
 		},
-		Nodes: make(map[string]*models.ClientCLPageDataNode),
-
 		// DAS Guardian configuration (check enabled by default, mass scan disabled by default)
 		DisableDasGuardianCheck:   utils.Config.Frontend.DisableDasGuardianCheck,
 		EnableDasGuardianMassScan: utils.Config.Frontend.EnableDasGuardianMassScan,
 	}
+
+	// nodes is the working lookup of all known nodes keyed by peer ID. It is
+	// materialized into the SSZ-compatible pageData.Nodes slice at the end.
+	nodes := make(map[string]*models.ClientCLPageDataNode)
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	var cacheTime time.Duration
@@ -225,7 +228,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		for k, v := range values {
 			enrValues = append(enrValues, &models.ClientCLPageDataNodeENRValue{
 				Key:   k,
-				Value: v,
+				Value: fmt.Sprintf("%v", v),
 			})
 		}
 		sort.Slice(enrValues, func(i, j int) bool {
@@ -274,7 +277,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 
 	// Add peer node to global nodes map
 	addPeerNode := func(peer *v1.Peer) {
-		node, ok := pageData.Nodes[peer.PeerID]
+		node, ok := nodes[peer.PeerID]
 		if !ok {
 			peerAlias := peer.PeerID
 			peerType := "external"
@@ -288,7 +291,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 				Alias:  peerAlias,
 				Type:   peerType,
 			}
-			pageData.Nodes[peer.PeerID] = node
+			nodes[peer.PeerID] = node
 		}
 
 		if node.ENR == "" && peer.Enr != "" {
@@ -315,17 +318,17 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		}
 
 		// Add client to global nodes map
-		node, ok := pageData.Nodes[peerId]
+		node, ok := nodes[peerId]
 		if !ok {
 			node = &models.ClientCLPageDataNode{
 				PeerID: peerId,
 				Alias:  client.GetName(),
 				Type:   "internal",
 			}
-			pageData.Nodes[peerId] = node
+			nodes[peerId] = node
 		}
 
-		node.ClientSpecs = client.GetSpecs()
+		node.ClientSpecs = specMapToList(client.GetSpecs())
 
 		if id != nil {
 			if node.ENR == "" {
@@ -397,8 +400,8 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 
 		// Sort peers by type and alias
 		sort.Slice(resPeers, func(i, j int) bool {
-			peerA := pageData.Nodes[resPeers[i].PeerID]
-			peerB := pageData.Nodes[resPeers[j].PeerID]
+			peerA := nodes[resPeers[i].PeerID]
+			peerB := nodes[resPeers[j].PeerID]
 			if peerA.Type == peerB.Type {
 				return peerA.Alias < peerB.Alias
 			}
@@ -408,7 +411,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		node.Peers = resPeers
 
 		resClient := &models.ClientsCLPageDataClient{
-			Index:                int(client.GetIndex()) + 1,
+			Index:                int32(client.GetIndex()) + 1,
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			PeerID:               peerId,
@@ -435,8 +438,8 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 
 	// Add peer in/out infos to global nodes map
 	for _, edge := range pageData.PeerMap.ClientDataMapEdges {
-		pageData.Nodes[edge.From].PeersOut = append(pageData.Nodes[edge.From].PeersOut, edge.To)
-		pageData.Nodes[edge.To].PeersIn = append(pageData.Nodes[edge.To].PeersIn, edge.From)
+		nodes[edge.From].PeersOut = append(nodes[edge.From].PeersOut, edge.To)
+		nodes[edge.To].PeersIn = append(nodes[edge.To].PeersIn, edge.From)
 	}
 
 	columnDistribution := make(map[uint64]map[string]bool)
@@ -473,7 +476,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	}
 
 	// Calculate additional fields for nodes: ENR key values, Node ID, Custody Columns, Custody Column Subnets
-	for _, v := range pageData.Nodes {
+	for _, v := range nodes {
 
 		enrValues := map[string]interface{}{}
 
@@ -561,8 +564,8 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		sort.Slice(resultColumnDistribution[k], func(i, j int) bool {
 			pA := resultColumnDistribution[k][i]
 			pB := resultColumnDistribution[k][j]
-			nodeA := pageData.Nodes[pA]
-			nodeB := pageData.Nodes[pB]
+			nodeA := nodes[pA]
+			nodeB := nodes[pB]
 
 			// Compare supernodes
 			if nodeA.PeerDAS.IsSuperNode != nodeB.PeerDAS.IsSuperNode {
@@ -593,11 +596,18 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		}
 	}
 
-	pageData.PeerDASInfos.TotalRows = int(pageData.PeerDASInfos.NumberOfColumns) / 32
-	pageData.PeerDASInfos.ColumnDistribution = resultColumnDistribution
+	pageData.PeerDASInfos.TotalRows = int32(pageData.PeerDASInfos.NumberOfColumns) / 32
+
+	// Materialize the column distribution into a slice indexed by column so the
+	// page model stays SSZ-compatible (no maps).
+	columnSlice := make([][]string, pageData.PeerDASInfos.NumberOfColumns)
+	for i := uint64(0); i < pageData.PeerDASInfos.NumberOfColumns; i++ {
+		columnSlice[i] = resultColumnDistribution[i]
+	}
+	pageData.PeerDASInfos.ColumnDistribution = columnSlice
 
 	if !pageData.ShowSensitivePeerInfos {
-		for _, node := range pageData.Nodes {
+		for _, node := range nodes {
 			node.ENR = ""
 			node.ENRKeyValues = nil
 		}
@@ -706,9 +716,39 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	pageData.ExpectedConfigFields = configOrder
 	pageData.ExpectedPresetFields = presetOrder
 	pageData.ExpectedDomainTypeFields = domainTypeOrder
-	pageData.ExpectedChainSpec = expectedSpecsMap
+	pageData.ExpectedChainSpec = specMapToList(expectedSpecsMap)
+
+	// Materialize the working nodes lookup into the SSZ-compatible slice, sorted
+	// by peer ID for a deterministic order.
+	pageData.Nodes = make([]*models.ClientCLPageDataNode, 0, len(nodes))
+	for _, node := range nodes {
+		pageData.Nodes = append(pageData.Nodes, node)
+	}
+	sort.Slice(pageData.Nodes, func(i, j int) bool {
+		return pageData.Nodes[i].PeerID < pageData.Nodes[j].PeerID
+	})
 
 	return pageData, cacheTime
+}
+
+// specMapToList converts a chain spec value map into an SSZ-compatible list of
+// key/value pairs. Each value is JSON-encoded into a string so the page model
+// carries no maps or interface values; the frontend decodes it back into the
+// original value (scalar, list or object).
+func specMapToList(specs map[string]interface{}) []*models.ClientCLPageDataSpecValue {
+	result := make([]*models.ClientCLPageDataSpecValue, 0, len(specs))
+	for key, value := range specs {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"spec": key}).Warn("failed to encode chain spec value. ", err)
+			continue
+		}
+		result = append(result, &models.ClientCLPageDataSpecValue{Key: key, Value: string(encoded)})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Key < result[j].Key
+	})
+	return result
 }
 
 // getChainSpecFieldOrders extracts field names from ChainSpecConfig, ChainSpecPreset and ChainSpecDomainTypes structs
