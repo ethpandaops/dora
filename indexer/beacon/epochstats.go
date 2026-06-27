@@ -13,6 +13,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -356,7 +357,14 @@ func (es *EpochStats) loadValuesFromDb(ctx context.Context, chainState *consensu
 }
 
 // processState processes the epoch state and computes proposer and attester duties.
+// It runs in a separate goroutine, so it recovers from panics to avoid taking down
+// the whole process if any of the derived computations hit unexpected data.
 func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator, loadDuration time.Duration) {
+	defer utils.HandleSubroutinePanic("indexer.beacon.EpochStats.processState", nil)
+
+	// Only process states that have been fully loaded. A dependent state whose load was
+	// cancelled (e.g. context deadline exceeded) or pruned must not be processed, as its
+	// derived data (validator set, balances, duties) is missing or incomplete.
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
@@ -408,8 +416,19 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	values.SourceBlockUid = dependentState.sourceBlockUid
 
 	for i, pendingConsolidation := range dependentState.pendingConsolidations {
-		srcIndicee := pendingConsolidation.SourceIndex
-		srcValidator := validatorSet[srcIndicee]
+		srcIndex := pendingConsolidation.SourceIndex
+
+		// validatorSet may be nil (e.g. when re-processing an already-loaded state, where
+		// the caller relies on the validator cache instead) or shorter than the dependent
+		// state's registry. Fall back to the validator cache for the dependent root in those
+		// cases rather than indexing out of bounds.
+		var srcValidator *phase0.Validator
+		if int(srcIndex) < len(validatorSet) {
+			srcValidator = validatorSet[srcIndex]
+		} else {
+			srcValidator = indexer.validatorCache.getValidatorByIndexAndRoot(srcIndex, es.dependentRoot)
+		}
+
 		if srcValidator != nil {
 			values.ConsolidatingBalance += srcValidator.EffectiveBalance
 		}
