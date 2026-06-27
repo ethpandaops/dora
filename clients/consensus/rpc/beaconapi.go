@@ -416,6 +416,13 @@ func (bc *BeaconClient) GetExecutionPayloadByBlockroot(ctx context.Context, bloc
 		Block: fmt.Sprintf("0x%x", blockroot),
 	})
 	if err != nil {
+		// A 404 means the block has no execution payload envelope (e.g. an empty
+		// slot or a block whose payload was never revealed). This is a valid state
+		// in ePBS, so report it as a missing payload rather than a hard error.
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
+
 		return nil, err
 	}
 
