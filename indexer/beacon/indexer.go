@@ -3,7 +3,6 @@ package beacon
 import (
 	"context"
 	"fmt"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -496,14 +495,9 @@ func (indexer *Indexer) StopIndexer() {
 }
 
 func (indexer *Indexer) runIndexerLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.Indexer.runIndexerLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go indexer.runIndexerLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.Indexer.runIndexerLoop", func() {
+		indexer.runIndexerLoop()
+	})
 
 	chainState := indexer.consensusPool.GetChainState()
 

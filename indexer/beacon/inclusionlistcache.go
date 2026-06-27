@@ -1,10 +1,10 @@
 package beacon
 
 import (
-	"runtime/debug"
 	"sync"
 	"time"
 
+	"github.com/ethpandaops/dora/utils"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
@@ -64,14 +64,9 @@ func (cache *inclusionListCache) getInclusionListsBySlot(slot phase0.Slot) []*v1
 
 // cleanupLoop periodically cleans up old entries from the cache.
 func (cache *inclusionListCache) cleanupLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.inclusionListCache.cleanupLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go cache.cleanupLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.inclusionListCache.cleanupLoop", func() {
+		cache.cleanupLoop()
+	})
 
 	for {
 		time.Sleep(30 * time.Minute)
