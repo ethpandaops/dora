@@ -17,8 +17,9 @@ type Config struct {
 	} `yaml:"logging"`
 
 	Server struct {
-		Port string `yaml:"port" envconfig:"FRONTEND_SERVER_PORT"`
-		Host string `yaml:"host" envconfig:"FRONTEND_SERVER_HOST"`
+		Port       string `yaml:"port" envconfig:"FRONTEND_SERVER_PORT"`
+		Host       string `yaml:"host" envconfig:"FRONTEND_SERVER_HOST"`
+		ProxyCount *uint  `yaml:"proxyCount" envconfig:"SERVER_PROXY_COUNT"`
 	} `yaml:"server"`
 
 	Chain struct {
@@ -92,7 +93,7 @@ type Config struct {
 
 	RateLimit struct {
 		Enabled    bool `yaml:"enabled" envconfig:"RATELIMIT_ENABLED"`
-		ProxyCount uint `yaml:"proxyCount" envconfig:"RATELIMIT_PROXY_COUNT"`
+		ProxyCount uint `yaml:"proxyCount" envconfig:"RATELIMIT_PROXY_COUNT"` // Deprecated: use server.proxyCount instead
 		Rate       uint `yaml:"rate" envconfig:"RATELIMIT_RATE"`
 		Burst      uint `yaml:"burst" envconfig:"RATELIMIT_BURST"`
 	} `yaml:"rateLimit"`
@@ -351,3 +352,13 @@ func (b *YamlBool) UnmarshalYAML(unmarshal func(any) error) error {
 
 	return nil
 }
+
+// GetProxyCount returns the resolved proxy count.
+// It prioritizes server.proxyCount (new setting) and falls back to rateLimit.proxyCount (deprecated setting).
+func (c *Config) GetProxyCount() uint {
+	if c.Server.ProxyCount != nil {
+		return *c.Server.ProxyCount
+	}
+	return c.RateLimit.ProxyCount
+}
+
