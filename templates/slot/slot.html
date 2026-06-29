@@ -33,7 +33,7 @@
         {{- else -}}
           <a></a>
         {{- end -}}
-        <span><i class="fas fa-cube mx-2"></i>Slot <span id="slot">{{ .Slot }}</span></span>
+        <span style="min-width: max(180px, {{ len (printf "%d" .Slot) }}ch + 120px);"><i class="fas fa-cube mx-2"></i>Slot <span id="slot">{{ .Slot }}</span></span>
         {{- if gt .NextSlot 0 -}}
           <a href="/slot/{{ .NextSlot }}" class="slot-nav-link" data-slot-nav-base="/slot/{{ .NextSlot }}"><i class="fa fa-chevron-right"></i></a>
         {{- else -}}

@@ -7,7 +7,7 @@
         {{- else -}}
           <a></a>
         {{- end -}}
-        <span><i class="fas fa-history mx-2"></i>Epoch <span id="epoch">{{ .Epoch }}</span></span>
+        <span style="min-width: max(180px, {{ len (printf "%d" .Epoch) }}ch + 130px);"><i class="fas fa-history mx-2"></i>Epoch <span id="epoch">{{ .Epoch }}</span></span>
         {{- if gt .NextEpoch 0 -}}
           <a href="/epoch/{{ .NextEpoch }}"><i class="fa fa-chevron-right"></i></a>
         {{- else -}}
@@ -29,6 +29,14 @@
           <div class="col-md-3">Epoch:</div>
           <div class="col-md-9">{{ formatAddCommas .Epoch }}</div>
         </div>
+        {{ if .Future }}
+          <div class="row border-bottom p-2 mx-0">
+            <div class="col-md-3">Status:</div>
+            <div class="col-md-9">
+              <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;">Scheduled</span>
+            </div>
+          </div>
+        {{ end }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3">Finalized:</div>
           <div class="col-md-9">
@@ -47,6 +55,7 @@
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Ts }}"></i>
           </div>
         </div>
+        {{ if not .Future }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3">
             <span>Attestations:</span>
@@ -129,6 +138,7 @@
           <div class="col-md-3">Avg. Validator Balance:</div>
           <div class="col-md-9">{{ formatEthFromGwei .AverageValidatorBalance }}</div>
         </div>
+        {{ end }}
         <div class="row p-2 mx-0 collapsed">
           <div style="position:relative" class="col-md-3">Slots:</div>
           <div class="col-md-9">
@@ -190,7 +200,7 @@
                   </td>
                   <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
                   <td>{{ if gt $slot.Slot 0 }}{{ formatValidatorWithIndex $slot.Proposer $slot.ProposerName }}{{ end }}</td>
-                  {{ if or $epoch.Synchronized (not (eq $slot.Status 0)) }}
+                  {{ if or $epoch.Synchronized (not (eq $slot.Status 0)) $slot.Scheduled }}
                     <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
