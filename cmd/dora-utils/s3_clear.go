@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethpandaops/dora/types"
@@ -142,8 +143,10 @@ func runS3ClearDryRun(logger *logrus.Logger, objectsCh <-chan minio.ObjectInfo) 
 }
 
 func runS3ClearDelete(ctx context.Context, logger *logrus.Logger, client *minio.Client, bucket string, objectsCh <-chan minio.ObjectInfo) error {
-	// Feed objects into a delete channel
+	// Feed objects into a delete channel, tracking how many bytes we queue.
 	deleteCh := make(chan minio.ObjectInfo, 1000)
+	var queued atomic.Int64
+	var queuedSize atomic.Int64
 	var listErr error
 
 	go func() {
@@ -154,18 +157,19 @@ func runS3ClearDelete(ctx context.Context, logger *logrus.Logger, client *minio.
 				return
 			}
 			deleteCh <- obj
+			queued.Add(1)
+			queuedSize.Add(obj.Size)
 		}
 	}()
 
-	var totalDeleted int64
-	var totalSize int64
-
+	// RemoveObjects only emits failures on its channel; successes are silent.
+	// Count actual deletions as queued-minus-failed.
+	var failed int64
 	for err := range client.RemoveObjects(ctx, bucket, deleteCh, minio.RemoveObjectsOptions{}) {
 		if err.Err != nil {
 			logger.WithError(err.Err).WithField("key", err.ObjectName).Warn("failed to delete object")
-			continue
+			failed++
 		}
-		totalDeleted++
 	}
 
 	if listErr != nil {
@@ -173,8 +177,9 @@ func runS3ClearDelete(ctx context.Context, logger *logrus.Logger, client *minio.
 	}
 
 	logger.WithFields(logrus.Fields{
-		"deleted":   totalDeleted,
-		"totalSize": formatBytes(totalSize),
+		"deleted":   queued.Load() - failed,
+		"failed":    failed,
+		"totalSize": formatBytes(queuedSize.Load()),
 	}).Info("S3 path cleared")
 
 	return nil
