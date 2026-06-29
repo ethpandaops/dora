@@ -748,12 +748,14 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 // In Gloas/EIP-7732 a block processes its parent's payload requests
 // (parent_execution_requests) at this block's slot, so the requests are attributed to this
 // block's slot (matching the beacon state's PendingDeposit.slot). They were included in the
-// parent payload, which is the direct EL parent of this block's payload, so its block
-// number is this block's payload number minus one. Reading the requests from the block body
-// keeps them available even when the payload envelope is missing. The first Gloas block
-// carries an empty parent_execution_requests, so the last pre-Gloas requests are not counted
-// twice. In earlier forks the requests live in the block body and were included in the
-// block's own payload.
+// parent payload, so the EL block number they were dequeued in is the parent block's execution
+// block number. When this block reveals a payload that equals its own payload number minus one;
+// when this block is payload-less (the builder did not reveal a payload for this slot) its own
+// payload is absent, so the parent block's execution number is used directly. Reading the
+// requests from the block body keeps them available even when the payload envelope is missing.
+// The first Gloas block carries an empty parent_execution_requests, so the last pre-Gloas
+// requests are not counted twice. In earlier forks the requests live in the block body and were
+// included in the block's own payload.
 func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*all.ExecutionRequests, uint64) {
 	chainState := dbw.indexer.consensusPool.GetChainState()
 
@@ -767,6 +769,21 @@ func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*all.Execution
 		var blockNumber uint64
 		if payload := block.GetExecutionPayload(dbw.indexer.ctx); payload != nil && payload.Message.Payload.BlockNumber > 0 {
 			blockNumber = payload.Message.Payload.BlockNumber - 1
+		} else if parentRoot := block.GetParentRoot(); parentRoot != nil {
+			// payload-less block: the processed requests come from the parent block's payload,
+			// so use the parent's execution block number as the dequeue block.
+			if parentBlock := dbw.indexer.GetBlockByRoot(*parentRoot); parentBlock != nil {
+				if parentIndex := parentBlock.GetBlockIndex(dbw.indexer.ctx); parentIndex != nil {
+					blockNumber = parentIndex.ExecutionNumber
+				}
+			}
+			if blockNumber == 0 {
+				// the parent may be pruned from the block cache (e.g. first slot of a finalized
+				// epoch), so fall back to the database.
+				if parentSlot := db.GetSlotByRoot(dbw.indexer.ctx, parentRoot[:]); parentSlot != nil && parentSlot.EthBlockNumber != nil {
+					blockNumber = *parentSlot.EthBlockNumber
+				}
+			}
 		}
 		return body.ParentExecutionRequests, blockNumber
 	}
