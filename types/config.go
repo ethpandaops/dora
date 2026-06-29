@@ -361,4 +361,3 @@ func (c *Config) GetProxyCount() uint {
 	}
 	return c.RateLimit.ProxyCount
 }
-

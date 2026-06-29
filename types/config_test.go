@@ -6,10 +6,10 @@ import (
 
 func TestConfigGetProxyCount(t *testing.T) {
 	tests := []struct {
-		name       string
-		serverVal  *uint
-		rateVal    uint
-		expected   uint
+		name      string
+		serverVal *uint
+		rateVal   uint
+		expected  uint
 	}{
 		{
 			name:      "only server.proxyCount is defined",
