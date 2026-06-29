@@ -150,35 +150,25 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 	pageData.ExitingValidatorCount = exitQueueLength
 
 	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch <= uint64(currentEpoch) {
-		// electra deposit queue
-		depositQueue := services.GlobalBeaconService.GetBeaconIndexer().GetLatestDepositQueue(nil)
-		if depositQueue != nil {
-			depositAmount := phase0.Gwei(0)
-			validatorCount := uint64(0)
-
-			newValidators := map[phase0.BLSPubKey]interface{}{}
-			for _, deposit := range depositQueue {
-				depositAmount += deposit.Amount
-				_, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(deposit.Pubkey)
-				if !found {
-					_, isNew := newValidators[deposit.Pubkey]
-					if !isNew {
-						newValidators[deposit.Pubkey] = nil
-						validatorCount++
-					}
-				}
-			}
-
-			pageData.EnteringValidatorCount += validatorCount
-			pageData.EnteringEtherAmount = uint64(depositAmount)
+		// electra deposit queue - use the shared indexed queue so the entering counts match
+		// the deposits page (TotalNew counts projected validators that the raw queue does not).
+		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
+		queuedDeposits := services.GlobalBeaconService.GetIndexedDepositQueue(ctx, headBlock)
+		if queuedDeposits != nil {
+			pageData.EnteringValidatorCount = queuedDeposits.TotalNew
+			pageData.EnteringEtherAmount = uint64(queuedDeposits.TotalGwei)
 			pageData.EtherChurnPerEpoch = chainState.GetActivationExitChurnLimit(pageData.TotalEligibleEther)
 			pageData.EtherChurnPerDay = pageData.EtherChurnPerEpoch * 225
 
-			depositQueueTime := float64(depositAmount) / float64(pageData.EtherChurnPerDay)
-			if depositQueueTime > 0 {
-				depositQueueDays, depositQueueFractionalDays := math.Modf(depositQueueTime)
-				depositQueueHours := int(depositQueueFractionalDays * 24)
-				pageData.NewDepositProcessAfter = fmt.Sprintf("%d days and %d hours", int(depositQueueDays), depositQueueHours)
+			// QueueEstimation is the epoch the queue is fully processed; render the remaining
+			// time as a coarse "X days and Y hours" string (0 for an empty/all-postponed queue).
+			if queuedDeposits.QueueEstimation > 0 {
+				depositQueueTime := time.Until(chainState.EpochToTime(queuedDeposits.QueueEstimation))
+				if depositQueueTime > 0 {
+					depositQueueDays := int(depositQueueTime.Hours()) / 24
+					depositQueueHours := int(depositQueueTime.Hours()) % 24
+					pageData.NewDepositProcessAfter = fmt.Sprintf("%d days and %d hours", depositQueueDays, depositQueueHours)
+				}
 			}
 		}
 	} else {
