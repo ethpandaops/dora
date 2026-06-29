@@ -860,18 +860,20 @@ func prefixHasObjects(ctx context.Context, client *minio.Client, bucket, prefix 
 	listCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for obj := range client.ListObjects(listCtx, bucket, minio.ListObjectsOptions{
+	// Peek the first listed object: closed channel means the prefix is empty.
+	obj, ok := <-client.ListObjects(listCtx, bucket, minio.ListObjectsOptions{
 		Prefix:       prefix + "/",
 		Recursive:    true,
 		WithVersions: true,
 		MaxKeys:      1,
-	}) {
-		if obj.Err != nil {
-			return false, fmt.Errorf("error listing %q: %w", prefix, obj.Err)
-		}
-		return true, nil
+	})
+	if !ok {
+		return false, nil
 	}
-	return false, nil
+	if obj.Err != nil {
+		return false, fmt.Errorf("error listing %q: %w", prefix, obj.Err)
+	}
+	return true, nil
 }
 
 // quickSample counts up to maxQuickSample current objects under a prefix for a
