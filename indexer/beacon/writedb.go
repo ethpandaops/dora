@@ -682,6 +682,41 @@ func (dbw *dbWriter) persistBlockDeposits(tx *sqlx.Tx, block *Block, depositInde
 		if err != nil {
 			return fmt.Errorf("error inserting deposits: %v", err)
 		}
+
+		if overrideForkId != nil {
+			if err := dbw.reconcileOnboardedBuilderDeposits(tx, dbDeposits, *overrideForkId); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// reconcileOnboardedBuilderDeposits keeps the upgrade_to_gloas onboarded builder deposit copies in
+// sync with their source validator deposits. The copies are written once at the fork boundary with
+// the then-unfinalized fork id and are not re-persisted per block, so when a source deposit (a
+// pre-gloas builder 0x03 deposit) is persisted canonically its matching copy is moved onto the same
+// fork id; otherwise the copy keeps its unfinalized fork id and later shows up as orphaned. It only
+// runs once the fork has activated (i.e. the copy exists).
+func (dbw *dbWriter) reconcileOnboardedBuilderDeposits(tx *sqlx.Tx, deposits []*dbtypes.Deposit, forkId ForkKey) error {
+	chainState := dbw.indexer.consensusPool.GetChainState()
+	gloasForkEpoch := chainState.GetSpecs().GloasForkEpoch
+	if gloasForkEpoch == nil || chainState.CurrentEpoch() < phase0.Epoch(*gloasForkEpoch) {
+		return nil
+	}
+
+	onboardingSlot := uint64(chainState.EpochToSlot(phase0.Epoch(*gloasForkEpoch)))
+	for _, deposit := range deposits {
+		// only pre-gloas builder (0x03) deposits are onboarded into builder_deposits by the fork
+		// transition, so only those have a copy to reconcile.
+		if deposit.CredType != 0x03 || uint64(chainState.EpochOfSlot(phase0.Slot(deposit.SlotNumber))) >= *gloasForkEpoch {
+			continue
+		}
+
+		if err := db.UpdateOnboardedBuilderDepositForkId(dbw.indexer.ctx, tx, deposit.PublicKey, onboardingSlot, uint64(forkId)); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -736,6 +771,12 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 		err := db.InsertDeposits(dbw.indexer.ctx, tx, dbDeposits)
 		if err != nil {
 			return fmt.Errorf("error inserting deposit requests: %v", err)
+		}
+
+		if overrideForkId != nil {
+			if err := dbw.reconcileOnboardedBuilderDeposits(tx, dbDeposits, *overrideForkId); err != nil {
+				return err
+			}
 		}
 	}
 
