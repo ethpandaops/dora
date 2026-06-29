@@ -1,5 +1,20 @@
 package db
 
+// IMPORTANT — $N placeholder ordering (SQLite vs PostgreSQL):
+//
+// PostgreSQL treats $N as a positional parameter: $1 is always the 1st arg,
+// $4 the 4th, regardless of where it appears in the query text.
+//
+// SQLite (mattn/go-sqlite3) treats $N as a *named* parameter. It assigns the
+// binding index by the order each distinct $N first appears in the query text,
+// NOT by the digit N. So a query that references e.g. $1, $4, $2, $3, $5 binds
+// the positional args in that appearance order, scrambling the values.
+//
+// Consequence: in queries that must run on both engines, placeholders MUST
+// appear in strict ascending order and a $N must not be reused out of position.
+// Give each value its own in-order placeholder (duplicating the arg if needed)
+// rather than reusing a lower number after a higher one.
+
 import (
 	"encoding/hex"
 	"fmt"

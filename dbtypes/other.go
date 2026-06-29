@@ -80,6 +80,7 @@ type BlockFilter struct {
 	EthBlockHash         []byte   // Filter by EL block hash
 	EthBlockParentHash   []byte   // Filter by EL block parent hash
 	BuilderIndex         *int64   // Filter by builder index (-1 for self-built blocks)
+	InvertBuilder        bool     // Invert the builder index filter (exclude matches)
 	MinGasUsed           *uint64  // Filter by minimum gas used
 	MaxGasUsed           *uint64  // Filter by maximum gas used
 	MinGasLimit          *uint64  // Filter by minimum gas limit
@@ -87,6 +88,7 @@ type BlockFilter struct {
 	MinBlockSize         *uint64  // Filter by minimum block size (bytes)
 	MaxBlockSize         *uint64  // Filter by maximum block size (bytes)
 	WithMevBlock         uint8    // 0=hide mev, 1=show all, 2=mev only
+	WithBuilderBlock     uint8    // 0=all (default), 1=builder-built only, 2=self-built only
 	MinEpoch             *uint64  // Filter by minimum epoch
 	MaxEpoch             *uint64  // Filter by maximum epoch
 	MinSlot              *uint64  // Filter by minimum slot (derived from MinEpoch)
@@ -105,18 +107,19 @@ type MevBlockFilter struct {
 }
 
 type DepositTxFilter struct {
-	MinIndex          uint64
-	MaxIndex          uint64
-	Address           []byte
-	TargetAddress     []byte
-	PublicKey         []byte
-	PublicKeys        [][]byte
-	WithdrawalAddress []byte
-	ValidatorName     string
-	MinAmount         uint64
-	MaxAmount         uint64
-	WithOrphaned      uint8
-	WithValid         uint8
+	MinIndex            uint64
+	MaxIndex            uint64
+	Address             []byte
+	TargetAddress       []byte
+	PublicKey           []byte
+	PublicKeys          [][]byte
+	WithdrawalAddress   []byte
+	WithdrawalCredTypes []uint8
+	ValidatorName       string
+	MinAmount           uint64
+	MaxAmount           uint64
+	WithOrphaned        uint8
+	WithValid           uint8
 }
 
 type DepositFilter struct {
@@ -203,6 +206,46 @@ type ConsolidationRequestTxFilter struct {
 	WithOrphaned     uint8
 }
 
+type BuilderDepositFilter struct {
+	MinSlot      uint64
+	MaxSlot      uint64
+	PublicKey    []byte
+	MinIndex     uint64
+	MaxIndex     uint64
+	MinAmount    *uint64
+	MaxAmount    *uint64
+	WithOrphaned uint8
+}
+
+type BuilderDepositTxFilter struct {
+	MinDequeue uint64
+	MaxDequeue uint64
+	PublicKey  []byte
+	MinIndex   uint64
+	MaxIndex   uint64
+	MinAmount  *uint64
+	MaxAmount  *uint64
+}
+
+type BuilderExitFilter struct {
+	MinSlot       uint64
+	MaxSlot       uint64
+	PublicKey     []byte
+	SourceAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
+	WithOrphaned  uint8
+}
+
+type BuilderExitTxFilter struct {
+	MinDequeue    uint64
+	MaxDequeue    uint64
+	PublicKey     []byte
+	SourceAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
+}
+
 type ValidatorOrder uint8
 
 const (
@@ -221,14 +264,15 @@ const (
 )
 
 type ValidatorFilter struct {
-	MinIndex          *uint64
-	MaxIndex          *uint64
-	Indices           []phase0.ValidatorIndex
-	PubKey            []byte
-	WithdrawalAddress []byte
-	WithdrawalCreds   []byte
-	ValidatorName     string
-	Status            []v1.ValidatorState
+	MinIndex            *uint64
+	MaxIndex            *uint64
+	Indices             []phase0.ValidatorIndex
+	PubKey              []byte
+	WithdrawalAddress   []byte
+	WithdrawalCreds     []byte
+	WithdrawalCredTypes []uint8
+	ValidatorName       string
+	Status              []v1.ValidatorState
 
 	OrderBy ValidatorOrder
 	Limit   uint64
@@ -280,23 +324,14 @@ type ElTransactionFilter struct {
 	Reverted   *bool
 	MinGasUsed *uint64
 	MaxGasUsed *uint64
-}
-
-type ElEventIndexFilter struct {
-	SourceID uint64
-	Topic1   []byte
-}
-
-type ElTransactionInternalFilter struct {
-	FromID uint64
-	ToID   uint64
-}
-
-type ElAccountFilter struct {
-	FunderID   uint64
-	IsContract *bool
-	MinFunded  uint64
-	MaxFunded  uint64
+	// MinSlot/MaxSlot bound the tx_uid sort key directly (free range scan).
+	MinSlot   *uint64
+	MaxSlot   *uint64
+	MinAmount *float64
+	MaxAmount *float64
+	MinTip    *float64
+	MaxTip    *float64
+	TxTypes   []uint8 // tx_type IN (...) (predicate)
 }
 
 type ElTokenFilter struct {
@@ -305,18 +340,15 @@ type ElTokenFilter struct {
 	Symbol   string
 }
 
-type ElBalanceFilter struct {
-	TokenID    *uint64
-	MinBalance *float64
-	MaxBalance *float64
-}
-
 type ElTokenTransferFilter struct {
-	TokenID   *uint64
-	FromID    uint64
-	ToID      uint64
-	MinAmount *float64
-	MaxAmount *float64
+	TokenID    *uint64
+	FromID     uint64
+	ToID       uint64
+	MinAmount  *float64
+	MaxAmount  *float64
+	MinSlot    *uint64 // bounds tx_uid sort key (free range scan)
+	MaxSlot    *uint64
+	TokenTypes []uint8 // token_type IN (...)
 }
 
 type WithdrawalFilter struct {

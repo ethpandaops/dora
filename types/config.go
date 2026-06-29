@@ -17,8 +17,9 @@ type Config struct {
 	} `yaml:"logging"`
 
 	Server struct {
-		Port string `yaml:"port" envconfig:"FRONTEND_SERVER_PORT"`
-		Host string `yaml:"host" envconfig:"FRONTEND_SERVER_HOST"`
+		Port       string `yaml:"port" envconfig:"FRONTEND_SERVER_PORT"`
+		Host       string `yaml:"host" envconfig:"FRONTEND_SERVER_HOST"`
+		ProxyCount *uint  `yaml:"proxyCount" envconfig:"SERVER_PROXY_COUNT"`
 	} `yaml:"server"`
 
 	Chain struct {
@@ -48,6 +49,10 @@ type Config struct {
 		ValidatorNamesInventory       string        `yaml:"validatorNamesInventory" envconfig:"FRONTEND_VALIDATOR_NAMES_INVENTORY"`
 		ValidatorNamesRefreshInterval time.Duration `yaml:"validatorNamesRefreshInterval" envconfig:"FRONTEND_VALIDATOR_REFRESH_INTERVAL"`
 		ValidatorNamesResolveInterval time.Duration `yaml:"validatorNamesResolveInterval" envconfig:"FRONTEND_VALIDATOR_RESOLVE_INTERVAL"`
+
+		BuildoorOverviewUrl     string        `yaml:"buildoorOverviewUrl" envconfig:"FRONTEND_BUILDOOR_OVERVIEW_URL"`
+		BuildoorUrls            []string      `yaml:"buildoorUrls" envconfig:"FRONTEND_BUILDOOR_URLS"`
+		BuildoorRefreshInterval time.Duration `yaml:"buildoorRefreshInterval" envconfig:"FRONTEND_BUILDOOR_REFRESH_INTERVAL"`
 
 		PageCallTimeout       time.Duration `yaml:"pageCallTimeout" envconfig:"FRONTEND_PAGE_CALL_TIMEOUT"`
 		MaxConcurrentPages    *int          `yaml:"maxConcurrentPages" envconfig:"FRONTEND_MAX_CONCURRENT_PAGES"`
@@ -88,7 +93,7 @@ type Config struct {
 
 	RateLimit struct {
 		Enabled    bool `yaml:"enabled" envconfig:"RATELIMIT_ENABLED"`
-		ProxyCount uint `yaml:"proxyCount" envconfig:"RATELIMIT_PROXY_COUNT"`
+		ProxyCount uint `yaml:"proxyCount" envconfig:"RATELIMIT_PROXY_COUNT"` // Deprecated: use server.proxyCount instead
 		Rate       uint `yaml:"rate" envconfig:"RATELIMIT_RATE"`
 		Burst      uint `yaml:"burst" envconfig:"RATELIMIT_BURST"`
 	} `yaml:"rateLimit"`
@@ -114,6 +119,7 @@ type Config struct {
 		LogBatchSize       int    `yaml:"logBatchSize" envconfig:"EXECUTIONAPI_LOG_BATCH_SIZE"`
 		DepositDeployBlock int    `yaml:"depositDeployBlock" envconfig:"EXECUTIONAPI_DEPOSIT_DEPLOY_BLOCK"` // el block number from where to crawl the deposit system contract (should be <=, but close to deposit contract deployment)
 		ElectraDeployBlock int    `yaml:"electraDeployBlock" envconfig:"EXECUTIONAPI_ELECTRA_DEPLOY_BLOCK"` // el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
+		GloasDeployBlock   int    `yaml:"gloasDeployBlock" envconfig:"EXECUTIONAPI_GLOAS_DEPLOY_BLOCK"`     // el block number from where to crawl the gloas builder system contracts (should be <=, but close to gloas fork activation block)
 		GenesisConfig      string `yaml:"genesisConfig" envconfig:"EXECUTIONAPI_GENESIS_CONFIG"`            // path or URL to genesis.json file in geth format
 	} `yaml:"executionapi"`
 
@@ -127,6 +133,7 @@ type Config struct {
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
 		DisableBlockDB                  bool   `yaml:"disableBlockDB" envconfig:"INDEXER_DISABLE_BLOCK_DB"`
+		DisableBlockDBDuties            bool   `yaml:"disableBlockDBDuties" envconfig:"INDEXER_DISABLE_BLOCK_DB_DUTIES"`
 		PubkeyCachePath                 string `yaml:"pubkeyCachePath" envconfig:"INDEXER_PUBKEY_CACHE_PATH"`
 
 		BadChainRoots []string `yaml:"badChainRoots" envconfig:"INDEXER_BAD_CHAIN_ROOTS"`
@@ -160,6 +167,17 @@ type Config struct {
 		Retention       time.Duration `yaml:"retention" envconfig:"EXECUTIONINDEXER_RETENTION"`
 		CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"EXECUTIONINDEXER_CLEANUP_INTERVAL"`
 
+		// DetailsRetention is the (longer) retention for blockdb exec data and the
+		// tx-hash index, decoupled from the relational Retention above. When 0 or
+		// below Retention it falls back to Retention (single-tier behaviour).
+		DetailsRetention time.Duration `yaml:"detailsRetention" envconfig:"EXECUTIONINDEXER_DETAILS_RETENTION"`
+
+		// TxHashIndexStore selects where the tx-hash index lives: "pebble" (native
+		// blockdb namespaces, requires a local pebble), "postgres" (el_txhash
+		// table, durable), or "auto"/"" (pebble for the pebble backend, postgres
+		// for s3/tiered).
+		TxHashIndexStore string `yaml:"txHashIndexStore" envconfig:"EXECUTIONINDEXER_TXHASH_INDEX_STORE"`
+
 		// Detail storage (Mode 3 features)
 		DetailsEnabled bool   `yaml:"detailsEnabled" envconfig:"EXECUTIONINDEXER_DETAILS_ENABLED"`
 		TracesEnabled  bool   `yaml:"tracesEnabled" envconfig:"EXECUTIONINDEXER_TRACES_ENABLED"`
@@ -169,10 +187,12 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 
 	BlockDb struct {
-		Engine string              `yaml:"engine" envconfig:"BLOCKDB_ENGINE"` // "pebble", "s3", or "tiered"
+		// Engine selects which of the configs below are used: "pebble" (Pebble
+		// only), "s3" (S3 only), or "tiered" (Pebble as a cache in front of S3 —
+		// reuses both the pebble and s3 configs below).
+		Engine string              `yaml:"engine" envconfig:"BLOCKDB_ENGINE"`
 		Pebble PebbleBlockDBConfig `yaml:"pebble"`
 		S3     S3BlockDBConfig     `yaml:"s3"`
-		Tiered TieredBlockDBConfig `yaml:"tiered"` // For tiered storage (Pebble cache + S3 backend)
 	} `yaml:"blockDb"`
 
 	KillSwitch struct {
@@ -278,11 +298,16 @@ type PebbleBlockDBConfig struct {
 	Path      string `yaml:"path" envconfig:"BLOCKDB_PEBBLE_PATH"`
 	CacheSize int    `yaml:"cacheSize" envconfig:"BLOCKDB_PEBBLE_CACHE_SIZE"` // Pebble internal cache in MB
 
-	// Per-object-type retention configuration (used in tiered mode)
-	HeaderRetention  BlockDbRetentionConfig `yaml:"headerRetention"`
-	BodyRetention    BlockDbRetentionConfig `yaml:"bodyRetention"`
-	PayloadRetention BlockDbRetentionConfig `yaml:"payloadRetention"`
-	BalRetention     BlockDbRetentionConfig `yaml:"balRetention"`
+	// Per-namespace retention. In tiered mode these evict cached copies from the
+	// Pebble cache (the authoritative copy stays in S3); in pebble mode Pebble is
+	// authoritative, so they delete the data. BlockRetention covers all block
+	// components (header/body/payload/bal) as a unit. ExecDataRetention only
+	// applies in tiered mode — in pebble mode exec-data retention is owned by
+	// executionIndexer.detailsRetention and this setting is ignored (with a
+	// warning). The tx-hash index is never governed here.
+	BlockRetention    BlockDbRetentionConfig `yaml:"blockRetention"`
+	ExecDataRetention BlockDbRetentionConfig `yaml:"execDataRetention"`
+	DutiesRetention   BlockDbRetentionConfig `yaml:"dutiesRetention"`
 
 	// Cleanup configuration
 	CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"BLOCKDB_PEBBLE_CLEANUP_INTERVAL"`
@@ -298,12 +323,6 @@ type S3BlockDBConfig struct {
 	SecretKey           string   `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
 	Path                string   `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
 	EnableRangeRequests bool     `yaml:"enableRangeRequests" envconfig:"BLOCKDB_S3_ENABLE_RANGE_REQUESTS"` // Use HTTP Range requests for selective loading
-}
-
-// TieredBlockDBConfig configures tiered storage (Pebble cache + S3 backend).
-type TieredBlockDBConfig struct {
-	Pebble PebbleBlockDBConfig `yaml:"pebble"`
-	S3     S3BlockDBConfig     `yaml:"s3"`
 }
 
 // YamlBool is a bool type that can be unmarshalled from both
@@ -332,4 +351,13 @@ func (b *YamlBool) UnmarshalYAML(unmarshal func(any) error) error {
 	}
 
 	return nil
+}
+
+// GetProxyCount returns the resolved proxy count.
+// It prioritizes server.proxyCount (new setting) and falls back to rateLimit.proxyCount (deprecated setting).
+func (c *Config) GetProxyCount() uint {
+	if c.Server.ProxyCount != nil {
+		return *c.Server.ProxyCount
+	}
+	return c.RateLimit.ProxyCount
 }

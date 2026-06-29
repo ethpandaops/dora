@@ -54,6 +54,7 @@ type BuilderPageData struct {
 	CurrentEpoch     uint64 `json:"current_epoch"`
 	Index            uint64 `json:"index"`
 	Name             string `json:"name"`
+	BuildoorURL      string `json:"buildoor_url"`
 	PublicKey        []byte `json:"pubkey"`
 	Balance          uint64 `json:"balance"`
 	ExecutionAddress []byte `json:"execution_address"`
@@ -129,6 +130,7 @@ type BuilderPageDataDeposit struct {
 	SlotRoot           []byte                           `json:"slot_root"`
 	Time               time.Time                        `json:"time"`
 	Orphaned           bool                             `json:"orphaned"`
+	IsOnboarding       bool                             `json:"is_onboarding"` // onboarded from the pending deposit queue at the Gloas fork transition
 	Amount             uint64                           `json:"amount"`
 	DepositorAddress   []byte                           `json:"depositor_address" ssz-size:"20"`
 	HasTransaction     bool                             `json:"has_transaction"`

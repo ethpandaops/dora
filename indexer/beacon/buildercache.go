@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/crc64"
 	"math"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // BuilderIndexFlag separates builder indices from validator indices in the pubkey cache
@@ -133,7 +133,7 @@ func (cache *builderCache) updateBuilderSet(slot phase0.Slot, dependentRoot phas
 			cachedBuilder = &builderEntry{}
 			cache.builderSetCache[i] = cachedBuilder
 
-			cache.indexer.pubkeyCache.Add(builders[i].PublicKey, phase0.ValidatorIndex(uint64(i)|BuilderIndexFlag))
+			_ = cache.indexer.builderPubkeyCache.Add(builders[i].PublicKey, phase0.ValidatorIndex(uint64(i)))
 		} else {
 			parentBuilder = cachedBuilder.finalBuilder
 			parentChecksum = cachedBuilder.finalChecksum
@@ -557,7 +557,7 @@ func (cache *builderCache) prepopulateFromDB() (uint64, error) {
 
 			cache.builderSetCache[dbBuilder.BuilderIndex] = builderEntry
 
-			cache.indexer.pubkeyCache.Add(builder.PublicKey, phase0.ValidatorIndex(dbBuilder.BuilderIndex|BuilderIndexFlag))
+			_ = cache.indexer.builderPubkeyCache.Add(builder.PublicKey, phase0.ValidatorIndex(dbBuilder.BuilderIndex))
 
 			restoreCount++
 		}
@@ -568,16 +568,9 @@ func (cache *builderCache) prepopulateFromDB() (uint64, error) {
 
 // runPersistLoop handles the background persistence of builder states to the database
 func (cache *builderCache) runPersistLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf(
-				"uncaught panic in indexer.beacon.builderCache.runPersistLoop subroutine: %v, stack: %v",
-				err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go cache.runPersistLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.builderCache.runPersistLoop", func() {
+		cache.runPersistLoop()
+	})
 
 	for range cache.triggerDbUpdate {
 		time.Sleep(2 * time.Second)

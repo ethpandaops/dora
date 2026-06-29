@@ -369,8 +369,8 @@
                           <td>Protocols</td>
                           <td>
                             <div style="word-break: break-all; text-wrap: pretty;">
-                              <code style="white-space: pre-wrap;" data-bind="text: JSON.stringify(protocols, null, 2)"></code>
-                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': JSON.stringify(protocols, null, 2)}"></i>
+                              <code style="white-space: pre-wrap;" data-bind="text: formatProtocols(protocols)"></code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': formatProtocols(protocols)}"></i>
                             </div>
                           </td>
                         </tr>
@@ -460,7 +460,20 @@
   var peerGraphData = {{ .PeerMap }};
   var peerGraph, peerGraphRendered = false;
 
-  var nodes = {{ .Nodes }};
+  var nodesList = {{ .Nodes }};
+  var nodes = {};
+  (nodesList || []).forEach(function(node) { nodes[node.peer_id] = node; });
+
+  // Rebuild the sub-protocol metadata object from the SSZ-compatible list
+  // representation ([{name, value}] where value is a JSON-encoded string).
+  function formatProtocols(protocols) {
+    var obj = {};
+    (protocols || []).forEach(function(p) {
+      try { obj[p.name] = JSON.parse(p.value); }
+      catch(e) { obj[p.name] = p.value; }
+    });
+    return JSON.stringify(obj, null, 2);
+  }
 
   function renderPeerGraph() {
     var container = document.getElementById("nodemap");
@@ -842,11 +855,20 @@
         return html;
       }
       
+      // Convert an SSZ-compatible [{key, value}] list into a plain lookup object.
+      function kvListToObject(list) {
+        var obj = {};
+        (list || []).forEach(function(kv) { obj[kv.key] = kv.value; });
+        return obj;
+      }
+
       // Create sub-rows for precompiles
       function createPrecompilesRows(expectedPrecompiles, clientPrecompiles) {
+        expectedPrecompiles = kvListToObject(expectedPrecompiles);
+        clientPrecompiles = kvListToObject(clientPrecompiles);
         var html = '';
         var allPrecompiles = new Set();
-        
+
         if (expectedPrecompiles) Object.keys(expectedPrecompiles).forEach(function(key) { allPrecompiles.add(key); });
         if (clientPrecompiles) Object.keys(clientPrecompiles).forEach(function(key) { allPrecompiles.add(key); });
         
@@ -879,6 +901,8 @@
       
       // Create sub-rows for system contracts
       function createSystemContractsRows(expectedContracts, clientContracts) {
+        expectedContracts = kvListToObject(expectedContracts);
+        clientContracts = kvListToObject(clientContracts);
         var html = '';
         var allContracts = new Set();
         

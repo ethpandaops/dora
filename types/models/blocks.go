@@ -61,6 +61,7 @@ type BlocksPageDataSlot struct {
 	Finalized             bool                       `json:"scheduled"`
 	Scheduled             bool                       `json:"finalized"`
 	Status                uint8                      `json:"status"`
+	PayloadStatus         uint8                      `json:"payload_status"`
 	Synchronized          bool                       `json:"synchronized"`
 	Proposer              uint64                     `json:"proposer"`
 	ProposerName          string                     `json:"proposer_name"`
@@ -92,6 +93,7 @@ type BlocksPageDataSlot struct {
 	HasBuilder            bool                       `json:"has_builder"`
 	BuilderIndex          uint64                     `json:"builder_index"`
 	BuilderName           string                     `json:"builder_name"`
+	BuilderURL            string                     `json:"builder_url"`
 }
 
 type BlocksPageDataForkGraph struct {

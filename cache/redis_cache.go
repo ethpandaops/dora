@@ -72,7 +72,7 @@ func (cache *RedisCache) SetBool(ctx context.Context, key string, value bool, ex
 
 func (cache *RedisCache) GetBool(ctx context.Context, key string) (bool, error) {
 
-	value, err := cache.redisRemoteCache.Get(ctx, key).Result()
+	value, err := cache.redisRemoteCache.Get(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key)).Result()
 	if err != nil {
 		return false, err
 	}
@@ -102,6 +102,23 @@ func (cache *RedisCache) Set(ctx context.Context, key string, value interface{},
 		return err
 	}
 	return cache.redisRemoteCache.Set(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key), valueMarshal, expiration).Err()
+}
+
+func (cache *RedisCache) DeleteByPrefix(ctx context.Context, prefix string) error {
+	match := fmt.Sprintf("%s%s*", cache.keyPrefix, prefix)
+	iter := cache.redisRemoteCache.Scan(ctx, 0, match, 100).Iterator()
+
+	keys := []string{}
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	if err := iter.Err(); err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	return cache.redisRemoteCache.Del(ctx, keys...).Err()
 }
 
 func (cache *RedisCache) Get(ctx context.Context, key string, returnValue interface{}) (interface{}, error) {

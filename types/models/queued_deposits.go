@@ -53,8 +53,10 @@ type QueuedDepositsPageDataDeposit struct {
 	TransactionDetails    *QueuedDepositsPageDataDepositTxDetails `json:"tx_details" ssz-type:"optional"`
 	ValidatorExists       bool                                    `json:"validator_exists"`
 	ValidatorIndex        uint64                                  `json:"validator_index"`
+	ProjectedIndex        bool                                    `json:"projected_index"`
 	ValidatorName         string                                  `json:"validator_name"`
 	IsBuilder             bool                                    `json:"is_builder"`
+	Postponed             bool                                    `json:"postponed"`
 }
 
 type QueuedDepositsPageDataDepositTxDetails struct {

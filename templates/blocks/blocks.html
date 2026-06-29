@@ -104,6 +104,7 @@
                 {{ $treeWidth := .ForkTreeWidth }}
                 {{ $g := . }}
                 {{ range $i, $slot := .Blocks }}
+                  {{ $noPayload := and (not (eq $slot.Status 0)) (eq $slot.PayloadStatus 0) }}
                   <tr>
                     {{ if $g.DisplayChain }}
                     <td class="graph-container" style="min-width: {{ $treeWidth }}px;">
@@ -121,7 +122,7 @@
                       {{ end }}
                     </td>
                     {{ end }}
-                    {{ if $g.DisplayNumber }}<td>{{ ethBlockLink $slot.EthBlockNumber }}</td>{{ end }}
+                    {{ if $g.DisplayNumber }}<td>{{ if $noPayload }}-{{ else }}{{ ethBlockLink $slot.EthBlockNumber }}{{ end }}</td>{{ end }}
                     {{ if $g.DisplaySlot }}
                       {{ if eq $slot.Status 2 }}
                         <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
@@ -134,9 +135,9 @@
                       {{ if eq $slot.Slot 0 }}
                         <span class="badge rounded-pill text-bg-info">Genesis</span>
                       {{ else if eq $slot.Status 1 }}
-                        <span class="badge rounded-pill text-bg-success">Proposed</span>
+                        <span class="badge rounded-pill text-bg-success {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Proposed</span>
                       {{ else if eq $slot.Status 2 }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                        <span class="badge rounded-pill text-bg-info {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Orphaned</span>
                       {{ else if $slot.Scheduled }}
                         <span class="badge rounded-pill text-bg-secondary">Scheduled</span>
                       {{ else if not $slot.Synchronized }}
@@ -144,29 +145,29 @@
                       {{ else if eq $slot.Status 0 }}
                         <span class="badge rounded-pill text-bg-warning">Missed</span>
                       {{ else }}
-                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                        <span class="badge rounded-pill text-bg-dark {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Unknown</span>
                       {{ end }}
                     </td>
                     {{ end }}
                     {{ if $g.DisplayTime }}<td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>{{ end }}
                     {{ if $slot.Synchronized }}
-                      {{ if $g.DisplayProposer }}<td>{{ if gt $slot.Slot 0 }}{{ formatValidator $slot.Proposer $slot.ProposerName }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayProposer }}<td>{{ if gt $slot.Slot 0 }}{{ formatProposerWithBuildSource $slot.Status $slot.Proposer $slot.ProposerName $slot.HasBuilder $slot.BuilderIndex $slot.BuilderURL }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayAttestations }}<td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayDeposits }}<td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplaySlashings }}<td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>{{ end }}
-                      {{ if $g.DisplayTxCount }}<td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>{{ end }}
-                      {{ if $g.DisplayGasUsage }}<td>{{ if not (eq $slot.Status 0) }}
+                      {{ if $g.DisplayTxCount }}<td>{{ if not (eq $slot.Status 0) }}{{ if $noPayload }}-{{ else }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayGasUsage }}<td>{{ if not (eq $slot.Status 0) }}{{ if $noPayload }}-{{ else }}
                         <div style="position:relative;width:inherit;height:inherit;">
                           {{ formatAddCommas $slot.GasUsed }} <small class="text-muted ml-3">({{ formatFloat (percentage $slot.GasUsed $slot.GasLimit) 2 }}%)</small>
                           <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
                             <div class="progress-bar" role="progressbar" style="width: {{ percentage $slot.GasUsed $slot.GasLimit }}%;" aria-valuenow="{{ $slot.GasUsed }}" aria-valuemin="0" aria-valuemax="{{ $slot.GasLimit }}"></div>
                           </div>
                         </div>
-                      {{ end }}</td>{{ end }}
+                      {{ end }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplaySyncAgg }}<td>{{ if not (eq $slot.Status 0) }}{{ formatPercentageAlert $slot.SyncParticipation 2 95 80 }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayBuilder }}<td>{{ if not (eq $slot.Status 0) }}
                         {{ if $slot.HasBuilder }}
-                          {{ formatBuilder $slot.BuilderIndex $slot.BuilderName }}
+                          {{ formatBuilderWithURL $slot.BuilderIndex $slot.BuilderName $slot.BuilderURL }}
                         {{ end }}
                       {{ end }}</td>{{ end }}
                       {{ if $g.DisplayMevBlock }}<td>{{ if not (eq $slot.Status 0) }}
@@ -176,7 +177,7 @@
                           <span class="badge rounded-pill text-bg-secondary">No</span>
                         {{ end }}
                       {{ end }}</td>{{ end }}
-                      {{ if $g.DisplayGasLimit }}<td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayGasLimit }}<td>{{ if not (eq $slot.Status 0) }}{{ if $noPayload }}-{{ else }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayBlockSize }}<td>{{ if not (eq $slot.Status 0) }}{{ formatByteAmount $slot.BlockSize }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayRecvDelay }}<td>{{ if not (eq $slot.Status 0) }}{{ formatRecvDelay $slot.RecvDelay }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayExecTime }}<td>{{ if not (eq $slot.Status 0) }}
@@ -187,7 +188,7 @@
                         {{ end }}
                       {{ end }}</td>{{ end }}
                       {{ if $g.DisplayGraffiti }}<td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>{{ end }}
-                      {{ if $g.DisplayElExtraData }}<td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayElExtraData }}<td>{{ if not (eq $slot.Status 0) }}{{ if $noPayload }}-{{ else }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}{{ end }}</td>{{ end }}
                     {{ else }}
                       {{ $colCount := 0 }}
                       {{ if $g.DisplayProposer }}{{ $colCount = add $colCount 1 }}{{ end }}

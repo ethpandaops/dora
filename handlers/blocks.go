@@ -94,6 +94,8 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 		}
 	}
 	if len(displayMap) == 0 {
+		cs := services.GlobalBeaconService.GetChainState()
+		gloasActive := cs.IsEip7732Enabled(cs.EpochOfSlot(cs.CurrentSlot()))
 		displayMap = map[uint64]bool{
 			1:  true,
 			2:  true,
@@ -110,11 +112,11 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 			13: true,
 			14: true,
 			15: true,
-			16: true,
+			16: !gloasActive, // MEV Block (replaced by Builder once gloas is active)
 			17: true,
 			18: false,
 			19: false,
-			20: false, // Builder (hidden by default)
+			20: gloasActive, // Builder (shown once gloas is active)
 		}
 	}
 
@@ -252,12 +254,19 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 			dbSlot := dbBlocks[dbIdx]
 			dbIdx++
 
+			epoch := chainState.EpochOfSlot(phase0.Slot(slot))
+			payloadStatus := dbSlot.PayloadStatus
+			if !chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
+				payloadStatus = dbtypes.PayloadStatusCanonical
+			}
+
 			slotData := &models.BlocksPageDataSlot{
 				Slot:                  slot,
-				Epoch:                 uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+				Epoch:                 uint64(epoch),
 				Ts:                    chainState.SlotToTime(phase0.Slot(slot)),
 				Finalized:             finalized,
 				Status:                uint8(dbSlot.Status),
+				PayloadStatus:         uint8(payloadStatus),
 				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Synchronized:          dbSlot.SyncParticipation != -1,
 				Proposer:              dbSlot.Proposer,
@@ -300,8 +309,9 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 				}
 			}
 
-			// Add builder info
-			if pageData.DisplayBuilder {
+			// Add builder info (needed for the Builder column and the proposer build-source icon).
+			// Only blocks that actually exist (proposed or orphaned) carry a build source.
+			if (pageData.DisplayBuilder || pageData.DisplayProposer) && dbSlot.Status > 0 {
 				if dbSlot.BuilderIndex == -1 {
 					slotData.HasBuilder = true
 					slotData.BuilderIndex = math.MaxUint64
@@ -309,6 +319,7 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 					slotData.HasBuilder = true
 					slotData.BuilderIndex = uint64(dbSlot.BuilderIndex)
 					slotData.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(dbSlot.BuilderIndex) | services.BuilderIndexFlag)
+					slotData.BuilderURL = services.GlobalBeaconService.GetBuilderURL(uint64(dbSlot.BuilderIndex))
 				}
 			}
 

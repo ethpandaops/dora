@@ -54,14 +54,62 @@ func FormatFloat(num float64, precision int) string {
 	return string(r)
 }
 
-// FormatTokenAmount formats a token amount with full precision, trimming trailing zeros
+// FormatTokenAmount formats a token amount with intelligent decimal trimming
+// (keeps significant digits for tiny values, thousands separators for large
+// ones) so values stay readable in dense tables.
 func FormatTokenAmount(amount float64, symbol string) string {
-	// Format with high precision and trim trailing zeros
-	formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.18f", amount), "0"), ".")
+	var formatted string
+	if amount == 0 {
+		formatted = "0"
+	} else {
+		decimals := intelligentDecimals(amount)
+		p := message.NewPrinter(language.English)
+		s := p.Sprintf(fmt.Sprintf("%%.%df", decimals), amount)
+		if decimals > 0 {
+			s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+		}
+		formatted = s
+	}
 	if symbol != "" {
 		return formatted + " " + symbol
 	}
 	return formatted
+}
+
+// intelligentDecimals returns how many decimal places to keep for a value so
+// that small values still show ~3 significant digits while normal values keep
+// at most 6 decimals. Returns 0 for whole numbers.
+func intelligentDecimals(value float64) int {
+	if value == 0 {
+		return 0
+	}
+	if value < 0 {
+		value = -value
+	}
+	fullStr := fmt.Sprintf("%.18f", value)
+	dotIdx := strings.Index(fullStr, ".")
+	if dotIdx == -1 {
+		return 0
+	}
+	decPart := fullStr[dotIdx+1:]
+	firstNonZero := -1
+	for i, c := range decPart {
+		if c != '0' {
+			firstNonZero = i
+			break
+		}
+	}
+	if firstNonZero == -1 {
+		return 0
+	}
+	decimalsToKeep := 6
+	if significantEnd := firstNonZero + 3; significantEnd > decimalsToKeep {
+		decimalsToKeep = significantEnd
+	}
+	if decimalsToKeep > len(decPart) {
+		decimalsToKeep = len(decPart)
+	}
+	return decimalsToKeep
 }
 
 func FormatBaseFee(weiValue uint64) template.HTML {
@@ -832,6 +880,53 @@ func formatValidator(index uint64, name string, icon string, withIndex bool) tem
 	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> <a href=\"/validator/%v\">%v</a></span>", icon, index, index))
 }
 
+// FormatProposerWithBuildSource renders a proposer label whose leading icon
+// reflects the payload build source on Gloas+ blocks: a house for self-built
+// payloads and a hard-hat (linking to the builder) for builder-built payloads.
+// Pre-Gloas blocks (hasBuilder == false) fall back to the default validator icon.
+//
+// Scheduled/missing slots (status == 0) and unknown proposers have no
+// determinable build source and are rendered without any leading icon.
+func FormatProposerWithBuildSource(status uint8, index uint64, name string, hasBuilder bool, builderIndex uint64, builderURL string) template.HTML {
+	if status == 0 || index == math.MaxInt64 {
+		if index == math.MaxInt64 {
+			return template.HTML(`<span class="validator-label validator-index">unknown</span>`)
+		}
+		if name != "" {
+			return template.HTML(fmt.Sprintf(`<span class="validator-label validator-name"><a href="/validator/%v">%v</a></span>`, index, html.EscapeString(name)))
+		}
+		return template.HTML(fmt.Sprintf(`<span class="validator-label validator-index"><a href="/validator/%v">%v</a></span>`, index, index))
+	}
+
+	if !hasBuilder {
+		return FormatValidator(index, name)
+	}
+
+	var iconHTML string
+	if builderIndex == math.MaxUint64 {
+		// self-built payload
+		iconHTML = `<i class="fas fa-house mr-2" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Self-built payload"></i>`
+	} else {
+		// builder-built payload - link the icon to the builder URL when known,
+		// otherwise to the internal builder page
+		builderLink := fmt.Sprintf("/builder/%v", builderIndex)
+		external := ""
+		if builderURL != "" {
+			builderLink = html.EscapeString(builderURL)
+			external = ` target="_blank" rel="noopener noreferrer"`
+		}
+		iconHTML = fmt.Sprintf(`<a href="%v"%v class="builder-source-link" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload (builder %v)"><i class="fas fa-hard-hat mr-2"></i></a>`, builderLink, external, builderIndex)
+	}
+
+	nameLabel := fmt.Sprintf("%v", index)
+	labelClass := "validator-index"
+	if name != "" {
+		nameLabel = html.EscapeString(name)
+		labelClass = "validator-name"
+	}
+	return template.HTML(fmt.Sprintf(`<span class="validator-label %v">%v <a href="/validator/%v">%v</a></span>`, labelClass, iconHTML, index, nameLabel))
+}
+
 func FormatValidatorNameWithIndex(index uint64, name string) template.HTML {
 	if name != "" {
 		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\">%v (%v)</span>", html.EscapeString(name), index))
@@ -840,24 +935,49 @@ func FormatValidatorNameWithIndex(index uint64, name string) template.HTML {
 }
 
 func FormatBuilder(index uint64, name string) template.HTML {
-	return formatBuilder(index, name, "fa-hard-hat mr-2", false)
+	return formatBuilder(index, name, "", "fa-hard-hat mr-2", false)
+}
+
+// FormatInactiveBuilder renders a builder whose index has been reused by a different builder
+// (EIP-8282). Since the index no longer identifies this pubkey, it links to the details page by
+// pubkey instead of by index.
+func FormatInactiveBuilder(pubkey []byte) template.HTML {
+	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas fa-hard-hat mr-2\"></i> <a href=\"/builder/0x%x\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"This builder's index was reused by a different builder\">(inactive)</a></span>", pubkey))
 }
 
 func FormatBuilderWithIndex(index uint64, name string) template.HTML {
-	return formatBuilder(index, name, "fa-hard-hat mr-2", true)
+	return formatBuilder(index, name, "", "fa-hard-hat mr-2", true)
 }
 
-func formatBuilder(index uint64, name string, icon string, withIndex bool) template.HTML {
+func FormatBuilderWithURL(index uint64, name string, externalURL string) template.HTML {
+	return formatBuilder(index, name, externalURL, "fa-hard-hat mr-2", false)
+}
+
+func FormatBuilderWithIndexAndURL(index uint64, name string, externalURL string) template.HTML {
+	return formatBuilder(index, name, externalURL, "fa-hard-hat mr-2", true)
+}
+
+func formatBuilder(index uint64, name string, externalURL string, icon string, withIndex bool) template.HTML {
 	if index == math.MaxUint64 {
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> Self-built</span>", icon))
-	} else if name != "" {
+		// self-built blocks have no builder; use the house icon (matches the proposer build-source icon)
+		return template.HTML("<span class=\"builder-label builder-index\"><i class=\"fas fa-house mr-2\"></i> Self-built</span>")
+	}
+
+	// When the builder exposes an external URL, its "name" is often the full API URL, which is
+	// far too long for the table columns. Collapse it to the hyperlinked builder index and show
+	// the full API URL on hover instead of printing it inline.
+	if externalURL != "" {
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\">%v</a></span>", icon, index, html.EscapeString(externalURL), index))
+	}
+
+	if name != "" {
 		var nameLabel string
 		if withIndex {
 			nameLabel = fmt.Sprintf("%v (%v)", html.EscapeString(name), index)
 		} else {
 			nameLabel = html.EscapeString(name)
 		}
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", index, icon, index, nameLabel))
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", icon, index, nameLabel))
 	}
 	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", icon, index, index))
 }

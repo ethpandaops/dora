@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"slices"
 
+	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/altair"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
@@ -53,20 +55,20 @@ func processOperations(s *stateAccessor, block *all.SignedBeaconBlock) {
 }
 
 // applyExecutionRequests processes a block/payload's execution-layer requests
-// (deposits, withdrawal requests, consolidation requests) into the state.
-// Shared by processOperations (pre-Gloas) and processParentExecutionPayload (Gloas+).
-func applyExecutionRequests(s *stateAccessor, requests *electra.ExecutionRequests) {
+// into the state. Shared by processOperations (pre-Gloas) and
+// processParentExecutionPayload (Gloas+).
+//
+// Gloas (EIP-8282) adds two dedicated request lists — builder deposits and
+// builder exits — processed after the validator-facing requests, mirroring the
+// for_ops order in apply_parent_execution_payload.
+//
+// https://github.com/ethereum/consensus-specs/pull/5359
+func applyExecutionRequests(s *stateAccessor, requests *all.ExecutionRequests) {
 	if requests == nil {
 		return
 	}
 	for _, deposit := range requests.Deposits {
-		s.PendingDeposits = append(s.PendingDeposits, &electra.PendingDeposit{
-			Pubkey:                deposit.Pubkey,
-			WithdrawalCredentials: deposit.WithdrawalCredentials,
-			Amount:                deposit.Amount,
-			Signature:             deposit.Signature,
-			Slot:                  s.Slot,
-		})
+		processDepositRequest(s, deposit)
 	}
 	for _, withdrawal := range requests.Withdrawals {
 		processWithdrawalRequest(s, withdrawal)
@@ -74,19 +76,233 @@ func applyExecutionRequests(s *stateAccessor, requests *electra.ExecutionRequest
 	for _, consolidation := range requests.Consolidations {
 		processConsolidationRequest(s, consolidation)
 	}
+
+	if s.Version >= spec.DataVersionGloas {
+		for _, builderDeposit := range requests.BuilderDeposits {
+			processBuilderDepositRequest(s, builderDeposit)
+		}
+		for _, builderExit := range requests.BuilderExits {
+			processBuilderExitRequest(s, builderExit)
+		}
+	}
+}
+
+// processDepositRequest implements process_deposit_request.
+//
+// The request is appended to the pending_deposits queue. Gloas (EIP-8282)
+// removed the builder branch entirely: builder deposits now arrive via the
+// dedicated builder deposit contract (processBuilderDepositRequest), so a
+// 0x03-credential deposit via the regular deposit contract is queued as an
+// ordinary validator deposit like any other.
+//
+// https://github.com/ethereum/consensus-specs/pull/5359
+func processDepositRequest(s *stateAccessor, deposit *electra.DepositRequest) {
+	s.PendingDeposits = append(s.PendingDeposits, &electra.PendingDeposit{
+		Pubkey:                deposit.Pubkey,
+		WithdrawalCredentials: deposit.WithdrawalCredentials,
+		Amount:                deposit.Amount,
+		Signature:             deposit.Signature,
+		Slot:                  s.Slot,
+	})
+}
+
+// findBuilderByPubkey returns the builder registry index for a pubkey, if present.
+func findBuilderByPubkey(s *stateAccessor, pubkey phase0.BLSPubKey) (uint64, bool) {
+	for i, builder := range s.Builders {
+		if builder.PublicKey == pubkey {
+			return uint64(i), true
+		}
+	}
+	return 0, false
+}
+
+// processBuilderDepositRequest implements process_builder_deposit_request
+// (Gloas/EIP-8282). For an existing builder pubkey the amount tops up its
+// balance. For a new pubkey a builder is registered ONLY if the deposit carries a
+// valid proof-of-possession under DOMAIN_BUILDER_DEPOSIT; otherwise it is silently
+// dropped.
+//
+// https://github.com/ethereum/consensus-specs/pull/5359
+func processBuilderDepositRequest(s *stateAccessor, request *gloas.BuilderDepositRequest) {
+	if request == nil {
+		return
+	}
+	if builderIndex, isBuilder := findBuilderByPubkey(s, request.Pubkey); isBuilder {
+		s.Builders[builderIndex].Balance += request.Amount
+		return
+	}
+
+	// New builder: register only if the builder-deposit signature is valid.
+	if !isValidBuilderDepositSignature(s, request) {
+		return
+	}
+
+	var execAddr bellatrix.ExecutionAddress
+	var credVersion byte
+	if len(request.WithdrawalCredentials) >= 32 {
+		credVersion = request.WithdrawalCredentials[0]
+		copy(execAddr[:], request.WithdrawalCredentials[12:])
+	}
+	addBuilderToRegistry(s, request.Pubkey, credVersion, execAddr, request.Amount, s.Slot)
+}
+
+// isValidBuilderDepositSignature implements is_valid_builder_deposit_signature
+// (Gloas): the proof-of-possession is verified over the DepositMessage under the
+// dedicated DOMAIN_BUILDER_DEPOSIT.
+//
+// https://github.com/ethereum/consensus-specs/pull/5359
+func isValidBuilderDepositSignature(s *stateAccessor, request *gloas.BuilderDepositRequest) bool {
+	domain := depositsig.BuilderDomain(s.specs.GenesisForkVersion)
+	return depositsig.Valid(request.Pubkey, request.WithdrawalCredentials, request.Amount, request.Signature, domain)
+}
+
+// processBuilderExitRequest implements process_builder_exit_request
+// (Gloas/EIP-8282). It initiates a builder exit when the pubkey maps to an active
+// builder, the source address matches the builder's execution address, and the
+// builder has no pending withdrawals queued.
+//
+// https://github.com/ethereum/consensus-specs/pull/5359
+func processBuilderExitRequest(s *stateAccessor, request *gloas.BuilderExitRequest) {
+	if request == nil {
+		return
+	}
+	builderIndex, isBuilder := findBuilderByPubkey(s, request.Pubkey)
+	if !isBuilder {
+		return
+	}
+	if !isActiveBuilder(s, builderIndex) {
+		return
+	}
+	if s.Builders[builderIndex].ExecutionAddress != request.SourceAddress {
+		return
+	}
+	if getPendingBalanceToWithdrawForBuilder(s, builderIndex) != 0 {
+		return
+	}
+	initiateBuilderExit(s, builderIndex)
+}
+
+// isActiveBuilder implements is_active_builder (Gloas): the builder's placement in
+// the registry is finalized and it has not initiated exit.
+//
+// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-is_active_builder
+func isActiveBuilder(s *stateAccessor, builderIndex uint64) bool {
+	builder := s.Builders[builderIndex]
+	return builder.DepositEpoch < s.FinalizedCheckpoint.Epoch &&
+		builder.WithdrawableEpoch == FarFutureEpoch
+}
+
+// getPendingBalanceToWithdrawForBuilder implements
+// get_pending_balance_to_withdraw_for_builder (Gloas): the sum of queued builder
+// pending withdrawals and pending-payment withdrawals for the builder.
+//
+// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-get_pending_balance_to_withdraw_for_builder
+func getPendingBalanceToWithdrawForBuilder(s *stateAccessor, builderIndex uint64) phase0.Gwei {
+	var total phase0.Gwei
+	for _, withdrawal := range s.BuilderPendingWithdrawals {
+		if withdrawal != nil && uint64(withdrawal.BuilderIndex) == builderIndex {
+			total += withdrawal.Amount
+		}
+	}
+	for _, payment := range s.BuilderPendingPayments {
+		if payment != nil && payment.Withdrawal != nil && uint64(payment.Withdrawal.BuilderIndex) == builderIndex {
+			total += payment.Withdrawal.Amount
+		}
+	}
+	return total
+}
+
+// initiateBuilderExit implements initiate_builder_exit (Gloas): the builder
+// becomes withdrawable after MIN_BUILDER_WITHDRAWABILITY_DELAY epochs.
+//
+// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-initiate_builder_exit
+func initiateBuilderExit(s *stateAccessor, builderIndex uint64) {
+	s.Builders[builderIndex].WithdrawableEpoch = s.currentEpoch() + phase0.Epoch(s.specs.MinBuilderWithdrawabilityDelay)
+}
+
+// addBuilderToRegistry implements add_builder_to_registry (Gloas). The new builder
+// reuses the first slot of a fully-withdrawn (withdrawable, zero-balance) builder,
+// or is appended when no such slot exists.
+//
+// https://github.com/ethereum/consensus-specs/pull/5359
+func addBuilderToRegistry(s *stateAccessor, pubkey phase0.BLSPubKey, credVersion byte, execAddr bellatrix.ExecutionAddress, amount phase0.Gwei, slot phase0.Slot) {
+	builder := &gloas.Builder{
+		PublicKey:         pubkey,
+		Version:           credVersion,
+		ExecutionAddress:  execAddr,
+		Balance:           amount,
+		DepositEpoch:      phase0.Epoch(uint64(slot) / s.specs.SlotsPerEpoch),
+		WithdrawableEpoch: FarFutureEpoch,
+	}
+
+	index := getIndexForNewBuilder(s)
+	if index == uint64(len(s.Builders)) {
+		s.Builders = append(s.Builders, builder)
+	} else {
+		s.Builders[index] = builder
+	}
+}
+
+// getIndexForNewBuilder implements get_index_for_new_builder (Gloas): the index of
+// the first fully-withdrawn builder slot to recycle, or the registry length.
+//
+// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-get_index_for_new_builder
+func getIndexForNewBuilder(s *stateAccessor) uint64 {
+	currentEpoch := s.currentEpoch()
+	for i, builder := range s.Builders {
+		if builder.WithdrawableEpoch <= currentEpoch && builder.Balance == 0 {
+			return uint64(i)
+		}
+	}
+	return uint64(len(s.Builders))
 }
 
 // processProposerSlashing processes a proposer slashing.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#proposer-slashings
 func processProposerSlashing(s *stateAccessor, slashing *phase0.ProposerSlashing) {
-	if slashing == nil || slashing.SignedHeader1 == nil {
+	if slashing == nil || slashing.SignedHeader1 == nil || slashing.SignedHeader1.Message == nil {
 		return
 	}
-	proposerIndex := slashing.SignedHeader1.Message.ProposerIndex
+	header := slashing.SignedHeader1.Message
+	proposerIndex := header.ProposerIndex
 	if int(proposerIndex) >= len(s.Validators) {
 		return
 	}
+
+	// New in Gloas: clear the BuilderPendingPayment tied to this proposal if it is
+	// still in the 2-epoch window and bound to the slashed proposer (per #5365 the
+	// payment is only griefed when the slashed validator is its proposer).
+	// https://github.com/ethereum/consensus-specs/pull/5365
+	if s.Version >= spec.DataVersionGloas {
+		clearSlashedBuilderPendingPayment(s, header.Slot, proposerIndex)
+	}
+
 	slashValidator(s, proposerIndex)
+}
+
+// clearSlashedBuilderPendingPayment removes the builder pending payment recorded
+// for the slashed proposer's slot, if that slot is still within the 2-epoch
+// BuilderPendingPayments window and the payment is bound to the slashed proposer.
+func clearSlashedBuilderPendingPayment(s *stateAccessor, slot phase0.Slot, proposerIndex phase0.ValidatorIndex) {
+	slotsPerEpoch := s.specs.SlotsPerEpoch
+	proposalEpoch := phase0.Epoch(uint64(slot) / slotsPerEpoch)
+
+	var paymentIdx uint64
+	switch proposalEpoch {
+	case s.currentEpoch():
+		paymentIdx = slotsPerEpoch + uint64(slot)%slotsPerEpoch
+	case s.previousEpoch():
+		paymentIdx = uint64(slot) % slotsPerEpoch
+	default:
+		return
+	}
+
+	if paymentIdx >= uint64(len(s.BuilderPendingPayments)) {
+		return
+	}
+	if payment := s.BuilderPendingPayments[paymentIdx]; payment != nil && payment.ProposerIndex == proposerIndex {
+		s.BuilderPendingPayments[paymentIdx] = &gloas.BuilderPendingPayment{}
+	}
 }
 
 // processAttesterSlashing processes an attester slashing.
@@ -526,6 +742,7 @@ func processExecutionPayloadBid(s *stateAccessor, block *all.SignedBeaconBlock) 
 					Amount:       bid.Value,
 					BuilderIndex: bid.BuilderIndex,
 				},
+				ProposerIndex: block.Message.ProposerIndex,
 			}
 		}
 	}

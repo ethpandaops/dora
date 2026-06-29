@@ -84,6 +84,7 @@
             <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
             {{ else }}
             <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
+            {{ if .RevertReason }}<span class="text-monospace text-break ms-2">{{ .RevertReason }}</span>{{ end }}
             {{ end }}
           </div>
         </div>
@@ -143,10 +144,10 @@
           <i class="fa fa-cog me-2"></i> Details
         </a>
       </li>
-      {{ if gt .InternalTxCount 0 }}
+      {{ if .HasTrace }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
-          <i class="fa fa-sitemap me-2"></i> Internal Txs ({{ .InternalTxCount }})
+          <i class="fa fa-sitemap me-2"></i> Internal Txs{{ if gt .InternalTxCount 0 }} ({{ .InternalTxCount }}){{ end }}
         </a>
       </li>
       {{ end }}
@@ -204,6 +205,9 @@
                     <div class="progress-bar" role="progressbar" style="width: {{ .GasUsedPct }}%;" aria-valuenow="{{ .GasUsed }}" aria-valuemin="0" aria-valuemax="{{ .GasLimit }}"></div>
                   </div>
                 </div>
+                {{ if gt .CalldataFloorGas 0 }}
+                <span class="badge bg-info text-dark ms-2 mt-1" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7976 calldata floor cost: 21000 + 64 × {{ len .InputData }} bytes = {{ formatNumber .CalldataFloorGas }} gas. Amsterdam requires transactions with calldata to pay at least this floor.">EIP-7976 floor: {{ formatNumber .CalldataFloorGas }} gas</span>
+                {{ end }}
               </div>
             </div>
             {{ if ge .TxType 2 }}
@@ -254,13 +258,43 @@
               <div class="col-md-9">{{ .BlobCount }}</div>
             </div>
             {{ end }}
+            {{ if gt (len .AccessListEntries) 0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-2930 access list — pre-warmed addresses and storage slots. Under EIP-7981 (Amsterdam): each address costs 2400 gas, each storage key costs 1900 gas.">Access List:</span></div>
+              <div class="col-md-9">
+                <span class="badge bg-secondary me-2">{{ len .AccessListEntries }} {{ if eq (len .AccessListEntries) 1 }}address{{ else }}addresses{{ end }} &middot; {{ .AccessListStorageKeys }} storage {{ if eq .AccessListStorageKeys 1 }}key{{ else }}keys{{ end }}</span>
+                <span class="badge bg-info text-dark me-2" data-bs-toggle="tooltip" data-bs-placement="top" title="Access list intrinsic gas (EIP-7981): {{ formatNumber .AccessListGasAmsterdam }} gas in Amsterdam vs {{ formatNumber .AccessListGasPrague }} in Prague. Saves {{ formatNumber .AccessListGasSavings }} gas (storage key: 2400→1900).">{{ formatNumber .AccessListGasAmsterdam }} gas</span>
+                <div class="mt-2" style="font-size:0.85rem; font-family:monospace;">
+                  {{ range $i, $entry := .AccessListEntries }}
+                  <div class="py-1{{ if not (eq $i (add (len $.AccessListEntries) -1)) }} border-bottom{{ end }}">
+                    <a href="/address/{{ formatEthAddressFull $entry.Address }}" class="text-monospace">{{ formatEthAddressFull $entry.Address }}</a>
+                    {{ if $entry.StorageKeys }}
+                    <ul class="mb-0 mt-1" style="list-style:none; padding-left:1.5em;">
+                      {{ range $entry.StorageKeys }}
+                      <li><span class="text-muted">{{ printf "0x%x" . }}</span></li>
+                      {{ end }}
+                    </ul>
+                    {{ else }}
+                    <span class="text-muted ms-2">(no storage keys)</span>
+                    {{ end }}
+                  </div>
+                  {{ end }}
+                </div>
+              </div>
+            </div>
+            {{ end }}
             {{ if gt (len .InputData) 0 }}
             <div class="row p-2 mx-0">
-              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data">Input Data:</span></div>
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data ({{ .CalldataZeroBytes }} zero bytes, {{ .CalldataNonZeroBytes }} non-zero bytes)">Input Data:</span> <span class="badge bg-secondary ms-1">{{ formatNumber (len .InputData) }} bytes</span> <small class="text-muted" style="font-size:0.75em;">{{ .CalldataZeroBytes }}×0 / {{ .CalldataNonZeroBytes }}×≠0</small></div>
               <div class="col-md-9">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   {{ if eq .TargetCallType "deploy" }}
                   <span class="badge rounded-pill text-bg-warning">Contract Creation</span>
+                  {{ if gt (len .InputData) 49152 }}
+                  <span class="badge rounded-pill text-bg-danger ms-1" title="Initcode ({{ formatNumber (len .InputData) }} bytes) exceeds Prague MAX_INIT_CODE_SIZE=49152. This deployment requires EIP-7954 (Amsterdam MAX_INIT_CODE_SIZE=131072).">EIP-7954</span>
+                  {{ else if gt (len .InputData) 24576 }}
+                  <span class="badge rounded-pill text-bg-warning ms-1" title="Initcode ({{ formatNumber (len .InputData) }} bytes) may deploy code exceeding Prague MAX_CODE_SIZE=24576. EIP-7954 (Amsterdam) raises the limit to 65536.">EIP-7954</span>
+                  {{ end }}
                   {{ else if eq .TargetCallType "precompile" }}
                   <span class="badge rounded-pill text-bg-info">Precompile: {{ .TargetCallName }}</span>
                   {{ else if eq .TargetCallType "system" }}
@@ -302,6 +336,16 @@
                 </div>
                 {{ end }}
                 <div id="input-data-ascii" class="border rounded p-2 text-monospace text-break" style="max-height: 200px; overflow-y: auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg); display: none; white-space: pre-wrap;"></div>
+              </div>
+            </div>
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3 text-muted" style="font-size:0.85em; padding-top:0.2rem;"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Minimum intrinsic gas required by this transaction&#39;s calldata under each fork&#39;s pricing rules. Does not include execution gas.">Calldata gas:</span></div>
+              <div class="col-md-9 d-flex flex-wrap align-items-center gap-1" style="font-size:0.85em;">
+                <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Pre-Prague standard pricing: 4 gas per zero byte, 16 gas per non-zero byte&#xA;= 21,000 + 4×{{ .CalldataZeroBytes }} + 16×{{ .CalldataNonZeroBytes }} = {{ formatAddCommas .CalldataStandardGas }} gas">pre-Prague&nbsp;{{ formatAddCommas .CalldataStandardGas }}</span>
+                <span class="text-muted">→</span>
+                <span class="badge text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7623 floor (Prague / Electra+): tokens = 4×nonzero + zero = {{ .CalldataPragueTokens }} tokens&#xA;floor = 21,000 + {{ .CalldataPragueTokens }}×10 = {{ formatAddCommas .CalldataPragueFloor }} gas&#xA;Always ≥ standard; data-heavy txs pay proportionally more.">EIP-7623&nbsp;{{ formatAddCommas .CalldataPragueFloor }}</span>
+                <span class="text-muted">→</span>
+                <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7976 floor (Amsterdam+): flat 64 gas per byte (all bytes equal, zero or not)&#xA;= 21,000 + {{ len .InputData }}×64 = {{ formatAddCommas .CalldataAmsterdamFloor }} gas&#xA;Supersedes EIP-7623; especially raises cost for zero-heavy calldata.">EIP-7976&nbsp;{{ formatAddCommas .CalldataAmsterdamFloor }}</span>
               </div>
             </div>
             {{ end }}

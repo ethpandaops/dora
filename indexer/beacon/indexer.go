@@ -3,7 +3,6 @@ package beacon
 import (
 	"context"
 	"fmt"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -47,7 +46,9 @@ type Indexer struct {
 	epochCache         *epochCache
 	forkCache          *forkCache
 	pubkeyCache        *pubkeyCache
+	builderPubkeyCache *pubkeyCache
 	validatorCache     *validatorCache
+	pendingValidators  *pendingValidatorProjector
 	validatorActivity  *validatorActivityCache
 	blockBidCache      *blockBidCache
 	builderCache       *builderCache
@@ -122,7 +123,12 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	indexer.epochCache = newEpochCache(indexer)
 	indexer.forkCache = newForkCache(indexer)
 	indexer.pubkeyCache = newPubkeyCache(indexer, utils.Config.Indexer.PubkeyCachePath)
+	// builders (EIP-8282) live in a separate index space and may share pubkeys with validators,
+	// so they get their own pubkey cache. It reuses the validator cache's backing store (same
+	// file) but namespaces builder keys with a prefix to avoid collisions.
+	indexer.builderPubkeyCache = indexer.pubkeyCache.newPrefixedCache([]byte(pubkeyCacheBuilderPrefix))
 	indexer.validatorCache = newValidatorCache(indexer)
+	indexer.pendingValidators = newPendingValidatorProjector(indexer)
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
 	indexer.blockBidCache = newBlockBidCache(indexer)
 	indexer.builderCache = newBuilderCache(indexer)
@@ -484,18 +490,14 @@ func (indexer *Indexer) StopIndexer() {
 	}
 
 	indexer.pubkeyCache.Close()
+	// builderPubkeyCache shares pubkeyCache's store, so it is closed by the line above.
 	indexer.stateCache.Close()
 }
 
 func (indexer *Indexer) runIndexerLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.Indexer.runIndexerLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go indexer.runIndexerLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.Indexer.runIndexerLoop", func() {
+		indexer.runIndexerLoop()
+	})
 
 	chainState := indexer.consensusPool.GetChainState()
 

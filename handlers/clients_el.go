@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -48,9 +49,20 @@ func ClientsEl(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// elClientsPageCacheKeyPrefix is the shared prefix of every cached execution clients page
+// variant. Each request caches under "<prefix><sortOrder>", so deleting the prefix evicts
+// all variants regardless of which sort orders were requested.
+const elClientsPageCacheKeyPrefix = "clients_execution:"
+
+// InvalidateELClientsPageCache evicts all cached variants of the execution clients page
+// so the next request rebuilds them from freshly refreshed client data.
+func InvalidateELClientsPageCache() {
+	services.GlobalFrontendCache.RemoveCacheByPrefix(elClientsPageCacheKeyPrefix)
+}
+
 func getELClientsPageData(sortOrder string) (*models.ClientsELPageData, error) {
 	pageData := &models.ClientsELPageData{}
-	pageCacheKey := fmt.Sprintf("clients/execution/%s", sortOrder)
+	pageCacheKey := fmt.Sprintf("%s%s", elClientsPageCacheKeyPrefix, sortOrder)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildELClientsPageData(sortOrder)
 		pageCall.CacheTimeout = cacheTimeout
@@ -180,7 +192,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		Clients:                []*models.ClientsELPageDataClient{},
 		PeerMap:                buildELPeerMapData(parseEnodeRecord),
 		ShowSensitivePeerInfos: utils.Config.Frontend.ShowSensitivePeerInfos,
-		Nodes:                  map[string]*models.ClientsELPageDataNode{},
+		Nodes:                  []*models.ClientsELPageDataNode{},
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
@@ -234,7 +246,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 				Name:      peer.Name,
 				Enode:     enoderaw,
 				Caps:      peer.Caps,
-				Protocols: peer.Protocols,
+				Protocols: buildPeerProtocols(peer.Protocols),
 				Type:      peerType,
 			})
 
@@ -270,7 +282,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		}
 
 		resClient := &models.ClientsELPageDataClient{
-			Index:                int(client.GetIndex()) + 1,
+			Index:                int32(client.GetIndex()) + 1,
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			DidFetchPeers:        client.DidFetchPeers(),
@@ -311,7 +323,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		}
 
 		pageData.Clients = append(pageData.Clients, resClient)
-		pageData.Nodes[peerID] = resNode
+		pageData.Nodes = append(pageData.Nodes, resNode)
 	}
 	pageData.ClientCount = uint64(len(pageData.Clients))
 
@@ -448,20 +460,44 @@ func convertEthConfigFork(fork *execrpc.EthConfigFork) *models.EthConfigObject {
 	obj.ChainId = fork.ChainID
 	obj.ForkId = fork.ForkID
 
-	// Convert string maps to interface{} maps for model compatibility
 	obj.BlobSchedule.Max = fork.BlobSchedule.Max
 	obj.BlobSchedule.Target = fork.BlobSchedule.Target
 	obj.BlobSchedule.BaseFeeUpdateFraction = fork.BlobSchedule.BaseFeeUpdateFraction
 
-	obj.Precompiles = make(map[string]string)
+	obj.Precompiles = make([]*models.EthConfigKeyValue, 0, len(fork.Precompiles))
 	for key, value := range fork.Precompiles {
-		obj.Precompiles[key] = value.String()
+		obj.Precompiles = append(obj.Precompiles, &models.EthConfigKeyValue{Key: key, Value: value.String()})
 	}
+	sort.Slice(obj.Precompiles, func(i, j int) bool {
+		return obj.Precompiles[i].Key < obj.Precompiles[j].Key
+	})
 
-	obj.SystemContracts = make(map[string]string)
+	obj.SystemContracts = make([]*models.EthConfigKeyValue, 0, len(fork.SystemContracts))
 	for key, value := range fork.SystemContracts {
-		obj.SystemContracts[key] = value.String()
+		obj.SystemContracts = append(obj.SystemContracts, &models.EthConfigKeyValue{Key: key, Value: value.String()})
 	}
+	sort.Slice(obj.SystemContracts, func(i, j int) bool {
+		return obj.SystemContracts[i].Key < obj.SystemContracts[j].Key
+	})
 
 	return obj
+}
+
+// buildPeerProtocols converts the loosely typed sub-protocol metadata map from
+// the execution client into an SSZ-compatible list. Each protocol value is
+// JSON-encoded into a string so the page model carries no maps or interfaces.
+func buildPeerProtocols(protocols map[string]interface{}) []*models.ClientELPageDataNodeProtocol {
+	result := make([]*models.ClientELPageDataNodeProtocol, 0, len(protocols))
+	for name, value := range protocols {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"protocol": name}).Warn("failed to encode peer protocol metadata. ", err)
+			continue
+		}
+		result = append(result, &models.ClientELPageDataNodeProtocol{Name: name, Value: string(encoded)})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+	return result
 }

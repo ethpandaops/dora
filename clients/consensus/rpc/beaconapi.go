@@ -295,11 +295,12 @@ func (bc *BeaconClient) GetConfigSpecs(ctx context.Context) (map[string]interfac
 		return nil, fmt.Errorf("error retrieving specs: %v", err)
 	}
 
-	if specs["data"] == nil {
-		return nil, fmt.Errorf("specs data is nil")
+	dataMap, ok := specs["data"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("specs data is not an object (got %T)", specs["data"])
 	}
 
-	parsedSpecs := utils.ParseSpecMap(specs["data"].(map[string]interface{}))
+	parsedSpecs := utils.ParseSpecMap(dataMap)
 
 	return parsedSpecs, nil
 }
@@ -416,6 +417,13 @@ func (bc *BeaconClient) GetExecutionPayloadByBlockroot(ctx context.Context, bloc
 		Block: fmt.Sprintf("0x%x", blockroot),
 	})
 	if err != nil {
+		// A 404 means the block has no execution payload envelope (e.g. an empty
+		// slot or a block whose payload was never revealed). This is a valid state
+		// in ePBS, so report it as a missing payload rather than a hard error.
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
+
 		return nil, err
 	}
 

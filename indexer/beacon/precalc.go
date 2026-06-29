@@ -15,9 +15,18 @@ func (indexer *Indexer) precalcNextEpochStats(epoch phase0.Epoch) error {
 
 	dependentBlock := canonicalHead
 
+	var dependentExecutionHash phase0.Hash32
+	if blockIndex := dependentBlock.GetBlockIndex(indexer.ctx); blockIndex != nil {
+		dependentExecutionHash = blockIndex.ExecutionHash
+	}
+
 	for {
 		if chainState.EpochOfSlot(dependentBlock.Slot) < epoch {
 			break
+		}
+
+		if blockIndex := dependentBlock.GetBlockIndex(indexer.ctx); blockIndex != nil {
+			dependentExecutionHash = blockIndex.ExecutionParentHash
 		}
 
 		parentRoot := dependentBlock.GetParentRoot()
@@ -45,7 +54,7 @@ func (indexer *Indexer) precalcNextEpochStats(epoch phase0.Epoch) error {
 			indexer.logger.Warnf("failed precomputing epoch %v stats: parent epoch dependent block not found for head block %v", epoch, dependentBlock.Root.String())
 		} else if parentEpochStats := indexer.epochCache.getEpochStats(epoch-1, parentDependentBlock.Root); parentEpochStats == nil {
 			indexer.logger.Warnf("failed precomputing epoch %v stats: parent epoch stats (%v) not found", epoch, parentDependentBlock.Root.String())
-		} else if err := epochStats.precomputeFromParentState(indexer, parentEpochStats); err != nil {
+		} else if err := epochStats.precomputeFromParentState(indexer, parentEpochStats, dependentExecutionHash); err != nil {
 			indexer.logger.Warnf("failed precomputing epoch %v stats: %v", epoch, err)
 		}
 	}

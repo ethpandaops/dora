@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethpandaops/dora/cache"
@@ -142,9 +143,8 @@ func (fc *FrontendCacheService) ProcessCachedPage(pageKey string, caching bool, 
 
 func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pageData interface{}, buildFn PageDataHandlerFn, pageCall *FrontendCacheProcessingPage) (interface{}, error) {
 	// process page call with timeout
-	returnChan := make(chan interface{})
-	errorChan := make(chan error)
-	isTimedOut := false
+	returnChan := make(chan any, 1)
+	errorChan := make(chan error, 1)
 
 	callCtx, callCtxCancel := context.WithCancel(context.Background())
 	defer callCtxCancel()
@@ -155,20 +155,23 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 	callIdx := fc.pageCallCounter
 	fc.pageCallCounterMutex.Unlock()
 
-	callGoId := uint64(0)
+	var callGoId atomic.Uint64
 
 	go func(callIdx uint64) {
 		defer func() {
 			if err := recover(); err != nil {
-				errorChan <- &FrontendCachePageError{
+				select {
+				case errorChan <- &FrontendCachePageError{
 					name:  "page panic",
 					err:   fmt.Errorf("page call %v panic: %v", callIdx, err),
 					stack: string(debug.Stack()),
+				}:
+				default:
 				}
 			}
 		}()
 
-		callGoId = routine.Goid()
+		callGoId.Store(routine.Goid())
 
 		// acquire global concurrency semaphore if configured (non-blocking)
 		if fc.concurrencySem != nil {
@@ -176,7 +179,10 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 			case fc.concurrencySem <- struct{}{}:
 				defer func() { <-fc.concurrencySem }()
 			default:
-				errorChan <- ErrTooManyPageRequests
+				select {
+				case errorChan <- ErrTooManyPageRequests:
+				default:
+				}
 				return
 			}
 		}
@@ -184,8 +190,8 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		// acquire per-page-type concurrency semaphore if configured (non-blocking)
 		if fc.pageTypeSemLimit > 0 {
 			pageType := pageKey
-			if idx := strings.IndexByte(pageKey, ':'); idx >= 0 {
-				pageType = pageKey[:idx]
+			if before, _, ok := strings.Cut(pageKey, ":"); ok {
+				pageType = before
 			}
 
 			typeSem := fc.getPageTypeSemaphore(pageType)
@@ -193,7 +199,10 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 			case typeSem <- struct{}{}:
 				defer func() { <-typeSem }()
 			default:
-				errorChan <- ErrTooManyPageRequests
+				select {
+				case errorChan <- ErrTooManyPageRequests:
+				default:
+				}
 				return
 			}
 		}
@@ -201,7 +210,9 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		// check cache
 		if fc.cachingEnabled && caching && fc.getFrontendCache(pageKey, pageData) == nil {
 			logrus.Debugf("page served from cache: %v", pageKey)
-			if !isTimedOut {
+			select {
+			case <-callCtx.Done():
+			default:
 				returnChan <- pageData
 			}
 			return
@@ -210,13 +221,19 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		// process page call
 		pageData = buildFn(pageCall)
 
-		if isTimedOut {
+		select {
+		case <-callCtx.Done():
 			return
+		default:
 		}
+
 		if fc.cachingEnabled && caching && pageCall.CacheTimeout >= 0 {
 			fc.setFrontendCache(pageKey, pageData, pageCall.CacheTimeout)
 		}
-		if !isTimedOut {
+
+		select {
+		case <-callCtx.Done():
+		default:
 			returnChan <- pageData
 		}
 	}(callIdx)
@@ -232,12 +249,12 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 	case returnError := <-errorChan:
 		return nil, returnError
 	case <-time.After(callTimeout):
-		isTimedOut = true
 		callCtxCancel()
+		goid := callGoId.Load()
 		return nil, &FrontendCachePageError{
 			name:  "page timeout",
 			err:   fmt.Errorf("page call %v timeout", callIdx),
-			stack: fc.extractPageCallStack(callGoId),
+			stack: fc.extractPageCallStack(goid),
 		}
 	}
 }
@@ -262,6 +279,17 @@ func (fc *FrontendCacheService) getFrontendCache(pageKey string, returnValue int
 
 func (fc *FrontendCacheService) setFrontendCache(pageKey string, value interface{}, timeout time.Duration) error {
 	return fc.tieredCache.Set(pageKey, value, timeout)
+}
+
+// RemoveCacheByPrefix evicts every cached page whose key starts with pageKeyPrefix, so the
+// next request rebuilds them from fresh data. This is used to actively invalidate all
+// variants of a page (e.g. every sort order) after the underlying data has been
+// force-refreshed, instead of waiting for each page's cache timeout to expire.
+func (fc *FrontendCacheService) RemoveCacheByPrefix(pageKeyPrefix string) error {
+	if !fc.cachingEnabled {
+		return nil
+	}
+	return fc.tieredCache.DeleteByPrefix(pageKeyPrefix)
 }
 
 func (fc *FrontendCacheService) completePageLoad(pageKey string, processingPage *FrontendCacheProcessingPage) {

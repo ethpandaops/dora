@@ -10,8 +10,10 @@ import (
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/sshtunnel"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/beacon/duties"
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
@@ -34,6 +36,8 @@ func init() {
 	blockdbSyncCmd.Flags().Uint64P("end", "e", 0, "End epoch")
 	blockdbSyncCmd.Flags().String("client", "", "Only use this specific client from config")
 	blockdbSyncCmd.Flags().IntP("concurrency", "j", 1, "Number of concurrent slot processors")
+	blockdbSyncCmd.Flags().Bool("no-duties", false, "Skip computing and storing per-epoch duties")
+	blockdbSyncCmd.Flags().Bool("duties-only", false, "Only compute and store per-epoch duties (skip block bodies)")
 	blockdbSyncCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
 
 	blockdbSyncCmd.MarkFlagRequired("config")
@@ -45,6 +49,8 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 	endEpoch, _ := cmd.Flags().GetUint64("end")
 	clientName, _ := cmd.Flags().GetString("client")
 	concurrency, _ := cmd.Flags().GetInt("concurrency")
+	noDuties, _ := cmd.Flags().GetBool("no-duties")
+	dutiesOnly, _ := cmd.Flags().GetBool("duties-only")
 	verbose, _ := cmd.Flags().GetBool("verbose")
 
 	if endEpoch < startEpoch {
@@ -53,6 +59,10 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 
 	if concurrency < 1 {
 		return fmt.Errorf("concurrency must be at least 1")
+	}
+
+	if noDuties && dutiesOnly {
+		return fmt.Errorf("--no-duties and --duties-only cannot both be set")
 	}
 
 	cfg := &types.Config{}
@@ -72,7 +82,7 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 	// Initialize blockdb
 	switch cfg.BlockDb.Engine {
 	case "pebble":
-		err := blockdb.InitWithPebble(cfg.BlockDb.Pebble)
+		err := blockdb.InitWithPebble(cfg.BlockDb.Pebble, logger)
 		if err != nil {
 			logger.Fatalf("Failed initializing pebble blockdb: %v", err)
 		}
@@ -168,6 +178,27 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 		break
 	}
 
+	dutiesSupported := blockdb.GlobalBlockDb.SupportsDuties()
+	if dutiesOnly && !dutiesSupported {
+		return fmt.Errorf("--duties-only requested but the configured blockdb engine does not support duties")
+	}
+	syncDuties := !noDuties && dutiesSupported
+
+	// Duties-only mode: compute and store each epoch's duties without touching
+	// block bodies, as one continuous per-epoch progress.
+	if dutiesOnly {
+		logger.Infof("Storing duties for epochs %d to %d", startEpoch, endEpoch)
+		for epoch := startEpoch; epoch <= endEpoch; epoch++ {
+			if err := syncEpochDuties(ctx, pool, phase0.Epoch(epoch)); err != nil {
+				logger.Warnf("epoch %d duties: %v", epoch, err)
+			} else {
+				logger.Infof("Epoch %d: duties stored", epoch)
+			}
+		}
+		logger.Info("Duties sync completed")
+		return nil
+	}
+
 	logger.Infof("Starting sync from epoch %d to %d (slots %d to %d)", startEpoch, endEpoch, startSlot, endSlot-1)
 
 	// Create channels for work distribution and synchronization
@@ -208,8 +239,15 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 
 			stats.processed[result.status]++
 			stats.time += result.time
-			// Print epoch summary when all slots in epoch are processed
+			// When all slots of an epoch are processed, store the epoch's duties
+			// inline (computed locally from the boundary state) so block and duty
+			// syncing share one continuous progress.
 			if (slot+1)%slotsPerEpoch == 0 || slot == endSlot-1 {
+				if syncDuties {
+					if err := syncEpochDuties(ctx, pool, phase0.Epoch(epoch)); err != nil {
+						logger.Warnf("epoch %d duties: %v", epoch, err)
+					}
+				}
 				stats.printSummary(logger, epoch)
 				delete(epochStats, epoch) // Free memory
 			}
@@ -225,6 +263,19 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 
 	// Wait for completion
 	<-done
+
+	// Compute and store per-epoch duties (attester committees + PTC) locally
+	// from the beacon state for each synced epoch.
+	if !noDuties && blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsDuties() {
+		logger.Infof("Computing duties for epochs %d to %d", startEpoch, endEpoch)
+		for epoch := startEpoch; epoch <= endEpoch; epoch++ {
+			if err := syncEpochDuties(ctx, pool, phase0.Epoch(epoch)); err != nil {
+				logger.Warnf("epoch %d duties: %v", epoch, err)
+				continue
+			}
+			logger.Debugf("Epoch %d: duties stored", epoch)
+		}
+	}
 
 	logger.Info("Sync completed")
 	return nil
@@ -295,15 +346,19 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 				return nil, fmt.Errorf("failed to get block execution payload for slot %d: %v", slot, err)
 			}
 
-			payloadVersion, payloadBytes, err = beacon.MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz, blockPayload, true)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal block execution payload for slot %d: %v", slot, err)
-			}
-
-			if msg := blockPayload.Message; msg != nil && msg.Payload != nil {
-				balVersion, balBytes, err = beacon.MarshalBlockAccessList(msg.Payload.BlockAccessList, true)
+			// blockPayload is nil when the block has no execution payload envelope
+			// (empty slot or unrevealed payload) - leave the payload fields empty.
+			if blockPayload != nil {
+				payloadVersion, payloadBytes, err = beacon.MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz, blockPayload, true)
 				if err != nil {
-					return nil, fmt.Errorf("failed to marshal block access list for slot %d: %v", slot, err)
+					return nil, fmt.Errorf("failed to marshal block execution payload for slot %d: %v", slot, err)
+				}
+
+				if msg := blockPayload.Message; msg != nil && msg.Payload != nil {
+					balVersion, balBytes, err = beacon.MarshalBlockAccessList(msg.Payload.BlockAccessList, true)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal block access list for slot %d: %v", slot, err)
+					}
 				}
 			}
 		}
@@ -330,4 +385,118 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 		log.Debugf("Slot %d: present (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
 		return slotResult{slot: slot, status: "present", time: time.Since(t1)}
 	}
+}
+
+// computeEpochDuties derives the resolved attester committees and PTC duty
+// mappings for an epoch from a beacon state. The state must be at or just after
+// the epoch boundary so its RANDAO mixes and validator registry reflect the epoch.
+func computeEpochDuties(chainState *consensus.ChainState, epoch phase0.Epoch, state *all.BeaconState) (*btypes.EpochDuties, error) {
+	specs := chainState.GetSpecs()
+
+	activeIndices := make([]phase0.ValidatorIndex, 0, len(state.Validators))
+	effectiveBalances := make([]phase0.Gwei, 0, len(state.Validators))
+	for i, v := range state.Validators {
+		if v.ActivationEpoch <= epoch && epoch < v.ExitEpoch {
+			activeIndices = append(activeIndices, phase0.ValidatorIndex(i))
+			effectiveBalances = append(effectiveBalances, v.EffectiveBalance)
+		}
+	}
+	if len(activeIndices) == 0 {
+		return nil, fmt.Errorf("no active validators in epoch %d", epoch)
+	}
+
+	beaconState := &duties.BeaconState{
+		GetRandaoMixes:      func() []phase0.Root { return state.RANDAOMixes },
+		GetActiveCount:      func() uint64 { return uint64(len(activeIndices)) },
+		GetEffectiveBalance: func(index duties.ActiveIndiceIndex) phase0.Gwei { return effectiveBalances[index] },
+	}
+
+	attesterDuties, err := duties.GetAttesterDuties(specs, beaconState, epoch)
+	if err != nil {
+		return nil, fmt.Errorf("compute attester duties: %w", err)
+	}
+
+	resolve := func(indices []duties.ActiveIndiceIndex) []uint64 {
+		out := make([]uint64, len(indices))
+		for k, ai := range indices {
+			if int(ai) < len(activeIndices) {
+				out[k] = uint64(activeIndices[ai])
+			}
+		}
+		return out
+	}
+
+	slotsPerEpoch := specs.SlotsPerEpoch
+	committees := make([][][]uint64, slotsPerEpoch)
+	for slotIndex := range slotsPerEpoch {
+		src := attesterDuties[slotIndex]
+		slotCommittees := make([][]uint64, len(src))
+		for committeeIndex, committee := range src {
+			slotCommittees[committeeIndex] = resolve(committee)
+		}
+		committees[slotIndex] = slotCommittees
+	}
+
+	ptcSize := specs.PtcSize
+	var ptc [][]uint64
+	if chainState.IsEip7732Enabled(epoch) && ptcSize > 0 {
+		ptc = make([][]uint64, slotsPerEpoch)
+		for slotIndex := range slotsPerEpoch {
+			slot := chainState.EpochToSlot(epoch) + phase0.Slot(slotIndex)
+			ptcMembers, perr := duties.GetPtcDuties(specs, beaconState, attesterDuties[slotIndex], slot)
+			if perr != nil {
+				return nil, fmt.Errorf("compute ptc duties: %w", perr)
+			}
+			ptc[slotIndex] = resolve(ptcMembers)
+		}
+	} else {
+		ptcSize = 0
+	}
+
+	return &btypes.EpochDuties{
+		FirstSlot:         uint64(epoch) * slotsPerEpoch,
+		Epoch:             uint64(epoch),
+		ValidatorCount:    uint64(len(activeIndices)),
+		SlotsPerEpoch:     slotsPerEpoch,
+		CommitteesPerSlot: duties.SlotCommitteeCount(specs, uint64(len(activeIndices))),
+		PtcSize:           ptcSize,
+		Committees:        committees,
+		Ptc:               ptc,
+	}, nil
+}
+
+// syncEpochDuties fetches the epoch boundary state, computes the duties locally
+// and stores them in the blockdb. Best-effort: returns an error for logging but
+// does not abort the overall sync.
+func syncEpochDuties(ctx context.Context, pool *consensus.Pool, epoch phase0.Epoch) error {
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsDuties() {
+		return nil
+	}
+
+	client := pool.GetReadyEndpoint(consensus.AnyClient)
+	if client == nil {
+		return fmt.Errorf("no ready client for epoch %d duties", epoch)
+	}
+
+	chainState := pool.GetChainState()
+	boundarySlot := chainState.EpochToSlot(epoch)
+
+	state, err := client.GetRPCClient().GetState(ctx, fmt.Sprintf("%d", boundarySlot))
+	if err != nil {
+		return fmt.Errorf("fetch state for epoch %d: %w", epoch, err)
+	}
+	if state == nil {
+		return fmt.Errorf("no state for epoch %d", epoch)
+	}
+
+	epochDuties, err := computeEpochDuties(chainState, epoch, state)
+	if err != nil {
+		return fmt.Errorf("compute duties for epoch %d: %w", epoch, err)
+	}
+
+	if _, err := blockdb.GlobalBlockDb.AddEpochDuties(ctx, epochDuties); err != nil {
+		return fmt.Errorf("store duties for epoch %d: %w", epoch, err)
+	}
+
+	return nil
 }

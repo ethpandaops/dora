@@ -425,6 +425,16 @@ const docTemplate = `{
                         "description": "Filter by signature validity (0=invalid only, 1=valid only, 2=all)",
                         "name": "with_valid",
                         "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Filter by withdrawal credential type prefix byte (0-3). Repeat the parameter to include multiple types, e.g. cred_type=1\u0026cred_type=2.",
+                        "name": "cred_type",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -711,6 +721,60 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/epoch/{epoch}/health": {
+            "get": {
+                "description": "Returns the vote, proposal and payload participation rates for an epoch. The chain is only fully healthy when all three reach 100%. Post-ePBS (EIP-7732) payloads are revealed separately from beacon blocks and may be missing.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Epoch"
+                ],
+                "summary": "Get epoch health by number, latest, finalized",
+                "operationId": "getEpochHealth",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Epoch number, the string latest or the string finalized",
+                        "name": "epoch",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/api.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.APIEpochHealthResponseV1"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Failure",
+                        "schema": {
+                            "$ref": "#/definitions/api.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/epochs": {
             "get": {
                 "description": "Returns a list of epochs with detailed information and statistics",
@@ -930,7 +994,7 @@ const docTemplate = `{
         },
         "/v1/network/overview": {
             "get": {
-                "description": "Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, and fork information",
+                "description": "Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, fork information and a health snapshot with finality status, validator counts and provenance-aware participation data",
                 "consumes": [
                     "application/json"
                 ],
@@ -950,12 +1014,9 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Server Error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -3002,6 +3063,9 @@ const docTemplate = `{
                 "index": {
                     "type": "integer"
                 },
+                "postponed": {
+                    "type": "boolean"
+                },
                 "public_key": {
                     "type": "string"
                 },
@@ -3201,6 +3265,47 @@ const docTemplate = `{
                 }
             }
         },
+        "api.APIEpochHealthResponseV1": {
+            "type": "object",
+            "properties": {
+                "eligible_ether": {
+                    "type": "integer"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "finalized": {
+                    "type": "boolean"
+                },
+                "healthy": {
+                    "type": "boolean"
+                },
+                "payload_participation": {
+                    "type": "number"
+                },
+                "proposal_participation": {
+                    "type": "number"
+                },
+                "proposed_blocks": {
+                    "type": "integer"
+                },
+                "proposed_payloads": {
+                    "type": "integer"
+                },
+                "slots": {
+                    "type": "integer"
+                },
+                "ts": {
+                    "type": "integer"
+                },
+                "vote_participation": {
+                    "type": "number"
+                },
+                "voted_ether": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.APIEpochInfo": {
             "type": "object",
             "properties": {
@@ -3246,10 +3351,16 @@ const docTemplate = `{
                 "missed_blocks": {
                     "type": "integer"
                 },
+                "missed_payloads": {
+                    "type": "integer"
+                },
                 "orphaned_blocks": {
                     "type": "integer"
                 },
                 "proposed_blocks": {
+                    "type": "integer"
+                },
+                "proposed_payloads": {
                     "type": "integer"
                 },
                 "proposer_slashings": {
@@ -3323,10 +3434,16 @@ const docTemplate = `{
                 "missedblocks": {
                     "type": "integer"
                 },
+                "missedpayloads": {
+                    "type": "integer"
+                },
                 "orphanedblocks": {
                     "type": "integer"
                 },
                 "proposedblocks": {
+                    "type": "integer"
+                },
+                "proposedpayloads": {
                     "type": "integer"
                 },
                 "proposerslashingscount": {
@@ -3682,11 +3799,38 @@ const docTemplate = `{
         "api.APINetworkOverviewData": {
             "type": "object",
             "properties": {
+                "active_validator_count": {
+                    "type": "integer"
+                },
                 "checkpoints": {
                     "$ref": "#/definitions/api.APICheckpoints"
                 },
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "current_slot": {
+                    "type": "integer"
+                },
                 "current_state": {
                     "$ref": "#/definitions/api.APICurrentState"
+                },
+                "data_quality_warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "epochs_since_finality": {
+                    "type": "integer"
+                },
+                "exited_validator_count": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "finalizing": {
+                    "type": "boolean"
                 },
                 "forks": {
                     "type": "array",
@@ -3697,14 +3841,37 @@ const docTemplate = `{
                 "is_synced": {
                     "type": "boolean"
                 },
+                "metadata": {
+                    "$ref": "#/definitions/api.APINetworkOverviewMetadata"
+                },
                 "network_info": {
                     "$ref": "#/definitions/api.APINetworkInfo"
+                },
+                "participation": {
+                    "$ref": "#/definitions/api.APINetworkParticipation"
+                },
+                "pending_validator_count": {
+                    "type": "integer"
                 },
                 "queue_stats": {
                     "$ref": "#/definitions/api.APIQueueStats"
                 },
+                "raw_aggregates": {
+                    "$ref": "#/definitions/api.APINetworkRawAggregates"
+                },
+                "total_validator_count": {
+                    "type": "integer"
+                },
                 "validator_stats": {
                     "$ref": "#/definitions/api.APIValidatorStats"
+                }
+            }
+        },
+        "api.APINetworkOverviewMetadata": {
+            "type": "object",
+            "properties": {
+                "slots_per_epoch": {
+                    "type": "integer"
                 }
             }
         },
@@ -3716,6 +3883,55 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "api.APINetworkParticipation": {
+            "type": "object",
+            "properties": {
+                "complete": {
+                    "type": "boolean"
+                },
+                "expected_slots": {
+                    "type": "integer"
+                },
+                "indexed_slots": {
+                    "type": "integer"
+                },
+                "rate": {
+                    "type": "number"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "warning": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkRawAggregates": {
+            "type": "object",
+            "properties": {
+                "attestations_indexed": {
+                    "type": "integer"
+                },
+                "complete": {
+                    "type": "boolean"
+                },
+                "expected_slots": {
+                    "type": "integer"
+                },
+                "globalparticipationrate": {
+                    "type": "number"
+                },
+                "indexed_slots": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "vote_participation": {
+                    "type": "number"
                 }
             }
         },

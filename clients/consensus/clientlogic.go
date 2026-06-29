@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"runtime/debug"
 	"time"
 
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
@@ -13,17 +12,13 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
+	"github.com/ethpandaops/dora/utils"
 )
 
 func (client *Client) runClientLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			client.logger.WithError(err.(error)).Errorf("uncaught panic in clients.consensus.Client.runClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go client.runClientLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("clients.consensus.Client.runClientLoop", func() {
+		client.runClientLoop()
+	})
 
 	for {
 		err := client.checkClient()

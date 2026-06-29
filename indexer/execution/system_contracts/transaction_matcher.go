@@ -97,6 +97,15 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 		}
 	}
 
+	// Only match dequeue blocks strictly below the target height. In Gloas the requests
+	// dequeued in block D are processed by the CL block built on top of it (whose own payload
+	// is block D+1), so the operation row for dequeue block D only exists once block D+1 has
+	// been indexed. Holding back the boundary block guarantees the following block is available;
+	// it is matched on the next run once the target height has advanced past it.
+	if matchTargetHeight > 0 {
+		matchTargetHeight--
+	}
+
 	t1 := time.Now()
 	persistedHeight := ds.state.MatchHeight
 

@@ -122,7 +122,13 @@
                 {{ range $i, $deposit := .Deposits }}
                   <tr>
                     <td>{{ $deposit.QueuePosition }}</td>
+                    {{ if $deposit.Postponed }}
+                    <td>
+                      {{ if not $deposit.EstimatedTime.IsZero }}<span data-timer="{{ $deposit.EstimatedTime.Unix }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.EstimatedTime }}">{{ formatRecentTimeShort $deposit.EstimatedTime }}</span> {{ end }}<span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit is for an exiting validator. It can only be processed once the validator becomes withdrawable; the estimate is that epoch, after which it still has to run through the queue to be applied.">postponed</span>
+                    </td>
+                    {{ else }}
                     <td data-timer="{{ $deposit.EstimatedTime.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.EstimatedTime }}">{{ formatRecentTimeShort $deposit.EstimatedTime }}</span></td>
+                    {{ end }}
                     <td>
                       {{ if $deposit.HasIndex }}
                         <span class="badge rounded-pill text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit was triggered via a validator deposit transaction">{{ $deposit.Index }}</span>
@@ -138,7 +144,7 @@
                             {{ if $deposit.IsBuilder }}
                               {{ formatBuilderWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
                             {{ else }}
-                              {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                              {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}{{ if $deposit.ProjectedIndex }} <i class="fas fa-exclamation-circle text-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="This deposit has not been processed yet — the validator index is projected (estimated) and not yet reserved on-chain."></i>{{ end }}
                             {{ end }}
                           {{ else }}
                             0x{{ printf "%x" $deposit.PublicKey }}

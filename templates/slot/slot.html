@@ -117,19 +117,10 @@
             <a class="nav-link" id="blobSidecars-tab" data-bs-toggle="tab" href="#blobSidecars" role="tab" aria-controls="blobSidecars" aria-selected="false">Blob Sidecars <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
           </li>
         {{ end }}
-        {{ if gt .Block.DepositRequestsCount 0 }}
+        {{ $executionRequestsCount := addUI64 (addUI64 (addUI64 (addUI64 .Block.DepositRequestsCount .Block.WithdrawalRequestsCount) .Block.ConsolidationRequestsCount) .Block.BuilderDepositRequestsCount) .Block.BuilderExitRequestsCount }}
+        {{ if gt $executionRequestsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="depositRequests-tab" data-bs-toggle="tab" href="#depositRequests" role="tab" aria-controls="depositRequests" aria-selected="false">Deposit Requests <span class="badge bg-secondary text-white">{{ .Block.DepositRequestsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.WithdrawalRequestsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="withdrawalRequests-tab" data-bs-toggle="tab" href="#withdrawalRequests" role="tab" aria-controls="withdrawalRequests" aria-selected="false">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></a>
-          </li>
-        {{ end }}
-        {{ if gt .Block.ConsolidationRequestsCount 0 }}
-          <li class="nav-item">
-            <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
+            <a class="nav-link" id="executionRequests-tab" data-bs-toggle="tab" href="#executionRequests" role="tab" aria-controls="executionRequests" aria-selected="false">Execution Requests <span class="badge bg-secondary text-white">{{ $executionRequestsCount }}</span></a>
           </li>
         {{ end }}
         {{ if and .Block.ExecutionData .Block.ExecutionData.BlockAccessList }}
@@ -273,40 +264,47 @@
             {{ template "block_blobSidecar" . }}
           </div>
         {{ end }}
-        {{ if gt .Block.DepositRequestsCount 0 }}
-          <div class="tab-pane fade show active" id="depositRequests" role="tabpanel" aria-labelledby="depositRequests-tab">
+        {{ $executionRequestsCount := addUI64 (addUI64 (addUI64 (addUI64 .Block.DepositRequestsCount .Block.WithdrawalRequestsCount) .Block.ConsolidationRequestsCount) .Block.BuilderDepositRequestsCount) .Block.BuilderExitRequestsCount }}
+        {{ if gt $executionRequestsCount 0 }}
+          <div class="tab-pane fade show active" id="executionRequests" role="tabpanel" aria-labelledby="executionRequests-tab">
             <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+              <div class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositRequestsCount }} Deposit Requests</b></h3>
+                  <h3 class="h5 col-md-12 text-center mb-0"><b>Showing {{ $executionRequestsCount }} Execution Requests{{ if .Block.RequestsFromParentPayload }} from the Parent Payload{{ end }}</b></h3>
+                  {{ if .Block.RequestsFromParentPayload }}<p class="col-md-12 text-center text-muted mb-0"><small>These requests were included in the parent block's payload (EIP-7732) and are processed in this block.</small></p>{{ end }}
                 </div>
               </div>
-            </div>
-            {{ template "block_deposit_requests" . }}
-          </div>
-        {{ end }}
-        {{ if gt .Block.WithdrawalRequestsCount 0 }}
-          <div class="tab-pane fade show active" id="withdrawalRequests" role="tabpanel" aria-labelledby="withdrawalRequests-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.WithdrawalRequestsCount }} Withdrawal Requests</b></h3>
+              {{ if gt .Block.DepositRequestsCount 0 }}
+                <div class="exec-request-section border-top">
+                  <h4 class="h6 px-3 pt-2 mb-1">Deposit Requests <span class="badge bg-secondary text-white">{{ .Block.DepositRequestsCount }}</span></h4>
+                  {{ template "block_deposit_requests" . }}
                 </div>
-              </div>
-            </div>
-            {{ template "block_withdrawal_requests" . }}
-          </div>
-        {{ end }}
-        {{ if gt .Block.ConsolidationRequestsCount 0 }}
-          <div class="tab-pane fade show active" id="consolidationRequests" role="tabpanel" aria-labelledby="consolidationRequests-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ConsolidationRequestsCount }} Consolidation Requests </b></h3>
+              {{ end }}
+              {{ if gt .Block.WithdrawalRequestsCount 0 }}
+                <div class="exec-request-section border-top">
+                  <h4 class="h6 px-3 pt-2 mb-1">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></h4>
+                  {{ template "block_withdrawal_requests" . }}
                 </div>
-              </div>
+              {{ end }}
+              {{ if gt .Block.ConsolidationRequestsCount 0 }}
+                <div class="exec-request-section border-top">
+                  <h4 class="h6 px-3 pt-2 mb-1">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></h4>
+                  {{ template "block_consolidation_requests" . }}
+                </div>
+              {{ end }}
+              {{ if gt .Block.BuilderDepositRequestsCount 0 }}
+                <div class="exec-request-section border-top">
+                  <h4 class="h6 px-3 pt-2 mb-1">Builder Deposits <span class="badge bg-secondary text-white">{{ .Block.BuilderDepositRequestsCount }}</span></h4>
+                  {{ template "block_builder_deposit_requests" . }}
+                </div>
+              {{ end }}
+              {{ if gt .Block.BuilderExitRequestsCount 0 }}
+                <div class="exec-request-section border-top">
+                  <h4 class="h6 px-3 pt-2 mb-1">Builder Exits <span class="badge bg-secondary text-white">{{ .Block.BuilderExitRequestsCount }}</span></h4>
+                  {{ template "block_builder_exit_requests" . }}
+                </div>
+              {{ end }}
             </div>
-            {{ template "block_consolidation_requests" . }}
           </div>
         {{ end }}
         {{ if and .Block.ExecutionData .Block.ExecutionData.BlockAccessList }}
@@ -673,6 +671,16 @@
   }
   .eip7918-info-btn:hover {
     opacity: 0.8;
+  }
+  .exec-request-section {
+    padding-bottom: 0.25rem;
+  }
+  .exec-request-section > h4 {
+    color: var(--bs-secondary-color, #6c757d);
+    font-weight: 600;
+  }
+  .exec-request-section .table {
+    margin-bottom: 0;
   }
 </style>
 {{ end }}

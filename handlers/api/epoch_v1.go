@@ -26,6 +26,8 @@ type APIEpochResponseV1 struct {
 	MissedBlocks            uint64 `json:"missedblocks"`
 	OrphanedBlocks          uint64 `json:"orphanedblocks"`
 	ProposedBlocks          uint64 `json:"proposedblocks"`
+	ProposedPayloads        uint64 `json:"proposedpayloads"`
+	MissedPayloads          uint64 `json:"missedpayloads"`
 	ProposerSlashingsCount  uint64 `json:"proposerslashingscount"`
 	ScheduledBlocks         uint64 `json:"scheduledblocks"`
 	TotalValidatorBalance   uint64 `json:"totalvalidatorbalance"`
@@ -96,7 +98,9 @@ func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 		data.AttesterSlashingsCount = dbEpoch.AttesterSlashingCount
 		data.EligibleEther = dbEpoch.Eligible
 		data.VotedEther = dbEpoch.VotedTotal
-		data.GlobalParticipationRate = uint64(dbEpoch.VotedTarget * 100 / dbEpoch.Eligible)
+		if dbEpoch.Eligible > 0 {
+			data.GlobalParticipationRate = uint64(dbEpoch.VotedTarget * 100 / dbEpoch.Eligible)
+		}
 		data.ValidatorsCount = dbEpoch.ValidatorCount
 		data.TotalValidatorBalance = dbEpoch.ValidatorBalance
 		if dbEpoch.ValidatorCount > 0 {
@@ -116,6 +120,18 @@ func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 		data.BlocksCount = uint64(dbEpoch.BlockCount + dbEpoch.OrphanedCount)
 		data.OrphanedBlocks = uint64(dbEpoch.OrphanedCount)
 		data.ProposedBlocks = uint64(dbEpoch.BlockCount)
+
+		// Pre-ePBS the execution payload is bundled inside the beacon block, so every
+		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are revealed
+		// separately and may be missing, so use the dedicated payload count.
+		proposedPayloads := uint64(dbEpoch.BlockCount)
+		if chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
+			proposedPayloads = dbEpoch.PayloadCount
+		}
+		data.ProposedPayloads = proposedPayloads
+		// MissedPayloads counts canonical blocks that were proposed but whose payload was
+		// not revealed (an ePBS-specific failure, distinct from MissedBlocks). Always 0 pre-ePBS.
+		data.MissedPayloads = uint64(dbEpoch.BlockCount) - proposedPayloads
 	}
 
 	j := json.NewEncoder(w)

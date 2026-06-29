@@ -396,6 +396,8 @@ definitions:
         type: integer
       index:
         type: integer
+      postponed:
+        type: boolean
       public_key:
         type: string
       queue_position:
@@ -526,6 +528,33 @@ definitions:
       status:
         type: string
     type: object
+  api.APIEpochHealthResponseV1:
+    properties:
+      eligible_ether:
+        type: integer
+      epoch:
+        type: integer
+      finalized:
+        type: boolean
+      healthy:
+        type: boolean
+      payload_participation:
+        type: number
+      proposal_participation:
+        type: number
+      proposed_blocks:
+        type: integer
+      proposed_payloads:
+        type: integer
+      slots:
+        type: integer
+      ts:
+        type: integer
+      vote_participation:
+        type: number
+      voted_ether:
+        type: integer
+    type: object
   api.APIEpochInfo:
     properties:
       attestations:
@@ -556,9 +585,13 @@ definitions:
         type: integer
       missed_blocks:
         type: integer
+      missed_payloads:
+        type: integer
       orphaned_blocks:
         type: integer
       proposed_blocks:
+        type: integer
+      proposed_payloads:
         type: integer
       proposer_slashings:
         type: integer
@@ -607,9 +640,13 @@ definitions:
         type: integer
       missedblocks:
         type: integer
+      missedpayloads:
+        type: integer
       orphanedblocks:
         type: integer
       proposedblocks:
+        type: integer
+      proposedpayloads:
         type: integer
       proposerslashingscount:
         type: integer
@@ -845,22 +882,55 @@ definitions:
     type: object
   api.APINetworkOverviewData:
     properties:
+      active_validator_count:
+        type: integer
       checkpoints:
         $ref: '#/definitions/api.APICheckpoints'
+      current_epoch:
+        type: integer
+      current_slot:
+        type: integer
       current_state:
         $ref: '#/definitions/api.APICurrentState'
+      data_quality_warnings:
+        items:
+          type: string
+        type: array
+      epochs_since_finality:
+        type: integer
+      exited_validator_count:
+        type: integer
+      finalized_epoch:
+        type: integer
+      finalizing:
+        type: boolean
       forks:
         items:
           $ref: '#/definitions/api.APINetworkForkInfo'
         type: array
       is_synced:
         type: boolean
+      metadata:
+        $ref: '#/definitions/api.APINetworkOverviewMetadata'
       network_info:
         $ref: '#/definitions/api.APINetworkInfo'
+      participation:
+        $ref: '#/definitions/api.APINetworkParticipation'
+      pending_validator_count:
+        type: integer
       queue_stats:
         $ref: '#/definitions/api.APIQueueStats'
+      raw_aggregates:
+        $ref: '#/definitions/api.APINetworkRawAggregates'
+      total_validator_count:
+        type: integer
       validator_stats:
         $ref: '#/definitions/api.APIValidatorStats'
+    type: object
+  api.APINetworkOverviewMetadata:
+    properties:
+      slots_per_epoch:
+        type: integer
     type: object
   api.APINetworkOverviewResponse:
     properties:
@@ -868,6 +938,38 @@ definitions:
         $ref: '#/definitions/api.APINetworkOverviewData'
       status:
         type: string
+    type: object
+  api.APINetworkParticipation:
+    properties:
+      complete:
+        type: boolean
+      expected_slots:
+        type: integer
+      indexed_slots:
+        type: integer
+      rate:
+        type: number
+      source:
+        type: string
+      warning:
+        type: string
+    type: object
+  api.APINetworkRawAggregates:
+    properties:
+      attestations_indexed:
+        type: integer
+      complete:
+        type: boolean
+      expected_slots:
+        type: integer
+      globalparticipationrate:
+        type: number
+      indexed_slots:
+        type: integer
+      source:
+        type: string
+      vote_participation:
+        type: number
     type: object
   api.APINetworkSplitInfo:
     properties:
@@ -2116,6 +2218,14 @@ paths:
         in: query
         name: with_valid
         type: integer
+      - collectionFormat: multi
+        description: Filter by withdrawal credential type prefix byte (0-3). Repeat
+          the parameter to include multiple types, e.g. cred_type=1&cred_type=2.
+        in: query
+        items:
+          type: integer
+        name: cred_type
+        type: array
       produces:
       - application/json
       responses:
@@ -2309,6 +2419,42 @@ paths:
       summary: Get epoch by number, latest, finalized
       tags:
       - Epoch
+  /v1/epoch/{epoch}/health:
+    get:
+      description: Returns the vote, proposal and payload participation rates for
+        an epoch. The chain is only fully healthy when all three reach 100%. Post-ePBS
+        (EIP-7732) payloads are revealed separately from beacon blocks and may be
+        missing.
+      operationId: getEpochHealth
+      parameters:
+      - description: Epoch number, the string latest or the string finalized
+        in: path
+        name: epoch
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.APIEpochHealthResponseV1'
+              type: object
+        "400":
+          description: Failure
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+        "500":
+          description: Server Error
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+      summary: Get epoch health by number, latest, finalized
+      tags:
+      - Epoch
   /v1/epochs:
     get:
       consumes:
@@ -2464,7 +2610,9 @@ paths:
       consumes:
       - application/json
       description: Returns comprehensive network state information including network
-        info, current state, checkpoints, validator stats, queue stats, and fork information
+        info, current state, checkpoints, validator stats, queue stats, fork information
+        and a health snapshot with finality status, validator counts and provenance-aware
+        participation data
       operationId: getNetworkOverview
       produces:
       - application/json
@@ -2474,11 +2622,9 @@ paths:
           schema:
             $ref: '#/definitions/api.APINetworkOverviewResponse'
         "500":
-          description: Internal server error
+          description: Server Error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/api.ApiResponse'
       summary: Get network overview
       tags:
       - network

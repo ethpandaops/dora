@@ -15,6 +15,9 @@ type BlocksFilteredPageData struct {
 	FilterMinBlockSize    string `json:"filter_min_block_size"`
 	FilterMaxBlockSize    string `json:"filter_max_block_size"`
 	FilterWithMevBlock    uint8  `json:"filter_mev_block"`
+	FilterWithBuilder     uint8  `json:"filter_builder_block"`
+	FilterBuilder         string `json:"filter_builder"`
+	FilterInvertBuilder   bool   `json:"filter_invert_builder"`
 	FilterMinTxCount      string `json:"filter_min_tx"`
 	FilterMaxTxCount      string `json:"filter_max_tx"`
 	FilterMinBlobCount    string `json:"filter_min_blob"`
@@ -32,10 +35,13 @@ type BlocksFilteredPageData struct {
 	DisplayGasUsage     bool   `json:"dp_gasusage"`
 	DisplayGasLimit     bool   `json:"dp_gaslimit"`
 	DisplayMevBlock     bool   `json:"dp_mevblock"`
+	DisplayBuilder      bool   `json:"dp_builder"`
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
 	DisplayElExtraData  bool   `json:"dp_elextra"`
 	DisplayFeeRecipient bool   `json:"dp_feerecipient"`
 	DisplayColCount     uint64 `json:"display_col_count"`
+
+	IsGloasActive bool `json:"is_gloas_active"`
 
 	Blocks     []*BlocksFilteredPageDataBlock `json:"blocks"`
 	BlockCount uint64                         `json:"block_count"`
@@ -67,6 +73,7 @@ type BlocksFilteredPageDataBlock struct {
 	EthBlockNumber      uint64    `json:"eth_block_number"`
 	Ts                  time.Time `json:"ts"`
 	Status              uint8     `json:"status"`
+	PayloadStatus       uint8     `json:"payload_status"`
 	EthTransactionCount uint64    `json:"eth_transaction_count"`
 	BlobCount           uint64    `json:"blob_count"`
 	ElExtraData         []byte    `json:"el_extra_data"`
@@ -77,4 +84,8 @@ type BlocksFilteredPageDataBlock struct {
 	IsMevBlock          bool      `json:"is_mev_block"`
 	MevBlockRelays      string    `json:"mev_block_relays"`
 	FeeRecipient        []byte    `json:"fee_recipient" ssz-size:"20"`
+	HasBuilder          bool      `json:"has_builder"`
+	BuilderIndex        uint64    `json:"builder_index"`
+	BuilderName         string    `json:"builder_name"`
+	BuilderURL          string    `json:"builder_url"`
 }

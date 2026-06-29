@@ -33,19 +33,22 @@ import (
 )
 
 type ChainService struct {
-	ctx                  context.Context
-	logger               logrus.FieldLogger
-	consensusPool        *consensus.Pool
-	executionPool        *execution.Pool
-	beaconIndexer        *beacon.Indexer
-	validatorNames       *ValidatorNames
-	depositIndexer       *syscontracts.DepositIndexer
-	consolidationIndexer *syscontracts.ConsolidationIndexer
-	withdrawalIndexer    *syscontracts.WithdrawalIndexer
-	mevRelayIndexer      *mevrelay.MevIndexer
-	snooperManager       *snooper.SnooperManager
-	txIndexer            *txindexer.TxIndexer
-	started              bool
+	ctx                   context.Context
+	logger                logrus.FieldLogger
+	consensusPool         *consensus.Pool
+	executionPool         *execution.Pool
+	beaconIndexer         *beacon.Indexer
+	validatorNames        *ValidatorNames
+	buildoorInventory     *BuildoorInventory
+	depositIndexer        *syscontracts.DepositIndexer
+	consolidationIndexer  *syscontracts.ConsolidationIndexer
+	withdrawalIndexer     *syscontracts.WithdrawalIndexer
+	builderDepositIndexer *syscontracts.BuilderDepositIndexer
+	builderExitIndexer    *syscontracts.BuilderExitIndexer
+	mevRelayIndexer       *mevrelay.MevIndexer
+	snooperManager        *snooper.SnooperManager
+	txIndexer             *txindexer.TxIndexer
+	started               bool
 }
 
 var GlobalBeaconService *ChainService
@@ -62,6 +65,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	beaconIndexer := beacon.NewIndexer(ctx, logger.WithField("service", "cl-indexer"), consensusPool)
 	chainState := consensusPool.GetChainState()
 	validatorNames := NewValidatorNames(ctx, beaconIndexer, chainState)
+	buildoorInventory := NewBuildoorInventory(ctx)
 	mevRelayIndexer := mevrelay.NewMevIndexer(ctx, logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 	snooperManager := snooper.NewSnooperManager(ctx, logger.WithField("service", "snooper-manager"), beaconIndexer)
 
@@ -69,14 +73,15 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	beaconIndexer.SetExecutionTimeProvider(snooper.NewExecutionTimeProvider(snooperManager.GetCache()))
 
 	GlobalBeaconService = &ChainService{
-		ctx:             ctx,
-		logger:          logger,
-		consensusPool:   consensusPool,
-		executionPool:   executionPool,
-		beaconIndexer:   beaconIndexer,
-		validatorNames:  validatorNames,
-		mevRelayIndexer: mevRelayIndexer,
-		snooperManager:  snooperManager,
+		ctx:               ctx,
+		logger:            logger,
+		consensusPool:     consensusPool,
+		executionPool:     executionPool,
+		beaconIndexer:     beaconIndexer,
+		validatorNames:    validatorNames,
+		buildoorInventory: buildoorInventory,
+		mevRelayIndexer:   mevRelayIndexer,
+		snooperManager:    snooperManager,
 	}
 }
 
@@ -254,7 +259,7 @@ func (cs *ChainService) StartService() error {
 	// initialize blockdb if configured
 	switch utils.Config.BlockDb.Engine {
 	case "pebble":
-		err := blockdb.InitWithPebble(utils.Config.BlockDb.Pebble)
+		err := blockdb.InitWithPebble(utils.Config.BlockDb.Pebble, cs.logger)
 		if err != nil {
 			return fmt.Errorf("failed initializing pebble blockdb: %v", err)
 		}
@@ -266,14 +271,50 @@ func (cs *ChainService) StartService() error {
 		}
 		cs.logger.Infof("S3 blockdb initialized at %v", utils.Config.BlockDb.S3.Bucket)
 	case "tiered":
-		err := blockdb.InitWithTiered(utils.Config.BlockDb.Tiered, cs.logger)
+		err := blockdb.InitWithTiered(utils.Config.BlockDb.Pebble, utils.Config.BlockDb.S3, cs.logger)
 		if err != nil {
 			return fmt.Errorf("failed initializing tiered blockdb: %v", err)
 		}
 		cs.logger.Infof("Tiered blockdb initialized (Pebble cache: %v, S3: %v)",
-			utils.Config.BlockDb.Tiered.Pebble.Path, utils.Config.BlockDb.Tiered.S3.Bucket)
+			utils.Config.BlockDb.Pebble.Path, utils.Config.BlockDb.S3.Bucket)
 	default:
 		cs.logger.Infof("Blockdb disabled")
+	}
+
+	// Provide the blockdb cache with a time->slot resolver so it can derive
+	// cutoff slots for age-based eviction of slot-keyed namespaces (exec/duties).
+	if blockdb.GlobalBlockDb != nil {
+		chainState := cs.consensusPool.GetChainState()
+		blockdb.GlobalBlockDb.SetTimeToSlotFn(func(t time.Time) uint64 {
+			return uint64(chainState.TimeToSlot(t))
+		})
+	}
+
+	// Select where the long-lived tx-hash index lives. "pebble" uses the
+	// engine-native index (pebble backend, or pinned in the tiered cache);
+	// "postgres" forces the relational el_txhash table; "auto"/"" uses native
+	// only for the pebble backend (authoritative store) and postgres otherwise
+	// (s3/tiered, where the local pebble is absent or a disposable cache).
+	// Note: reconstruction of a pruned tx needs its block root from the beacon
+	// `slots` table, which must be retained at least as long as DetailsRetention.
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		store := strings.ToLower(strings.TrimSpace(utils.Config.ExecutionIndexer.TxHashIndexStore))
+		useDB := false
+		switch store {
+		case "postgres", "pg", "db":
+			useDB = true
+		case "pebble":
+			if !blockdb.GlobalBlockDb.TxHashIndexNative() {
+				cs.logger.Warnf("txHashIndexStore=pebble but the %q backend has no native index; using postgres", utils.Config.BlockDb.Engine)
+				useDB = true
+			}
+		default: // auto
+			useDB = utils.Config.BlockDb.Engine != "pebble"
+		}
+		if useDB {
+			blockdb.GlobalBlockDb.SetTxHashIndex(db.NewDBTxHashIndex())
+		}
+		cs.logger.Infof("tx-hash index store: native=%v", blockdb.GlobalBlockDb.TxHashIndexNative())
 	}
 
 	// reset sync state if configured
@@ -324,6 +365,8 @@ func (cs *ChainService) StartService() error {
 		cs.validatorNames.StartUpdater()
 	}()
 
+	cs.buildoorInventory.StartUpdater()
+
 	// start chain indexer
 	cs.beaconIndexer.StartIndexer()
 
@@ -331,6 +374,8 @@ func (cs *ChainService) StartService() error {
 	cs.depositIndexer = syscontracts.NewDepositIndexer(executionIndexerCtx)
 	cs.consolidationIndexer = syscontracts.NewConsolidationIndexer(executionIndexerCtx)
 	cs.withdrawalIndexer = syscontracts.NewWithdrawalIndexer(executionIndexerCtx)
+	cs.builderDepositIndexer = syscontracts.NewBuilderDepositIndexer(executionIndexerCtx)
+	cs.builderExitIndexer = syscontracts.NewBuilderExitIndexer(executionIndexerCtx)
 
 	// start EL transaction indexer if enabled
 	if utils.Config.ExecutionIndexer.Enabled {
@@ -387,6 +432,14 @@ func (bs *ChainService) GetWithdrawalIndexer() *syscontracts.WithdrawalIndexer {
 	return bs.withdrawalIndexer
 }
 
+func (bs *ChainService) GetBuilderDepositIndexer() *syscontracts.BuilderDepositIndexer {
+	return bs.builderDepositIndexer
+}
+
+func (bs *ChainService) GetBuilderExitIndexer() *syscontracts.BuilderExitIndexer {
+	return bs.builderExitIndexer
+}
+
 func (bs *ChainService) GetSnooperManager() *snooper.SnooperManager {
 	return bs.snooperManager
 }
@@ -431,10 +484,12 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 	result := make(map[common.Address]string, 5)
 
 	labels := map[string]string{
-		exerpc.WithdrawalRequestContract:    "Withdrawal Request (EIP-7002)",
-		exerpc.ConsolidationRequestContract: "Consolidation Request (EIP-7251)",
-		exerpc.BeaconRootsContract:          "Beacon Roots (EIP-4788)",
-		exerpc.HistoryStorageContract:       "Block Hash History (EIP-2935)",
+		exerpc.WithdrawalRequestContract:     "Withdrawal Request (EIP-7002)",
+		exerpc.ConsolidationRequestContract:  "Consolidation Request (EIP-7251)",
+		exerpc.BeaconRootsContract:           "Beacon Roots (EIP-4788)",
+		exerpc.HistoryStorageContract:        "Block Hash History (EIP-2935)",
+		exerpc.BuilderDepositRequestContract: "Builder Deposit (EIP-8282)",
+		exerpc.BuilderExitRequestContract:    "Builder Exit (EIP-8282)",
 	}
 
 	execChainState := bs.GetExecutionChainState()
@@ -462,6 +517,9 @@ func (bs *ChainService) GetSystemContractAddresses() map[common.Address]string {
 			result[depositAddr] = "Deposit Contract"
 		}
 	}
+
+	// Well-known static addresses (no on-chain config source)
+	result[common.HexToAddress("0x4e59b44847b379578588920ca78fbf26c0b4956c")] = "Arachnid CREATE2 Factory (EIP-7997)"
 
 	return result
 }
@@ -498,7 +556,16 @@ func (bs *ChainService) isCanonicalForkId(forkId uint64, canonicalForkIds []uint
 }
 
 func (bs *ChainService) GetValidatorName(index uint64) string {
+	if index&BuilderIndexFlag != 0 {
+		if name := bs.buildoorInventory.GetBuilderName(index); name != "" {
+			return name
+		}
+	}
 	return bs.validatorNames.GetValidatorName(index)
+}
+
+func (bs *ChainService) GetBuilderURL(builderIndex uint64) string {
+	return bs.buildoorInventory.GetBuilderURL(builderIndex)
 }
 
 func (bs *ChainService) GetValidatorNamesCount() uint64 {

@@ -6,15 +6,16 @@ import (
 
 // IncludedDepositsPageData is a struct to hold info for the included_deposits page
 type IncludedDepositsPageData struct {
-	FilterMinIndex      uint64 `json:"filter_mini"`
-	FilterMaxIndex      uint64 `json:"filter_maxi"`
-	FilterPubKey        string `json:"filter_publickey"`
-	FilterValidatorName string `json:"filter_vname"`
-	FilterMinAmount     uint64 `json:"filter_mina"`
-	FilterMaxAmount     uint64 `json:"filter_maxa"`
-	FilterWithOrphaned  uint8  `json:"filter_orphaned"`
-	FilterWithValid     uint8  `json:"filter_valid"`
-	FilterAddress       string `json:"filter_address"`
+	FilterMinIndex      uint64         `json:"filter_mini"`
+	FilterMaxIndex      uint64         `json:"filter_maxi"`
+	FilterPubKey        string         `json:"filter_publickey"`
+	FilterValidatorName string         `json:"filter_vname"`
+	FilterMinAmount     uint64         `json:"filter_mina"`
+	FilterMaxAmount     uint64         `json:"filter_maxa"`
+	FilterWithOrphaned  uint8          `json:"filter_orphaned"`
+	FilterWithValid     uint8          `json:"filter_valid"`
+	FilterAddress       string         `json:"filter_address"`
+	FilterCredTypes     map[uint8]bool `json:"filter_cred_types"`
 
 	Deposits     []*IncludedDepositsPageDataDeposit `json:"deposits"`
 	DepositCount uint64                             `json:"deposit_count"`
@@ -61,6 +62,7 @@ type IncludedDepositsPageDataDeposit struct {
 	InvalidSignature      bool                                      `json:"invalid_signature"`
 	ValidatorExists       bool                                      `json:"validator_exists"`
 	ValidatorIndex        uint64                                    `json:"validator_index"`
+	ProjectedIndex        bool                                      `json:"projected_index"`
 	ValidatorName         string                                    `json:"validator_name"`
 	IsBuilder             bool                                      `json:"is_builder"`
 }

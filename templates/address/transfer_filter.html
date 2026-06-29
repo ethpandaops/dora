@@ -1,0 +1,82 @@
+{{ define "addressTransferFilter" }}
+<div class="card-header d-flex justify-content-end align-items-center gap-2">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#{{ .Collapse }}">
+    <i class="fas fa-filter me-1"></i>Filters{{ if .Filter.Active }} <span class="badge text-bg-primary">on</span>{{ end }}
+  </button>
+  <div class="d-inline-flex align-items-center">
+    <span class="text-muted small me-1">Show</span>
+    <select name="c" class="form-select form-select-sm w-auto" onchange="$(this.form).trigger('submit')">
+      <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+      <option value="10">10</option>
+      <option value="25">25</option>
+      <option value="50">50</option>
+      <option value="100">100</option>
+    </select>
+  </div>
+</div>
+
+<div class="collapse{{ if .Filter.Active }} show{{ end }}" id="{{ .Collapse }}">
+  <div class="card-body p-2 border-bottom">
+    <div class="row">
+        <div class="col-sm-12 col-md-6">
+          <div class="container">
+            <div class="row mt-1">
+              <div class="col-sm-12 col-md-6 col-lg-4"><nobr>Direction</nobr></div>
+              <div class="col-sm-12 col-md-6 col-lg-8">
+                <select name="dir" class="form-control direction-select">
+                  <option value="" {{ if eq .Filter.Direction "" }}selected{{ end }}>All</option>
+                  <option value="out" {{ if eq .Filter.Direction "out" }}selected{{ end }}>Outgoing</option>
+                  <option value="in" {{ if eq .Filter.Direction "in" }}selected{{ end }}>Incoming</option>
+                </select>
+              </div>
+            </div>
+            <div class="row mt-1">
+              <div class="col-sm-12 col-md-6 col-lg-4"><nobr>Slot</nobr></div>
+              <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                <div class="flex-grow-1"><input name="minslot" type="number" class="form-control" placeholder="Min" min="0" value="{{ .Filter.MinSlot }}"></div>
+                <div class="text-center filter-separator">-</div>
+                <div class="flex-grow-1"><input name="maxslot" type="number" class="form-control" placeholder="Max" min="0" value="{{ .Filter.MaxSlot }}"></div>
+              </div>
+            </div>
+            <div class="row mt-1">
+              <div class="col-sm-12 col-md-6 col-lg-4"><nobr>From</nobr></div>
+              <div class="col-sm-12 col-md-6 col-lg-8">
+                <input name="from" type="text" class="form-control text-monospace" data-dir-field="from" placeholder="0x..." value="{{ .Filter.From }}">
+              </div>
+            </div>
+            <div class="row mt-1">
+              <div class="col-sm-12 col-md-6 col-lg-4"><nobr>To</nobr></div>
+              <div class="col-sm-12 col-md-6 col-lg-8">
+                <input name="to" type="text" class="form-control text-monospace" data-dir-field="to" placeholder="0x..." value="{{ .Filter.To }}">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm-12 col-md-6">
+          <div class="container">
+            <div class="row mt-1">
+              <div class="col-sm-12 col-md-6 col-lg-4"><nobr>Amount</nobr></div>
+              <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                <div class="flex-grow-1"><input name="minamount" type="number" step="any" class="form-control" placeholder="Min" value="{{ .Filter.MinAmount }}"></div>
+                <div class="text-center filter-separator">-</div>
+                <div class="flex-grow-1"><input name="maxamount" type="number" step="any" class="form-control" placeholder="Max" value="{{ .Filter.MaxAmount }}"></div>
+              </div>
+            </div>
+            <div class="row mt-1">
+              <div class="col-sm-12 col-md-6 col-lg-4"><nobr>Token</nobr></div>
+              <div class="col-sm-12 col-md-6 col-lg-8">
+                <input name="token" type="text" class="form-control text-monospace" placeholder="Contract 0x..." value="{{ .Filter.Token }}">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="text-end mt-2">
+            <a href="?v={{ .Tab }}&c={{ .PageSize }}" class="btn btn-outline-secondary">Reset</a>
+            <button type="submit" class="btn btn-primary">Apply Filter</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{{ end }}

@@ -22,8 +22,8 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 				eth_block_parent_hash, eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count,
 				eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
-				max_exec_time, exec_times, block_uid, payload_status, builder_index
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
+				max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
 			ON CONFLICT (slot, root) DO UPDATE SET
 				status = excluded.status,
 				eth_block_extra = excluded.eth_block_extra,
@@ -37,15 +37,15 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 				eth_block_parent_hash, eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count,
 				eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
-				max_exec_time, exec_times, block_uid, payload_status, builder_index
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)`,
+				max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)`,
 	}),
 		slot.Slot, slot.Proposer, slot.Status, slot.Root, slot.ParentRoot, slot.StateRoot, slot.Graffiti, slot.GraffitiText,
 		slot.AttestationCount, slot.DepositCount, slot.ExitCount, slot.WithdrawCount, slot.WithdrawAmount, slot.AttesterSlashingCount,
 		slot.ProposerSlashingCount, slot.BLSChangeCount, slot.EthTransactionCount, slot.EthBlockNumber, slot.EthBlockHash,
 		slot.EthBlockParentHash, slot.EthBlockExtra, slot.EthBlockExtraText, slot.SyncParticipation, slot.ForkId, slot.BlobCount,
 		slot.EthGasUsed, slot.EthGasLimit, slot.EthBaseFee, slot.EthFeeRecipient, slot.BlockSize, slot.RecvDelay, slot.MinExecTime,
-		slot.MaxExecTime, slot.ExecTimes, slot.BlockUid, slot.PayloadStatus, slot.BuilderIndex)
+		slot.MaxExecTime, slot.ExecTimes, slot.BlockUid, slot.PayloadStatus, slot.BuilderIndex, slot.EthBidValue)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func GetSlotsRange(ctx context.Context, firstSlot uint64, lastSlot uint64, withM
 		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash",
 		"eth_block_parent_hash", "eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id", "blob_count",
 		"eth_gas_used", "eth_gas_limit", "eth_base_fee", "eth_fee_recipient", "block_size", "recv_delay", "min_exec_time",
-		"max_exec_time", "exec_times", "block_uid", "payload_status", "builder_index",
+		"max_exec_time", "exec_times", "block_uid", "payload_status", "builder_index", "eth_bid_value",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -136,7 +136,7 @@ func GetSlotsByParentRoot(ctx context.Context, parentRoot []byte) []*dbtypes.Slo
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 		eth_block_parent_hash, eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count,
 		eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
-		max_exec_time, exec_times, block_uid, payload_status, builder_index
+		max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value
 	FROM slots
 	WHERE parent_root = $1
 	ORDER BY slot DESC
@@ -157,7 +157,7 @@ func GetSlotByRoot(ctx context.Context, root []byte) *dbtypes.Slot {
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 		eth_block_parent_hash, eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count,
 		eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
-		max_exec_time, exec_times, block_uid, payload_status, builder_index
+		max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value
 	FROM slots
 	WHERE root = $1
 	`, root)
@@ -182,7 +182,7 @@ func GetSlotsByRoots(ctx context.Context, roots [][]byte) map[phase0.Root]*dbtyp
 			proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 			eth_block_parent_hash, eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count,
 			eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
-			max_exec_time, exec_times, block_uid, payload_status, builder_index
+			max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value
 		FROM slots
 		WHERE root IN (`)
 	appendDollarPlaceholders(&sql, 1, len(roots), ", ")
@@ -258,7 +258,7 @@ func GetSlotsByBlockHash(ctx context.Context, blockHash []byte) []*dbtypes.Slot 
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 		eth_block_parent_hash, eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count,
 		eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
-		max_exec_time, exec_times, block_uid, payload_status, builder_index
+		max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value
 	FROM slots
 	WHERE eth_block_hash = $1
 	ORDER BY slot DESC
@@ -320,7 +320,7 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash",
 		"eth_block_parent_hash", "eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id", "blob_count",
 		"eth_gas_used", "eth_gas_limit", "eth_base_fee", "eth_fee_recipient", "block_size", "recv_delay", "min_exec_time",
-		"max_exec_time", "exec_times", "block_uid", "payload_status", "builder_index",
+		"max_exec_time", "exec_times", "block_uid", "payload_status", "builder_index", "eth_bid_value",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -479,8 +479,19 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 	}
 	if filter.BuilderIndex != nil {
 		argIdx++
-		fmt.Fprintf(&sql, ` AND slots.builder_index = $%v `, argIdx)
+		if filter.InvertBuilder {
+			fmt.Fprintf(&sql, ` AND slots.builder_index != $%v `, argIdx)
+		} else {
+			fmt.Fprintf(&sql, ` AND slots.builder_index = $%v `, argIdx)
+		}
 		args = append(args, *filter.BuilderIndex)
+	}
+	if filter.WithBuilderBlock == 1 {
+		// builder-built blocks only (self-built blocks use builder_index = -1)
+		fmt.Fprint(&sql, ` AND slots.builder_index >= 0 `)
+	} else if filter.WithBuilderBlock == 2 {
+		// self-built blocks only; exclude missing slots (status 0), which also default to builder_index = -1
+		fmt.Fprint(&sql, ` AND slots.builder_index = -1 AND slots.status != 0 `)
 	}
 
 	if filter.WithPayloadMask != dbtypes.PayloadStatusMaskAll {

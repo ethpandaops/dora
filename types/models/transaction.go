@@ -6,6 +6,13 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
+// TransactionNotFoundData is the data passed to the transaction not-found page.
+type TransactionNotFoundData struct {
+	Reason             string // "disabled" or "notfound"
+	DetailsEnabled     bool   // whether details (blockdb) retention pruning is active
+	DetailsPrunedEpoch uint64 // epoch below which by-hash lookups may be unavailable
+}
+
 // TransactionViewMode represents the data availability mode for a transaction
 type TransactionViewMode uint8
 
@@ -45,8 +52,9 @@ type TransactionPageData struct {
 	HasReceipt bool                `json:"has_receipt"` // Whether receipt data is available
 
 	// Status (only available with receipt)
-	Status     bool   `json:"status"` // true = success, false = reverted
-	StatusText string `json:"status_text"`
+	Status       bool   `json:"status"` // true = success, false = reverted
+	StatusText   string `json:"status_text"`
+	RevertReason string `json:"revert_reason,omitempty"` // decoded reason when reverted
 
 	// Block info (primary/canonical block)
 	BlockNumber uint64    `json:"block_number"`
@@ -98,6 +106,14 @@ type TransactionPageData struct {
 	TargetCallName  string                        `json:"target_call_name"` // Precompile or system contract name
 	DecodedCalldata []*utils.DecodedCalldataParam `json:"decoded_calldata"` // Decoded params (nil if not available)
 
+	// Calldata gas cost breakdown (computed from InputData; zero when InputData is empty)
+	CalldataZeroBytes      int    `json:"calldata_zero_bytes"`      // Zero bytes in calldata
+	CalldataNonZeroBytes   int    `json:"calldata_nonzero_bytes"`   // Non-zero bytes in calldata
+	CalldataPragueTokens   int    `json:"calldata_prague_tokens"`   // EIP-7623 tokens: 4×nonzero + zero (used as prague floor multiplier)
+	CalldataStandardGas    uint64 `json:"calldata_standard_gas"`    // Intrinsic pre-Prague: 21000 + 4×zero + 16×nonzero
+	CalldataPragueFloor    uint64 `json:"calldata_prague_floor"`    // EIP-7623 floor (Prague+): 21000 + (4×nonzero + zero)×10
+	CalldataAmsterdamFloor uint64 `json:"calldata_amsterdam_floor"` // EIP-7976 floor (Amsterdam+): 21000 + total×64
+
 	// Full transaction data (loaded from beacon block)
 	TxRLP  string `json:"tx_rlp"`  // Hex-encoded RLP for copy button
 	TxJSON string `json:"tx_json"` // JSON representation for copy button
@@ -113,8 +129,19 @@ type TransactionPageData struct {
 	BlobFeeSavings float64                    `json:"blob_fee_savings"`           // Savings percentage ((fee_cap - price) / fee_cap * 100)
 	Blobs          []*TransactionPageDataBlob `json:"blobs"`                      // Blob details
 
+	// AccessList (EIP-2930, tx type 1)
+	AccessListEntries     []TransactionAccessListEntry `json:"access_list_entries"`
+	AccessListStorageKeys uint64                       `json:"access_list_storage_keys"` // total storage key count across all entries
+	// EIP-7981: Amsterdam changed ACCESS_LIST_STORAGE_KEY_COST 2400→1900 (address cost unchanged at 2400)
+	AccessListGasAmsterdam uint64 `json:"access_list_gas_amsterdam"` // intrinsic gas using Amsterdam pricing
+	AccessListGasPrague    uint64 `json:"access_list_gas_prague"`    // intrinsic gas using Prague pricing (for comparison)
+	AccessListGasSavings   uint64 `json:"access_list_gas_savings"`   // gas saved vs Prague (Amsterdam - Prague = negative = savings)
+
 	// Authorizations (EIP-7702, tx type 4)
 	Authorizations []*TransactionPageDataAuthorization `json:"authorizations"`
+
+	// EIP-7976: calldata floor gas cost = 21000 + 64 × len(calldata); 0 if no calldata
+	CalldataFloorGas uint64 `json:"calldata_floor_gas"`
 
 	// Tab view
 	TabView string `json:"tab_view"`
@@ -128,6 +155,7 @@ type TransactionPageData struct {
 	TokenTransferCount uint64                              `json:"token_transfer_count"`
 
 	// Internal transactions tab
+	HasTrace                bool                             `json:"has_trace"` // a call trace exists (>=1 frame)
 	InternalTxs             []*TransactionPageDataInternalTx `json:"internal_txs"`
 	InternalTxCount         uint64                           `json:"internal_tx_count"`
 	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags
@@ -138,6 +166,12 @@ type TransactionPageData struct {
 	// State changes tab (prestateTracer diffMode)
 	StateChanges             []*TransactionPageDataStateChangeAccount `json:"state_changes"`
 	StateChangesNotAvailable bool                                     `json:"state_changes_not_available"`
+}
+
+// TransactionAccessListEntry is one address+storage-keys pair from an EIP-2930 access list.
+type TransactionAccessListEntry struct {
+	Address     []byte   `json:"address"`
+	StorageKeys [][]byte `json:"storage_keys"`
 }
 
 // TransactionPageDataStateChangeAccount represents state changes for a single account.
@@ -197,6 +231,11 @@ type TransactionPageDataEvent struct {
 
 	// Decoded (if known)
 	EventName string `json:"event_name"`
+
+	// EIP-7708: decoded ETH Transfer parameters (only set for ETH Transfer logger events)
+	EthTransferFrom  []byte `json:"eth_transfer_from,omitempty"`  // 20-byte from address
+	EthTransferTo    []byte `json:"eth_transfer_to,omitempty"`    // 20-byte to address
+	EthTransferValue string `json:"eth_transfer_value,omitempty"` // formatted ETH amount
 }
 
 // TransactionPageDataTokenTransfer represents a token transfer in the transaction

@@ -71,6 +71,8 @@
             <span class="badge rounded-pill text-bg-success" style="font-size: 12px; font-weight: 500;">Proposed</span>
           {{ else if eq .Status 2 }}
             <span class="badge rounded-pill text-bg-info" style="font-size: 12px; font-weight: 500;">Missed (Orphaned)</span>
+          {{ else if eq .Status 3 }}
+            <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="A canonical block was proposed for this slot, but its contents are currently unavailable from any connected client or the block store.">Proposed <i class="fas fa-question-circle ms-1"></i> Data Unavailable</span>
           {{ end }}
 
           {{ if .EpochFinalized }}
@@ -215,7 +217,9 @@
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block Number, the height, not the slot">Payload Status:</span></div>
                   <div class="col-md-10 text-monospace text-break">
-                    {{ if eq .PayloadStatus 0 }}
+                    {{ if $block.PayloadDataUnavailable }}
+                      <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="The execution payload envelope could not be loaded from any connected client or the block store. It may exist but is currently unavailable.">Data Unavailable</span>
+                    {{ else if eq .PayloadStatus 0 }}
                       <span class="badge rounded-pill text-bg-warning">Missing</span>
                     {{ else if eq .PayloadStatus 1 }}
                       <span class="badge rounded-pill text-bg-success">Revealed</span>
@@ -246,7 +250,7 @@
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The builder who created this execution payload">Builder:</span></div>
                   <div class="col-md-10 text-monospace text-break">
-                    {{ formatBuilderWithIndex .BuilderIndex .BuilderName }}
+                    {{ formatBuilderWithIndexAndURL .BuilderIndex .BuilderName .BuilderURL }}
                   </div>
                 </div>
 
@@ -367,6 +371,22 @@
                   </div>
                 </div>
 
+                {{ if .BlockGasDelta }}
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7778 (Amsterdam): block.gasUsed = max(Σ regular, Σ state) instead of Σ receipt.gasUsed. Receipts include regular + state gas (EIP-8037) minus EIP-3529 refunds. The delta reveals how the 2D gas model shifts gas accounting: positive means the block header under-counts relative to receipts (refunds not reflected); negative means state gas inflated receipts beyond what the block header counts.">Block Gas Delta:</span></div>
+                  <div class="col-md-10 text-monospace">
+                    {{ if .BlockGasDeltaExcess }}
+                      <span class="text-success">+{{ formatAddCommas .BlockGasDelta }}</span>
+                      <span class="badge bg-info ms-2" data-bs-toggle="tooltip" title="block.gasUsed &gt; Σ receipt.gasUsed — regular gas dominates the block dimension. The gap equals gas refunds (EIP-3529) when no state gas is present, or refunds minus state gas in mixed blocks. Means senders were charged more in receipts than the block header reports.">EIP-7778 ▲</span>
+                    {{ else }}
+                      <span class="text-warning">−{{ formatAddCommas .BlockGasDelta }}</span>
+                      <span class="badge bg-warning text-dark ms-2" data-bs-toggle="tooltip" title="block.gasUsed &lt; Σ receipt.gasUsed — state gas (EIP-8037) dominates the block dimension. Receipts sum higher than block.gasUsed because receipts include both regular + state gas per tx, but the block header only reports max(regular, state).">EIP-7778 ▼</span>
+                    {{ end }}
+                    <small class="text-muted ms-2">(receipts sum: {{ formatAddCommas .SumTxGasUsed }})</small>
+                  </div>
+                </div>
+                {{ end }}
+
                 {{ if not $block.PayloadHeader }}
                   <div class="row py-1">
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas Limit">Gas Limit:</span></div>
@@ -458,6 +478,29 @@
                       <span class="text-truncate">0x{{ printf "%x" .BlockAccessListHash }}</span>
                     </div>
                   </div>
+                {{ end }}
+
+                {{ if .BALSummary }}
+                <div class="row py-1">
+                  <div class="col-md-2">
+                    <span data-bs-toggle="tooltip" data-bs-placement="top" title="Block Access List state-access aggregates. Storage writes and cold reads reflect EIP-8038 repricing units.">BAL Stats:</span>
+                  </div>
+                  <div class="col-md-10">
+                    <span class="text-monospace me-3" data-bs-toggle="tooltip" title="{{ .BALSummary.UniqueAddresses }} unique accounts touched">
+                      {{ formatAddCommas .BALSummary.UniqueAddresses }} accts
+                    </span>
+                    <span class="text-monospace me-3" data-bs-toggle="tooltip" title="Distinct storage slots written (EIP-8038 cold-write cost per unique key)">
+                      {{ formatAddCommas .BALSummary.StorageSlotWrites }} slot writes
+                      {{ if gt .BALSummary.StorageWriteOps .BALSummary.StorageSlotWrites }}<small class="text-muted">({{ formatAddCommas .BALSummary.StorageWriteOps }} ops)</small>{{ end }}
+                    </span>
+                    <span class="text-monospace me-3" data-bs-toggle="tooltip" title="Cold storage reads (EIP-8038 COLD_STORAGE_ACCESS=2100)">
+                      {{ formatAddCommas .BALSummary.ColdStorageReads }} cold reads
+                    </span>
+                    {{ if gt .BALSummary.BalanceChanges 0 }}<span class="text-monospace me-3 text-muted">{{ formatAddCommas .BALSummary.BalanceChanges }} bal changes</span>{{ end }}
+                    {{ if gt .BALSummary.CodeChanges 0 }}<span class="text-monospace me-3 text-muted">{{ formatAddCommas .BALSummary.CodeChanges }} code changes</span>{{ end }}
+                    {{ if gt .BALSummary.NonceChanges 0 }}<span class="text-monospace me-3 text-muted">{{ formatAddCommas .BALSummary.NonceChanges }} nonce changes</span>{{ end }}
+                  </div>
+                </div>
                 {{ end }}
 
                 <div class="row py-1">

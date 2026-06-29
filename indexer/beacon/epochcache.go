@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
-	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // epochStatsKey is the primary key for EpochStats entries in cache.
@@ -311,14 +311,9 @@ func (cache *epochCache) withPrecomputeLock(f func() error) error {
 // startLoaderLoop is the entrypoint for the beacon state loader subroutine.
 // contains the main loop & crash handler of the subroutine.
 func (cache *epochCache) startLoaderLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.epochCache.startLoaderLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go cache.startLoaderLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.epochCache.startLoaderLoop", func() {
+		cache.startLoaderLoop()
+	})
 
 	for {
 		cache.runLoaderLoop()
@@ -396,11 +391,7 @@ func (cache *epochCache) runLoaderLoop() {
 // retires loading from multiple clients, ordered by priority.
 // returns true if a epoch state request was done (either successful or failed).
 func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
-	defer func() {
-		if err := recover(); err != nil {
-			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.epochCache.loadEpochStats subroutine: %v, stack: %v", err, string(debug.Stack()))
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.epochCache.loadEpochStats", nil)
 
 	clients := []*Client{}
 	preferArchive := epochStats.epoch < cache.indexer.lastFinalizedEpoch
@@ -524,7 +515,8 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 		cache.cacheMutex.RUnlock()
 
 		if len(pendingOthers) > 0 {
-			specs := client.indexer.consensusPool.GetChainState().GetSpecs()
+			chainState := client.indexer.consensusPool.GetChainState()
+			specs := chainState.GetSpecs()
 
 			// Sort by target epoch so we advance the state forward incrementally.
 			sort.Slice(pendingOthers, func(i, j int) bool {
@@ -532,13 +524,22 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 			})
 
 			for _, entry := range pendingOthers {
+				// Don't advance across a fork boundary — the state transition can't apply
+				// fork upgrades (e.g. upgrade_to_gloas), so it would silently produce a
+				// wrong, un-migrated state. Leave this and the later (higher-epoch)
+				// siblings pending; the loader will load them in full from the node.
+				if chainState.GetForkVersionAtEpoch(chainState.EpochOfSlot(state.Slot)) != chainState.GetForkVersionAtEpoch(entry.epochState.targetEpoch) {
+					break
+				}
+
 				// Advance the already-loaded state to the next target epoch.
 				var transitionInfo statetransition.TransitionInfo
 				if err := statetransition.NewStateTransition(specs, cache.indexer.dynSsz).PrepareEpochPreState(state, entry.epochState.targetEpoch, &transitionInfo); err != nil {
 					cache.indexer.logger.Errorf("error advancing state to epoch %v: %v", entry.epochState.targetEpoch, err)
 					continue
 				}
-				entry.epochState.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
+				entry.epochState.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
+				entry.epochState.gloasOnboardedDeposits = transitionInfo.GloasOnboardedDeposits
 
 				// Extract values from the advanced state.
 				if err := entry.epochState.processState(state, cache); err != nil {

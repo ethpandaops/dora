@@ -72,6 +72,12 @@
   justify-content: center;
   width: 100%;
 }
+.validator__lifecycle-progress-epoch > div.validator__lifecycle-deposit-progress {
+  white-space: nowrap;
+  font-size: 85%;
+  color: var(--bs-body-color);
+  opacity: 0.7;
+}
 .validator__lifecycle-container .validator__lifecycle-progress::after {
   content: '';
   position: absolute;

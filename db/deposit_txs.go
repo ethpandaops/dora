@@ -139,6 +139,50 @@ func GetDepositTxsByIndexes(ctx context.Context, indexes []uint64) []*dbtypes.De
 	return depositTxs
 }
 
+func GetDepositTxsByPublicKeys(ctx context.Context, publicKeys [][]byte) []*dbtypes.DepositTx {
+	depositTxs := []*dbtypes.DepositTx{}
+	if len(publicKeys) == 0 {
+		return depositTxs
+	}
+
+	// SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999 (32766 in newer
+	// builds). Chunk to stay well below that on every supported build,
+	// otherwise high-volume queries fail with "too many SQL variables".
+	const maxParams = 900
+
+	for start := 0; start < len(publicKeys); start += maxParams {
+		end := start + maxParams
+		if end > len(publicKeys) {
+			end = len(publicKeys)
+		}
+		chunk := publicKeys[start:end]
+
+		var sql strings.Builder
+		args := make([]any, len(chunk))
+
+		fmt.Fprint(&sql, `SELECT deposit_txs.*
+			FROM deposit_txs
+			WHERE publickey IN (
+		`)
+
+		for idx, publicKey := range chunk {
+			args[idx] = publicKey
+		}
+		appendDollarPlaceholders(&sql, 1, len(chunk), ", ")
+		fmt.Fprintf(&sql, ") ORDER BY block_number ASC, deposit_index ASC")
+
+		var chunkResult []*dbtypes.DepositTx
+		err := ReaderDb.SelectContext(ctx, &chunkResult, sql.String(), args...)
+		if err != nil {
+			logger.Errorf("Error while fetching deposit txs by public keys: %v", err)
+			return nil
+		}
+		depositTxs = append(depositTxs, chunkResult...)
+	}
+
+	return depositTxs
+}
+
 func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositTx, uint64, error) {
 	var sql strings.Builder
 	args := []any{}

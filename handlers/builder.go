@@ -69,11 +69,12 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 		// search by pubkey - check cache first (more accurate), then fall back to DB
 		var pubkey phase0.BLSPubKey
 		copy(pubkey[:], builderPubKey)
-		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(pubkey); found {
-			idx := uint64(validatorIdx)
-			if idx&services.BuilderIndexFlag != 0 {
-				builderIndex = idx &^ services.BuilderIndexFlag
-				builder = services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
+		if builderIdx, found := services.GlobalBeaconService.GetBuilderIndexByPubkey(pubkey); found {
+			// builder indexes can be reused (EIP-8282): only accept the cache hit if this pubkey
+			// still owns the index, otherwise fall through to the DB lookup by pubkey below.
+			if b := services.GlobalBeaconService.GetBuilderByIndex(builderIdx); b != nil && b.PublicKey == pubkey {
+				builderIndex = uint64(builderIdx)
+				builder = b
 			}
 		}
 
@@ -185,6 +186,7 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 		CurrentEpoch:     uint64(currentEpoch),
 		Index:            builderIndex,
 		Name:             services.GlobalBeaconService.GetValidatorName(builderIndex | services.BuilderIndexFlag),
+		BuildoorURL:      services.GlobalBeaconService.GetBuilderURL(builderIndex),
 		PublicKey:        builder.PublicKey[:],
 		Balance:          uint64(builder.Balance),
 		ExecutionAddress: builder.ExecutionAddress[:],
@@ -461,33 +463,42 @@ func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState
 func buildBuilderRecentDeposits(ctx context.Context, pubkey []byte, chainState *consensus.ChainState) []*models.BuilderPageDataDeposit {
 	result := make([]*models.BuilderPageDataDeposit, 0)
 
-	// Query deposit requests by builder pubkey
-	depositFilter := &services.CombinedDepositRequestFilter{
-		Filter: &dbtypes.DepositTxFilter{
-			PublicKey:    pubkey,
-			WithOrphaned: 1,
-		},
+	// Query the dedicated builder deposit requests (EIP-8282) by builder pubkey.
+	filter := &dbtypes.BuilderDepositFilter{
+		PublicKey:    pubkey,
+		WithOrphaned: 1,
 	}
-	deposits, _ := services.GlobalBeaconService.GetDepositRequestsByFilter(ctx, depositFilter, 0, 20)
+	deposits, _, _ := services.GlobalBeaconService.GetBuilderDepositsByFilter(ctx, filter, 0, 20)
+
+	// builder deposits at the exact Gloas fork boundary slot are the one-time onboarding of
+	// builders from the pending deposit queue (they came through the validator deposit contract).
+	onboardingSlot, hasOnboardingSlot := uint64(0), false
+	if specs := chainState.GetSpecs(); specs.GloasForkEpoch != nil {
+		onboardingSlot = *specs.GloasForkEpoch * specs.SlotsPerEpoch
+		hasOnboardingSlot = true
+	}
+
 	for _, deposit := range deposits {
 		entry := &models.BuilderPageDataDeposit{
-			Type:             "deposit",
-			Amount:           deposit.Amount(),
-			DepositorAddress: deposit.SourceAddress(),
+			Type: "deposit",
 		}
 		if deposit.Request != nil {
 			entry.SlotNumber = deposit.Request.SlotNumber
 			entry.SlotRoot = deposit.Request.SlotRoot
 			entry.Time = chainState.SlotToTime(phase0.Slot(deposit.Request.SlotNumber))
 			entry.Orphaned = deposit.RequestOrphaned
+			entry.Amount = deposit.Request.Amount
+			entry.IsOnboarding = hasOnboardingSlot && deposit.Request.SlotNumber == onboardingSlot
 		} else if deposit.Transaction != nil {
-			entry.Time = chainState.SlotToTime(phase0.Slot(deposit.Transaction.BlockTime))
+			entry.Amount = deposit.Transaction.Amount
+			entry.Time = time.Unix(int64(deposit.Transaction.BlockTime), 0)
 		}
 
 		// Add transaction details if available
 		if deposit.Transaction != nil {
 			entry.HasTransaction = true
 			entry.TransactionHash = deposit.Transaction.TxHash
+			entry.DepositorAddress = deposit.Transaction.TxSender
 			entry.TransactionDetails = &models.BuilderPageDataDepositTxDetails{
 				BlockNumber: deposit.Transaction.BlockNumber,
 				BlockHash:   fmt.Sprintf("%#x", deposit.Transaction.BlockRoot),

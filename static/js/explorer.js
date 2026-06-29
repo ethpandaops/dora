@@ -5,6 +5,7 @@
     modalFixes();
     window.setInterval(updateTimers, 1000);
     initHeaderSearch();
+    initAddrHighlight();
   });
   var tooltipDict = {};
   var tooltipIdx = 1;
@@ -64,6 +65,49 @@
     var clipboard = new ClipboardJS('[data-clipboard-text], [data-clipboard-target]');
     clipboard.on("success", onClipboardSuccess);
     clipboard.on("error", onClipboardError);
+
+    fitMethodBadges();
+  }
+
+  // fitMethodBadges shrinks the font of method badges whose label overflows the
+  // capped width, so long method names stay on one line before the CSS ellipsis
+  // kicks in.
+  function fitMethodBadges() {
+    document.querySelectorAll('.method-badge').forEach(function(el) {
+      el.classList.remove('method-badge-sm');
+      if (el.scrollWidth > el.clientWidth + 1) {
+        el.classList.add('method-badge-sm');
+      }
+    });
+  }
+
+  // initAddrHighlight highlights all equal address links within the hovered
+  // scope (an EL data table or the internal-tx tree). Uses event delegation so
+  // it also covers rows/nodes that are loaded lazily after page load.
+  function initAddrHighlight() {
+    var current = null;
+    function clear() {
+      if (!current) return;
+      document.querySelectorAll('a.addr-hl').forEach(function(el) { el.classList.remove('addr-hl'); });
+      current = null;
+    }
+    document.addEventListener('mouseover', function(ev) {
+      var a = ev.target.closest ? ev.target.closest('a[href^="/address/0x"]') : null;
+      if (!a) { return; }
+      var scope = a.closest('.el-data-table, .itx-wrap');
+      if (!scope) { return; }
+      var href = a.getAttribute('href');
+      if (href === current) { return; }
+      clear();
+      current = href;
+      scope.querySelectorAll('a[href="' + href + '"]').forEach(function(el) {
+        el.classList.add('addr-hl');
+      });
+    });
+    document.addEventListener('mouseout', function(ev) {
+      var a = ev.target.closest ? ev.target.closest('a[href^="/address/0x"]') : null;
+      if (a) { clear(); }
+    });
   }
 
   function initTooltip(el) {

@@ -20,7 +20,7 @@ else
 fi
 
 # Get validator ranges
-kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | tail -n +2 > "${__dir}/generated-validator-ranges.yaml"
+kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | tail -n +1 > "${__dir}/generated-validator-ranges.yaml"
 
 # Get el genesis config
 kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data "./genesis.json" | tail -n +1 > "${__dir}/generated-el-genesis.json"
@@ -28,17 +28,34 @@ kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data "./genesis.json" | tai
 # Extract network name from config
 NETWORK_NAME=$(grep -E "^\s*network:" "${config_file}" | sed 's/.*network:\s*//' | tr -d '"'\'' ')
 
-# Determine validator names source based on network type
+# Determine validator names + buildoor inventory sources based on network type
 if [[ "$NETWORK_NAME" == *"devnet"* ]]; then
   # Use inventory API for devnet networks
   VALIDATOR_NAMES_CONFIG="validatorNamesInventory: \"https://config.${NETWORK_NAME}.ethpandaops.io/api/v1/nodes/validator-ranges\""
+  BUILDOOR_CONFIG="buildoorOverviewUrl: \"https://buildoor.${NETWORK_NAME}.ethpandaops.io\""
 else
   # Use local validator ranges file for all other networks
   VALIDATOR_NAMES_CONFIG="validatorNamesYaml: \"${__dir}/generated-validator-ranges.yaml\""
+  BUILDOOR_CONFIG=""
 fi
 
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
+
+# Local kurtosis buildoor container, when present, overrides the network-derived URL.
+BUILDOOR_CONTAINER=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
+              -f "label=com.kurtosistech.app-id=kurtosis" \
+              -f "label=com.kurtosistech.id=buildoor" | head -1)
+if [ -n "$BUILDOOR_CONTAINER" ]; then
+  BUILDOOR_PORT=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort }}' "$BUILDOOR_CONTAINER" 2>/dev/null)
+  # kurtosis service name (e.g. "buildoor") so dora shows it instead of the forwarded IP:port
+  BUILDOOR_NAME=$(docker inspect --format='{{ index .Config.Labels "kurtosis_service_name" }}' "$BUILDOOR_CONTAINER" 2>/dev/null)
+  if [ -z "$BUILDOOR_NAME" ]; then BUILDOOR_NAME="buildoor"; fi
+  if [ -n "$BUILDOOR_PORT" ]; then
+    BUILDOOR_CONFIG="buildoorUrls:
+    - \"${BUILDOOR_NAME}|http://127.0.0.1:${BUILDOOR_PORT}\""
+  fi
+fi
 
 BEACON_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
               -f "label=com.kurtosistech.app-id=kurtosis" \
@@ -81,6 +98,7 @@ frontend:
   )"
   rainbowkitProjectId: "15fe4ab4d5c0bcb6f0dc7c398301ff0e"
   ${VALIDATOR_NAMES_CONFIG}
+  ${BUILDOOR_CONFIG}
   showSensitivePeerInfos: true
   showSubmitDeposit: true
   showSubmitElRequests: true

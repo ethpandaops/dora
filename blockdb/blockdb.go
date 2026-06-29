@@ -3,6 +3,7 @@ package blockdb
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -15,15 +16,46 @@ import (
 
 // BlockDb is the main wrapper for block database operations.
 type BlockDb struct {
-	engine     types.BlockDbEngine
-	execEngine types.ExecDataEngine // nil if engine doesn't support exec data
+	engine       types.BlockDbEngine
+	execEngine   types.ExecDataEngine // nil if engine doesn't support exec data
+	dutiesEngine types.DutiesEngine   // nil if engine doesn't support duties storage
+
+	txHashIndex       types.TxHashIndex // nil until detected natively or injected
+	txHashIndexNative bool              // true if provided by the engine (write post-commit), false if a relational adapter (write in-tx)
+
+	// cleanup is the authoritative retention worker for the pebble backend (the
+	// tiered engine owns its own cache-mode cleanup internally). Nil otherwise.
+	cleanup *pebble.CacheCleanup
 }
 
 // GlobalBlockDb is the global block database instance.
 var GlobalBlockDb *BlockDb
 
+// SetTimeToSlotFn forwards a time->slot resolver used for age-based retention of
+// the slot-keyed namespaces (exec data, duties) to whichever component runs the
+// cleanup: the tiered engine, or the pebble backend's authoritative cleanup.
+func (db *BlockDb) SetTimeToSlotFn(fn func(t time.Time) uint64) {
+	if db == nil {
+		return
+	}
+	if db.cleanup != nil {
+		db.cleanup.SetTimeToSlotFn(fn)
+	}
+	if db.engine != nil {
+		if s, ok := db.engine.(interface {
+			SetTimeToSlotFn(func(t time.Time) uint64)
+		}); ok {
+			s.SetTimeToSlotFn(fn)
+		}
+	}
+}
+
 // InitWithPebble initializes the block database with Pebble (local) storage.
-func InitWithPebble(config dtypes.PebbleBlockDBConfig) error {
+// Pebble is the authoritative store here, so its retention configs (block /
+// duties) delete data rather than evict cached copies. Exec-data retention is
+// owned by the EL indexer (executionIndexer.detailsRetention); a blockDb
+// exec-data retention is ignored with a warning.
+func InitWithPebble(config dtypes.PebbleBlockDBConfig, logger logrus.FieldLogger) error {
 	engine, err := pebble.NewPebbleEngine(config)
 	if err != nil {
 		return err
@@ -36,6 +68,22 @@ func InitWithPebble(config dtypes.PebbleBlockDBConfig) error {
 	// Pebble engine always supports exec data
 	if execEngine, ok := engine.(types.ExecDataEngine); ok {
 		db.execEngine = execEngine
+	}
+	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
+		db.dutiesEngine = dutiesEngine
+	}
+	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
+		db.txHashIndex = txHashIndex
+		db.txHashIndexNative = true
+	}
+
+	// Run the authoritative retention worker (pebble mode = not a cache).
+	if pe, ok := engine.(*pebble.PebbleEngine); ok {
+		if config.ExecDataRetention.Enabled {
+			logger.Warn("blockDb.pebble.execDataRetention is ignored in pebble mode; exec-data retention is controlled by executionIndexer.detailsRetention")
+		}
+		db.cleanup = pebble.NewCacheCleanup(pe, logger, false)
+		db.cleanup.Start()
 	}
 
 	GlobalBlockDb = db
@@ -58,15 +106,23 @@ func InitWithS3(config dtypes.S3BlockDBConfig) error {
 	if execEngine, ok := engine.(types.ExecDataEngine); ok {
 		db.execEngine = execEngine
 	}
+	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
+		db.dutiesEngine = dutiesEngine
+	}
+	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
+		db.txHashIndex = txHashIndex
+		db.txHashIndexNative = true
+	}
 
 	GlobalBlockDb = db
 
 	return nil
 }
 
-// InitWithTiered initializes the block database with tiered storage (Pebble cache + S3 backend).
-func InitWithTiered(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogger) error {
-	engine, err := tiered.NewTieredEngine(config, logger)
+// InitWithTiered initializes the block database with tiered storage (Pebble
+// cache in front of an S3 backend), reusing the shared pebble and s3 configs.
+func InitWithTiered(pebbleConfig dtypes.PebbleBlockDBConfig, s3Config dtypes.S3BlockDBConfig, logger logrus.FieldLogger) error {
+	engine, err := tiered.NewTieredEngine(pebbleConfig, s3Config, logger)
 	if err != nil {
 		return err
 	}
@@ -78,6 +134,13 @@ func InitWithTiered(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogger
 	// Check if tiered engine supports exec data
 	if execEngine, ok := engine.(types.ExecDataEngine); ok {
 		db.execEngine = execEngine
+	}
+	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
+		db.dutiesEngine = dutiesEngine
+	}
+	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
+		db.txHashIndex = txHashIndex
+		db.txHashIndexNative = true
 	}
 
 	GlobalBlockDb = db
@@ -91,6 +154,9 @@ func (db *BlockDb) GetEngine() types.BlockDbEngine {
 }
 
 func (db *BlockDb) Close() error {
+	if db.cleanup != nil {
+		db.cleanup.Stop()
+	}
 	return db.engine.Close()
 }
 
@@ -210,4 +276,120 @@ func (db *BlockDb) PruneExecDataBefore(ctx context.Context, maxSlot uint64) (int
 		return 0, nil
 	}
 	return db.execEngine.PruneExecDataBefore(ctx, maxSlot)
+}
+
+// SetTxHashIndex injects a tx-hash index implementation (e.g. the relational
+// adapter) and marks it non-native. Overrides any natively-detected index.
+func (db *BlockDb) SetTxHashIndex(idx types.TxHashIndex) {
+	db.txHashIndex = idx
+	db.txHashIndexNative = false
+}
+
+// SupportsTxHashIndex returns true if a tx-hash index is available.
+func (db *BlockDb) SupportsTxHashIndex() bool {
+	return db.txHashIndex != nil
+}
+
+// TxHashIndexNative reports whether the active index is engine-native (Pebble/
+// Tiered, written post-commit) rather than the relational adapter (written
+// in-transaction with el_transactions).
+func (db *BlockDb) TxHashIndexNative() bool {
+	return db.txHashIndexNative
+}
+
+// PutTxHashes writes tx-hash index entries.
+func (db *BlockDb) PutTxHashes(ctx context.Context, entries []types.TxHashEntry) error {
+	if db.txHashIndex == nil {
+		return fmt.Errorf("tx-hash index not available")
+	}
+	return db.txHashIndex.PutTxHashes(ctx, entries)
+}
+
+// LookupTxHash returns candidate tx_uids for an exact 10-byte prefix.
+func (db *BlockDb) LookupTxHash(ctx context.Context, prefix []byte) ([]uint64, error) {
+	if db.txHashIndex == nil {
+		return nil, nil
+	}
+	return db.txHashIndex.LookupTxHash(ctx, prefix)
+}
+
+// LookupTxHashRange returns candidate tx_uids for prefixes in [lo, hi).
+func (db *BlockDb) LookupTxHashRange(ctx context.Context, lo, hi []byte) ([]uint64, error) {
+	if db.txHashIndex == nil {
+		return nil, nil
+	}
+	return db.txHashIndex.LookupTxHashRange(ctx, lo, hi)
+}
+
+// PruneTxHashBefore prunes tx-hash index entries for slots before maxSlot.
+func (db *BlockDb) PruneTxHashBefore(ctx context.Context, maxSlot uint64) (int64, error) {
+	if db.txHashIndex == nil {
+		return 0, nil
+	}
+	return db.txHashIndex.PruneTxHashBefore(ctx, maxSlot)
+}
+
+// TxHashIndexDiskUsage returns the approximate on-disk size of a native
+// (engine-backed) tx-hash index, or 0 when the index is relational or absent.
+func (db *BlockDb) TxHashIndexDiskUsage() int64 {
+	if db.txHashIndex == nil || !db.txHashIndexNative {
+		return 0
+	}
+	if est, ok := db.engine.(interface{ EstimateTxHashIndexSize() int64 }); ok {
+		return est.EstimateTxHashIndexSize()
+	}
+	return 0
+}
+
+// SupportsDuties returns true if the underlying engine supports duties storage.
+func (db *BlockDb) SupportsDuties() bool {
+	return db.dutiesEngine != nil
+}
+
+// AddEpochDuties stores the resolved per-epoch duties. Returns stored size.
+func (db *BlockDb) AddEpochDuties(ctx context.Context, duties *types.EpochDuties) (int64, error) {
+	if db.dutiesEngine == nil {
+		return 0, fmt.Errorf("duties storage not supported by engine")
+	}
+	return db.dutiesEngine.AddEpochDuties(ctx, duties)
+}
+
+// GetEpochDuties retrieves the full resolved duties for an epoch.
+func (db *BlockDb) GetEpochDuties(ctx context.Context, firstSlot uint64) (*types.EpochDuties, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetEpochDuties(ctx, firstSlot)
+}
+
+// GetSlotCommittees retrieves the attester committees for a single slot.
+func (db *BlockDb) GetSlotCommittees(ctx context.Context, firstSlot uint64, slot uint64) ([][]uint64, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetSlotCommittees(ctx, firstSlot, slot)
+}
+
+// GetSlotPtc retrieves the PTC members for a single slot.
+func (db *BlockDb) GetSlotPtc(ctx context.Context, firstSlot uint64, slot uint64) ([]uint64, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetSlotPtc(ctx, firstSlot, slot)
+}
+
+// HasEpochDuties checks if duties exist for an epoch.
+func (db *BlockDb) HasEpochDuties(ctx context.Context, firstSlot uint64) (bool, error) {
+	if db.dutiesEngine == nil {
+		return false, nil
+	}
+	return db.dutiesEngine.HasEpochDuties(ctx, firstSlot)
+}
+
+// PruneEpochDutiesBefore deletes duties objects for all epochs whose first slot is before maxFirstSlot.
+func (db *BlockDb) PruneEpochDutiesBefore(ctx context.Context, maxFirstSlot uint64) (int64, error) {
+	if db.dutiesEngine == nil {
+		return 0, nil
+	}
+	return db.dutiesEngine.PruneEpochDutiesBefore(ctx, maxFirstSlot)
 }

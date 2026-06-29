@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"runtime/debug"
 	"strings"
 	"time"
 
@@ -93,16 +92,9 @@ func (c *Client) startIndexing() {
 
 // startClientLoop starts the client event processing subroutine.
 func (c *Client) startClientLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			c.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.Client.startClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go c.startClientLoop()
-		} else {
-			c.indexing = false
-		}
-	}()
+	defer utils.HandleSubroutinePanic("indexer.beacon.Client.startClientLoop", func() {
+		c.startClientLoop()
+	})
 
 	for {
 		err := c.runClientLoop()

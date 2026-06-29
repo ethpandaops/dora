@@ -23,6 +23,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // Validator will return the main "validator" page using a go template
@@ -131,6 +132,7 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 	pageData := &models.ValidatorPageData{
 		CurrentEpoch:        uint64(chainState.CurrentEpoch()),
 		Index:               uint64(validator.Index),
+		ProjectedIndex:      beacon.IsProjectedValidator(validator.Validator),
 		Name:                services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
 		PublicKey:           validator.Validator.PublicKey[:],
 		Balance:             uint64(validator.Balance),
@@ -140,6 +142,13 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 		TabView:             tabView,
 		ElectraIsActive:     specs.ElectraForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.ElectraForkEpoch,
 	}
+
+	// The actual balance is only available while a recent epoch state is loaded; right
+	// after a restart (before the vset is refreshed) it can't be resolved, and projected
+	// validators have no on-chain balance at all. Flag that so the page renders "?" instead
+	// of a misleading 0.
+	recentBalances := services.GlobalBeaconService.GetBeaconIndexer().GetRecentValidatorBalances(nil)
+	pageData.BalanceResolved = recentBalances != nil && uint64(validator.Index) < uint64(len(recentBalances))
 
 	// Check for queued deposits
 	filteredQueue := services.GlobalBeaconService.GetFilteredQueuedDeposits(ctx, &services.QueuedDepositFilter{
@@ -201,6 +210,103 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 	if validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02 {
 		pageData.ShowWithdrawAddress = true
 		pageData.WithdrawAddress = validator.Validator.WithdrawalCredentials[12:]
+	}
+
+	// Build the lifecycle timeline (Deposited -> Pending -> Active -> Exited). Post-Electra
+	// deposits are gated by the pending-deposit queue, so the Deposited stage tracks whether
+	// the validator has accumulated the activation threshold (balance + queued deposits) and
+	// the Pending stage tracks waiting in the deposit/activation queue. Pre-Electra keeps the
+	// classic eligible/activation-epoch logic.
+	gweiToEth := func(g uint64) string { return strconv.FormatFloat(float64(g)/1e9, 'f', -1, 64) }
+	currentEpoch := uint64(chainState.CurrentEpoch())
+	if pageData.ElectraIsActive {
+		minActivation := specs.MinActivationBalance
+		if pageData.IsActive || pageData.WasActive {
+			// Active (or exited): both stages are complete and the validator necessarily
+			// met the activation minimum, so there's no need to inspect the deposit queue.
+			pageData.DepositedClass = "done"
+			pageData.PendingClass = "done"
+			pageData.ShowEligible = false
+			pageData.DepositedTooltip = "The deposit has been processed and the validator reached the activation threshold."
+			pageData.PendingTooltip = "The validator left the activation queue and has been activated."
+		} else {
+			// Not active yet — sum the validator's queued pending deposits to see how far
+			// the deposit has progressed toward the activation threshold.
+			allQueued := services.GlobalBeaconService.GetFilteredQueuedDeposits(ctx, &services.QueuedDepositFilter{
+				PublicKey: validator.Validator.PublicKey[:],
+			})
+			queuedDepositGwei := uint64(0)
+			for _, q := range allQueued {
+				queuedDepositGwei += uint64(q.PendingDeposit.Amount)
+			}
+			totalIncoming := uint64(validator.Balance) + queuedDepositGwei
+
+			if totalIncoming < minActivation {
+				// Not enough deposited yet to activate — Deposited stage is in progress.
+				pageData.DepositedClass = "active"
+				pageData.ShowEligible = false
+				pageData.ShowActivation = false // Pending stage not reached yet
+				pageData.ShowDepositProgress = true
+				pageData.DepositProgressLabel = fmt.Sprintf("%s / %s ETH", gweiToEth(totalIncoming), gweiToEth(minActivation))
+				pageData.DepositedTooltip = fmt.Sprintf("%s of the %s required to activate has been deposited (including queued deposits). Further deposits are needed before the validator joins the activation queue.", utils.FormatETHFromGwei(totalIncoming), utils.FormatETHFromGwei(minActivation))
+				pageData.PendingTooltip = fmt.Sprintf("Reached once the deposited balance (including queued deposits) reaches %s.", utils.FormatETHFromGwei(minActivation))
+			} else {
+				// Enough deposited (balance + queued >= activation threshold) but not yet
+				// active: waiting in the deposit/activation queue.
+				pageData.DepositedClass = "done"
+				pageData.PendingClass = "active"
+				pageData.ShowEligible = false
+
+				// The pending->active epoch position is reserved for the real activation
+				// epoch, assigned once the validator is in the registry (passed the deposit
+				// queue). A projected validator only has an estimated processing epoch, so it
+				// never goes here.
+				realActivation := pageData.ShowActivation && !pageData.ProjectedIndex
+				pageData.ShowActivation = realActivation
+
+				if realActivation {
+					pageData.DepositedTooltip = fmt.Sprintf("The deposited balance has reached the %s activation threshold and the deposit has been processed.", utils.FormatETHFromGwei(minActivation))
+					pageData.PendingTooltip = fmt.Sprintf("The validator is in the activation queue and becomes active at epoch %d.", pageData.ActivationEpoch)
+				} else {
+					// Not yet processed into the registry. On the Deposited->Pending line show
+					// the estimated processing epoch of the deposit that first brings the
+					// balance to the activation threshold (allQueued is in queue order).
+					cumulative := uint64(validator.Balance)
+					if cumulative < minActivation {
+						for _, q := range allQueued {
+							cumulative += uint64(q.PendingDeposit.Amount)
+							if cumulative >= minActivation {
+								pageData.ShowDepositEstimate = true
+								pageData.DepositEstimateEpoch = uint64(q.EpochEstimate)
+								break
+							}
+						}
+					}
+					if pageData.ShowDepositEstimate {
+						pageData.DepositedTooltip = fmt.Sprintf("The deposits reach the %s activation threshold with the deposit estimated to be processed around epoch %d, after which the validator is created and enters the activation queue.", utils.FormatETHFromGwei(minActivation), pageData.DepositEstimateEpoch)
+					} else {
+						pageData.DepositedTooltip = fmt.Sprintf("The deposited balance has reached the %s activation threshold.", utils.FormatETHFromGwei(minActivation))
+					}
+					pageData.PendingTooltip = "Waiting in the pending-deposit queue to be processed; the validator is then created and enters the activation queue."
+				}
+			}
+		}
+	} else {
+		// Pre-Electra: classic eligible/activation-epoch logic.
+		if pageData.ShowEligible {
+			pageData.DepositedClass = "done"
+		} else {
+			pageData.DepositedClass = "active"
+		}
+		pageData.DepositedTooltip = "Turns green once the deposit has been processed by the beacon chain and the validator joins the activation queue."
+		if pageData.ShowActivation {
+			if currentEpoch >= pageData.ActivationEpoch {
+				pageData.PendingClass = "done"
+			} else {
+				pageData.PendingClass = "active"
+			}
+		}
+		pageData.PendingTooltip = "After being processed the validator joins the activation queue and becomes active at the activation epoch."
 	}
 
 	// load latest blocks
@@ -276,7 +382,7 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 				validatorActivityIdx++
 			}
 
-			validatorStatus := v1.ValidatorToState(validator.Validator, &validator.Balance, epoch, beacon.FarFutureEpoch)
+			validatorStatus := utils.ValidatorToState(validator.Validator, &validator.Balance, epoch, beacon.FarFutureEpoch)
 			if !found && strings.HasPrefix(validatorStatus.String(), "active_") {
 				attestation := &models.ValidatorPageDataAttestation{
 					Epoch:  uint64(epoch),
@@ -381,7 +487,9 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
-				if strings.HasPrefix(validator.Status.String(), "pending") {
+				if validator == nil {
+					depositData.ValidatorStatus = "Deposited"
+				} else if strings.HasPrefix(validator.Status.String(), "pending") {
 					depositData.ValidatorStatus = "Pending"
 				} else if validator.Status == v1.ValidatorStateActiveOngoing {
 					depositData.ValidatorStatus = "Active"

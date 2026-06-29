@@ -477,6 +477,21 @@
       </div>
     </div>
 
+    {{ with .TierStats }}
+    <div class="row mb-3">
+      <div class="col-md-12">
+        <h5 class="card-title mb-3">Cache Tier (Pebble &rarr; S3 fallback)</h5>
+        <table class="table table-sm table-borderless" style="max-width: 400px;">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Cache Hits</td><td>{{ formatNumber .CacheHits }}</td></tr>
+            <tr><td class="text-muted">Cache Misses (S3 reads)</td><td>{{ formatNumber .CacheMisses }}</td></tr>
+            <tr><td class="text-muted">Hit Rate</td><td>{{ if gt (addI64 .CacheHits .CacheMisses) 0 }}{{ printf "%.1f" .HitRatePct }}%{{ else }}N/A{{ end }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {{ end }}
+
     {{ if .PebbleStats }}
     {{ with .PebbleStats }}
     <div class="row">
@@ -611,11 +626,33 @@
             </div>
           </td>
         </tr>
+        <tr>
+          <td>Duties</td>
+          <td class="text-end">{{ formatNumber .DutiesCount }}</td>
+          <td class="text-end">{{ formatByteSize .DutiesSize }}</td>
+          <td class="text-end">{{ if gt .DutiesCount 0 }}{{ formatByteSize (div (float64 .DutiesSize) (float64 .DutiesCount)) }}{{ else }}N/A{{ end }}</td>
+          <td>
+            <div class="progress" style="height: 16px;">
+              <div class="progress-bar bg-success" role="progressbar" style="width: {{ pct .DutiesSize .TotalSize }}%;"></div>
+            </div>
+          </td>
+        </tr>
       </tbody>
     </table>
     {{ end }}
     {{ end }}
     {{ end }}
+
+    {{ with .TxHashIndex }}{{ if .Enabled }}
+    <h5 class="card-title mb-3 mt-4"><i class="fa fa-fingerprint me-1"></i> TX-Hash Index</h5>
+    <table class="table table-sm table-borderless" style="max-width: 400px;">
+      <tbody>
+        <tr><td class="text-muted" style="width:200px;">Store</td><td>{{ .StoreType }}</td></tr>
+        {{ if not .Native }}<tr><td class="text-muted">Entries (approx)</td><td>{{ formatNumber .Count }}</td></tr>{{ end }}
+        {{ if gt .SizeBytes 0 }}<tr><td class="text-muted">Size{{ if .Native }} (estimate){{ end }}</td><td>{{ formatByteSize .SizeBytes }}</td></tr>{{ end }}
+      </tbody>
+    </table>
+    {{ end }}{{ end }}
 
     {{ end }}
   </div>
@@ -668,6 +705,16 @@
             <tr><td class="text-muted" style="width:200px;">Latest Indexed Slot</td><td>{{ formatNumber .LatestSlot }}</td></tr>
           </tbody>
         </table>
+        {{ with .Pruning }}
+        <h5 class="card-title mb-3 mt-4"><i class="fa fa-broom me-1"></i> Pruning</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Last Cleanup</td><td>{{ .LastCleanup }}</td></tr>
+            <tr><td class="text-muted">Relational Pruned Before</td><td>{{ if .RelationalEnabled }}epoch {{ formatNumber .RelationalPrunedEpoch }}{{ else }}<span class="text-muted">disabled</span>{{ end }}</td></tr>
+            <tr><td class="text-muted">Details Pruned Before</td><td>{{ if .DetailsEnabled }}epoch {{ formatNumber .DetailsPrunedEpoch }}{{ else }}<span class="text-muted">disabled</span>{{ end }}</td></tr>
+          </tbody>
+        </table>
+        {{ end }}
       </div>
     </div>
 
@@ -701,6 +748,32 @@
         </tbody>
       </table>
     </div>
+    {{ end }}
+
+    {{ with .Pruning }}
+    {{ if .Runs }}
+    <h6 class="mb-2">Recent Pruning Runs</h6>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr><th>Time</th><th>Duration</th><th>Cleared</th></tr>
+        </thead>
+        <tbody>
+          {{ range .Runs }}
+          <tr>
+            <td>{{ .Time }}</td>
+            <td>{{ .Duration }}</td>
+            <td>
+              {{ if .Objects }}
+              {{ range .Objects }}<span class="badge text-bg-secondary me-1 mb-1">{{ .Label }}: {{ formatNumber .Deleted }}{{ if gt .SizeBytes 0 }} ({{ formatByteSize .SizeBytes }}){{ end }}</span>{{ end }}
+              {{ else }}<span class="text-muted">nothing</span>{{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ end }}
     {{ end }}
     {{ end }}
   </div>

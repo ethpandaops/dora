@@ -119,7 +119,7 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 			17: false,
 			18: !hasSnooperClients, // Disable receive delay if snooper clients exist
 			19: hasSnooperClients,  // Enable exec time if snooper clients exist
-			20: false,              // Builder (hidden by default)
+			20: false,              // Builder (opt-in; proposer column already shows build source)
 		}
 	}
 
@@ -309,8 +309,10 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 				}
 			}
 
-			// Add builder info
-			if pageData.DisplayBuilder {
+			// Add builder info (needed for the Builder column and the proposer build-source icon).
+			// Only blocks that actually exist (proposed or orphaned) carry a build source;
+			// scheduled/missing slots have no payload yet.
+			if (pageData.DisplayBuilder || pageData.DisplayProposer) && dbSlot.Status > 0 {
 				if dbSlot.BuilderIndex == -1 {
 					slotData.HasBuilder = true
 					slotData.BuilderIndex = math.MaxUint64
@@ -318,6 +320,7 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 					slotData.HasBuilder = true
 					slotData.BuilderIndex = uint64(dbSlot.BuilderIndex)
 					slotData.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(dbSlot.BuilderIndex) | services.BuilderIndexFlag)
+					slotData.BuilderURL = services.GlobalBeaconService.GetBuilderURL(uint64(dbSlot.BuilderIndex))
 				}
 			}
 

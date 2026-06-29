@@ -18,8 +18,8 @@ func InsertValidator(ctx context.Context, tx *sqlx.Tx, validator *dbtypes.Valida
 			INSERT INTO validators (
 				validator_index, pubkey, withdrawal_credentials, effective_balance,
 				slashed, activation_eligibility_epoch, activation_epoch,
-				exit_epoch, withdrawable_epoch
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+				exit_epoch, withdrawable_epoch, cred_type
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			ON CONFLICT (validator_index) DO UPDATE SET
 				withdrawal_credentials = excluded.withdrawal_credentials,
 				effective_balance = excluded.effective_balance,
@@ -27,13 +27,14 @@ func InsertValidator(ctx context.Context, tx *sqlx.Tx, validator *dbtypes.Valida
 				activation_eligibility_epoch = excluded.activation_eligibility_epoch,
 				activation_epoch = excluded.activation_epoch,
 				exit_epoch = excluded.exit_epoch,
-				withdrawable_epoch = excluded.withdrawable_epoch`,
+				withdrawable_epoch = excluded.withdrawable_epoch,
+				cred_type = excluded.cred_type`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO validators (
 				validator_index, pubkey, withdrawal_credentials, effective_balance,
 				slashed, activation_eligibility_epoch, activation_epoch,
-				exit_epoch, withdrawable_epoch
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+				exit_epoch, withdrawable_epoch, cred_type
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 	}),
 		validator.ValidatorIndex,
 		validator.Pubkey,
@@ -43,7 +44,8 @@ func InsertValidator(ctx context.Context, tx *sqlx.Tx, validator *dbtypes.Valida
 		validator.ActivationEligibilityEpoch,
 		validator.ActivationEpoch,
 		validator.ExitEpoch,
-		validator.WithdrawableEpoch)
+		validator.WithdrawableEpoch,
+		validator.CredType)
 
 	if err != nil {
 		return fmt.Errorf("error inserting validator: %v", err)
@@ -57,14 +59,14 @@ func InsertValidatorBatch(ctx context.Context, tx *sqlx.Tx, validators []*dbtype
 		return nil
 	}
 
-	valueArgs := make([]interface{}, 0, len(validators)*9)
+	valueArgs := make([]interface{}, 0, len(validators)*10)
 	var values strings.Builder
 	for i, validator := range validators {
 		if i > 0 {
 			values.WriteByte(',')
 		}
 		values.WriteByte('(')
-		appendDollarPlaceholders(&values, i*9+1, 9, ", ")
+		appendDollarPlaceholders(&values, i*10+1, 10, ", ")
 		values.WriteByte(')')
 		valueArgs = append(valueArgs,
 			validator.ValidatorIndex,
@@ -75,7 +77,8 @@ func InsertValidatorBatch(ctx context.Context, tx *sqlx.Tx, validators []*dbtype
 			validator.ActivationEligibilityEpoch,
 			validator.ActivationEpoch,
 			validator.ExitEpoch,
-			validator.WithdrawableEpoch)
+			validator.WithdrawableEpoch,
+			validator.CredType)
 	}
 
 	stmt := fmt.Sprintf(EngineQuery(map[dbtypes.DBEngineType]string{
@@ -83,7 +86,7 @@ func InsertValidatorBatch(ctx context.Context, tx *sqlx.Tx, validators []*dbtype
 			INSERT INTO validators (
 				validator_index, pubkey, withdrawal_credentials, effective_balance,
 				slashed, activation_eligibility_epoch, activation_epoch,
-				exit_epoch, withdrawable_epoch
+				exit_epoch, withdrawable_epoch, cred_type
 			) VALUES %s
 			ON CONFLICT (validator_index) DO UPDATE SET
 				withdrawal_credentials = excluded.withdrawal_credentials,
@@ -92,12 +95,13 @@ func InsertValidatorBatch(ctx context.Context, tx *sqlx.Tx, validators []*dbtype
 				activation_eligibility_epoch = excluded.activation_eligibility_epoch,
 				activation_epoch = excluded.activation_epoch,
 				exit_epoch = excluded.exit_epoch,
-				withdrawable_epoch = excluded.withdrawable_epoch`,
+				withdrawable_epoch = excluded.withdrawable_epoch,
+				cred_type = excluded.cred_type`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO validators (
 				validator_index, pubkey, withdrawal_credentials, effective_balance,
 				slashed, activation_eligibility_epoch, activation_epoch,
-				exit_epoch, withdrawable_epoch
+				exit_epoch, withdrawable_epoch, cred_type
 			) VALUES %s`,
 	}), values.String())
 
@@ -262,6 +266,18 @@ func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64
 	if filter.WithdrawalCreds != nil {
 		args = append(args, filter.WithdrawalCreds)
 		fmt.Fprintf(sql, " %v withdrawal_credentials = $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if len(filter.WithdrawalCredTypes) > 0 {
+		fmt.Fprintf(sql, " %v cred_type IN (", filterOp)
+		for i, credType := range filter.WithdrawalCredTypes {
+			if i > 0 {
+				fmt.Fprintf(sql, ", ")
+			}
+			args = append(args, uint16(credType))
+			fmt.Fprintf(sql, "$%v", len(args))
+		}
+		fmt.Fprintf(sql, ")")
 		filterOp = "AND"
 	}
 	if filter.ValidatorName != "" {

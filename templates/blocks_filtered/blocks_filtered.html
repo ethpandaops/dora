@@ -104,6 +104,32 @@
             </div>
             <div class="col-sm-12 col-md-6">
               <div class="container">
+                {{ if .IsGloasActive }}
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Builder</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <select name="f.builderblock" aria-controls="builderblock" class="form-control" aria-label="Builder Blocks">
+                        <option value="0" {{ if eq .FilterWithBuilder 0 }}selected{{ end }}>All</option>
+                        <option value="1" {{ if eq .FilterWithBuilder 1 }}selected{{ end }}>Builder-built only</option>
+                        <option value="2" {{ if eq .FilterWithBuilder 2 }}selected{{ end }}>Self-built only</option>
+                      </select>
+                    </div>
+                    <div class="text-center filter-separator"></div>
+                    <div class="flex-grow-1">
+                      <div class="input-group">
+                        <input name="f.builder" type="number" class="form-control" placeholder="Builder Index" aria-label="Builder Index" min="0" value="{{ .FilterBuilder }}">
+                        <div class="input-group-text">
+                          <input name="f.binvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertBuilder }}checked{{ end }} title="Invert filter (exclude matches)">
+                          <label class="form-check-label small" for="f.binvert" title="Invert filter (exclude matches)">NOT</label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {{ else }}
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <nobr>MEV Blocks</nobr>
@@ -116,6 +142,7 @@
                     </select>
                   </div>
                 </div>
+                {{ end }}
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <nobr>Tx Count</nobr>
@@ -178,6 +205,7 @@
                 <option value="8" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
                 <option value="9" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
                 <option value="10" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
+                <option value="14" {{ if .DisplayBuilder }}selected{{ end }}>Builder</option>
                 <option value="11" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                 <option value="13" {{ if .DisplayFeeRecipient }}selected{{ end }}>Fee Recipient</option>
@@ -196,6 +224,13 @@
       $('#blocksFilterForm').submit(function () {
         $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
       });
+      // "Self-built only" forces builder_index = -1, so the builder index search is meaningless there
+      function updateBuilderIndexState() {
+        var selfBuilt = $('[name="f.builderblock"]').val() === '2';
+        $('[name="f.builder"],[name="f.binvert"]').prop('disabled', selfBuilt);
+      }
+      $('[name="f.builderblock"]').on('change', updateBuilderIndexState);
+      updateBuilderIndexState();
     </script>
 
     <div class="card mt-2">
@@ -214,6 +249,7 @@
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
+                {{ if .DisplayBuilder }}<th>Builder</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
                 {{ if .DisplayFeeRecipient }}<th>Fee Recipient</th>{{ end }}
@@ -236,11 +272,11 @@
                     {{- if $g.DisplayStatus }}
                     <td>
                       {{- if eq $block.Status 1 }}
-                        <span class="badge rounded-pill text-bg-success">Proposed</span>
+                        <span class="badge rounded-pill text-bg-success {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $block.Status $block.PayloadStatus }}">Proposed</span>
                       {{- else if eq $block.Status 2 }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                        <span class="badge rounded-pill text-bg-info {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $block.Status $block.PayloadStatus }}">Orphaned</span>
                       {{- else }}
-                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                        <span class="badge rounded-pill text-bg-dark {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $block.Status $block.PayloadStatus }}">Unknown</span>
                       {{- end }}
                     </td>
                     {{- end }}
@@ -272,6 +308,13 @@
                           <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.MevBlockRelays }}">Yes</span>
                         {{ else }}
                           <span class="badge rounded-pill text-bg-secondary">No</span>
+                        {{ end }}
+                      </td>
+                    {{- end }}
+                    {{- if $g.DisplayBuilder }}
+                      <td>
+                        {{ if $block.HasBuilder }}
+                          {{ formatBuilderWithURL $block.BuilderIndex $block.BuilderName $block.BuilderURL }}
                         {{ end }}
                       </td>
                     {{- end }}

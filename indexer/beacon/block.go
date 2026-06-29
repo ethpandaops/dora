@@ -70,6 +70,7 @@ type BlockBodyIndex struct {
 	EthTransactionCount uint64
 	BlobCount           uint64
 	BuilderIndex        uint64
+	BidValue            uint64 // bid value in Gwei (0 for self-builds and pre-gloas blocks)
 	GasUsed             uint64
 	GasLimit            uint64
 	BlockSize           uint64
@@ -442,6 +443,10 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 		blockIndex.BuilderIndex = math.MaxUint64
 	}
 
+	if bidValue, err := getBlockPayloadBidValue(body); err == nil {
+		blockIndex.BidValue = uint64(bidValue)
+	}
+
 	if parentHash, err := getBlockExecutionParentHash(body); err == nil {
 		blockIndex.ExecutionParentHash = parentHash
 	}
@@ -465,6 +470,7 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 		blockIndex.EthTransactionCount = uint64(len(payload.Message.Payload.Transactions))
 		blockIndex.GasUsed = payload.Message.Payload.GasUsed
 		blockIndex.GasLimit = payload.Message.Payload.GasLimit
+		blockIndex.ExecutionExtraData = payload.Message.Payload.ExtraData
 	}
 
 	if blockSize, err := getBlockSize(block.dynSsz, body); err == nil {
@@ -740,6 +746,24 @@ func (block *Block) GetDbConsolidationRequests(indexer *Indexer, isCanonical boo
 	}
 
 	return indexer.dbWriter.buildDbConsolidationRequests(block, !isCanonical, nil, nil)
+}
+
+// GetDbBuilderDeposits returns the database representation of the builder deposit requests in this block.
+func (block *Block) GetDbBuilderDeposits(indexer *Indexer, isCanonical bool) []*dbtypes.BuilderDeposit {
+	if block.isDisposed {
+		return nil
+	}
+
+	return indexer.dbWriter.buildDbBuilderDeposits(block, !isCanonical, nil)
+}
+
+// GetDbBuilderExits returns the database representation of the builder exit requests in this block.
+func (block *Block) GetDbBuilderExits(indexer *Indexer, isCanonical bool) []*dbtypes.BuilderExit {
+	if block.isDisposed {
+		return nil
+	}
+
+	return indexer.dbWriter.buildDbBuilderExits(block, !isCanonical, nil)
 }
 
 // GetForkId returns the fork ID of this block.

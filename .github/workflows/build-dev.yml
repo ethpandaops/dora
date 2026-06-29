@@ -25,6 +25,9 @@ jobs:
       run_builds: ${{ steps.loadinfo.outputs.run_builds }}
       build_docker: ${{ steps.loadinfo.outputs.build_docker }}
       docker_tag: ${{ steps.loadinfo.outputs.docker_tag }}
+      # commit_ref = the EXACT PR head sha. Passed to the build workflow so it builds the
+      # real branch code and NOT the auto-generated PR/master merge commit. DO NOT REMOVE.
+      commit_ref: ${{ steps.loadinfo.outputs.commit_ref }}
     steps:
     - name: "Load PR info"
       id: loadinfo
@@ -32,6 +35,9 @@ jobs:
         HAS_DOCKER_IMAGE_LABEL: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-docker-image') }}
         SAME_REPOSITORY_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
         MANUAL_DOCKER_TAG: ${{ inputs.docker_tag }}
+        # PR head sha (exact branch HEAD). Read via env to avoid script injection. DO NOT REMOVE.
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        FALLBACK_SHA: ${{ github.sha }}
       run: |
         has_docker_image_label="$HAS_DOCKER_IMAGE_LABEL"
         same_repository_pr="$SAME_REPOSITORY_PR"
@@ -43,6 +49,15 @@ jobs:
         branch_name="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
         branch_name="$(echo "$branch_name" | sed 's/\//-/g')"
         echo "branch name: $branch_name"
+
+        # Build the EXACT pushed commit. On a `pull_request` event, actions/checkout with no
+        # ref defaults to refs/pull/<N>/merge (branch MERGED with master) — wrong for diverged
+        # branches. Pinning head.sha avoids that. DO NOT REMOVE — see _shared-build.yaml `ref`.
+        commit_ref="$HEAD_SHA"
+        if [[ -z "$commit_ref" ]]; then
+          commit_ref="$FALLBACK_SHA"
+        fi
+        echo "commit ref: $commit_ref"
 
         manual_tag="$MANUAL_DOCKER_TAG"
         if [[ ! -z "$manual_tag" ]]; then
@@ -64,6 +79,7 @@ jobs:
         echo "run_builds=$run_builds" >> $GITHUB_OUTPUT
         echo "build_docker=$build_docker" >> $GITHUB_OUTPUT
         echo "docker_tag=$branch_name" >> $GITHUB_OUTPUT
+        echo "commit_ref=$commit_ref" >> $GITHUB_OUTPUT
 
   build_binaries:
     name: "Build Dora"
@@ -71,6 +87,7 @@ jobs:
     if: ${{ needs.prinfo.outputs.run_builds == 'true' && needs.prinfo.outputs.build_docker != 'true' }}
     uses: ./.github/workflows/_shared-build.yaml
     with:
+      ref: ${{ needs.prinfo.outputs.commit_ref }} # exact branch HEAD, NOT the PR/master merge. DO NOT REMOVE.
       docker: false
       docker_repository: "ethpandaops/dora"
       docker_tag_prefix: ${{needs.prinfo.outputs.docker_tag}}
@@ -82,6 +99,7 @@ jobs:
     if: ${{ needs.prinfo.outputs.run_builds == 'true' && needs.prinfo.outputs.build_docker == 'true' }}
     uses: ./.github/workflows/_shared-build.yaml
     with:
+      ref: ${{ needs.prinfo.outputs.commit_ref }} # exact branch HEAD, NOT the PR/master merge. DO NOT REMOVE.
       docker: true
       docker_repository: "ethpandaops/dora"
       docker_tag_prefix: ${{needs.prinfo.outputs.docker_tag}}

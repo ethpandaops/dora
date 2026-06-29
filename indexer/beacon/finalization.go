@@ -354,9 +354,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			}
 
 			// Check if next block builds on this block's committed payload
-			if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
-				block.isPayloadOrphaned = true
-			}
+			block.isPayloadOrphaned = !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:])
 		}
 	}
 
@@ -449,9 +447,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				if nextBlock != nil {
 					nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
 					if nextBlockIndex != nil {
-						if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
-							block.isPayloadOrphaned = true
-						}
+						block.isPayloadOrphaned = !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:])
 					}
 				}
 			}
@@ -590,7 +586,29 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				}
 			}(block)
 		}
+
+		// store the epoch's resolved duties alongside the block writes
+		var dutiesSize int64
+		wg.Add(1)
+		go func(values *EpochStatsValues) {
+			defer wg.Done()
+			size, err := indexer.writeEpochDutiesToBlockDb(indexer.ctx, epoch, values)
+			if err != nil {
+				indexer.logger.Errorf("error writing epoch %v duties to blockdb: %v", epoch, err)
+				return
+			}
+			dutiesSize = size
+		}(epochStatsValues)
+
 		wg.Wait()
+
+		// record the duties object size on the epoch row (written after the epoch
+		// row was inserted above, so it needs a follow-up update).
+		if dutiesSize > 0 {
+			if err := db.UpdateEpochDutiesSize(indexer.ctx, uint64(epoch), uint64(dutiesSize)); err != nil {
+				indexer.logger.Errorf("error updating epoch %v duties size: %v", epoch, err)
+			}
+		}
 	}
 	t3dur := time.Since(t1)
 

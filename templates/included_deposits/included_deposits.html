@@ -112,6 +112,19 @@
                     </select>
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Credential Type</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <select name="f.cred" multiple="multiple" class="filter-multiselect">
+                      <option value="0" {{ if index .FilterCredTypes 0 }}selected{{ end }}>0x00 (BLS)</option>
+                      <option value="1" {{ if index .FilterCredTypes 1 }}selected{{ end }}>0x01 (Execution)</option>
+                      <option value="2" {{ if index .FilterCredTypes 2 }}selected{{ end }}>0x02 (Compounding)</option>
+                      <option value="3" {{ if index .FilterCredTypes 3 }}selected{{ end }}>0x03 (Builder)</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -197,7 +210,7 @@
                             {{ if $deposit.IsBuilder }}
                               {{ formatBuilderWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
                             {{ else }}
-                              {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                              {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}{{ if $deposit.ProjectedIndex }} <i class="fas fa-exclamation-circle text-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="This deposit has not been processed yet — the validator index is projected (estimated) and not yet reserved on-chain."></i>{{ end }}
                             {{ end }}
                           {{ else }}
                             0x{{ printf "%x" $deposit.PublicKey }}
@@ -409,9 +422,19 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script src="/js/bootstrap-multiselect.js"></script>
 <script>
   $(document).ready(function() {
     var lastPopover = null;
+
+    $('#depositsFilterForm .filter-multiselect').each(function() {
+      $(this).multiselect({
+        onInitialized: function() {
+          this.$button.attr("data-bs-toggle", "dropdown");
+          this.$container.addClass("filter-multiselect-container");
+        }
+      });
+    });
 
     $('.tx-details-btn').click(function() {
       var txdetails = $(this).data('txdetails');
@@ -493,7 +516,26 @@
 </script>
 {{ end }}
 {{ define "css" }}
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
 <style>
+.filter-multiselect-container {
+  width: 100%;
+}
+.filter-multiselect-container.btn-group>.btn {
+  text-align: left;
+}
+.filter-multiselect-container .multiselect-container {
+  width: 100%;
+}
+.filter-multiselect-container .multiselect-container>li>a>label {
+  padding: 4px 8px;
+  width: 100%;
+  white-space: nowrap;
+}
+.filter-multiselect-container .multiselect-container>li>a>label>input {
+  margin: 0 4px;
+}
+
 .tx-details-label {
   min-width: 90px;
 }

@@ -29,20 +29,22 @@ type epochState struct {
 	readyChan      chan bool
 	highPriority   bool
 
-	stateSlot                  phase0.Slot
-	sourceBlockUid             uint64 // block UID of the source block (before epoch transition)
-	validatorBalances          []phase0.Gwei
-	builderBalances            []phase0.Gwei
-	randaoMixes                []phase0.Root
-	depositIndex               uint64
-	syncCommittee              []phase0.ValidatorIndex
-	depositBalanceToConsume    phase0.Gwei
-	pendingDeposits            []*electra.PendingDeposit
-	pendingPartialWithdrawals  []*electra.PendingPartialWithdrawal
-	builderPendingWithdrawals  []*gloas.BuilderPendingWithdrawal
-	delayedBuilderPaymentCount uint32 // number of delayed payments at the tail of builderPendingWithdrawals
-	pendingConsolidations      []*electra.PendingConsolidation
-	proposerLookahead          []phase0.ValidatorIndex
+	stateSlot                 phase0.Slot
+	sourceBlockUid            uint64 // block UID of the source block (before epoch transition)
+	validatorBalances         []phase0.Gwei
+	builderBalances           []phase0.Gwei
+	randaoMixes               []phase0.Root
+	depositIndex              uint64
+	syncCommittee             []phase0.ValidatorIndex
+	depositBalanceToConsume   phase0.Gwei
+	pendingDeposits           []*electra.PendingDeposit
+	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
+	builderPendingWithdrawals []*gloas.BuilderPendingWithdrawal
+	delayedBuilderPaymentRefs []uint16                  // references to the slots of the delayed builder payments
+	gloasOnboardedDeposits    []*electra.PendingDeposit // builder deposits onboarded by the upgrade_to_gloas fork transition
+	pendingConsolidations     []*electra.PendingConsolidation
+	proposerLookahead         []phase0.ValidatorIndex
+	latestExecutionHash       phase0.Hash32
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
@@ -171,24 +173,28 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 			return nil, err
 		}
 		resState = loaded
-		apiLoadDur := time.Since(apiStart)
+		client.logger.Infof("loaded epoch %v state from beacon API in %v",
+			s.targetEpoch, time.Since(apiStart).Round(time.Millisecond))
+	}
 
+	if resState != nil {
 		// For Fulu+: apply epoch transition to advance the state from the post-block state
 		// of the parent epoch's last block to the pre-state of the target epoch.
 		// Skip for genesis (epoch 0) — the genesis state is already the correct pre-state.
-		var epochTransitionDur time.Duration
 		if resState.Version >= spec.DataVersionFulu && s.targetEpoch > 0 {
 			epochStart := time.Now()
+
 			var transitionInfo statetransition.TransitionInfo
 			if err := statetransition.NewStateTransition(specs, client.indexer.dynSsz).PrepareEpochPreState(resState, s.targetEpoch, &transitionInfo); err != nil {
 				return nil, fmt.Errorf("error applying epoch transition for epoch %v: %w", s.targetEpoch, err)
 			}
-			epochTransitionDur = time.Since(epochStart)
-			s.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
-		}
+			epochTransitionDur := time.Since(epochStart)
+			s.delayedBuilderPaymentRefs = transitionInfo.DelayedBuilderPayments
+			s.gloasOnboardedDeposits = transitionInfo.GloasOnboardedDeposits
 
-		client.logger.Infof("loaded epoch %v state from beacon API in %v + epoch transition %v",
-			s.targetEpoch, apiLoadDur.Round(time.Millisecond), epochTransitionDur.Round(time.Millisecond))
+			client.logger.Infof("applied epoch transition for epoch %v in %v",
+				s.targetEpoch, epochTransitionDur.Round(time.Millisecond))
+		}
 
 		// Store in state cache for future use.
 		if sc != nil {
@@ -223,8 +229,47 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 	s.stateSlot = state.Slot
 	dependentRoot := s.slotRoot
 
+	// validators/balances default to the on-chain registry. For recent (unfinalized)
+	// epoch states we extend them with the validators the chain will create from the
+	// pending_deposits queue, at their exact future indices. New slices are built —
+	// state.Validators/Balances must not be mutated, as the same state object is
+	// advanced for sibling epochs and stored in the state cache.
+	realValidatorCount := len(state.Validators)
+	validators := state.Validators
+	balances := state.Balances
+
+	if cache != nil && state.Version >= spec.DataVersionElectra && len(state.PendingDeposits) > 0 {
+		chainState := cache.indexer.consensusPool.GetChainState()
+		finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
+		if chainState.EpochOfSlot(state.Slot) > finalizedEpoch {
+			specs := chainState.GetSpecs()
+			var gloasForkEpoch *phase0.Epoch
+			if specs.GloasForkEpoch != nil {
+				e := phase0.Epoch(*specs.GloasForkEpoch)
+				gloasForkEpoch = &e
+			}
+			projectedValidators, projectedBalances := cache.indexer.pendingValidators.project(state.Validators, state.PendingDeposits, pendingProjectionInput{
+				genesisForkVersion:         specs.GenesisForkVersion,
+				currentEpoch:               chainState.EpochOfSlot(state.Slot),
+				depositBalanceToConsume:    state.DepositBalanceToConsume,
+				maxPendingDepositsPerEpoch: specs.MaxPendingDepositsPerEpoch,
+				gloasForkEpoch:             gloasForkEpoch,
+				churnLimit:                 chainState.GetActivationExitChurnLimit,
+			})
+			if len(projectedValidators) > 0 {
+				validators = make([]*phase0.Validator, 0, realValidatorCount+len(projectedValidators))
+				validators = append(validators, state.Validators...)
+				validators = append(validators, projectedValidators...)
+
+				balances = make([]phase0.Gwei, 0, realValidatorCount+len(projectedBalances))
+				balances = append(balances, state.Balances...)
+				balances = append(balances, projectedBalances...)
+			}
+		}
+	}
+
 	if cache != nil {
-		cache.indexer.validatorCache.updateValidatorSet(state.Slot, dependentRoot, state.Validators)
+		cache.indexer.validatorCache.updateValidatorSet(state.Slot, dependentRoot, validators)
 	}
 
 	// Process builder set for Gloas+
@@ -245,7 +290,7 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 		validatorPubkeyMap[v.PublicKey] = phase0.ValidatorIndex(i)
 	}
 
-	s.validatorBalances = state.Balances
+	s.validatorBalances = balances
 	s.randaoMixes = state.RANDAOMixes
 	s.depositIndex = state.ETH1DepositIndex
 
@@ -276,6 +321,9 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 
 	if state.Version >= spec.DataVersionGloas {
 		s.builderPendingWithdrawals = state.BuilderPendingWithdrawals
+		s.latestExecutionHash = state.LatestExecutionPayloadBid.ParentBlockHash
+	} else {
+		s.latestExecutionHash = state.LatestExecutionPayloadHeader.BlockHash
 	}
 
 	s.proposerLookahead = state.ProposerLookahead
@@ -330,10 +378,15 @@ func (s *epochState) tryReplayFromParentState(
 		return nil
 	}
 
-	// Skip replay across fork boundaries — the state version must match the
-	// dependent block's version (fork upgrades during state transition are not
-	// yet implemented).
-	if depBeaconBlock.Version != parentState.Version {
+	// Skip replay across fork boundaries. The Fulu→Gloas upgrade (upgrade_to_gloas, applied
+	// inside PrepareEpochPreState) is implemented, but the other fork upgrades are not, and
+	// crossing a boundary during this unverified parent-state reconstruction is avoided as a
+	// conservative measure: the source state for a fork epoch is instead obtained via API load
+	// + PrepareEpochPreState. Detect both a dependent-block/parent-state version mismatch and a
+	// fork change between the parent epoch and the target epoch, and fall back to the API.
+	chainState := client.indexer.consensusPool.GetChainState()
+	if depBeaconBlock.Version != parentState.Version ||
+		chainState.GetForkVersionAtEpoch(parentEpoch) != chainState.GetForkVersionAtEpoch(s.targetEpoch) {
 		return nil
 	}
 
@@ -396,32 +449,12 @@ func (s *epochState) tryReplayFromParentState(
 	}
 	blockReplayDur := time.Since(replayStart)
 
-	// Apply epoch transition to advance the state from the post-block state of
-	// the parent epoch's last block to the pre-state of the target epoch.
-	var epochTransitionDur time.Duration
-	if parentState.Version >= spec.DataVersionFulu {
-		epochStart := time.Now()
-		var transitionInfo statetransition.TransitionInfo
-		if err := st.PrepareEpochPreState(parentState, s.targetEpoch, &transitionInfo); err != nil {
-			client.logger.Warnf("replay: epoch transition failed for epoch %v: %v", s.targetEpoch, err)
-			return nil
-		}
-		epochTransitionDur = time.Since(epochStart)
-		s.delayedBuilderPaymentCount = transitionInfo.DelayedBuilderPayments
-	}
-
 	client.logger.Infof(
-		"replayed epoch %v: %d blocks in %v (apply %v) + epoch transition %v",
+		"replayed epoch %v: %d blocks in %v (apply %v)",
 		parentEpoch, len(epochBlocks),
 		blockReplayDur.Round(time.Millisecond),
 		blockApplyTotal.Round(time.Millisecond),
-		epochTransitionDur.Round(time.Millisecond),
 	)
-
-	// Cache the post-epoch-transition state for the target epoch.
-	if err := sc.Store(s.slotRoot, s.targetEpoch, parentState); err != nil {
-		client.logger.Warnf("failed to cache replayed state for epoch %v: %v", s.targetEpoch, err)
-	}
 
 	return parentState
 }

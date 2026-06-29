@@ -64,6 +64,7 @@ type APIDepositIncludedInfo struct {
 // @Param with_orphaned query int false "Include orphaned deposits (0=canonical only, 1=include all, 2=orphaned only)"
 // @Param address query string false "Filter by depositor address"
 // @Param with_valid query int false "Filter by signature validity (0=invalid only, 1=valid only, 2=all)"
+// @Param cred_type query []int false "Filter by withdrawal credential type prefix byte (0-3). Repeat the parameter to include multiple types, e.g. cred_type=1&cred_type=2." collectionFormat(multi)
 // @Success 200 {object} APIDepositsIncludedResponse
 // @Failure 400 {object} map[string]string "Invalid parameters"
 // @Failure 500 {object} map[string]string "Internal server error"
@@ -167,6 +168,19 @@ func APIDepositsIncludedV1(w http.ResponseWriter, r *http.Request) {
 	if validStr := query.Get("with_valid"); validStr != "" {
 		if valid, err := strconv.ParseUint(validStr, 10, 8); err == nil {
 			depositFilter.WithValid = uint8(valid)
+		}
+	}
+
+	// Withdrawal credential type filter (repeatable: cred_type=0&cred_type=1)
+	if credVals, ok := query["cred_type"]; ok {
+		seen := map[uint8]bool{}
+		for _, v := range credVals {
+			t, err := strconv.ParseUint(v, 10, 8)
+			if err != nil || t > 3 || seen[uint8(t)] {
+				continue
+			}
+			seen[uint8(t)] = true
+			depositFilter.WithdrawalCredTypes = append(depositFilter.WithdrawalCredTypes, uint8(t))
 		}
 	}
 

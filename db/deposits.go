@@ -17,11 +17,11 @@ func InsertDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.Deposi
 			dbtypes.DBEnginePgsql:  "INSERT INTO deposits ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO deposits ",
 		}),
-		"(deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id)",
+		"(deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id, cred_type)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 9
+	fieldCount := 10
 
 	args := make([]any, len(deposits)*fieldCount)
 	for i, deposit := range deposits {
@@ -47,6 +47,7 @@ func InsertDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.Deposi
 		args[argIdx+6] = deposit.WithdrawalCredentials[:]
 		args[argIdx+7] = deposit.Amount
 		args[argIdx+8] = deposit.ForkId
+		args[argIdx+9] = deposit.CredType
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -58,6 +59,50 @@ func InsertDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.Deposi
 		return err
 	}
 	return nil
+}
+
+// GetDepositRequestsBySlots returns canonical deposit request rows whose
+// slot_number is in the given set, ordered by (slot_number, slot_index). It is
+// used to resolve the EL deposit index of queue entries that were reordered
+// (postponed) and can no longer be aligned by queue position, matching them by
+// their PendingDeposit.slot.
+func GetDepositRequestsBySlots(ctx context.Context, slots []uint64, canonicalForkIds []uint64) ([]*dbtypes.Deposit, error) {
+	deposits := []*dbtypes.Deposit{}
+	if len(slots) == 0 {
+		return deposits, nil
+	}
+
+	// SQLite caps bound variables (default 999); chunk to stay well below that.
+	const maxParams = 900
+
+	for start := 0; start < len(slots); start += maxParams {
+		end := min(start+maxParams, len(slots))
+		chunk := slots[start:end]
+
+		var sql strings.Builder
+		args := make([]any, 0, len(chunk)+len(canonicalForkIds))
+		fmt.Fprint(&sql, `SELECT deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id, cred_type
+			FROM deposits
+			WHERE slot_number IN (`)
+		for _, slot := range chunk {
+			args = append(args, slot)
+		}
+		appendDollarPlaceholders(&sql, 1, len(chunk), ", ")
+		fmt.Fprint(&sql, ")")
+
+		filterOp := "AND"
+		appendWithOrphanedFilter(&sql, &args, &filterOp, 0, canonicalForkIds, "deposits.fork_id")
+
+		fmt.Fprint(&sql, " ORDER BY slot_number, slot_index")
+
+		var chunkResult []*dbtypes.Deposit
+		if err := ReaderDb.SelectContext(ctx, &chunkResult, sql.String(), args...); err != nil {
+			return nil, fmt.Errorf("error fetching deposit requests by slots: %w", err)
+		}
+		deposits = append(deposits, chunkResult...)
+	}
+
+	return deposits, nil
 }
 
 func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.DepositFilter, txFilter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositWithTx, uint64, error) {
@@ -136,6 +181,19 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 			copy(wdcreds3[12:], txFilter.WithdrawalAddress)
 			args = append(args, wdcreds1, wdcreds2, wdcreds3)
 			fmt.Fprintf(&sql, " %v (deposits.withdrawalcredentials = $%v OR deposits.withdrawalcredentials = $%v OR deposits.withdrawalcredentials = $%v)", filterOp, len(args)-2, len(args)-1, len(args))
+			filterOp = "AND"
+		}
+
+		if len(txFilter.WithdrawalCredTypes) > 0 {
+			fmt.Fprintf(&sql, " %v deposits.cred_type IN (", filterOp)
+			for i, credType := range txFilter.WithdrawalCredTypes {
+				if i > 0 {
+					fmt.Fprintf(&sql, ", ")
+				}
+				args = append(args, uint16(credType))
+				fmt.Fprintf(&sql, "$%v", len(args))
+			}
+			fmt.Fprintf(&sql, ")")
 			filterOp = "AND"
 		}
 
