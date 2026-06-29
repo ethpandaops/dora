@@ -682,6 +682,41 @@ func (dbw *dbWriter) persistBlockDeposits(tx *sqlx.Tx, block *Block, depositInde
 		if err != nil {
 			return fmt.Errorf("error inserting deposits: %v", err)
 		}
+
+		if overrideForkId != nil {
+			if err := dbw.reconcileOnboardedBuilderDeposits(tx, dbDeposits, *overrideForkId); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// reconcileOnboardedBuilderDeposits keeps the upgrade_to_gloas onboarded builder deposit copies in
+// sync with their source validator deposits. The copies are written once at the fork boundary with
+// the then-unfinalized fork id and are not re-persisted per block, so when a source deposit (a
+// pre-gloas builder 0x03 deposit) is persisted canonically its matching copy is moved onto the same
+// fork id; otherwise the copy keeps its unfinalized fork id and later shows up as orphaned. It only
+// runs once the fork has activated (i.e. the copy exists).
+func (dbw *dbWriter) reconcileOnboardedBuilderDeposits(tx *sqlx.Tx, deposits []*dbtypes.Deposit, forkId ForkKey) error {
+	chainState := dbw.indexer.consensusPool.GetChainState()
+	gloasForkEpoch := chainState.GetSpecs().GloasForkEpoch
+	if gloasForkEpoch == nil || chainState.CurrentEpoch() < phase0.Epoch(*gloasForkEpoch) {
+		return nil
+	}
+
+	onboardingSlot := uint64(chainState.EpochToSlot(phase0.Epoch(*gloasForkEpoch)))
+	for _, deposit := range deposits {
+		// only pre-gloas builder (0x03) deposits are onboarded into builder_deposits by the fork
+		// transition, so only those have a copy to reconcile.
+		if deposit.CredType != 0x03 || uint64(chainState.EpochOfSlot(phase0.Slot(deposit.SlotNumber))) >= *gloasForkEpoch {
+			continue
+		}
+
+		if err := db.UpdateOnboardedBuilderDepositForkId(dbw.indexer.ctx, tx, deposit.PublicKey, onboardingSlot, uint64(forkId)); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -737,6 +772,12 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 		if err != nil {
 			return fmt.Errorf("error inserting deposit requests: %v", err)
 		}
+
+		if overrideForkId != nil {
+			if err := dbw.reconcileOnboardedBuilderDeposits(tx, dbDeposits, *overrideForkId); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -748,12 +789,14 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 // In Gloas/EIP-7732 a block processes its parent's payload requests
 // (parent_execution_requests) at this block's slot, so the requests are attributed to this
 // block's slot (matching the beacon state's PendingDeposit.slot). They were included in the
-// parent payload, which is the direct EL parent of this block's payload, so its block
-// number is this block's payload number minus one. Reading the requests from the block body
-// keeps them available even when the payload envelope is missing. The first Gloas block
-// carries an empty parent_execution_requests, so the last pre-Gloas requests are not counted
-// twice. In earlier forks the requests live in the block body and were included in the
-// block's own payload.
+// parent payload, so the EL block number they were dequeued in is the parent block's execution
+// block number. When this block reveals a payload that equals its own payload number minus one;
+// when this block is payload-less (the builder did not reveal a payload for this slot) its own
+// payload is absent, so the parent block's execution number is used directly. Reading the
+// requests from the block body keeps them available even when the payload envelope is missing.
+// The first Gloas block carries an empty parent_execution_requests, so the last pre-Gloas
+// requests are not counted twice. In earlier forks the requests live in the block body and were
+// included in the block's own payload.
 func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*all.ExecutionRequests, uint64) {
 	chainState := dbw.indexer.consensusPool.GetChainState()
 
@@ -767,6 +810,21 @@ func (dbw *dbWriter) getProcessedExecutionRequests(block *Block) (*all.Execution
 		var blockNumber uint64
 		if payload := block.GetExecutionPayload(dbw.indexer.ctx); payload != nil && payload.Message.Payload.BlockNumber > 0 {
 			blockNumber = payload.Message.Payload.BlockNumber - 1
+		} else if parentRoot := block.GetParentRoot(); parentRoot != nil {
+			// payload-less block: the processed requests come from the parent block's payload,
+			// so use the parent's execution block number as the dequeue block.
+			if parentBlock := dbw.indexer.GetBlockByRoot(*parentRoot); parentBlock != nil {
+				if parentIndex := parentBlock.GetBlockIndex(dbw.indexer.ctx); parentIndex != nil {
+					blockNumber = parentIndex.ExecutionNumber
+				}
+			}
+			if blockNumber == 0 {
+				// the parent may be pruned from the block cache (e.g. first slot of a finalized
+				// epoch), so fall back to the database.
+				if parentSlot := db.GetSlotByRoot(dbw.indexer.ctx, parentRoot[:]); parentSlot != nil && parentSlot.EthBlockNumber != nil {
+					blockNumber = *parentSlot.EthBlockNumber
+				}
+			}
 		}
 		return body.ParentExecutionRequests, blockNumber
 	}

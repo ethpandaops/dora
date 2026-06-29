@@ -12,6 +12,7 @@ type EpochPageData struct {
 	Ts                      time.Time            `json:"ts"`
 	Synchronized            bool                 `json:"synchronized"`
 	Finalized               bool                 `json:"finalized"`
+	Future                  bool                 `json:"future"`
 	AttestationCount        uint64               `json:"attestation_count"`
 	DepositCount            uint64               `json:"deposit_count"`
 	ExitCount               uint64               `json:"exit_count"`
