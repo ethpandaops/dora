@@ -917,14 +917,9 @@ func (t *TxIndexer) cleanupRetentionData() *db.CleanupStats {
 		"cutoffSlot":     cutoffSlot,
 	}).Info("deleting EL data older than retention period")
 
-	var stats *db.CleanupStats
-
-	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		var err error
-		stats, err = db.DeleteElDataBeforeBlockUid(t.ctx, blockUidThreshold, tx)
-		return err
-	})
-
+	// DeleteElDataBeforeBlockUid commits in batches, so it manages its own
+	// transactions and must not be wrapped in one here.
+	stats, err := db.DeleteElDataBeforeBlockUid(t.ctx, blockUidThreshold)
 	if err != nil {
 		t.logger.WithError(err).Error("failed to delete old EL data")
 		return nil
