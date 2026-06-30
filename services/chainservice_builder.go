@@ -24,6 +24,16 @@ type BuilderWithIndex struct {
 	Superseded bool
 }
 
+// builderBalanceAt returns the balance at the given builder index, or 0 if the
+// index is beyond the balances slice. Builders onboarded mid-epoch live at
+// indexes past the snapshot, so falling back to 0 avoids out-of-range panics.
+func builderBalanceAt(balances []phase0.Gwei, index gloas.BuilderIndex) phase0.Gwei {
+	if uint64(index) < uint64(len(balances)) {
+		return balances[index]
+	}
+	return 0
+}
+
 // GetFilteredBuilderSet returns builders matching the filter criteria
 func (bs *ChainService) GetFilteredBuilderSet(ctx context.Context, filter *dbtypes.BuilderFilter, withBalance bool) ([]BuilderWithIndex, uint64) {
 	var overrideForkId *beacon.ForkKey
@@ -114,7 +124,7 @@ func (bs *ChainService) GetFilteredBuilderSet(ctx context.Context, filter *dbtyp
 			}
 		} else {
 			sortFn = func(builderA, builderB BuilderWithIndex) bool {
-				return balances[builderA.Index] < balances[builderB.Index]
+				return builderBalanceAt(balances, builderA.Index) < builderBalanceAt(balances, builderB.Index)
 			}
 			sort.Slice(dbIndexes, func(i, j int) bool {
 				if dbIndexes[i] >= uint64(len(balances)) || dbIndexes[j] >= uint64(len(balances)) {
@@ -130,7 +140,7 @@ func (bs *ChainService) GetFilteredBuilderSet(ctx context.Context, filter *dbtyp
 			}
 		} else {
 			sortFn = func(builderA, builderB BuilderWithIndex) bool {
-				return balances[builderA.Index] > balances[builderB.Index]
+				return builderBalanceAt(balances, builderA.Index) > builderBalanceAt(balances, builderB.Index)
 			}
 			sort.Slice(dbIndexes, func(i, j int) bool {
 				if dbIndexes[i] >= uint64(len(balances)) || dbIndexes[j] >= uint64(len(balances)) {
