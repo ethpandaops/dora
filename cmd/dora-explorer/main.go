@@ -90,7 +90,7 @@ func main() {
 	}
 
 	if cfg.RateLimit.Enabled {
-		err = services.StartCallRateLimiter(cfg.RateLimit.ProxyCount, cfg.RateLimit.Rate, cfg.RateLimit.Burst)
+		err = services.StartCallRateLimiter(cfg.GetProxyCount(), cfg.RateLimit.Rate, cfg.RateLimit.Burst)
 		if err != nil {
 			logger.Fatalf("error starting call rate limiter: %v", err)
 		}

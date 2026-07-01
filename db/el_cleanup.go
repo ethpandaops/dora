@@ -28,9 +28,9 @@ type CleanupStats struct {
 // blockdb after their relational rows are gone.
 //
 // Returns statistics about deleted rows.
-// Uses batched deletes to avoid long locks - deletes in chunks and commits
-// between batches. Uses default batch size of 50000 rows per batch.
-func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _ *sqlx.Tx) (*CleanupStats, error) {
+// Deletes in chunks of 50000 rows and commits between batches to avoid long
+// locks, so it opens its own transactions and must not be called from inside one.
+func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64) (*CleanupStats, error) {
 	batchSize := int64(50000)
 	stats := &CleanupStats{}
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -91,23 +93,32 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	specs := chainState.GetSpecs()
 	currentSlot := chainState.CurrentSlot()
 	currentEpoch := chainState.EpochOfSlot(currentSlot)
-	if epoch > uint64(currentEpoch)+1 {
-		return nil, -1
-	}
+
+	// An epoch beyond the current one has no indexed data yet. It must still render
+	// (never 404) so the prev/next header navigation keeps working when paging
+	// through epochs by range - we show a scheduled view with a time estimate and,
+	// when the proposer lookahead already covers it, the assigned proposers.
+	isFuture := phase0.Epoch(epoch) > currentEpoch
 
 	processedEpoch, _ := beaconIndexer.GetBlockCacheState()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 	epochStats := beaconIndexer.GetEpochStats(phase0.Epoch(epoch), nil)
+
+	// Proposer duties for the lookahead window are available from the epoch stats and
+	// are used to fill in scheduled-slot proposers for upcoming epochs.
+	var epochStatsValues *beacon.EpochStatsValues
+	if epochStats != nil {
+		epochStatsValues = epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false)
+	}
 
 	syncedEpoch := epochStats != nil
 	if !syncedEpoch && epoch < uint64(processedEpoch) {
 		syncedEpoch = db.IsEpochSynchronized(ctx, epoch)
 	}
 
+	// Forward navigation is unbounded (mirrors the slot page) so users can page into
+	// upcoming epochs; the previous-epoch link is suppressed only at genesis.
 	nextEpoch := epoch + 1
-	if nextEpoch > uint64(currentEpoch)+1 {
-		nextEpoch = 0
-	}
 	firstSlot := chainState.EpochToSlot(phase0.Epoch(epoch))
 	lastSlot := chainState.EpochToSlot(phase0.Epoch(epoch+1)) - 1
 	pageData := &models.EpochPageData{
@@ -117,6 +128,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 		Ts:            chainState.SlotToTime(chainState.EpochToSlot(phase0.Epoch(epoch))),
 		Synchronized:  syncedEpoch,
 		Finalized:     finalizedEpoch > 0 && finalizedEpoch >= phase0.Epoch(epoch),
+		Future:        isFuture,
 	}
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(ctx, epoch, 1)
@@ -157,7 +169,9 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	blockCount := uint64(0)
 	for slotIdx := int64(lastSlot); slotIdx >= int64(firstSlot); slotIdx-- {
 		slot := uint64(slotIdx)
+		matched := false
 		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
+			matched = true
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
 
@@ -206,15 +220,51 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++
 		}
+
+		// Synthesize scheduled rows for upcoming slots that have no indexed entry yet
+		// (future epochs beyond the proposer-assignment range). Proposers are filled in
+		// from the lookahead when available, otherwise rendered as unknown.
+		if !matched && slot >= uint64(currentSlot) {
+			proposer := uint64(math.MaxInt64)
+			if epochStatsValues != nil {
+				if slotIndex := int(chainState.SlotToSlotIndex(phase0.Slot(slot))); slotIndex < len(epochStatsValues.ProposerDuties) {
+					proposer = uint64(epochStatsValues.ProposerDuties[slotIndex])
+				}
+			}
+
+			pageData.Slots = append(pageData.Slots, &models.EpochPageDataSlot{
+				Slot:          slot,
+				Epoch:         uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+				Ts:            chainState.SlotToTime(phase0.Slot(slot)),
+				Scheduled:     true,
+				Status:        uint8(dbtypes.Missing),
+				PayloadStatus: uint8(dbtypes.PayloadStatusCanonical),
+				Proposer:      proposer,
+				ProposerName:  services.GlobalBeaconService.GetValidatorName(proposer),
+			})
+			pageData.ScheduledCount++
+			blockCount++
+		}
 	}
 	pageData.BlockCount = uint64(blockCount)
 
 	var cacheTimeout time.Duration
-	if !pageData.Synchronized {
+	switch {
+	case isFuture:
+		// Refresh as the epoch approaches so the proposer lookahead appears once known,
+		// but don't rebuild constantly for epochs that are still far out.
+		if timeDiff := time.Until(pageData.Ts); timeDiff > 10*time.Minute {
+			cacheTimeout = 10 * time.Minute
+		} else if timeDiff > 12*time.Second {
+			cacheTimeout = timeDiff
+		} else {
+			cacheTimeout = 12 * time.Second
+		}
+	case !pageData.Synchronized:
 		cacheTimeout = 5 * time.Minute
-	} else if pageData.Finalized {
+	case pageData.Finalized:
 		cacheTimeout = 30 * time.Minute
-	} else {
+	default:
 		cacheTimeout = 12 * time.Second
 	}
 	return pageData, cacheTimeout
