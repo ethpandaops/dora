@@ -419,7 +419,8 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, minSlot 
 
 func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, tenureMinSlot uint64, tenureMaxSlot *uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBid {
 	// Scope bids to this builder's tenure on the index so a reused index doesn't mix predecessors' bids.
-	bids, _ := db.GetBidsByBuilderIndex(ctx, builderIndex, &tenureMinSlot, tenureMaxSlot, 0, 20)
+	// Route through the chainservice so recent (not-yet-flushed) cached bids are included alongside DB.
+	bids := services.GlobalBeaconService.GetBuilderBids(ctx, builderIndex, tenureMinSlot, tenureMaxSlot, 20)
 	if len(bids) == 0 {
 		return nil
 	}

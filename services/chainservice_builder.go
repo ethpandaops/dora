@@ -235,6 +235,51 @@ func (bs *ChainService) GetActiveBuildersByIndexes(ctx context.Context, indexes 
 	return result
 }
 
+// GetBuildersByPubkeys batch-resolves builders by their pubkey (their stable identity), merging the
+// in-memory cache (current occupants) with the DB (which also holds superseded builders). The result
+// is keyed by string(pubkey). This is the correct way to attribute a builder deposit/exit to its
+// builder: the pubkey uniquely identifies the builder, whereas the persisted builder_index on the
+// request row is a point-in-time snapshot that can be nil (never resolved) or belong to a reused index.
+func (bs *ChainService) GetBuildersByPubkeys(ctx context.Context, pubkeys [][]byte) map[string]BuilderWithIndex {
+	result := make(map[string]BuilderWithIndex, len(pubkeys))
+	missing := make([][]byte, 0)
+	seenMissing := make(map[string]bool)
+	for _, pk := range pubkeys {
+		if len(pk) != 48 {
+			continue
+		}
+		if _, ok := result[string(pk)]; ok {
+			continue
+		}
+		var pubkey phase0.BLSPubKey
+		copy(pubkey[:], pk)
+		if idx, found := bs.beaconIndexer.GetBuilderIndexByPubkey(pubkey); found {
+			// the cache only holds current occupants; accept it only if this pubkey still owns the index
+			if b := bs.beaconIndexer.GetBuilderByIndex(idx, nil); b != nil && b.PublicKey == pubkey {
+				result[string(pk)] = BuilderWithIndex{Index: idx, Builder: b}
+				continue
+			}
+		}
+		if !seenMissing[string(pk)] {
+			seenMissing[string(pk)] = true
+			missing = append(missing, pk)
+		}
+	}
+
+	if len(missing) > 0 {
+		_ = db.StreamBuildersByPubkeys(ctx, missing, func(dbBuilder *dbtypes.Builder) bool {
+			result[string(dbBuilder.Pubkey)] = BuilderWithIndex{
+				Index:      gloas.BuilderIndex(dbBuilder.BuilderIndex),
+				Builder:    beacon.UnwrapDbBuilder(dbBuilder),
+				Superseded: dbBuilder.Superseded,
+			}
+			return true
+		})
+	}
+
+	return result
+}
+
 // GetBuilderTenureEndEpoch returns the epoch at which the builder with the given deposit epoch
 // stopped owning its index, i.e. the deposit epoch of the next builder that took over the same
 // index (EIP-8282 index reuse). It returns nil when the builder is the current occupant of the
@@ -271,6 +316,48 @@ func (bs *ChainService) GetBuilderTenureEndEpoch(ctx context.Context, index gloa
 // GetBuilderBalances returns the current builder balances (epoch-start adjusted for in-epoch withdrawals).
 func (bs *ChainService) GetBuilderBalances() []phase0.Gwei {
 	return bs.beaconIndexer.GetRecentBuilderBalances(nil)
+}
+
+// GetBuilderBids returns the bids submitted by a builder index within the [minSlot, maxSlot] slot
+// window (maxSlot nil = open), newest first, merging the indexer's in-memory bid cache with the DB.
+// The most recent bids live only in the cache until they are flushed, so a DB-only query would miss
+// them; callers must always go through this accessor rather than db.GetBidsByBuilderIndex directly.
+func (bs *ChainService) GetBuilderBids(ctx context.Context, builderIndex uint64, minSlot uint64, maxSlot *uint64, limit uint32) []*dbtypes.BlockBid {
+	cacheBids := bs.beaconIndexer.GetCachedBidsByBuilderIndex(int64(builderIndex), minSlot, maxSlot)
+	dbBids, _ := db.GetBidsByBuilderIndex(ctx, builderIndex, &minSlot, maxSlot, 0, limit)
+
+	type bidKey struct {
+		parentRoot string
+		parentHash string
+		blockHash  string
+	}
+	seen := make(map[bidKey]bool, len(cacheBids)+len(dbBids))
+	merged := make([]*dbtypes.BlockBid, 0, len(cacheBids)+len(dbBids))
+	appendUnique := func(bids []*dbtypes.BlockBid) {
+		for _, bid := range bids {
+			key := bidKey{string(bid.ParentRoot), string(bid.ParentHash), string(bid.BlockHash)}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			merged = append(merged, bid)
+		}
+	}
+	appendUnique(cacheBids) // cache first (freshest, may overlap the DB after a flush/reload)
+	appendUnique(dbBids)
+
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].Slot != merged[j].Slot {
+			return merged[i].Slot > merged[j].Slot
+		}
+		return merged[i].Value > merged[j].Value
+	})
+
+	if limit > 0 && uint32(len(merged)) > limit {
+		merged = merged[:limit]
+	}
+
+	return merged
 }
 
 // getBuilderStatus determines the status of a builder
