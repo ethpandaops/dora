@@ -116,7 +116,7 @@ func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transactio
 		return nil, fmt.Errorf("invalid withdrawal log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]
@@ -134,7 +134,7 @@ func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transacti
 		return nil, fmt.Errorf("invalid withdrawal log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]

@@ -173,6 +173,16 @@ func (ci *contractIndexer[_]) loadTransactionByHash(ctx context.Context, client 
 	return tx, err
 }
 
+// txRecipient returns the transaction recipient. Contract-creation transactions
+// have no recipient (To is nil); for those the request reached the system contract
+// via an internal call, so the emitting contract address is the effective target.
+func txRecipient(tx *types.Transaction, log *types.Log) common.Address {
+	if to := tx.To(); to != nil {
+		return *to
+	}
+	return log.Address
+}
+
 // loadHeaderByHash fetches a block header by its hash from the execution client
 func (ci *contractIndexer[_]) loadHeaderByHash(ctx context.Context, client *execution.Client, hash common.Hash) (*types.Header, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
