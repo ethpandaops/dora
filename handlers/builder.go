@@ -378,11 +378,6 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, minSlot 
 		}
 		slot := assignedSlot.Block
 
-		// Only include blocks with actual payloads
-		if slot.PayloadStatus != dbtypes.PayloadStatusCanonical && slot.PayloadStatus != dbtypes.PayloadStatusOrphaned {
-			continue
-		}
-
 		if len(slot.EthBlockHash) > 0 {
 			validBlocks = append(validBlocks, slot)
 		}
