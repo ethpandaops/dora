@@ -376,21 +376,13 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, minSlot 
 		if assignedSlot.Block == nil {
 			continue
 		}
-		slot := assignedSlot.Block
 
-		if len(slot.EthBlockHash) > 0 {
-			validBlocks = append(validBlocks, slot)
-		}
+		validBlocks = append(validBlocks, assignedSlot.Block)
 	}
 
-	// Look up bids via the indexer's bid accessor (checks in-memory cache first, then DB).
-	// Bids are keyed by parent block root, so we look up per block and match by block hash + builder.
-	indexer := services.GlobalBeaconService.GetBeaconIndexer()
-
-	// Build result
 	blocks := make([]*models.BuilderPageDataBlock, 0, len(validBlocks))
 	for _, slot := range validBlocks {
-		block := &models.BuilderPageDataBlock{
+		blocks = append(blocks, &models.BuilderPageDataBlock{
 			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(slot.Slot))),
 			Slot:         slot.Slot,
 			Ts:           chainState.SlotToTime(phase0.Slot(slot.Slot)),
@@ -399,21 +391,8 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, minSlot 
 			Status:       uint16(slot.PayloadStatus),
 			FeeRecipient: slot.EthFeeRecipient,
 			GasLimit:     slot.EthGasLimit,
-		}
-
-		// Look up bid by parent root and slot, then match by block hash and builder index
-		var parentRoot phase0.Root
-		copy(parentRoot[:], slot.ParentRoot)
-		bids := indexer.GetBlockBids(parentRoot, phase0.Slot(slot.Slot))
-		for _, bid := range bids {
-			if bid.BuilderIndex == builderIndexInt64 && fmt.Sprintf("%x", bid.BlockHash) == fmt.Sprintf("%x", slot.EthBlockHash) {
-				block.Value = bid.Value
-				block.ElPayment = bid.ElPayment
-				break
-			}
-		}
-
-		blocks = append(blocks, block)
+			Value:        slot.EthBidValue,
+		})
 	}
 
 	return blocks

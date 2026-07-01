@@ -371,8 +371,9 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	// Extract execution payload bid from Gloas/Heze blocks and add to bid cache.
 	// This ensures bids are persisted even when syncing from blocks (not just SSE events).
-	if bid := getBlockBid(blockBody); bid != nil {
-		dbw.indexer.blockBidCache.AddBid(bid)
+	blockBid := getBlockBid(blockBody)
+	if blockBid != nil {
+		dbw.indexer.blockBidCache.AddBid(blockBid)
 	}
 
 	dbBlock := dbtypes.Slot{
@@ -495,6 +496,18 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
 		}
+	}
+
+	// Missed payload (Gloas): the execution payload was never revealed, so the eth_* fields above
+	// were not written (they depend on executionBlockNumber, which is unknown here). The block still
+	// commits to an execution payload bid that references the execution block hash (plus parent hash,
+	// fee recipient and gas limit), so populate those from the bid - a missed-payload block must show
+	// its committed block hash, not nothing. The block number stays unset (the bid does not carry it).
+	if payloadStatus == dbtypes.PayloadStatusMissing && blockBid != nil && len(dbBlock.EthBlockHash) == 0 {
+		dbBlock.EthBlockHash = blockBid.BlockHash
+		dbBlock.EthBlockParentHash = blockBid.ParentHash
+		dbBlock.EthFeeRecipient = blockBid.FeeRecipient
+		dbBlock.EthGasLimit = blockBid.GasLimit
 	}
 
 	return &dbBlock
