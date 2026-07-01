@@ -164,17 +164,24 @@ func buildBuilderPageData(ctx context.Context, builder *gloas.Builder, builderIn
 	// Resolve this builder's tenure on the index (EIP-8282 index reuse). Index-keyed data (blocks,
 	// bids, withdrawals) is scoped to [tenureStartSlot, tenureEndSlot] so a reused index only shows
 	// the data produced while THIS builder owned it. Deposits/exits are keyed by pubkey and need no
-	// window. minSlot is inclusive; maxSlot is inclusive (nil = open, i.e. current occupant).
+	// window. minSlot is inclusive; maxSlot is inclusive.
+	//
+	// Only a SUPERSEDED builder has a bounded tenure (its index was taken over by a later builder).
+	// The current occupant (not superseded) still owns the index up to now, so its tenure is
+	// open-ended - it must never get a maxSlot, otherwise its own recent blocks/bids/withdrawals get
+	// clipped off the top.
 	tenureMinSlot := uint64(builder.DepositEpoch) * specs.SlotsPerEpoch
 	var tenureMaxSlot *uint64
-	if endEpoch := services.GlobalBeaconService.GetBuilderTenureEndEpoch(ctx, gloas.BuilderIndex(builderIndex), builder.DepositEpoch); endEpoch != nil {
-		// the successor takes over at its own deposit epoch; this builder's last slot is just before it
-		successorStartSlot := uint64(*endEpoch) * specs.SlotsPerEpoch
-		lastSlot := uint64(0)
-		if successorStartSlot > 0 {
-			lastSlot = successorStartSlot - 1
+	if superseded {
+		if endEpoch := services.GlobalBeaconService.GetBuilderTenureEndEpoch(ctx, gloas.BuilderIndex(builderIndex), builder.DepositEpoch); endEpoch != nil {
+			// the successor takes over at its own deposit epoch; this builder's last slot is just before it
+			successorStartSlot := uint64(*endEpoch) * specs.SlotsPerEpoch
+			lastSlot := uint64(0)
+			if successorStartSlot > 0 {
+				lastSlot = successorStartSlot - 1
+			}
+			tenureMaxSlot = &lastSlot
 		}
-		tenureMaxSlot = &lastSlot
 	}
 
 	// Determine state
