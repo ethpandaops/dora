@@ -14,7 +14,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -185,27 +184,27 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 		hasOnboardingSlot = true
 	}
 
-	// builderIdxOf returns the builder index recorded for a deposit (CL request preferred, else
-	// the pending EL tx), if any.
-	builderIdxOf := func(deposit *services.CombinedBuilderDeposit) *uint64 {
-		if deposit.Request != nil && deposit.Request.BuilderIndex != nil {
-			return deposit.Request.BuilderIndex
+	// pubkeyOf returns the depositor pubkey for a deposit (CL request preferred, else the pending EL tx).
+	pubkeyOf := func(deposit *services.CombinedBuilderDeposit) []byte {
+		if deposit.Request != nil {
+			return deposit.Request.PublicKey
 		}
-		if deposit.Transaction != nil && deposit.Transaction.BuilderIndex != nil {
-			return deposit.Transaction.BuilderIndex
+		if deposit.Transaction != nil {
+			return deposit.Transaction.PublicKey
 		}
 		return nil
 	}
 
-	// collect the builder indexes to resolve so we can batch-load the builders and tell whether
-	// each pubkey still owns its (reusable) index or was superseded.
-	indexes := make([]gloas.BuilderIndex, 0, len(combined))
+	// Resolve builders by pubkey (their stable identity). The persisted builder_index on a deposit is
+	// unreliable - it can be nil (never resolved when the index was reused) or point at an index now
+	// owned by someone else - so we attribute each deposit to its builder via the pubkey instead.
+	pubkeys := make([][]byte, 0, len(combined))
 	for _, deposit := range combined {
-		if idx := builderIdxOf(deposit); idx != nil {
-			indexes = append(indexes, gloas.BuilderIndex(*idx))
+		if pk := pubkeyOf(deposit); len(pk) == 48 {
+			pubkeys = append(pubkeys, pk)
 		}
 	}
-	builders := services.GlobalBeaconService.GetActiveBuildersByIndexes(ctx, indexes)
+	buildersByPubkey := services.GlobalBeaconService.GetBuildersByPubkeys(ctx, pubkeys)
 
 	for _, deposit := range combined {
 		depositData := &models.BuilderDepositsPageDataDeposit{}
@@ -229,12 +228,13 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 			depositData.BlockNumber = deposit.Transaction.BlockNumber
 		}
 
-		if idx := builderIdxOf(deposit); idx != nil {
-			if b := builders[gloas.BuilderIndex(*idx)]; b != nil && bytes.Equal(b.PublicKey[:], depositData.PublicKey) {
-				depositData.HasBuilderIndex = true
-				depositData.BuilderIndex = *idx
-			} else {
+		if bwi, ok := buildersByPubkey[string(depositData.PublicKey)]; ok {
+			if bwi.Superseded {
+				// this pubkey's index was reused by a later builder; link by pubkey instead
 				depositData.IsInactiveBuilder = true
+			} else {
+				depositData.HasBuilderIndex = true
+				depositData.BuilderIndex = uint64(bwi.Index)
 			}
 		}
 
