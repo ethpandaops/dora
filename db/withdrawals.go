@@ -137,6 +137,16 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 		fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
+	if filter.MinSlot != nil {
+		args = append(args, *filter.MinSlot)
+		fmt.Fprintf(&sql, " %v block_uid >> 16 >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxSlot != nil {
+		args = append(args, *filter.MaxSlot)
+		fmt.Fprintf(&sql, " %v block_uid >> 16 <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
 	if filter.WithOrphaned == 0 {
 		args = append(args, finalizedBlock)
 		fmt.Fprintf(&sql, " %v (block_uid >> 16 > $%v OR orphaned = false)", filterOp, len(args))

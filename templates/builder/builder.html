@@ -1,7 +1,14 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-hard-hat mx-2"></i> Builder {{ formatBuilderWithIndexAndURL .Index .Name .BuildoorURL }}</h1>
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-hard-hat mx-2"></i> Builder
+        {{ if .IsSuperseded }}
+          <span class="builder-label builder-index">{{ .Index }}</span>
+          <span class="badge rounded-pill text-bg-secondary align-middle">superseded</span>
+        {{ else }}
+          {{ formatBuilderWithIndexAndURL .Index .Name .BuildoorURL }}
+        {{ end }}
+      </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
@@ -101,8 +108,14 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the index for this builder">Index:</span></div>
           <div class="col-md-10">
-            {{ formatBuilderWithIndexAndURL .Index .Name .BuildoorURL }}
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Index }}"></i>
+            {{ if .IsSuperseded }}
+              <span class="builder-label builder-index"><i class="fas fa-hard-hat mr-2"></i> {{ .Index }}</span>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Index }}"></i>
+              <span class="text-muted ms-2">Index reused &mdash; it now belongs to <a href="/builder/{{ .Index }}">builder {{ .Index }}</a>.</span>
+            {{ else }}
+              {{ formatBuilderWithIndexAndURL .Index .Name .BuildoorURL }}
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Index }}"></i>
+            {{ end }}
           </div>
         </div>
         {{ if .BuildoorURL }}
@@ -285,7 +298,7 @@
       var tab = new bootstrap.Tab(tabEl);
       tab.show();
 
-      window.history.replaceState(null, document.title, "/builder/{{ .Index }}" + event.target.getAttribute('href'));
+      window.history.replaceState(null, document.title, "/builder/{{ .RouteKey }}" + event.target.getAttribute('href'));
     }
 
   });

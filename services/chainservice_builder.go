@@ -24,7 +24,15 @@ type BuilderWithIndex struct {
 	Superseded bool
 }
 
-// GetFilteredBuilderSet returns builders matching the filter criteria
+// GetFilteredBuilderSet returns builders matching the filter criteria.
+//
+// A builder's identity is its pubkey; the builder index is a reusable slot (EIP-8282). When an
+// index is reused the previous occupant's DB row is flagged Superseded and a new row is inserted.
+// This function therefore treats each pubkey as a distinct entry rather than deduplicating by index:
+//   - The in-memory cache only ever holds the current (non-superseded) occupant of each index and is
+//     the freshest source for it.
+//   - Superseded predecessors live only in the DB. Per product decision they are hidden by default
+//     and only returned when the caller explicitly requests the Superseded status.
 func (bs *ChainService) GetFilteredBuilderSet(ctx context.Context, filter *dbtypes.BuilderFilter, withBalance bool) ([]BuilderWithIndex, uint64) {
 	var overrideForkId *beacon.ForkKey
 
@@ -39,211 +47,147 @@ func (bs *ChainService) GetFilteredBuilderSet(ctx context.Context, filter *dbtyp
 	}
 	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
 
-	cachedResults := make([]BuilderWithIndex, 0, 1000)
+	// Resolve the effective status set. An empty filter defaults to the current index occupants
+	// (active + exited-but-still-owning); superseded builders are only included on explicit request.
+	effectiveStatus := filter.Status
+	if len(effectiveStatus) == 0 {
+		effectiveStatus = []dbtypes.BuilderStatus{dbtypes.BuilderStatusActiveFilter, dbtypes.BuilderStatusExitedFilter}
+	}
+	includeSuperseded := slices.Contains(effectiveStatus, dbtypes.BuilderStatusSupersededFilter)
+	includeCurrent := slices.Contains(effectiveStatus, dbtypes.BuilderStatusActiveFilter) ||
+		slices.Contains(effectiveStatus, dbtypes.BuilderStatusExitedFilter)
+
+	applyBalance := func(row *BuilderWithIndex) {
+		// Balances are indexed by the current occupant of an index; never attribute them to a
+		// superseded predecessor (its index now belongs to someone else).
+		if !row.Superseded && balances != nil && uint64(row.Index) < uint64(len(balances)) {
+			row.Builder.Balance = balances[row.Index]
+		}
+	}
+
+	results := make([]BuilderWithIndex, 0, 1000)
 	cachedIndexes := map[uint64]bool{}
 
-	// Get matching entries from cached builders
-	bs.beaconIndexer.StreamActiveBuilderDataForRoot(canonicalHead.Root, false, &currentEpoch, func(index gloas.BuilderIndex, flags uint16, activeData *beacon.BuilderData, builder *gloas.Builder) error {
-		if builder == nil {
-			return nil
-		}
-		if filter.MinIndex != nil && uint64(index) < *filter.MinIndex {
-			return nil
-		}
-		if filter.MaxIndex != nil && uint64(index) > *filter.MaxIndex {
-			return nil
-		}
-		if len(filter.PubKey) > 0 {
-			pubkeylen := min(len(filter.PubKey), 48)
-			if !bytes.Equal(builder.PublicKey[:pubkeylen], filter.PubKey) {
+	// 1. Current occupants from the in-memory cache (never superseded).
+	if includeCurrent {
+		bs.beaconIndexer.StreamActiveBuilderDataForRoot(canonicalHead.Root, false, &currentEpoch, func(index gloas.BuilderIndex, flags uint16, activeData *beacon.BuilderData, builder *gloas.Builder) error {
+			if builder == nil {
 				return nil
 			}
-		}
-		if len(filter.ExecutionAddress) > 0 {
-			if !bytes.Equal(builder.ExecutionAddress[:], filter.ExecutionAddress) {
+			if filter.MinIndex != nil && uint64(index) < *filter.MinIndex {
 				return nil
 			}
-		}
+			if filter.MaxIndex != nil && uint64(index) > *filter.MaxIndex {
+				return nil
+			}
+			if len(filter.PubKey) > 0 {
+				pubkeylen := min(len(filter.PubKey), 48)
+				if !bytes.Equal(builder.PublicKey[:pubkeylen], filter.PubKey) {
+					return nil
+				}
+			}
+			if len(filter.ExecutionAddress) > 0 {
+				if !bytes.Equal(builder.ExecutionAddress[:], filter.ExecutionAddress) {
+					return nil
+				}
+			}
+			if !slices.Contains(effectiveStatus, getBuilderStatus(builder, currentEpoch, false)) {
+				return nil
+			}
 
-		if len(filter.Status) > 0 {
-			builderStatus := getBuilderStatus(builder, currentEpoch, false)
-			if !slices.Contains(filter.Status, builderStatus) {
-				return nil
-			}
-		}
-
-		cachedResults = append(cachedResults, BuilderWithIndex{
-			Index:   index,
-			Builder: builder,
+			cachedIndexes[uint64(index)] = true
+			row := BuilderWithIndex{Index: index, Builder: builder}
+			applyBalance(&row)
+			results = append(results, row)
+			return nil
 		})
-		cachedIndexes[uint64(index)] = true
+	}
 
-		return nil
-	})
-
-	// Get matching entries from DB
-	dbIndexes, err := db.GetBuilderIndexesByFilter(ctx, *filter, uint64(currentEpoch))
+	// 2. Matching rows from the DB (preserving pubkey identity, so a reused index can contribute
+	//    its superseded predecessors in addition to the current occupant).
+	dbBuilders, err := db.GetBuildersByFilter(ctx, *filter, uint64(currentEpoch))
 	if err != nil {
-		bs.logger.Warnf("error getting builder indexes by filter: %v", err)
+		bs.logger.Warnf("error getting builders by filter: %v", err)
 		return nil, 0
 	}
-
-	// Sort results
-	var sortFn func(builderA, builderB BuilderWithIndex) bool
-	switch filter.OrderBy {
-	case dbtypes.BuilderOrderIndexAsc:
-		sortFn = func(builderA, builderB BuilderWithIndex) bool {
-			return builderA.Index < builderB.Index
-		}
-	case dbtypes.BuilderOrderIndexDesc:
-		sortFn = func(builderA, builderB BuilderWithIndex) bool {
-			return builderA.Index > builderB.Index
-		}
-	case dbtypes.BuilderOrderPubKeyAsc:
-		sortFn = func(builderA, builderB BuilderWithIndex) bool {
-			return bytes.Compare(builderA.Builder.PublicKey[:], builderB.Builder.PublicKey[:]) < 0
-		}
-	case dbtypes.BuilderOrderPubKeyDesc:
-		sortFn = func(builderA, builderB BuilderWithIndex) bool {
-			return bytes.Compare(builderA.Builder.PublicKey[:], builderB.Builder.PublicKey[:]) > 0
-		}
-	case dbtypes.BuilderOrderBalanceAsc:
-		if balances == nil {
-			sortFn = func(builderA, builderB BuilderWithIndex) bool {
-				return builderA.Builder.Balance < builderB.Builder.Balance
+	for _, dbBuilder := range dbBuilders {
+		if dbBuilder.Superseded {
+			if !includeSuperseded {
+				continue
 			}
 		} else {
-			sortFn = func(builderA, builderB BuilderWithIndex) bool {
-				return balances[builderA.Index] < balances[builderB.Index]
+			// current occupant per DB; prefer the fresher cache entry if we already have it
+			if cachedIndexes[dbBuilder.BuilderIndex] || !includeCurrent {
+				continue
 			}
-			sort.Slice(dbIndexes, func(i, j int) bool {
-				if dbIndexes[i] >= uint64(len(balances)) || dbIndexes[j] >= uint64(len(balances)) {
-					return dbIndexes[i] < dbIndexes[j]
-				}
-				return balances[dbIndexes[i]] < balances[dbIndexes[j]]
-			})
 		}
-	case dbtypes.BuilderOrderBalanceDesc:
-		if balances == nil {
-			sortFn = func(builderA, builderB BuilderWithIndex) bool {
-				return builderA.Builder.Balance > builderB.Builder.Balance
-			}
-		} else {
-			sortFn = func(builderA, builderB BuilderWithIndex) bool {
-				return balances[builderA.Index] > balances[builderB.Index]
-			}
-			sort.Slice(dbIndexes, func(i, j int) bool {
-				if dbIndexes[i] >= uint64(len(balances)) || dbIndexes[j] >= uint64(len(balances)) {
-					return dbIndexes[i] > dbIndexes[j]
-				}
-				return balances[dbIndexes[i]] > balances[dbIndexes[j]]
-			})
-		}
-	case dbtypes.BuilderOrderDepositEpochAsc:
-		sortFn = func(builderA, builderB BuilderWithIndex) bool {
-			return builderA.Builder.DepositEpoch < builderB.Builder.DepositEpoch
-		}
-	case dbtypes.BuilderOrderDepositEpochDesc:
-		sortFn = func(builderA, builderB BuilderWithIndex) bool {
-			return builderA.Builder.DepositEpoch > builderB.Builder.DepositEpoch
-		}
-	case dbtypes.BuilderOrderWithdrawableEpochAsc:
-		sortFn = func(builderA, builderB BuilderWithIndex) bool {
-			return builderA.Builder.WithdrawableEpoch < builderB.Builder.WithdrawableEpoch
-		}
-	case dbtypes.BuilderOrderWithdrawableEpochDesc:
-		sortFn = func(builderA, builderB BuilderWithIndex) bool {
-			return builderA.Builder.WithdrawableEpoch > builderB.Builder.WithdrawableEpoch
-		}
-	}
 
-	sort.Slice(cachedResults, func(i, j int) bool {
-		return sortFn(cachedResults[i], cachedResults[j])
-	})
-
-	// Stream builder set from db and merge cached results
-	resCap := filter.Limit
-	if resCap == 0 {
-		resCap = uint64(len(cachedResults) + len(dbIndexes))
-	}
-	result := make([]BuilderWithIndex, 0, resCap)
-	cachedIndex := 0
-	matchingCount := uint64(0)
-	resultCount := uint64(0)
-	dbEntryCount := uint64(0)
-
-	db.StreamBuildersByIndexes(ctx, dbIndexes, func(dbBuilder *dbtypes.Builder) bool {
-		dbEntryCount++
-		builderWithIndex := BuilderWithIndex{
+		row := BuilderWithIndex{
 			Index:      gloas.BuilderIndex(dbBuilder.BuilderIndex),
 			Builder:    beacon.UnwrapDbBuilder(dbBuilder),
 			Superseded: dbBuilder.Superseded,
 		}
+		applyBalance(&row)
+		results = append(results, row)
+	}
 
-		for cachedIndex < len(cachedResults) && (cachedResults[cachedIndex].Index == builderWithIndex.Index || sortFn(cachedResults[cachedIndex], builderWithIndex)) {
-			if matchingCount >= filter.Offset {
-				resultBuilder := cachedResults[cachedIndex]
-				if balances != nil && uint64(resultBuilder.Index) < uint64(len(balances)) {
-					resultBuilder.Builder.Balance = balances[resultBuilder.Index]
-				}
-				result = append(result, resultBuilder)
-				resultCount++
-			}
-			matchingCount++
-			cachedIndex++
-
-			if filter.Limit > 0 && resultCount >= filter.Limit {
-				return false // stop streaming
-			}
-		}
-
-		if cachedIndexes[dbBuilder.BuilderIndex] {
-			return true // skip this index, cache entry is newer
-		}
-
-		if matchingCount >= filter.Offset {
-			if !builderWithIndex.Superseded && balances != nil && dbBuilder.BuilderIndex < uint64(len(balances)) {
-				builderWithIndex.Builder.Balance = balances[dbBuilder.BuilderIndex]
-			}
-			result = append(result, builderWithIndex)
-			resultCount++
-		}
-		matchingCount++
-
-		if filter.Limit > 0 && resultCount >= filter.Limit {
-			return false // stop streaming
-		}
-
-		return true // get more from db
+	// 3. Sort the merged identity set, then paginate.
+	sortFn := builderSortFn(filter.OrderBy, balances)
+	sort.SliceStable(results, func(i, j int) bool {
+		return sortFn(results[i], results[j])
 	})
 
-	for cachedIndex < len(cachedResults) && (filter.Limit == 0 || resultCount < filter.Limit) {
-		if matchingCount >= filter.Offset {
-			resultBuilder := cachedResults[cachedIndex]
-			if balances != nil && uint64(resultBuilder.Index) < uint64(len(balances)) {
-				resultBuilder.Builder.Balance = balances[resultBuilder.Index]
-			}
-			result = append(result, resultBuilder)
-			resultCount++
-		}
-		matchingCount++
-		cachedIndex++
+	totalCount := uint64(len(results))
+	if filter.Offset >= totalCount {
+		return []BuilderWithIndex{}, totalCount
+	}
+	paged := results[filter.Offset:]
+	if filter.Limit > 0 && uint64(len(paged)) > filter.Limit {
+		paged = paged[:filter.Limit]
 	}
 
-	// Add remaining cached results
-	matchingCount += uint64(len(cachedResults) - cachedIndex)
+	return paged, totalCount
+}
 
-	// Add remaining db results
-	remainingDbCount := uint64(0)
-	for i := dbEntryCount; i < uint64(len(dbIndexes)); i++ {
-		if cachedIndexes[dbIndexes[i]] {
-			continue
+// builderSortFn returns the comparison function for the requested ordering. Balance ordering falls
+// back to the per-builder balance when the epoch-adjusted balances slice is unavailable; superseded
+// builders (index reused) have no balance slot and compare as 0.
+func builderSortFn(orderBy dbtypes.BuilderOrder, balances []phase0.Gwei) func(a, b BuilderWithIndex) bool {
+	balanceOf := func(row BuilderWithIndex) phase0.Gwei {
+		if !row.Superseded && balances != nil && uint64(row.Index) < uint64(len(balances)) {
+			return balances[row.Index]
 		}
-		remainingDbCount++
+		return row.Builder.Balance
 	}
-	matchingCount += remainingDbCount
 
-	return result, matchingCount
+	switch orderBy {
+	case dbtypes.BuilderOrderIndexAsc:
+		return func(a, b BuilderWithIndex) bool { return a.Index < b.Index }
+	case dbtypes.BuilderOrderIndexDesc:
+		return func(a, b BuilderWithIndex) bool { return a.Index > b.Index }
+	case dbtypes.BuilderOrderPubKeyAsc:
+		return func(a, b BuilderWithIndex) bool {
+			return bytes.Compare(a.Builder.PublicKey[:], b.Builder.PublicKey[:]) < 0
+		}
+	case dbtypes.BuilderOrderPubKeyDesc:
+		return func(a, b BuilderWithIndex) bool {
+			return bytes.Compare(a.Builder.PublicKey[:], b.Builder.PublicKey[:]) > 0
+		}
+	case dbtypes.BuilderOrderBalanceAsc:
+		return func(a, b BuilderWithIndex) bool { return balanceOf(a) < balanceOf(b) }
+	case dbtypes.BuilderOrderBalanceDesc:
+		return func(a, b BuilderWithIndex) bool { return balanceOf(a) > balanceOf(b) }
+	case dbtypes.BuilderOrderDepositEpochAsc:
+		return func(a, b BuilderWithIndex) bool { return a.Builder.DepositEpoch < b.Builder.DepositEpoch }
+	case dbtypes.BuilderOrderDepositEpochDesc:
+		return func(a, b BuilderWithIndex) bool { return a.Builder.DepositEpoch > b.Builder.DepositEpoch }
+	case dbtypes.BuilderOrderWithdrawableEpochAsc:
+		return func(a, b BuilderWithIndex) bool { return a.Builder.WithdrawableEpoch < b.Builder.WithdrawableEpoch }
+	case dbtypes.BuilderOrderWithdrawableEpochDesc:
+		return func(a, b BuilderWithIndex) bool { return a.Builder.WithdrawableEpoch > b.Builder.WithdrawableEpoch }
+	default:
+		return func(a, b BuilderWithIndex) bool { return a.Index < b.Index }
+	}
 }
 
 // GetBuilderByIndex returns the builder by index
@@ -289,6 +233,39 @@ func (bs *ChainService) GetActiveBuildersByIndexes(ctx context.Context, indexes 
 	}
 
 	return result
+}
+
+// GetBuilderTenureEndEpoch returns the epoch at which the builder with the given deposit epoch
+// stopped owning its index, i.e. the deposit epoch of the next builder that took over the same
+// index (EIP-8282 index reuse). It returns nil when the builder is the current occupant of the
+// index (no successor), meaning its tenure is still open.
+//
+// The successor is the smallest deposit epoch strictly greater than depositEpoch among all builders
+// (current cache occupant plus every persisted row) that have held the index. Callers convert the
+// returned tenure to a slot window to scope index-keyed data (blocks, bids, withdrawals) to a
+// specific builder's lifetime rather than mixing data from every builder that reused the index.
+func (bs *ChainService) GetBuilderTenureEndEpoch(ctx context.Context, index gloas.BuilderIndex, depositEpoch phase0.Epoch) *phase0.Epoch {
+	var successor *phase0.Epoch
+	consider := func(candidate phase0.Epoch) {
+		if candidate <= depositEpoch {
+			return
+		}
+		if successor == nil || candidate < *successor {
+			c := candidate
+			successor = &c
+		}
+	}
+
+	// current occupant from the cache (may not be persisted yet)
+	if occupant := bs.beaconIndexer.GetBuilderByIndex(index, nil); occupant != nil {
+		consider(occupant.DepositEpoch)
+	}
+	// every persisted builder that has held this index (includes superseded predecessors/successors)
+	for _, dbBuilder := range db.GetBuildersByIndex(ctx, uint64(index)) {
+		consider(phase0.Epoch(dbBuilder.DepositEpoch))
+	}
+
+	return successor
 }
 
 // GetBuilderBalances returns the current builder balances (epoch-start adjusted for in-epoch withdrawals).
