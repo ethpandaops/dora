@@ -112,7 +112,7 @@ func (bi *BuilderExitIndexer) processFinalTx(log *types.Log, tx *types.Transacti
 		return nil, fmt.Errorf("invalid builder exit log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]
@@ -129,7 +129,7 @@ func (bi *BuilderExitIndexer) processRecentTx(log *types.Log, tx *types.Transact
 		return nil, fmt.Errorf("invalid builder exit log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]
