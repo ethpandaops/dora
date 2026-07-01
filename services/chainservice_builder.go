@@ -160,11 +160,22 @@ func builderSortFn(orderBy dbtypes.BuilderOrder, balances []phase0.Gwei) func(a,
 		return row.Builder.Balance
 	}
 
+	// When ordering by index, superseded builders no longer own their index (it was reused), so
+	// they are grouped after every current occupant instead of intermixing at their old position.
+	byIndex := func(less func(a, b BuilderWithIndex) bool) func(a, b BuilderWithIndex) bool {
+		return func(a, b BuilderWithIndex) bool {
+			if a.Superseded != b.Superseded {
+				return !a.Superseded
+			}
+			return less(a, b)
+		}
+	}
+
 	switch orderBy {
 	case dbtypes.BuilderOrderIndexAsc:
-		return func(a, b BuilderWithIndex) bool { return a.Index < b.Index }
+		return byIndex(func(a, b BuilderWithIndex) bool { return a.Index < b.Index })
 	case dbtypes.BuilderOrderIndexDesc:
-		return func(a, b BuilderWithIndex) bool { return a.Index > b.Index }
+		return byIndex(func(a, b BuilderWithIndex) bool { return a.Index > b.Index })
 	case dbtypes.BuilderOrderPubKeyAsc:
 		return func(a, b BuilderWithIndex) bool {
 			return bytes.Compare(a.Builder.PublicKey[:], b.Builder.PublicKey[:]) < 0
@@ -186,7 +197,7 @@ func builderSortFn(orderBy dbtypes.BuilderOrder, balances []phase0.Gwei) func(a,
 	case dbtypes.BuilderOrderWithdrawableEpochDesc:
 		return func(a, b BuilderWithIndex) bool { return a.Builder.WithdrawableEpoch > b.Builder.WithdrawableEpoch }
 	default:
-		return func(a, b BuilderWithIndex) bool { return a.Index < b.Index }
+		return byIndex(func(a, b BuilderWithIndex) bool { return a.Index < b.Index })
 	}
 }
 
