@@ -79,6 +79,7 @@ type Epoch struct {
 	ValidatorBalance      uint64  `db:"validator_balance"`
 	Eligible              uint64  `db:"eligible"`
 	VotedTarget           uint64  `db:"voted_target"`
+	VotedTargetSlashed    uint64  `db:"voted_target_slashed"`
 	VotedHead             uint64  `db:"voted_head"`
 	VotedTotal            uint64  `db:"voted_total"`
 	BlockCount            uint16  `db:"block_count"`
@@ -156,6 +157,7 @@ type UnfinalizedEpoch struct {
 	ValidatorBalance      uint64  `db:"validator_balance"`
 	Eligible              uint64  `db:"eligible"`
 	VotedTarget           uint64  `db:"voted_target"`
+	VotedTargetSlashed    uint64  `db:"voted_target_slashed"`
 	VotedHead             uint64  `db:"voted_head"`
 	VotedTotal            uint64  `db:"voted_total"`
 	BlockCount            uint16  `db:"block_count"`
@@ -185,6 +187,7 @@ type OrphanedEpoch struct {
 	ValidatorBalance      uint64  `db:"validator_balance"`
 	Eligible              uint64  `db:"eligible"`
 	VotedTarget           uint64  `db:"voted_target"`
+	VotedTargetSlashed    uint64  `db:"voted_target_slashed"`
 	VotedHead             uint64  `db:"voted_head"`
 	VotedTotal            uint64  `db:"voted_total"`
 	BlockCount            uint16  `db:"block_count"`

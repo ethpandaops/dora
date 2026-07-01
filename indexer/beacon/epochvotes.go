@@ -37,14 +37,16 @@ func getEpochVotesKey(epoch phase0.Epoch, dependentRoot phase0.Root, highestRoot
 // EpochVotes represents the aggregated votes for an epoch.
 type EpochVotes struct {
 	CurrentEpoch struct {
-		TargetVoteAmount phase0.Gwei
-		HeadVoteAmount   phase0.Gwei
-		TotalVoteAmount  phase0.Gwei
+		TargetVoteAmount        phase0.Gwei // correct-target attesting balance excluding slashed validators (FFG-relevant)
+		TargetVoteAmountSlashed phase0.Gwei // correct-target attesting balance from slashed validators (ignored for finalization)
+		HeadVoteAmount          phase0.Gwei
+		TotalVoteAmount         phase0.Gwei
 	}
 	NextEpoch struct {
-		TargetVoteAmount phase0.Gwei
-		HeadVoteAmount   phase0.Gwei
-		TotalVoteAmount  phase0.Gwei
+		TargetVoteAmount        phase0.Gwei
+		TargetVoteAmountSlashed phase0.Gwei
+		HeadVoteAmount          phase0.Gwei
+		TotalVoteAmount         phase0.Gwei
 	}
 	TargetVotePercent float64
 	HeadVotePercent   float64
@@ -210,8 +212,10 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 			if bytes.Equal(attData.Target.Root[:], targetRoot[:]) {
 				if isNextEpoch {
 					votes.NextEpoch.TargetVoteAmount += targetVoteAmount
+					votes.NextEpoch.TargetVoteAmountSlashed += slashedVoteAmount
 				} else {
 					votes.CurrentEpoch.TargetVoteAmount += targetVoteAmount
+					votes.CurrentEpoch.TargetVoteAmountSlashed += slashedVoteAmount
 				}
 			}
 			parentRoot := block.GetParentRoot()

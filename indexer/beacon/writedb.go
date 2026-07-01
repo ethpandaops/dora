@@ -520,6 +520,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 	}
 	if epochVotes != nil {
 		dbEpoch.VotedTarget = clampInt64(uint64(epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount))
+		dbEpoch.VotedTargetSlashed = clampInt64(uint64(epochVotes.CurrentEpoch.TargetVoteAmountSlashed + epochVotes.NextEpoch.TargetVoteAmountSlashed))
 		dbEpoch.VotedHead = clampInt64(uint64(epochVotes.CurrentEpoch.HeadVoteAmount + epochVotes.NextEpoch.HeadVoteAmount))
 		dbEpoch.VotedTotal = clampInt64(uint64(epochVotes.CurrentEpoch.TotalVoteAmount + epochVotes.NextEpoch.TotalVoteAmount))
 	}
