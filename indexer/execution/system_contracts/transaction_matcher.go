@@ -121,20 +121,15 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 			return err
 		}
 
-		ds.state.MatchHeight = matchTarget
-
 		if len(matches) > 0 {
-			// persist matches to the database
-			err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-				ds.options.persistMatches(tx, matches)
-
-				persistedHeight = matchTarget
-				return ds.persistState(tx)
-			})
-
-			if err != nil {
+			// Advance only if the matches and the new height persist together; a failed
+			// range must be retried, not skipped with its rows left unmatched.
+			if err := ds.persistMatchRange(matches, matchTarget); err != nil {
 				return err
 			}
+			persistedHeight = matchTarget
+		} else {
+			ds.state.MatchHeight = matchTarget
 		}
 	}
 
@@ -170,6 +165,25 @@ func (ds *transactionMatcher[_]) persistState(tx *sqlx.Tx) error {
 	}
 
 	return nil
+}
+
+// persistMatchRange persists the matches for a range together with the advanced
+// match height in a single transaction. The height is rolled back if either the
+// matches or the state fail to persist, so the range is retried on the next run.
+func (ds *transactionMatcher[MatchType]) persistMatchRange(matches []*MatchType, matchTarget uint64) error {
+	prevHeight := ds.state.MatchHeight
+	ds.state.MatchHeight = matchTarget
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		if err := ds.options.persistMatches(tx, matches); err != nil {
+			return err
+		}
+		return ds.persistState(tx)
+	})
+	if err != nil {
+		ds.state.MatchHeight = prevHeight
+	}
+	return err
 }
 
 // getFinalizedBlockNumber gets highest available finalized el block number
