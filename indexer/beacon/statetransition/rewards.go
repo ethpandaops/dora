@@ -1,6 +1,7 @@
 package statetransition
 
 import (
+	"github.com/ethpandaops/go-eth2-client/spec/altair"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
@@ -17,11 +18,10 @@ func processInactivityUpdates(s *stateAccessor) error {
 	previousEpoch := s.previousEpoch()
 	isInactivityLeak := isInInactivityLeak(s)
 
-	// Build set of timely target participants for previous epoch
-	targetParticipants := make(map[phase0.ValidatorIndex]bool)
-	for _, idx := range s.getUnslashedParticipatingIndices(TimelyTargetFlagIndex, previousEpoch) {
-		targetParticipants[idx] = true
-	}
+	// Timely-target participation for the previous epoch is read inline per
+	// validator (active && !slashed && flag set) rather than via a prebuilt set,
+	// avoiding a map over the full validator registry.
+	prevParticipation := s.PreviousEpochParticipation
 
 	// Iterate over eligible validator indices: active in previous epoch OR (slashed and not yet withdrawable)
 	for i, v := range s.Validators {
@@ -29,8 +29,9 @@ func processInactivityUpdates(s *stateAccessor) error {
 			continue
 		}
 
-		idx := phase0.ValidatorIndex(i)
-		if targetParticipants[idx] {
+		isTimelyTarget := !v.Slashed && isActiveValidator(v, previousEpoch) &&
+			i < len(prevParticipation) && hasFlag(prevParticipation[i], TimelyTargetFlagIndex)
+		if isTimelyTarget {
 			// Decrease inactivity score by min(1, score)
 			if s.InactivityScores[i] >= 1 {
 				s.InactivityScores[i] -= 1
@@ -66,30 +67,32 @@ func processRewardsAndPenalties(s *stateAccessor) error {
 	previousEpoch := s.previousEpoch()
 	totalActiveBalance := s.getTotalActiveBalance()
 	isInactivityLeak := isInInactivityLeak(s)
-
-	// Precompute participating increments for each flag (matching spec: get_flag_index_deltas)
-	type flagData struct {
-		participatingIncrements uint64
-		participants            map[phase0.ValidatorIndex]bool
-	}
+	prevParticipation := s.PreviousEpochParticipation
 
 	activeIncrements := uint64(totalActiveBalance) / s.specs.EffectiveBalanceIncrement
 
-	flags := make([]flagData, ParticipationFlagCount)
-	for fi := 0; fi < ParticipationFlagCount; fi++ {
-		indices := s.getUnslashedParticipatingIndices(fi, previousEpoch)
-		balance := phase0.Gwei(0)
-		pMap := make(map[phase0.ValidatorIndex]bool, len(indices))
-		for _, idx := range indices {
-			pMap[idx] = true
-			balance += s.Validators[idx].EffectiveBalance
+	// Precompute participating increments for each flag (spec: get_flag_index_deltas).
+	// Participation is read inline per validator from the flag bytes rather than via
+	// per-flag index sets, so this is a single sum pass with no map allocations.
+	var participatingIncrements [ParticipationFlagCount]uint64
+	{
+		var balances [ParticipationFlagCount]phase0.Gwei
+		for i, v := range s.Validators {
+			if v.Slashed || !isActiveValidator(v, previousEpoch) || i >= len(prevParticipation) {
+				continue
+			}
+			flags := prevParticipation[i]
+			for fi := 0; fi < ParticipationFlagCount; fi++ {
+				if hasFlag(flags, fi) {
+					balances[fi] += v.EffectiveBalance
+				}
+			}
 		}
-		if balance < phase0.Gwei(s.specs.EffectiveBalanceIncrement) {
-			balance = phase0.Gwei(s.specs.EffectiveBalanceIncrement)
-		}
-		flags[fi] = flagData{
-			participatingIncrements: uint64(balance) / s.specs.EffectiveBalanceIncrement,
-			participants:            pMap,
+		for fi := 0; fi < ParticipationFlagCount; fi++ {
+			if balances[fi] < phase0.Gwei(s.specs.EffectiveBalanceIncrement) {
+				balances[fi] = phase0.Gwei(s.specs.EffectiveBalanceIncrement)
+			}
+			participatingIncrements[fi] = uint64(balances[fi]) / s.specs.EffectiveBalanceIncrement
 		}
 	}
 
@@ -101,14 +104,18 @@ func processRewardsAndPenalties(s *stateAccessor) error {
 
 		idx := phase0.ValidatorIndex(i)
 		baseReward := uint64(s.getBaseReward(idx))
+		var flags altair.ParticipationFlags
+		if i < len(prevParticipation) {
+			flags = prevParticipation[i]
+		}
 
 		for fi := 0; fi < ParticipationFlagCount; fi++ {
 			weight := ParticipationFlagWeights[fi]
 
-			if flags[fi].participants[idx] && !v.Slashed {
+			if !v.Slashed && hasFlag(flags, fi) {
 				if !isInactivityLeak {
 					// Reward (spec: rewards[index] += base_reward * weight * participating_increments / (active_increments * WEIGHT_DENOMINATOR))
-					rewardNumerator := baseReward * weight * flags[fi].participatingIncrements
+					rewardNumerator := baseReward * weight * participatingIncrements[fi]
 					reward := rewardNumerator / (activeIncrements * WeightDenominator)
 					s.increaseBalance(idx, phase0.Gwei(reward))
 				}
@@ -121,7 +128,7 @@ func processRewardsAndPenalties(s *stateAccessor) error {
 
 		// Inactivity penalty (spec: get_inactivity_penalty_deltas)
 		// penalty = effective_balance * inactivity_score / (INACTIVITY_SCORE_BIAS * INACTIVITY_PENALTY_QUOTIENT_BELLATRIX)
-		if !flags[TimelyTargetFlagIndex].participants[idx] || v.Slashed {
+		if v.Slashed || !hasFlag(flags, TimelyTargetFlagIndex) {
 			penaltyNumerator := uint64(v.EffectiveBalance) * s.InactivityScores[i]
 			penaltyDenominator := s.specs.InactivityScoreBias * s.getInactivityPenaltyQuotient()
 			if penaltyDenominator > 0 {
