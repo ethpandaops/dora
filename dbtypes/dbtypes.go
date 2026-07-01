@@ -69,8 +69,10 @@ type Slot struct {
 	ExecTimes             []byte        `db:"exec_times"`
 	PayloadStatus         PayloadStatus `db:"payload_status"`
 	BlockUid              uint64        `db:"block_uid"`
-	BuilderIndex          int64         `db:"builder_index"` // Builder index, -1 for self-built blocks (MaxUint64)
-	EthBidValue           uint64        `db:"eth_bid_value"` // Bid value in Gwei (0 for self-builds and pre-gloas blocks)
+	BuilderIndex          int64         `db:"builder_index"`           // Builder index, -1 for self-built blocks (MaxUint64)
+	EthBidValue           uint64        `db:"eth_bid_value"`           // Bid value in Gwei (0 for self-builds and pre-gloas blocks)
+	BuilderPaymentWeight  uint64        `db:"builder_payment_weight"`  // Gloas: same-slot attester balance backing the builder payment quorum (Gwei); 0 pre-gloas
+	BuilderPaymentPercent float32       `db:"builder_payment_percent"` // Gloas: BuilderPaymentWeight as % of the per-slot quorum base (total active balance / slots-per-epoch)
 }
 
 type Epoch struct {

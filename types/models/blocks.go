@@ -12,27 +12,29 @@ type BlocksPageData struct {
 	LastSlot      uint64                `json:"last_slot"`
 	ForkTreeWidth int32                 `json:"forktree_width"`
 
-	DisplayChain        bool   `json:"dp_chain"`
-	DisplayNumber       bool   `json:"dp_number"`
-	DisplaySlot         bool   `json:"dp_slot"`
-	DisplayStatus       bool   `json:"dp_status"`
-	DisplayTime         bool   `json:"dp_time"`
-	DisplayProposer     bool   `json:"dp_proposer"`
-	DisplayAttestations bool   `json:"dp_attestations"`
-	DisplayDeposits     bool   `json:"dp_deposits"`
-	DisplaySlashings    bool   `json:"dp_slashings"`
-	DisplayTxCount      bool   `json:"dp_txcount"`
-	DisplaySyncAgg      bool   `json:"dp_syncagg"`
-	DisplayGraffiti     bool   `json:"dp_graffiti"`
-	DisplayElExtraData  bool   `json:"dp_elextra"`
-	DisplayGasUsage     bool   `json:"dp_gasusage"`
-	DisplayGasLimit     bool   `json:"dp_gaslimit"`
-	DisplayMevBlock     bool   `json:"dp_mevblock"`
-	DisplayBlockSize    bool   `json:"dp_blocksize"`
-	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
-	DisplayExecTime     bool   `json:"dp_exectime"`
-	DisplayBuilder      bool   `json:"dp_builder"`
-	DisplayColCount     uint64 `json:"display_col_count"`
+	DisplayChain          bool    `json:"dp_chain"`
+	DisplayNumber         bool    `json:"dp_number"`
+	DisplaySlot           bool    `json:"dp_slot"`
+	DisplayStatus         bool    `json:"dp_status"`
+	DisplayTime           bool    `json:"dp_time"`
+	DisplayProposer       bool    `json:"dp_proposer"`
+	DisplayAttestations   bool    `json:"dp_attestations"`
+	DisplayDeposits       bool    `json:"dp_deposits"`
+	DisplaySlashings      bool    `json:"dp_slashings"`
+	DisplayTxCount        bool    `json:"dp_txcount"`
+	DisplaySyncAgg        bool    `json:"dp_syncagg"`
+	DisplayGraffiti       bool    `json:"dp_graffiti"`
+	DisplayElExtraData    bool    `json:"dp_elextra"`
+	DisplayGasUsage       bool    `json:"dp_gasusage"`
+	DisplayGasLimit       bool    `json:"dp_gaslimit"`
+	DisplayMevBlock       bool    `json:"dp_mevblock"`
+	DisplayBlockSize      bool    `json:"dp_blocksize"`
+	DisplayRecvDelay      bool    `json:"dp_recvdelay"`
+	DisplayExecTime       bool    `json:"dp_exectime"`
+	DisplayBuilder        bool    `json:"dp_builder"`
+	DisplayBuilderPayment bool    `json:"dp_builderpayment"`
+	BuilderPaymentQuorum  float64 `json:"builder_payment_quorum"`
+	DisplayColCount       uint64  `json:"display_col_count"`
 
 	IsDefaultPage    bool   `json:"default_page"`
 	TotalPages       uint64 `json:"total_pages"`
@@ -55,45 +57,50 @@ type BlocksPageData struct {
 }
 
 type BlocksPageDataSlot struct {
-	Slot                  uint64                     `json:"slot"`
-	Epoch                 uint64                     `json:"epoch"`
-	Ts                    time.Time                  `json:"ts"`
-	Finalized             bool                       `json:"scheduled"`
-	Scheduled             bool                       `json:"finalized"`
-	Status                uint8                      `json:"status"`
-	PayloadStatus         uint8                      `json:"payload_status"`
-	Synchronized          bool                       `json:"synchronized"`
-	Proposer              uint64                     `json:"proposer"`
-	ProposerName          string                     `json:"proposer_name"`
-	AttestationCount      uint64                     `json:"attestation_count"`
-	DepositCount          uint64                     `json:"deposit_count"`
-	ExitCount             uint64                     `json:"exit_count"`
-	ProposerSlashingCount uint64                     `json:"proposer_slashing_count"`
-	AttesterSlashingCount uint64                     `json:"attester_slashing_count"`
-	SyncParticipation     float64                    `json:"sync_participation"`
-	EthTransactionCount   uint64                     `json:"eth_transaction_count"`
-	BlobCount             uint64                     `json:"blob_count"`
-	WithEthBlock          bool                       `json:"with_eth_block"`
-	EthBlockNumber        uint64                     `json:"eth_block_number"`
-	Graffiti              []byte                     `json:"graffiti"`
-	ElExtraData           []byte                     `json:"el_extra_data"`
-	GasUsed               uint64                     `json:"gas_used"`
-	GasLimit              uint64                     `json:"gas_limit"`
-	BlockSize             uint64                     `json:"block_size"`
-	BlockRoot             []byte                     `json:"block_root" ssz-size:"32"`
-	ParentRoot            []byte                     `json:"parent_root" ssz-size:"32"`
-	RecvDelay             int32                      `json:"recv_delay"`
-	MinExecTime           uint32                     `json:"min_exec_time"`
-	MaxExecTime           uint32                     `json:"max_exec_time"`
-	AvgExecTime           uint32                     `json:"avg_exec_time"`
-	ExecutionTimes        []ExecutionTimeDetail      `json:"execution_times"`
-	ForkGraph             []*BlocksPageDataForkGraph `json:"fork_graph"`
-	IsMevBlock            bool                       `json:"is_mev_block"`
-	MevBlockRelays        string                     `json:"mev_block_relays"`
-	HasBuilder            bool                       `json:"has_builder"`
-	BuilderIndex          uint64                     `json:"builder_index"`
-	BuilderName           string                     `json:"builder_name"`
-	BuilderURL            string                     `json:"builder_url"`
+	Slot                    uint64                     `json:"slot"`
+	Epoch                   uint64                     `json:"epoch"`
+	Ts                      time.Time                  `json:"ts"`
+	Finalized               bool                       `json:"scheduled"`
+	Scheduled               bool                       `json:"finalized"`
+	Status                  uint8                      `json:"status"`
+	PayloadStatus           uint8                      `json:"payload_status"`
+	Synchronized            bool                       `json:"synchronized"`
+	Proposer                uint64                     `json:"proposer"`
+	ProposerName            string                     `json:"proposer_name"`
+	AttestationCount        uint64                     `json:"attestation_count"`
+	DepositCount            uint64                     `json:"deposit_count"`
+	ExitCount               uint64                     `json:"exit_count"`
+	ProposerSlashingCount   uint64                     `json:"proposer_slashing_count"`
+	AttesterSlashingCount   uint64                     `json:"attester_slashing_count"`
+	SyncParticipation       float64                    `json:"sync_participation"`
+	EthTransactionCount     uint64                     `json:"eth_transaction_count"`
+	BlobCount               uint64                     `json:"blob_count"`
+	WithEthBlock            bool                       `json:"with_eth_block"`
+	EthBlockNumber          uint64                     `json:"eth_block_number"`
+	Graffiti                []byte                     `json:"graffiti"`
+	ElExtraData             []byte                     `json:"el_extra_data"`
+	GasUsed                 uint64                     `json:"gas_used"`
+	GasLimit                uint64                     `json:"gas_limit"`
+	BlockSize               uint64                     `json:"block_size"`
+	BlockRoot               []byte                     `json:"block_root" ssz-size:"32"`
+	ParentRoot              []byte                     `json:"parent_root" ssz-size:"32"`
+	RecvDelay               int32                      `json:"recv_delay"`
+	MinExecTime             uint32                     `json:"min_exec_time"`
+	MaxExecTime             uint32                     `json:"max_exec_time"`
+	AvgExecTime             uint32                     `json:"avg_exec_time"`
+	ExecutionTimes          []ExecutionTimeDetail      `json:"execution_times"`
+	ForkGraph               []*BlocksPageDataForkGraph `json:"fork_graph"`
+	IsMevBlock              bool                       `json:"is_mev_block"`
+	MevBlockRelays          string                     `json:"mev_block_relays"`
+	HasBuilder              bool                       `json:"has_builder"`
+	BuilderIndex            uint64                     `json:"builder_index"`
+	BuilderName             string                     `json:"builder_name"`
+	BuilderURL              string                     `json:"builder_url"`
+	HasBuilderPayment       bool                       `json:"has_builder_payment"`
+	BuilderPaymentWeight    uint64                     `json:"builder_payment_weight"`
+	BuilderPaymentBase      uint64                     `json:"builder_payment_base"`
+	BuilderPaymentPercent   float64                    `json:"builder_payment_percent"`
+	BuilderPaymentMetQuorum bool                       `json:"builder_payment_met_quorum"`
 }
 
 type BlocksPageDataForkGraph struct {

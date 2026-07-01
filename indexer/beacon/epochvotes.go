@@ -52,6 +52,7 @@ type EpochVotes struct {
 	HeadVotePercent   float64
 	TotalVotePercent  float64
 	AmountIsCount     bool
+	SlotWeights       []phase0.Gwei
 }
 
 // aggregateEpochVotes aggregates the votes for an epoch based on the provided chain state, blocks, and epoch stats.
@@ -121,6 +122,19 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 		slashedSet = make(map[duties.ActiveIndiceIndex]bool, len(epochStatsValues.SlashedIndices))
 		for _, activeIndiceIndex := range epochStatsValues.SlashedIndices {
 			slashedSet[activeIndiceIndex] = true
+		}
+	}
+
+	// Gloas builder-payment weight: per-slot sum of same-slot attester effective balance, which
+	// feeds get_builder_payment_quorum_threshold. Only tracked for Gloas+ epochs, and needs duties
+	// (effective balances) to be meaningful. blockRootBySlot resolves is_attestation_same_slot.
+	var slotWeights []phase0.Gwei
+	var blockRootBySlot map[phase0.Slot]phase0.Root
+	if epochStatsValues != nil && chainState.IsEip7732Enabled(epoch) {
+		slotWeights = make([]phase0.Gwei, specs.SlotsPerEpoch)
+		blockRootBySlot = make(map[phase0.Slot]phase0.Root, len(blocks))
+		for _, b := range blocks {
+			blockRootBySlot[b.Slot] = b.Root
 		}
 	}
 
@@ -204,6 +218,15 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 				}
 			}
 
+			// Gloas builder-payment weight: a same-slot attestation (attester voted for the block
+			// proposed at its own slot) contributes the full attesting balance — slashed included,
+			// unlike the FFG target — to that slot's payment quorum weight.
+			if slotWeights != nil {
+				if root, ok := blockRootBySlot[attData.Slot]; ok && bytes.Equal(attData.BeaconBlockRoot[:], root[:]) && int(slotIndex) < len(slotWeights) {
+					slotWeights[slotIndex] += voteAmount
+				}
+			}
+
 			// slashed validators still attest, but the spec excludes them from FFG target weight,
 			// so they don't count towards justification/finalization. Drop their share from the
 			// target amount while leaving head/total (informational) untouched.
@@ -234,6 +257,8 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 			}
 		}
 	}
+
+	votes.SlotWeights = slotWeights
 
 	if epochStatsValues != nil {
 		votes.TargetVotePercent = float64(votes.CurrentEpoch.TargetVoteAmount+votes.NextEpoch.TargetVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)

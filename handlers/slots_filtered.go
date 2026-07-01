@@ -12,6 +12,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -279,6 +280,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 			17: !hasSnooperClients, // Disable receive delay if snooper clients exist
 			18: hasSnooperClients,  // Enable exec time if snooper clients exist
 			19: false,              // Builder (opt-in; proposer column already shows build source)
+			20: false,              // Builder Payment / Vote Quorum (opt-in; Gloas only)
 		}
 	} else {
 		displayMask := uint64(0)
@@ -343,26 +345,28 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 
 		IsGloasActive: gloasActive,
 
-		DisplayEpoch:        displayMap[1],
-		DisplaySlot:         displayMap[2],
-		DisplayStatus:       displayMap[3],
-		DisplayTime:         displayMap[4],
-		DisplayProposer:     displayMap[5],
-		DisplayAttestations: displayMap[6],
-		DisplayDeposits:     displayMap[7],
-		DisplaySlashings:    displayMap[8],
-		DisplayTxCount:      displayMap[9],
-		DisplaySyncAgg:      displayMap[10],
-		DisplayGraffiti:     displayMap[11],
-		DisplayElExtraData:  displayMap[12],
-		DisplayGasUsage:     displayMap[13],
-		DisplayGasLimit:     displayMap[14],
-		DisplayMevBlock:     displayMap[15],
-		DisplayBlockSize:    displayMap[16],
-		DisplayRecvDelay:    displayMap[17],
-		DisplayExecTime:     displayMap[18],
-		DisplayBuilder:      displayMap[19],
-		DisplayColCount:     uint64(len(displayMap)),
+		DisplayEpoch:          displayMap[1],
+		DisplaySlot:           displayMap[2],
+		DisplayStatus:         displayMap[3],
+		DisplayTime:           displayMap[4],
+		DisplayProposer:       displayMap[5],
+		DisplayAttestations:   displayMap[6],
+		DisplayDeposits:       displayMap[7],
+		DisplaySlashings:      displayMap[8],
+		DisplayTxCount:        displayMap[9],
+		DisplaySyncAgg:        displayMap[10],
+		DisplayGraffiti:       displayMap[11],
+		DisplayElExtraData:    displayMap[12],
+		DisplayGasUsage:       displayMap[13],
+		DisplayGasLimit:       displayMap[14],
+		DisplayMevBlock:       displayMap[15],
+		DisplayBlockSize:      displayMap[16],
+		DisplayRecvDelay:      displayMap[17],
+		DisplayExecTime:       displayMap[18],
+		DisplayBuilder:        displayMap[19],
+		DisplayBuilderPayment: displayMap[20],
+		BuilderPaymentQuorum:  statetransition.BuilderPaymentQuorumPercent,
+		DisplayColCount:       uint64(len(displayMap)),
 
 		HasSnooperClients: hasSnooperClients,
 	}
@@ -590,6 +594,18 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 					slotData.BuilderIndex = uint64(dbBlock.Block.BuilderIndex)
 					slotData.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(dbBlock.Block.BuilderIndex) | services.BuilderIndexFlag)
 					slotData.BuilderURL = services.GlobalBeaconService.GetBuilderURL(uint64(dbBlock.Block.BuilderIndex))
+				}
+			}
+
+			// Gloas builder-payment vote quorum (same-slot attester balance vs per-slot base).
+			// Only meaningful for builder-built blocks; base is recovered from weight/percent.
+			if pageData.DisplayBuilderPayment && dbBlock.Block.Status > 0 && chainState.IsEip7732Enabled(epoch) {
+				slotData.HasBuilderPayment = true
+				slotData.BuilderPaymentWeight = dbBlock.Block.BuilderPaymentWeight
+				slotData.BuilderPaymentPercent = float64(dbBlock.Block.BuilderPaymentPercent)
+				slotData.BuilderPaymentMetQuorum = slotData.BuilderPaymentPercent >= statetransition.BuilderPaymentQuorumPercent
+				if dbBlock.Block.BuilderPaymentPercent > 0 {
+					slotData.BuilderPaymentBase = uint64(float64(dbBlock.Block.BuilderPaymentWeight) / float64(dbBlock.Block.BuilderPaymentPercent) * 100)
 				}
 			}
 
