@@ -292,6 +292,31 @@
             </div>
           {{ end }}
         {{ end }}
+        {{ if .Block.BuilderPayment }}
+          {{ with .Block.BuilderPayment }}
+          <div class="row border-bottom p-2 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Same-slot attester vote support versus the 60% per-slot quorum. For builder-built blocks, the builder&#39;s (delayed) payment settles only when the quorum is reached.">Payload Vote Quorum:</span></div>
+            <div class="col-md-10">
+              <div>
+                {{ formatFloat .Percent 2 }}%
+                <small class="text-muted ml-2">({{ formatEthAddCommasFromGwei .Weight }} ETH of {{ formatEthAddCommasFromGwei .Base }} ETH per-slot base)</small>
+              </div>
+              <div class="d-flex align-items-center flex-wrap" style="max-width: 700px;">
+                <div class="position-relative" style="width: 400px; max-width: 100%;">
+                  <div class="progress" style="height: 14px;">
+                    <div class="progress-bar {{ if .MetQuorum }}bg-success{{ else }}bg-warning{{ end }}" role="progressbar" style="width: {{ if gt .Percent 100.0 }}100{{ else }}{{ formatFloat .Percent 2 }}{{ end }}%;"></div>
+                  </div>
+                  <div class="position-absolute" style="top: -3px; bottom: -3px; left: {{ .Quorum }}%; width: 2px; background-color: #dc3545;" title="60% quorum threshold"></div>
+                </div>
+                <span class="ms-3">
+                  {{ if .MetQuorum }}<span class="badge rounded-pill text-bg-success">Quorum met</span>{{ else }}<span class="badge rounded-pill text-bg-warning">Below quorum</span>{{ end }}
+                  {{ if and .MetQuorum .PayloadNotIncluded }}<span class="badge rounded-pill text-bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="The payload was not included (missed or orphaned), but the vote quorum was reached — the builder&#39;s bid of {{ formatEthAddCommasFromGwei .BidValue }} ETH is still charged and withdrawn from the builder in epoch {{ .WithdrawalEpoch }}.">bid charged, payload not included</span>{{ end }}
+                </span>
+              </div>
+            </div>
+          </div>
+          {{ end }}
+        {{ end }}
         {{ if .Block.ExecutionData }}
           {{ $block := .Block }}
           {{ with .Block.ExecutionData }}

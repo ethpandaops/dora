@@ -494,7 +494,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				sim = newStateSimulator(indexer, epochStats)
 			}
 
-			if _, err := indexer.dbWriter.persistBlockData(tx, block, epochStats, nil, true, nil, sim); err != nil {
+			if _, err := indexer.dbWriter.persistBlockData(tx, block, epochStats, nil, nil, true, nil, sim); err != nil {
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 
