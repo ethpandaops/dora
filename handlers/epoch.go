@@ -67,6 +67,18 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// clampPercent bounds a bar-segment percentage to the [0, 100] range so rounding noise or
+// next-epoch vote inclusion can't produce a negative or overflowing segment width.
+func clampPercent(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
 func getEpochPageData(epoch uint64) (*models.EpochPageData, error) {
 	pageData := &models.EpochPageData{}
 	pageCacheKey := fmt.Sprintf("epoch:%v", epoch)
@@ -143,6 +155,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 		pageData.AttesterSlashingCount = dbEpoch.AttesterSlashingCount
 		pageData.EligibleEther = dbEpoch.Eligible
 		pageData.TargetVoted = dbEpoch.VotedTarget
+		pageData.TargetVotedSlashed = dbEpoch.VotedTargetSlashed
 		pageData.HeadVoted = dbEpoch.VotedHead
 		pageData.TotalVoted = dbEpoch.VotedTotal
 		pageData.SyncParticipation = float64(dbEpoch.SyncParticipation) * 100
@@ -155,10 +168,19 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 			pageData.Synchronized = false
 		}
 		if dbEpoch.Eligible > 0 {
-			pageData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / float64(dbEpoch.Eligible)
-			pageData.HeadVoteParticipation = float64(dbEpoch.VotedHead) * 100.0 / float64(dbEpoch.Eligible)
-			pageData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / float64(dbEpoch.Eligible)
+			eligible := float64(dbEpoch.Eligible)
+			pageData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / eligible
+			pageData.TargetVoteSlashedParticipation = float64(dbEpoch.VotedTargetSlashed) * 100.0 / eligible
+			pageData.HeadVoteParticipation = float64(dbEpoch.VotedHead) * 100.0 / eligible
+			pageData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / eligible
+
+			// derive the remaining bar segments, clamping to avoid tiny negatives from rounding /
+			// next-epoch vote inclusion.
+			pageData.TargetVoteWrongParticipation = clampPercent(pageData.TotalVoteParticipation - pageData.TargetVoteParticipation - pageData.TargetVoteSlashedParticipation)
+			pageData.HeadVoteWrongParticipation = clampPercent(pageData.TotalVoteParticipation - pageData.HeadVoteParticipation)
+			pageData.MissingParticipation = clampPercent(100.0 - pageData.TotalVoteParticipation)
 		}
+		pageData.FinalityThreshold = 100.0 * 2.0 / 3.0
 	}
 
 	// load slots

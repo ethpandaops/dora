@@ -49,6 +49,7 @@
                   <option value="18" {{ if .DisplayRecvDelay }}selected{{ end }}>Receive Delay</option>
                   <option value="19" {{ if .DisplayExecTime }}selected{{ end }}>Execution Time</option>
                   <option value="20" {{ if .DisplayBuilder }}selected{{ end }}>Builder</option>
+                  <option value="21" {{ if .DisplayBuilderPayment }}selected{{ end }}>Payload Vote Quorum</option>
                   <option value="12" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                   <option value="13" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                 </select>
@@ -90,6 +91,7 @@
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
                 {{ if .DisplayBuilder }}<th>Builder</th>{{ end }}
+                {{ if .DisplayBuilderPayment }}<th>Vote %</th>{{ end }}
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
@@ -170,6 +172,7 @@
                           {{ formatBuilderWithURL $slot.BuilderIndex $slot.BuilderName $slot.BuilderURL }}
                         {{ end }}
                       {{ end }}</td>{{ end }}
+                      {{ if $g.DisplayBuilderPayment }}<td>{{ if $slot.HasBuilderPayment }}<span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatEthAddCommasFromGwei $slot.BuilderPaymentWeight }} ETH of {{ formatEthAddCommasFromGwei $slot.BuilderPaymentBase }} ETH per-slot base — quorum ≥{{ $g.BuilderPaymentQuorum }}%" class="{{ if $slot.BuilderPaymentMetQuorum }}text-success{{ else }}text-danger{{ end }}">{{ formatFloat $slot.BuilderPaymentPercent 1 }}%</span>{{ end }}</td>{{ end }}
                       {{ if $g.DisplayMevBlock }}<td>{{ if not (eq $slot.Status 0) }}
                         {{ if $slot.IsMevBlock }}
                           <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.MevBlockRelays }}">Yes</span>
@@ -199,6 +202,7 @@
                       {{ if $g.DisplayGasUsage }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplaySyncAgg }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayBuilder }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayBuilderPayment }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayMevBlock }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGasLimit }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayBlockSize }}{{ $colCount = add $colCount 1 }}{{ end }}

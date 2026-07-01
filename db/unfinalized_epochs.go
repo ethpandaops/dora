@@ -11,19 +11,20 @@ func InsertUnfinalizedEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Unf
 	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_epochs (
-				epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target, 
-				voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count, 
+				epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
+				voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
 				withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation,
-				blob_count, eth_gas_used, eth_gas_limit, payload_count
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+				blob_count, eth_gas_used, eth_gas_limit, payload_count, voted_target_slashed
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
 			ON CONFLICT (epoch, dependent_root, epoch_head_root) DO UPDATE SET
 				epoch_head_fork_id = excluded.epoch_head_fork_id,
 				validator_count = excluded.validator_count,
 				validator_balance = excluded.validator_balance,
 				eligible = excluded.eligible,
 				voted_target = excluded.voted_target,
-				voted_head = excluded.voted_head, 
-				voted_total = excluded.voted_total, 
+				voted_target_slashed = excluded.voted_target_slashed,
+				voted_head = excluded.voted_head,
+				voted_total = excluded.voted_total,
 				block_count = excluded.block_count,
 				orphaned_count = excluded.orphaned_count,
 				attestation_count = excluded.attestation_count, 
@@ -42,16 +43,16 @@ func InsertUnfinalizedEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Unf
 				payload_count = excluded.payload_count`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO unfinalized_epochs (
-				epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target, 
-				voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count, 
+				epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
+				voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
 				withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation,
-				blob_count, eth_gas_used, eth_gas_limit, payload_count
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
+				blob_count, eth_gas_used, eth_gas_limit, payload_count, voted_target_slashed
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
 	}),
 		epoch.Epoch, epoch.DependentRoot, epoch.EpochHeadRoot, epoch.EpochHeadForkId, epoch.ValidatorCount, epoch.ValidatorBalance, epoch.Eligible, epoch.VotedTarget,
 		epoch.VotedHead, epoch.VotedTotal, epoch.BlockCount, epoch.OrphanedCount, epoch.AttestationCount, epoch.DepositCount, epoch.ExitCount, epoch.WithdrawCount,
 		epoch.WithdrawAmount, epoch.AttesterSlashingCount, epoch.ProposerSlashingCount, epoch.BLSChangeCount, epoch.EthTransactionCount, epoch.SyncParticipation,
-		epoch.BlobCount, epoch.EthGasUsed, epoch.EthGasLimit, epoch.PayloadCount,
+		epoch.BlobCount, epoch.EthGasUsed, epoch.EthGasLimit, epoch.PayloadCount, epoch.VotedTargetSlashed,
 	)
 	if err != nil {
 		return err
@@ -65,7 +66,7 @@ func StreamUnfinalizedEpochs(ctx context.Context, epoch uint64, cb func(duty *db
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
 		withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation,
-		blob_count, eth_gas_used, eth_gas_limit, payload_count
+		blob_count, eth_gas_used, eth_gas_limit, payload_count, voted_target_slashed
 	FROM unfinalized_epochs
 	WHERE epoch >= $1`, epoch)
 	if err != nil {
@@ -79,7 +80,7 @@ func StreamUnfinalizedEpochs(ctx context.Context, epoch uint64, cb func(duty *db
 			&e.Epoch, &e.DependentRoot, &e.EpochHeadRoot, &e.EpochHeadForkId, &e.ValidatorCount, &e.ValidatorBalance, &e.Eligible, &e.VotedTarget,
 			&e.VotedHead, &e.VotedTotal, &e.BlockCount, &e.OrphanedCount, &e.AttestationCount, &e.DepositCount, &e.ExitCount, &e.WithdrawCount,
 			&e.WithdrawAmount, &e.AttesterSlashingCount, &e.ProposerSlashingCount, &e.BLSChangeCount, &e.EthTransactionCount, &e.SyncParticipation,
-			&e.BlobCount, &e.EthGasUsed, &e.EthGasLimit, &e.PayloadCount,
+			&e.BlobCount, &e.EthGasUsed, &e.EthGasLimit, &e.PayloadCount, &e.VotedTargetSlashed,
 		)
 		if err != nil {
 			logger.Errorf("Error while scanning unfinalized epoch: %v", err)
@@ -98,7 +99,7 @@ func GetUnfinalizedEpoch(ctx context.Context, epoch uint64, headRoot []byte) *db
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
 		withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation,
-		blob_count, eth_gas_used, eth_gas_limit, payload_count
+		blob_count, eth_gas_used, eth_gas_limit, payload_count, voted_target_slashed
 	FROM unfinalized_epochs
 	WHERE epoch = $1 AND epoch_head_root = $2
 	`, epoch, headRoot)
