@@ -3,6 +3,8 @@ package statetransition
 import (
 	"encoding/binary"
 	"fmt"
+	"runtime"
+	"sync"
 
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/go-eth2-client/spec/altair"
@@ -18,14 +20,38 @@ type committeeKey struct {
 
 // committeeCache caches computed beacon committees
 // to avoid recomputation across multiple attestations.
+//
+// It also memoizes the full swap-or-not permutation for the current epoch's
+// attester seed. Every committee in an epoch is a contiguous slice of the same
+// shuffled active-index list, so the permutation is computed once and reused for
+// all (slot, index) committees instead of being recomputed per committee.
 type committeeCache struct {
-	cache map[committeeKey][]phase0.ValidatorIndex
+	cache    map[committeeKey][]phase0.ValidatorIndex
+	shuffled map[phase0.Root][]uint64
 }
 
 func newCommitteeCache() *committeeCache {
 	return &committeeCache{
-		cache: make(map[committeeKey][]phase0.ValidatorIndex, 64),
+		cache:    make(map[committeeKey][]phase0.ValidatorIndex, 64),
+		shuffled: make(map[phase0.Root][]uint64, 2),
 	}
+}
+
+// shuffledIndices returns the memoized full permutation for the given seed,
+// computing it on first use. result[i] equals compute_shuffled_index(i, n, seed);
+// a committee for output positions [start, end) is therefore
+// activeIndices[result[start:end]]. Keyed by seed so the current- and
+// previous-epoch permutations (both referenced while processing a block's
+// attestations) coexist without thrashing.
+func (c *committeeCache) shuffledIndices(seed phase0.Root, n uint64, specs *consensus.ChainSpec) []uint64 {
+	if list, ok := c.shuffled[seed]; ok && uint64(len(list)) == n {
+		return list
+	}
+
+	list := computeShuffledList(n, seed, specs)
+	c.shuffled[seed] = list
+
+	return list
 }
 
 // get returns the cached committee, or nil if not cached.
@@ -71,7 +97,7 @@ func (s *stateAccessor) getBeaconCommittee(slot phase0.Slot, committeeIndex uint
 	index := slotIndex*committeesPerSlot + committeeIndex
 	count := committeesPerSlot * s.specs.SlotsPerEpoch
 
-	committee := computeCommittee(activeIndices, seed, index, count, s.specs)
+	committee := computeCommittee(activeIndices, seed, index, count, s.specs, cc)
 
 	if cc != nil {
 		cc.put(slot, committeeIndex, committee)
@@ -80,9 +106,11 @@ func (s *stateAccessor) getBeaconCommittee(slot phase0.Slot, committeeIndex uint
 	return committee
 }
 
-// computeCommittee computes a committee from the given parameters (no cache).
+// computeCommittee computes a committee from the given parameters.
+// The committee is a contiguous slice [start, end) of the epoch's shuffled
+// active-index list; cc memoizes that list so it is built once per epoch.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#compute_committee
-func computeCommittee(indices []phase0.ValidatorIndex, seed phase0.Root, index, count uint64, specs *consensus.ChainSpec) []phase0.ValidatorIndex {
+func computeCommittee(indices []phase0.ValidatorIndex, seed phase0.Root, index, count uint64, specs *consensus.ChainSpec, cc *committeeCache) []phase0.ValidatorIndex {
 	if count == 0 {
 		return nil
 	}
@@ -91,70 +119,120 @@ func computeCommittee(indices []phase0.ValidatorIndex, seed phase0.Root, index, 
 	start := (indexCount * index) / count
 	end := (indexCount * (index + 1)) / count
 
-	shuffledIndices := computeShuffledBatch(start, end, indexCount, seed, specs)
-	committee := make([]phase0.ValidatorIndex, len(shuffledIndices))
-	for i, shuffled := range shuffledIndices {
-		committee[i] = indices[shuffled]
+	var shuffled []uint64
+	if cc != nil {
+		shuffled = cc.shuffledIndices(seed, indexCount, specs)
+	} else {
+		shuffled = computeShuffledList(indexCount, seed, specs)
+	}
+
+	committee := make([]phase0.ValidatorIndex, 0, end-start)
+	for i := start; i < end; i++ {
+		committee = append(committee, indices[shuffled[i]])
 	}
 
 	return committee
 }
 
-// computeShuffledBatch computes shuffled indices for a contiguous range [start, end)
-// using the swap-or-not shuffle, with per-round pivot caching.
-// Much faster than calling computeShuffledIndex individually for each index.
-func computeShuffledBatch(start, end, indexCount uint64, seed phase0.Root, specs *consensus.ChainSpec) []uint64 {
-	n := end - start
-	result := make([]uint64, n)
-	for i := uint64(0); i < n; i++ {
-		result[i] = start + i
+// computeShuffledList computes the full swap-or-not permutation for indexCount
+// indices under the given seed: result[i] == compute_shuffled_index(i, indexCount, seed).
+//
+// It runs ShuffleRoundCount passes over the whole list, computing each round's
+// pivot once and all of the round's source hashes into a flat slice (one hash
+// per 256-position bucket). This replaces the per-committee, map-backed batch
+// shuffle: a single pass serves every committee in the epoch, and the bucket
+// lookup is an array index rather than a hashmap probe.
+// https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#compute_shuffled_index
+func computeShuffledList(indexCount uint64, seed phase0.Root, specs *consensus.ChainSpec) []uint64 {
+	result := make([]uint64, indexCount)
+	for i := uint64(0); i < indexCount; i++ {
+		result[i] = i
+	}
+	if indexCount < 2 {
+		return result
+	}
+
+	bucketCount := (indexCount + 255) / 256
+	sources := make([]phase0.Root, bucketCount)
+
+	// Worker pool sized to the available cores; the per-round position updates
+	// are independent and dominate the cost, so they are split across workers.
+	workers := runtime.NumCPU()
+	if workers < 1 {
+		workers = 1
 	}
 
 	for currentRound := uint64(0); currentRound < specs.ShuffleRoundCount; currentRound++ {
-		// Compute pivot once per round (depends only on seed + round)
+		// Compute pivot once per round (depends only on seed + round).
 		var buf [33]byte
 		copy(buf[0:32], seed[:])
 		buf[32] = byte(currentRound)
 		pivotHash := hash256(buf[:])
 		pivot := binary.LittleEndian.Uint64(pivotHash[:8]) % indexCount
 
-		// Pre-compute the seed+round prefix for source hashes
-		var srcPrefix [33]byte
-		copy(srcPrefix[0:32], seed[:])
-		srcPrefix[32] = byte(currentRound)
+		// Pre-compute every source hash for this round into a flat slice.
+		var srcBuf [37]byte
+		copy(srcBuf[0:32], seed[:])
+		srcBuf[32] = byte(currentRound)
+		for b := uint64(0); b < bucketCount; b++ {
+			binary.LittleEndian.PutUint32(srcBuf[33:37], uint32(b))
+			sources[b] = hash256(srcBuf[:])
+		}
 
-		// Cache source hashes by position/256 bucket
-		sourceCache := make(map[uint32]phase0.Root)
+		// Apply this round's swap-or-not flips. Each output position is updated
+		// independently from its own current value, so the loop parallelizes
+		// cleanly; the next round depends on this round's full result, so the
+		// rounds themselves stay sequential.
+		shuffleRound(result, sources, pivot, indexCount, workers)
+	}
 
-		for i := uint64(0); i < n; i++ {
+	return result
+}
+
+// shuffleRound applies one swap-or-not round to result in place, dividing the
+// index range across workers goroutines (or running inline for small inputs).
+func shuffleRound(result []uint64, sources []phase0.Root, pivot, indexCount uint64, workers int) {
+	apply := func(start, end uint64) {
+		for i := start; i < end; i++ {
 			index := result[i]
 			flip := (pivot + indexCount - index) % indexCount
 			position := index
 			if flip > index {
 				position = flip
 			}
-
-			bucket := uint32(position / 256)
-			source, ok := sourceCache[bucket]
-			if !ok {
-				var buf2 [37]byte
-				copy(buf2[0:33], srcPrefix[:])
-				binary.LittleEndian.PutUint32(buf2[33:37], bucket)
-				source = hash256(buf2[:])
-				sourceCache[bucket] = source
-			}
-
+			source := sources[position/256]
 			byteIdx := (position % 256) / 8
 			bitIdx := position % 8
-			bit := (source[byteIdx] >> bitIdx) & 1
-
-			if bit == 1 {
+			if (source[byteIdx]>>bitIdx)&1 == 1 {
 				result[i] = flip
 			}
 		}
 	}
 
-	return result
+	n := uint64(len(result))
+	if workers <= 1 || n < 4096 {
+		apply(0, n)
+		return
+	}
+
+	var wg sync.WaitGroup
+	chunk := (n + uint64(workers) - 1) / uint64(workers)
+	for w := 0; w < workers; w++ {
+		start := uint64(w) * chunk
+		end := start + chunk
+		if end > n {
+			end = n
+		}
+		if start >= end {
+			break
+		}
+		wg.Add(1)
+		go func(start, end uint64) {
+			defer wg.Done()
+			apply(start, end)
+		}(start, end)
+	}
+	wg.Wait()
 }
 
 // getAttestingIndices returns the set of attesting indices for an Electra+ attestation.
