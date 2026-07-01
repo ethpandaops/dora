@@ -62,6 +62,19 @@ func InsertBuilderDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes
 	return nil
 }
 
+// UpdateOnboardedBuilderDepositForkId re-attributes the upgrade_to_gloas onboarded builder deposit
+// copies of a public key (all attributed to the fork epoch's onboarding slot) to the supplied fork
+// id and marks them non-orphaned. The copies are written once at the fork boundary with the
+// then-unfinalized fork id; this is called when the source validator deposit is persisted
+// canonically so the copy tracks the same fork id and no longer shows up as orphaned.
+func UpdateOnboardedBuilderDepositForkId(ctx context.Context, tx *sqlx.Tx, publicKey []byte, slotNumber uint64, forkId uint64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE builder_deposits SET fork_id = $1, orphaned = false WHERE public_key = $2 AND slot_number = $3`, forkId, publicKey, slotNumber)
+	if err != nil {
+		return fmt.Errorf("error updating onboarded builder deposit fork id: %v", err)
+	}
+	return nil
+}
+
 func GetBuilderDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.BuilderDepositFilter) ([]*dbtypes.BuilderDeposit, uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}

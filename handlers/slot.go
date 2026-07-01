@@ -232,7 +232,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	}
 
 	if err != nil {
-		return nil, -1
+		// A by-hash lookup that errors has no slot to fall back to, so surface the
+		// not-found page. A by-number lookup must never 404 (it would break the
+		// prev/next header navigation when traversing slots by range) - fall through
+		// and render the slot as missed/unavailable instead.
+		if blockSlot < 0 {
+			return nil, -1
+		}
+		blockData = nil
 	}
 
 	var slot phase0.Slot

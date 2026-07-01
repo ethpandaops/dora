@@ -26,7 +26,7 @@ func APIErrorResponse(w http.ResponseWriter, status int, message string) {
 
 // GetClientIP extracts the real client IP from the request
 func GetClientIP(r *http.Request) string {
-	proxyCount := utils.Config.RateLimit.ProxyCount
+	proxyCount := utils.Config.GetProxyCount()
 
 	var ip string
 
