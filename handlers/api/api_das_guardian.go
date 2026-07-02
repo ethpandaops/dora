@@ -253,7 +253,7 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 					ValidatorIndex: uint64(msg.ValidatorIndex),
 					ProposalSlot:   uint64(msg.ProposalSlot),
 					FeeRecipient:   fmt.Sprintf("0x%x", msg.FeeRecipient),
-					GasLimit:       msg.GasLimit,
+					GasLimit:       msg.TargetGasLimit,
 					DependentRoot:  fmt.Sprintf("0x%x", msg.DependentRoot),
 					ReceivedAt:     obs.ReceivedAt.Format(time.RFC3339),
 					From:           obs.From.String(),
