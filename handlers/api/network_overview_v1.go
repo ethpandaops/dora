@@ -155,7 +155,7 @@ func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Use caching layer for this endpoint since it has no filters
-	var pageData *APINetworkOverviewData
+	pageData := &APINetworkOverviewData{}
 	pageCacheKey := "api_network_overview"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		data, cacheTimeout := buildNetworkOverviewData(pageCall.CallCtx)

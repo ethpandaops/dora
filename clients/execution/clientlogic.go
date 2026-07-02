@@ -3,23 +3,18 @@ package execution
 import (
 	"context"
 	"fmt"
-	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/execution/rpc"
+	"github.com/ethpandaops/dora/utils"
 )
 
 func (client *Client) runClientLoop() {
-	defer func() {
-		if err := recover(); err != nil {
-			client.logger.WithError(err.(error)).Errorf("uncaught panic in clients.execution.Client.runClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(10 * time.Second)
-
-			go client.runClientLoop()
-		}
-	}()
+	defer utils.HandleSubroutinePanic("clients.execution.Client.runClientLoop", func() {
+		client.runClientLoop()
+	})
 
 	for {
 		err := client.checkClient()

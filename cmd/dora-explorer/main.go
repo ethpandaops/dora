@@ -90,7 +90,7 @@ func main() {
 	}
 
 	if cfg.RateLimit.Enabled {
-		err = services.StartCallRateLimiter(cfg.RateLimit.ProxyCount, cfg.RateLimit.Rate, cfg.RateLimit.Burst)
+		err = services.StartCallRateLimiter(cfg.GetProxyCount(), cfg.RateLimit.Rate, cfg.RateLimit.Burst)
 		if err != nil {
 			logger.Fatalf("error starting call rate limiter: %v", err)
 		}
@@ -206,6 +206,10 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/address/{address}", handlers.Address).Methods("GET")
 	router.HandleFunc("/address/{address}/balances", handlers.AddressBalances).Methods("GET")
 	router.HandleFunc("/tx/{hash}", handlers.Transaction).Methods("GET")
+	router.HandleFunc("/transactions", handlers.Transactions).Methods("GET")
+	router.HandleFunc("/transfers", handlers.Transfers).Methods("GET")
+	router.HandleFunc("/tokens", handlers.Tokens).Methods("GET")
+	router.HandleFunc("/token/{address}", handlers.Token).Methods("GET")
 	router.HandleFunc("/mev/blocks", handlers.MevBlocks).Methods("GET")
 
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
@@ -321,6 +325,7 @@ func startApi(router *mux.Router) {
 		// Epoch and slot APIs
 		{"/v1/epochs", api.APIEpochsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/epoch/{epoch}", api.ApiEpochV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/epoch/{epoch}/health", api.ApiEpochHealthV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slot/{slotOrHash}", api.APISlotV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slot/{slotOrHash}/bids", api.APISlotBidsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slot/{slotOrHash}/block_access_list", api.APISlotBlockAccessListV1, []string{"GET", "OPTIONS"}, 2},

@@ -455,12 +455,18 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 			continue
 		}
 
+		payloadStatus := dbBlock.Block.PayloadStatus
+		if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(slot)) {
+			payloadStatus = dbtypes.PayloadStatusCanonical
+		}
+
 		blockData := &models.BlocksFilteredPageDataBlock{
 			Epoch:               uint64(chainState.EpochOfSlot(slot)),
 			Slot:                uint64(slot),
 			EthBlockNumber:      *dbBlock.Block.EthBlockNumber,
 			Ts:                  chainState.SlotToTime(slot),
 			Status:              uint8(dbBlock.Block.Status),
+			PayloadStatus:       uint8(payloadStatus),
 			EthTransactionCount: dbBlock.Block.EthTransactionCount,
 			BlobCount:           dbBlock.Block.BlobCount,
 			ElExtraData:         dbBlock.Block.EthBlockExtra,

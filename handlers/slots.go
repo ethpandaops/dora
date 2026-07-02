@@ -14,6 +14,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -120,6 +121,7 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 			18: !hasSnooperClients, // Disable receive delay if snooper clients exist
 			19: hasSnooperClients,  // Enable exec time if snooper clients exist
 			20: false,              // Builder (opt-in; proposer column already shows build source)
+			21: false,              // Builder Payment quorum (opt-in; Gloas only)
 		}
 	}
 
@@ -155,6 +157,8 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 	pageData.DisplayRecvDelay = displayMap[18]
 	pageData.DisplayExecTime = displayMap[19]
 	pageData.DisplayBuilder = displayMap[20]
+	pageData.DisplayBuilderPayment = displayMap[21]
+	pageData.BuilderPaymentQuorum = statetransition.BuilderPaymentQuorumPercent
 	pageData.DisplayColCount = uint64(len(displayMap))
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -322,6 +326,18 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 					slotData.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(dbSlot.BuilderIndex) | services.BuilderIndexFlag)
 					slotData.BuilderURL = services.GlobalBeaconService.GetBuilderURL(uint64(dbSlot.BuilderIndex))
 				}
+			}
+
+			// Gloas builder-payment quorum (same-slot attester balance vs per-slot base). Only
+			// meaningful for builder-built blocks; the base is recovered from weight/percent.
+			if pageData.DisplayBuilderPayment && dbSlot.Status > 0 && chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
+				slotData.HasBuilderPayment = true
+				slotData.BuilderPaymentWeight = dbSlot.BuilderPaymentWeight
+				slotData.BuilderPaymentPercent = float64(dbSlot.BuilderPaymentPercent)
+				if dbSlot.BuilderPaymentPercent > 0 {
+					slotData.BuilderPaymentBase = uint64(float64(dbSlot.BuilderPaymentWeight) / float64(dbSlot.BuilderPaymentPercent) * 100)
+				}
+				slotData.BuilderPaymentMetQuorum = float64(dbSlot.BuilderPaymentPercent) >= statetransition.BuilderPaymentQuorumPercent
 			}
 
 			// Add execution times if available

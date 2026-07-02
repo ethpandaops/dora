@@ -111,6 +111,7 @@ type SlotPageBlockData struct {
 	BuilderExitRequests    []*SlotPageBuilderExitRequest    `json:"builder_exit_requests"`    // Builder exit requests processed by this block (Gloas)
 	Bids                   []*SlotPageBid                   `json:"bids"`                     // Execution payload bids for this block (ePBS)
 	PtcVotes               *SlotPagePtcVotes                `json:"ptc_votes"`                // PTC votes included in this block (for previous slot)
+	BuilderPayment         *SlotPageBuilderPayment          `json:"builder_payment"`          // Gloas builder-payment vote quorum for this slot
 	InclusionLists         []*SlotPageInclusionList         `json:"inclusion_lists"`          // Inclusion lists for this slot (EIP-7805)
 	InclusionListsCount    uint64                           `json:"inclusion_lists_count"`
 }
@@ -309,12 +310,13 @@ type SlotPageTransaction struct {
 	TypeName      string  `json:"type_name"`
 
 	// EL-enriched data (only available when execution indexer is enabled)
-	HasElData   bool    `json:"has_el_data"`
-	Reverted    bool    `json:"reverted"`
-	GasUsed     uint64  `json:"gas_used"`
-	GasLimit    uint64  `json:"gas_limit"`
-	TxFee       float64 `json:"tx_fee"`        // Transaction fee in ETH
-	EffGasPrice float64 `json:"eff_gas_price"` // Effective gas price in Gwei
+	HasElData    bool    `json:"has_el_data"`
+	Reverted     bool    `json:"reverted"`
+	RevertReason string  `json:"revert_reason,omitempty"`
+	GasUsed      uint64  `json:"gas_used"`
+	GasLimit     uint64  `json:"gas_limit"`
+	TxFee        float64 `json:"tx_fee"`        // Transaction fee in ETH
+	EffGasPrice  float64 `json:"eff_gas_price"` // Effective gas price in Gwei
 }
 
 type SlotPageDepositRequest struct {
@@ -387,6 +389,20 @@ type SlotPageBid struct {
 	ElPayment    uint64 `json:"el_payment"`
 	TotalValue   uint64 `json:"total_value"`
 	IsWinning    bool   `json:"is_winning"`
+}
+
+// SlotPageBuilderPayment holds the Gloas builder-payment vote quorum for a slot: the same-slot
+// attester balance (Weight) versus the per-slot quorum base, and whether it reaches the 60% quorum
+// that settles the builder's (delayed) payment.
+type SlotPageBuilderPayment struct {
+	Weight             uint64  `json:"weight"`               // Same-slot attester balance backing the payment (Gwei)
+	Base               uint64  `json:"base"`                 // Per-slot quorum base = total active balance / slots-per-epoch (Gwei)
+	Percent            float64 `json:"percent"`              // Weight as a percentage of Base
+	Quorum             float64 `json:"quorum"`               // Quorum threshold percentage (60%)
+	MetQuorum          bool    `json:"met_quorum"`           // Whether Percent >= Quorum (payment settles)
+	PayloadNotIncluded bool    `json:"payload_not_included"` // Whether the payload was missed or orphaned (not canonical)
+	BidValue           uint64  `json:"bid_value"`            // The builder's committed bid value (Gwei)
+	WithdrawalEpoch    uint64  `json:"withdrawal_epoch"`     // Epoch the settled payment is withdrawn from the builder (N+2)
 }
 
 // SlotPagePtcVotes holds PTC (Payload Timeliness Committee) vote information for a slot.

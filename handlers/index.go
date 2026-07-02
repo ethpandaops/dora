@@ -420,6 +420,19 @@ func buildIndexPageRecentEpochsData(ctx context.Context, pageData *models.IndexP
 		if specs.SlotsPerEpoch > 0 {
 			proposalParticipation = float64(epochData.BlockCount) * 100.0 / float64(specs.SlotsPerEpoch)
 		}
+
+		// Pre-ePBS the execution payload is bundled inside the beacon block, so every
+		// canonical block implicitly carries a payload. Post-ePBS (EIP-7732) payloads are
+		// revealed separately and may be missing, so use the dedicated payload count.
+		payloadCount := uint64(epochData.BlockCount)
+		if chainState.IsEip7732Enabled(phase0.Epoch(epochData.Epoch)) {
+			payloadCount = epochData.PayloadCount
+		}
+		payloadParticipation := float64(0)
+		if specs.SlotsPerEpoch > 0 {
+			payloadParticipation = float64(payloadCount) * 100.0 / float64(specs.SlotsPerEpoch)
+		}
+
 		pageData.RecentEpochs = append(pageData.RecentEpochs, &models.IndexPageDataEpochs{
 			Epoch:                 epochData.Epoch,
 			Ts:                    chainState.EpochToTime(phase0.Epoch(epochData.Epoch)),
@@ -431,6 +444,8 @@ func buildIndexPageRecentEpochsData(ctx context.Context, pageData *models.IndexP
 			BlockCount:            uint64(epochData.BlockCount),
 			SlotsPerEpoch:         specs.SlotsPerEpoch,
 			ProposalParticipation: proposalParticipation,
+			PayloadCount:          payloadCount,
+			PayloadParticipation:  payloadParticipation,
 		})
 	}
 	pageData.RecentEpochCount = uint64(len(pageData.RecentEpochs))

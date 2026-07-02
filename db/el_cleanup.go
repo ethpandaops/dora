@@ -13,18 +13,24 @@ type CleanupStats struct {
 	ZeroBalancesDeleted   int64
 	TransactionsDeleted   int64
 	InternalTxsDeleted    int64
-	EventIndicesDeleted   int64
 	TokenTransfersDeleted int64
 	BlocksDeleted         int64
+	RevertReasonsDeleted  int64
 }
 
-// DeleteElDataBeforeBlockUid deletes all EL data (transactions, internal txs,
-// event index, transfers, withdrawals, blocks) with block_uid less than the
-// specified threshold.
+// DeleteElDataBeforeBlockUid deletes the relational EL data (transactions,
+// internal txs, transfers, blocks) with block_uid less than the specified
+// threshold. This is the short (relational) retention boundary.
+//
+// It intentionally does NOT touch the el_txhash index: that index lives with the
+// longer blockdb (details) retention and is pruned separately by the indexer's
+// cleanupBlockdbRetention, so /tx/{hash} can resolve pruned transactions from
+// blockdb after their relational rows are gone.
+//
 // Returns statistics about deleted rows.
-// Uses batched deletes to avoid long locks - deletes in chunks and commits
-// between batches. Uses default batch size of 50000 rows per batch.
-func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _ *sqlx.Tx) (*CleanupStats, error) {
+// Deletes in chunks of 50000 rows and commits between batches to avoid long
+// locks, so it opens its own transactions and must not be called from inside one.
+func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64) (*CleanupStats, error) {
 	batchSize := int64(50000)
 	stats := &CleanupStats{}
 
@@ -46,13 +52,6 @@ func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _
 	}
 	stats.InternalTxsDeleted = deleted
 
-	// Delete event index entries in batches (uses tx_uid column)
-	deleted, err = batchDeleteBefore(ctx, "el_event_index", "tx_uid", txUidThreshold, batchSize)
-	if err != nil {
-		return stats, err
-	}
-	stats.EventIndicesDeleted = deleted
-
 	// Delete token transfers in batches (uses tx_uid column)
 	deleted, err = batchDeleteBefore(ctx, "el_token_transfers", "tx_uid", txUidThreshold, batchSize)
 	if err != nil {
@@ -66,6 +65,15 @@ func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _
 		return stats, err
 	}
 	stats.BlocksDeleted = deleted
+
+	// Reclaim revert reasons no longer referenced by any surviving transaction
+	// (their most recent reference fell below the pruned tx_uid window). A single
+	// indexed range delete — no join back to el_transactions.
+	deleted, err = PruneElRevertReasonsBefore(ctx, txUidThreshold)
+	if err != nil {
+		return stats, err
+	}
+	stats.RevertReasonsDeleted = deleted
 
 	return stats, nil
 }

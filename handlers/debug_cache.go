@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethpandaops/dora/blockdb"
 	bpebble "github.com/ethpandaops/dora/blockdb/pebble"
 	bs3 "github.com/ethpandaops/dora/blockdb/s3"
+	btiered "github.com/ethpandaops/dora/blockdb/tiered"
 	"github.com/ethpandaops/dora/cache"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -69,7 +71,25 @@ type BlockDBDebugData struct {
 	EngineName  string
 	PebbleStats *PebbleDebugData
 	S3Stats     *S3DebugData
+	TierStats   *TierStatsDebugData
 	StoredData  *BlockDbStoredData
+	TxHashIndex *TxHashIndexDebugData
+}
+
+// TierStatsDebugData holds tiered-engine read hit/miss stats.
+type TierStatsDebugData struct {
+	CacheHits   int64
+	CacheMisses int64
+	HitRatePct  float64
+}
+
+// TxHashIndexDebugData describes the tx-hash index store and its size.
+type TxHashIndexDebugData struct {
+	Enabled   bool
+	Native    bool   // true = engine-native (pebble ns4/ns5), false = relational el_txhash
+	StoreType string // human-readable store description
+	Count     int64  // approximate entry count (relational store only)
+	SizeBytes int64  // approximate on-disk size (ns4+ns5 estimate, or el_txhash table size)
 }
 
 // S3DebugData holds S3-specific statistics.
@@ -158,6 +178,76 @@ type ExecIndexerDebugData struct {
 	Indexer          *txindexer.TxIndexerDebugStats
 	LatestSlot       uint64
 	RecentBlockStats []*RecentBlockStatsEntry
+	Pruning          *PruningDebugData
+}
+
+// PruningDebugData is the display view of the EL pruning status.
+type PruningDebugData struct {
+	RelationalEnabled     bool
+	RelationalPrunedEpoch uint64
+	DetailsEnabled        bool
+	DetailsPrunedEpoch    uint64
+	LastCleanup           string
+	Runs                  []*PruningRunDebug
+}
+
+// PruningRunDebug is one cleanup cycle for display.
+type PruningRunDebug struct {
+	Time     string
+	Duration string
+	Objects  []*PruningObjectDebug
+}
+
+// PruningObjectDebug is a per-object-type result for display.
+type PruningObjectDebug struct {
+	Label     string
+	Deleted   int64
+	SizeBytes int64
+}
+
+var pruneObjectLabels = map[string]string{
+	txindexer.PruneObjZeroBalances:   "Zero Balances",
+	txindexer.PruneObjTransactions:   "Transactions",
+	txindexer.PruneObjInternalTxs:    "Internal Txs",
+	txindexer.PruneObjTokenTransfers: "Token Transfers",
+	txindexer.PruneObjBlocks:         "Blocks",
+	txindexer.PruneObjExecData:       "Exec Data",
+	txindexer.PruneObjTxHashIndex:    "TX-Hash Index",
+}
+
+func buildPruningDebugData(status txindexer.ElPruningStatus) *PruningDebugData {
+	data := &PruningDebugData{
+		RelationalEnabled:     status.RelationalEnabled,
+		RelationalPrunedEpoch: status.RelationalPrunedEpoch,
+		DetailsEnabled:        status.DetailsEnabled,
+		DetailsPrunedEpoch:    status.DetailsPrunedEpoch,
+		LastCleanup:           "never",
+	}
+	if status.LastCleanup > 0 {
+		data.LastCleanup = time.Unix(status.LastCleanup, 0).UTC().Format("2006-01-02 15:04 UTC")
+	}
+
+	for _, run := range status.Runs {
+		rd := &PruningRunDebug{
+			Duration: (time.Duration(run.DurationMs) * time.Millisecond).String(),
+		}
+		if run.Time > 0 {
+			rd.Time = time.Unix(run.Time, 0).UTC().Format("2006-01-02 15:04 UTC")
+		}
+		for _, obj := range run.Objects {
+			label := pruneObjectLabels[obj.Type]
+			if label == "" {
+				label = obj.Type
+			}
+			rd.Objects = append(rd.Objects, &PruningObjectDebug{
+				Label:     label,
+				Deleted:   obj.Deleted,
+				SizeBytes: obj.SizeBytes,
+			})
+		}
+		data.Runs = append(data.Runs, rd)
+	}
+	return data
 }
 
 // RecentBlockStatsEntry holds stats for a range of recent blocks.
@@ -240,11 +330,42 @@ func buildBlockDBDebugData() *BlockDBDebugData {
 	case *bs3.S3Engine:
 		data.EngineName = "S3"
 		data.S3Stats = buildS3DebugData(e)
+	case *btiered.TieredEngine:
+		data.EngineName = "Tiered (Pebble cache + S3)"
+		data.PebbleStats = buildPebbleDebugData(e.GetCache().GetDB())
+		data.S3Stats = buildS3DebugData(e.GetPrimary())
+		hits, misses := e.TierStats()
+		tier := &TierStatsDebugData{CacheHits: hits, CacheMisses: misses}
+		if total := hits + misses; total > 0 {
+			tier.HitRatePct = float64(hits) / float64(total) * 100
+		}
+		data.TierStats = tier
 	default:
 		data.EngineName = "Unknown"
 	}
 
 	data.StoredData = buildBlockDbStoredData()
+	data.TxHashIndex = buildTxHashIndexDebugData()
+	return data
+}
+
+func buildTxHashIndexDebugData() *TxHashIndexDebugData {
+	if !blockdb.GlobalBlockDb.SupportsTxHashIndex() {
+		return &TxHashIndexDebugData{Enabled: false, StoreType: "None"}
+	}
+
+	data := &TxHashIndexDebugData{Enabled: true}
+	if blockdb.GlobalBlockDb.TxHashIndexNative() {
+		data.Native = true
+		data.StoreType = "Pebble (native, ns4/ns5)"
+		data.SizeBytes = blockdb.GlobalBlockDb.TxHashIndexDiskUsage()
+	} else {
+		data.StoreType = "PostgreSQL (el_txhash)"
+		if count, size, err := db.GetElTxHashStats(context.Background()); err == nil {
+			data.Count = count
+			data.SizeBytes = size
+		}
+	}
 	return data
 }
 
@@ -329,6 +450,7 @@ func buildExecIndexerDebugData() *ExecIndexerDebugData {
 	data := &ExecIndexerDebugData{
 		Enabled: true,
 		Indexer: indexerStats,
+		Pruning: buildPruningDebugData(ti.GetPruningStatus()),
 	}
 
 	latestSlot, err := db.GetLatestElBlockSlot()

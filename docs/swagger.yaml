@@ -528,6 +528,33 @@ definitions:
       status:
         type: string
     type: object
+  api.APIEpochHealthResponseV1:
+    properties:
+      eligible_ether:
+        type: integer
+      epoch:
+        type: integer
+      finalized:
+        type: boolean
+      healthy:
+        type: boolean
+      payload_participation:
+        type: number
+      proposal_participation:
+        type: number
+      proposed_blocks:
+        type: integer
+      proposed_payloads:
+        type: integer
+      slots:
+        type: integer
+      ts:
+        type: integer
+      vote_participation:
+        type: number
+      voted_ether:
+        type: integer
+    type: object
   api.APIEpochInfo:
     properties:
       attestations:
@@ -558,9 +585,13 @@ definitions:
         type: integer
       missed_blocks:
         type: integer
+      missed_payloads:
+        type: integer
       orphaned_blocks:
         type: integer
       proposed_blocks:
+        type: integer
+      proposed_payloads:
         type: integer
       proposer_slashings:
         type: integer
@@ -609,9 +640,13 @@ definitions:
         type: integer
       missedblocks:
         type: integer
+      missedpayloads:
+        type: integer
       orphanedblocks:
         type: integer
       proposedblocks:
+        type: integer
+      proposedpayloads:
         type: integer
       proposerslashingscount:
         type: integer
@@ -2382,6 +2417,42 @@ paths:
           schema:
             $ref: '#/definitions/api.ApiResponse'
       summary: Get epoch by number, latest, finalized
+      tags:
+      - Epoch
+  /v1/epoch/{epoch}/health:
+    get:
+      description: Returns the vote, proposal and payload participation rates for
+        an epoch. The chain is only fully healthy when all three reach 100%. Post-ePBS
+        (EIP-7732) payloads are revealed separately from beacon blocks and may be
+        missing.
+      operationId: getEpochHealth
+      parameters:
+      - description: Epoch number, the string latest or the string finalized
+        in: path
+        name: epoch
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.APIEpochHealthResponseV1'
+              type: object
+        "400":
+          description: Failure
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+        "500":
+          description: Server Error
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+      summary: Get epoch health by number, latest, finalized
       tags:
       - Epoch
   /v1/epochs:

@@ -13,6 +13,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -50,7 +51,8 @@ type EpochStatsValues struct {
 	NextRandaoMix             phase0.Hash32
 	DependentExecutionHash    phase0.Hash32
 	ActiveIndices             []phase0.ValidatorIndex
-	EffectiveBalances         []uint32 // effective balance in full ETH of last epoch for pre-fulu stats, effective balance in full ETH of current epoch for fulu+ stats
+	EffectiveBalances         []uint32                   // effective balance in full ETH of last epoch for pre-fulu stats, effective balance in full ETH of current epoch for fulu+ stats
+	SlashedIndices            []duties.ActiveIndiceIndex // positions into ActiveIndices of active-but-slashed validators (usually empty); excluded from FFG target voting
 	ProposerDuties            []phase0.ValidatorIndex
 	AttesterDuties            [][][]duties.ActiveIndiceIndex
 	SyncCommitteeDuties       []phase0.ValidatorIndex
@@ -88,6 +90,7 @@ type EpochStatsPacked struct {
 	SourceBlockUid            uint64
 	PendingConsolidations     []electra.PendingConsolidation `ssz-max:"10000000"`
 	ConsolidatingBalance      phase0.Gwei
+	SlashedIndices            []uint32 `ssz-max:"10000000"` // positions into ActiveValidators of active-but-slashed validators
 }
 
 // EpochStatsPackedValidator holds the packed values for an active validator.
@@ -174,6 +177,11 @@ func (es *EpochStats) buildPackedSSZ() ([]byte, error) {
 		return nil, fmt.Errorf("no values to marshal")
 	}
 
+	slashedIndices := make([]uint32, len(es.values.SlashedIndices))
+	for i, activeIndiceIndex := range es.values.SlashedIndices {
+		slashedIndices[i] = uint32(activeIndiceIndex)
+	}
+
 	packedValues := &EpochStatsPacked{
 		ActiveValidators:          make([]EpochStatsPackedValidator, es.values.ActiveValidators),
 		ProposerDuties:            es.values.ProposerDuties,
@@ -190,6 +198,7 @@ func (es *EpochStats) buildPackedSSZ() ([]byte, error) {
 		DelayedBuilderPaymentRefs: es.values.DelayedBuilderPaymentRefs,
 		SourceBlockUid:            es.values.SourceBlockUid,
 		ConsolidatingBalance:      es.values.ConsolidatingBalance,
+		SlashedIndices:            slashedIndices,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -259,6 +268,13 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 		values.ActiveIndices[i] = validatorIndex
 	}
 
+	if len(packedValues.SlashedIndices) > 0 {
+		values.SlashedIndices = make([]duties.ActiveIndiceIndex, len(packedValues.SlashedIndices))
+		for i, activeIndiceIndex := range packedValues.SlashedIndices {
+			values.SlashedIndices[i] = duties.ActiveIndiceIndex(activeIndiceIndex)
+		}
+	}
+
 	values.ActiveValidators = uint64(len(packedValues.ActiveValidators))
 
 	if withDuties {
@@ -321,6 +337,7 @@ func (es *EpochStats) pruneValues() {
 		NextRandaoMix:          es.values.NextRandaoMix,
 		DependentExecutionHash: es.values.DependentExecutionHash,
 		EffectiveBalances:      nil, // prune
+		SlashedIndices:         es.values.SlashedIndices,
 		ProposerDuties:         es.values.ProposerDuties,
 		AttesterDuties:         nil, // prune
 		SyncCommitteeDuties:    es.values.SyncCommitteeDuties,
@@ -356,7 +373,14 @@ func (es *EpochStats) loadValuesFromDb(ctx context.Context, chainState *consensu
 }
 
 // processState processes the epoch state and computes proposer and attester duties.
+// It runs in a separate goroutine, so it recovers from panics to avoid taking down
+// the whole process if any of the derived computations hit unexpected data.
 func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator, loadDuration time.Duration) {
+	defer utils.HandleSubroutinePanic("indexer.beacon.EpochStats.processState", nil)
+
+	// Only process states that have been fully loaded. A dependent state whose load was
+	// cancelled (e.g. context deadline exceeded) or pruned must not be processed, as its
+	// derived data (validator set, balances, duties) is missing or incomplete.
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
@@ -408,8 +432,19 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	values.SourceBlockUid = dependentState.sourceBlockUid
 
 	for i, pendingConsolidation := range dependentState.pendingConsolidations {
-		srcIndicee := pendingConsolidation.SourceIndex
-		srcValidator := validatorSet[srcIndicee]
+		srcIndex := pendingConsolidation.SourceIndex
+
+		// validatorSet may be nil (e.g. when re-processing an already-loaded state, where
+		// the caller relies on the validator cache instead) or shorter than the dependent
+		// state's registry. Fall back to the validator cache for the dependent root in those
+		// cases rather than indexing out of bounds.
+		var srcValidator *phase0.Validator
+		if int(srcIndex) < len(validatorSet) {
+			srcValidator = validatorSet[srcIndex]
+		} else {
+			srcValidator = indexer.validatorCache.getValidatorByIndexAndRoot(srcIndex, es.dependentRoot)
+		}
+
 		if srcValidator != nil {
 			values.ConsolidatingBalance += srcValidator.EffectiveBalance
 		}
@@ -421,6 +456,9 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		for index, validator := range validatorSet {
 			values.TotalBalance += dependentState.validatorBalances[index]
 			if es.epoch >= validator.ActivationEpoch && es.epoch < validator.ExitEpoch {
+				if validator.Slashed {
+					values.SlashedIndices = append(values.SlashedIndices, duties.ActiveIndiceIndex(len(values.ActiveIndices)))
+				}
 				values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(index))
 				values.EffectiveBalances = append(values.EffectiveBalances, uint32(validator.EffectiveBalance/EtherGweiFactor))
 				values.EffectiveBalance += validator.EffectiveBalance
@@ -434,7 +472,12 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			values.TotalBalance += balance
 		}
 
+		// Fallback path (re-processing an already-loaded state): the slashed flag comes from the
+		// validator cache rather than the raw dependent state, so it may lag by up to an epoch.
 		indexer.validatorCache.streamValidatorSetForRoot(es.dependentRoot, true, &es.epoch, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
+			if validator != nil && validator.Slashed {
+				values.SlashedIndices = append(values.SlashedIndices, duties.ActiveIndiceIndex(len(values.ActiveIndices)))
+			}
 			values.ActiveIndices = append(values.ActiveIndices, index)
 			values.EffectiveBalances = append(values.EffectiveBalances, uint32(activeData.EffectiveBalance()/EtherGweiFactor))
 			values.EffectiveBalance += activeData.EffectiveBalance()
@@ -606,10 +649,15 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		}
 
 		// update active validators from validator cache
+		// SlashedIndices is precomputed here as an estimate; the real value is written once the
+		// dependent state is fully processed in processState.
 		values.ActiveIndices = make([]phase0.ValidatorIndex, 0, len(parentStatsValues.ActiveIndices))
 		values.EffectiveBalances = make([]uint32, 0, len(parentStatsValues.ActiveIndices))
 		values.ActiveBalance = 0
 		indexer.validatorCache.streamValidatorSetForRoot(es.dependentRoot, true, &es.epoch, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
+			if validator != nil && validator.Slashed {
+				values.SlashedIndices = append(values.SlashedIndices, duties.ActiveIndiceIndex(len(values.ActiveIndices)))
+			}
 			values.ActiveIndices = append(values.ActiveIndices, index)
 			values.EffectiveBalances = append(values.EffectiveBalances, uint32(activeData.EffectiveBalance()/EtherGweiFactor))
 			if parentState.dependentState != nil && len(parentState.dependentState.validatorBalances) > int(index) {

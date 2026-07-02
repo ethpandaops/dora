@@ -219,7 +219,8 @@ header nav .dropdown-item .nav-icon {
   }
 }
 
-.tab-content .tab-pane > .card:first-child {
+.tab-content .tab-pane > .card:first-child,
+.tab-content .tab-pane > form:first-child > .card:first-child {
   border-top: none;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
@@ -351,4 +352,34 @@ span.validator-label {
 
 .text-monospace {
   font-family: var(--bs-font-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace) !important;
+}
+
+/* Method badge: cap width to 100px; long names get a smaller font (added by
+   fitMethodBadges in explorer.js) and finally ellipsis when still too long. */
+.method-badge {
+  display: inline-block;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.method-badge.method-badge-sm {
+  font-size: 0.65rem;
+}
+
+/* Highlight equal address links across rows on hover (set by explorer.js). */
+.el-data-table .addr-cell a,
+.itx-wrap .itx-addr a {
+  border-radius: 3px;
+  transition: background-color 0.1s;
+}
+a.addr-hl {
+  background-color: rgba(var(--bs-warning-rgb), 0.25);
+}
+
+/* Combined tx status badge: orphaned (info/blue) + reverted (danger/red). */
+.badge.status-split {
+  background: linear-gradient(90deg, var(--bs-danger) 50%, var(--bs-info) 50%);
+  color: #fff;
 }

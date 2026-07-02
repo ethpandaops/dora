@@ -15,6 +15,8 @@ func (e *TieredEngine) AddEpochDuties(ctx context.Context, duties *types.EpochDu
 
 	if _, cerr := e.cache.AddEpochDuties(ctx, duties); cerr != nil {
 		e.logger.Debugf("failed to cache duties: %v", cerr)
+	} else {
+		e.cleanup.RecordDutiesAccess(duties.FirstSlot)
 	}
 
 	return size, nil
@@ -23,8 +25,11 @@ func (e *TieredEngine) AddEpochDuties(ctx context.Context, duties *types.EpochDu
 // GetEpochDuties retrieves the full duties, checking the cache first.
 func (e *TieredEngine) GetEpochDuties(ctx context.Context, firstSlot uint64) (*types.EpochDuties, error) {
 	if d, err := e.cache.GetEpochDuties(ctx, firstSlot); err == nil && d != nil {
+		e.recordTierRead(true)
+		e.cleanup.RecordDutiesAccess(firstSlot)
 		return d, nil
 	}
+	e.recordTierRead(false)
 
 	d, err := e.primary.GetEpochDuties(ctx, firstSlot)
 	if err != nil {
@@ -33,6 +38,8 @@ func (e *TieredEngine) GetEpochDuties(ctx context.Context, firstSlot uint64) (*t
 	if d != nil {
 		if _, cerr := e.cache.AddEpochDuties(ctx, d); cerr != nil {
 			e.logger.Debugf("failed to cache duties: %v", cerr)
+		} else {
+			e.cleanup.RecordDutiesAccess(firstSlot)
 		}
 	}
 	return d, nil
@@ -75,6 +82,8 @@ func (e *TieredEngine) populateCache(ctx context.Context, firstSlot uint64) {
 	}
 	if _, cerr := e.cache.AddEpochDuties(ctx, d); cerr != nil {
 		e.logger.Debugf("failed to cache duties: %v", cerr)
+	} else {
+		e.cleanup.RecordDutiesAccess(firstSlot)
 	}
 }
 

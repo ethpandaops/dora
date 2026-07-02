@@ -82,7 +82,7 @@ func runBlockdbSync(cmd *cobra.Command, args []string) error {
 	// Initialize blockdb
 	switch cfg.BlockDb.Engine {
 	case "pebble":
-		err := blockdb.InitWithPebble(cfg.BlockDb.Pebble)
+		err := blockdb.InitWithPebble(cfg.BlockDb.Pebble, logger)
 		if err != nil {
 			logger.Fatalf("Failed initializing pebble blockdb: %v", err)
 		}
@@ -346,15 +346,19 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 				return nil, fmt.Errorf("failed to get block execution payload for slot %d: %v", slot, err)
 			}
 
-			payloadVersion, payloadBytes, err = beacon.MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz, blockPayload, true)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal block execution payload for slot %d: %v", slot, err)
-			}
-
-			if msg := blockPayload.Message; msg != nil && msg.Payload != nil {
-				balVersion, balBytes, err = beacon.MarshalBlockAccessList(msg.Payload.BlockAccessList, true)
+			// blockPayload is nil when the block has no execution payload envelope
+			// (empty slot or unrevealed payload) - leave the payload fields empty.
+			if blockPayload != nil {
+				payloadVersion, payloadBytes, err = beacon.MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz, blockPayload, true)
 				if err != nil {
-					return nil, fmt.Errorf("failed to marshal block access list for slot %d: %v", slot, err)
+					return nil, fmt.Errorf("failed to marshal block execution payload for slot %d: %v", slot, err)
+				}
+
+				if msg := blockPayload.Message; msg != nil && msg.Payload != nil {
+					balVersion, balBytes, err = beacon.MarshalBlockAccessList(msg.Payload.BlockAccessList, true)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal block access list for slot %d: %v", slot, err)
+					}
 				}
 			}
 		}

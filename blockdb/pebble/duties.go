@@ -10,15 +10,10 @@ import (
 	"github.com/ethpandaops/dora/blockdb/types"
 )
 
-const (
-	// KeyNamespaceDuties is the namespace prefix for per-epoch duties.
-	// Each epoch is stored as several keys (one meta key plus one key per slot
-	// for committees and PTC) so a single slot can be read with a point lookup
-	// without loading the whole epoch. Keys are grouped by the epoch's first
-	// slot to allow efficient range deletion.
-	KeyNamespaceDuties uint16 = 3
-)
-
+// Per-epoch duties (KeyNamespaceDuties, see pebble.go) are stored as several
+// keys (one meta key plus one key per slot for committees and PTC) so a single
+// slot can be read with a point lookup without loading the whole epoch. Keys are
+// grouped by the epoch's first slot to allow efficient range deletion.
 const (
 	// Duties key record types (stored at byte offset 10).
 	DutiesRecordMeta       uint8 = 0 // per-epoch header

@@ -1,16 +1,20 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
 
 // elTransactionColumns is the column list for el_transactions queries.
-const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price"
+const elTransactionColumns = "tx_uid, block_uid, tx_hash, from_id, to_id, nonce, revert_id, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price, event_count"
 
 func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElTransaction) error {
 	if len(txs) == 0 {
@@ -23,11 +27,11 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_transactions ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_transactions ",
 		}),
-		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price)",
+		"(tx_uid, block_uid, tx_hash, from_id, to_id, nonce, revert_id, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, eff_gas_price, event_count)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 18
+	fieldCount := 19
 
 	args := make([]any, len(txs)*fieldCount)
 	for i, tx := range txs {
@@ -49,7 +53,7 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 		args[argIdx+3] = tx.FromID
 		args[argIdx+4] = tx.ToID
 		args[argIdx+5] = tx.Nonce
-		args[argIdx+6] = tx.Reverted
+		args[argIdx+6] = tx.RevertID
 		args[argIdx+7] = tx.Amount
 		args[argIdx+8] = tx.AmountRaw
 		args[argIdx+9] = tx.MethodID
@@ -61,10 +65,11 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 		args[argIdx+15] = tx.BlockNumber
 		args[argIdx+16] = tx.TxType
 		args[argIdx+17] = tx.EffGasPrice
+		args[argIdx+18] = tx.EventCount
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET tx_uid = excluded.tx_uid, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (tx_uid) DO UPDATE SET block_uid = excluded.block_uid, tx_hash = excluded.tx_hash, from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, revert_id = excluded.revert_id, amount = excluded.amount, amount_raw = excluded.amount_raw, method_id = excluded.method_id, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, eff_gas_price = excluded.eff_gas_price, event_count = excluded.event_count",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -75,47 +80,44 @@ func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElT
 	return nil
 }
 
-func GetElTransaction(ctx context.Context, blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, error) {
-	tx := &dbtypes.ElTransaction{}
-	err := ReaderDb.GetContext(ctx, tx, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
-	if err != nil {
-		return nil, err
-	}
-	return tx, nil
-}
-
+// GetElTransactionsByHash resolves transactions by full hash via the tx-hash
+// index (the dedicated tx_hash column index was dropped). The index returns
+// candidate tx_uids for the 10-byte prefix; rows are then filtered by the full
+// hash to discard prefix collisions. Falls back to a direct lookup if no index
+// is available (e.g. blockdb disabled).
 func GetElTransactionsByHash(ctx context.Context, txHash []byte) ([]*dbtypes.ElTransaction, error) {
-	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.SelectContext(ctx, &txs, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsTxHashIndex() {
+		txs := []*dbtypes.ElTransaction{}
+		err := ReaderDb.SelectContext(ctx, &txs, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
+		if err != nil {
+			return nil, err
+		}
+		return txs, nil
+	}
+
+	uids, err := blockdb.GlobalBlockDb.LookupTxHash(ctx, bdbtypes.HashPrefix(txHash))
 	if err != nil {
 		return nil, err
 	}
-	return txs, nil
-}
-
-// GetElTransactionsByHashes returns all transaction records matching the given
-// tx hashes. May return multiple records per hash if the tx appears in multiple
-// blocks (reorgs).
-func GetElTransactionsByHashes(ctx context.Context, txHashes [][]byte) ([]*dbtypes.ElTransaction, error) {
-	if len(txHashes) == 0 {
+	if len(uids) == 0 {
 		return []*dbtypes.ElTransaction{}, nil
 	}
 
-	var sql strings.Builder
-	args := make([]any, len(txHashes))
-
-	fmt.Fprint(&sql, "SELECT "+elTransactionColumns+" FROM el_transactions WHERE tx_hash IN (")
-	for i, h := range txHashes {
-		args[i] = h
-	}
-	appendDollarPlaceholders(&sql, 1, len(txHashes), ", ")
-	fmt.Fprint(&sql, ")")
-
-	txs := []*dbtypes.ElTransaction{}
-	if err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...); err != nil {
+	rows, err := GetElTransactionsByTxUids(ctx, uids)
+	if err != nil {
 		return nil, err
 	}
-	return txs, nil
+
+	// Collision guard: keep only rows whose full hash matches, ordered by
+	// block_uid DESC (canonical first), preserving prior behaviour.
+	matched := make([]*dbtypes.ElTransaction, 0, len(rows))
+	for _, r := range rows {
+		if bytes.Equal(r.TxHash, txHash) {
+			matched = append(matched, r)
+		}
+	}
+	sort.Slice(matched, func(i, j int) bool { return matched[i].BlockUid > matched[j].BlockUid })
+	return matched, nil
 }
 
 // GetElTransactionsByTxUids returns all transaction records matching the given
@@ -152,225 +154,242 @@ func GetElTransactionsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtyp
 	return txs, nil
 }
 
-func GetElTransactionsByAccountID(ctx context.Context, accountID uint64, isFrom bool, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
-	var sql strings.Builder
-	args := []any{accountID}
-
-	column := "to_id"
-	if isFrom {
-		column = "from_id"
+// appendElTransactionFilterConds appends the WHERE conditions for an
+// ElTransactionFilter and returns the filterOp ("WHERE"/"AND") to continue with.
+// Slot bounds map onto the tx_uid sort key (tx_uid = slot<<32 | ...), so they
+// are a free range on the primary index; the rest are predicates.
+func appendElTransactionFilterConds(sql *strings.Builder, args *[]any, filter *dbtypes.ElTransactionFilter, filterOp string) string {
+	if filter == nil {
+		return filterOp
 	}
-
-	// Use window function for count (PostgreSQL 9.5+) - avoids double scan
-	// NULLS LAST matches the composite index definition to enable index scans.
-	fmt.Fprintf(&sql, `
-		SELECT
-			%s,
-			COUNT(*) OVER() AS total_count
-		FROM el_transactions
-		WHERE %s = $1
-		ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
-		LIMIT $2`, elTransactionColumns, column)
-	args = append(args, limit)
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
+	add := func(cond string, val any) {
+		*args = append(*args, val)
+		fmt.Fprintf(sql, " %s %s $%d", filterOp, cond, len(*args))
+		filterOp = "AND"
 	}
-
-	type resultRow struct {
-		dbtypes.ElTransaction
-		TotalCount uint64 `db:"total_count"`
+	if filter.MinSlot != nil {
+		add("tx_uid >=", *filter.MinSlot<<32)
 	}
-
-	rows := []resultRow{}
-	err := ReaderDb.SelectContext(ctx, &rows, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching el transactions by account id: %v", err)
-		return nil, 0, err
+	if filter.MaxSlot != nil {
+		add("tx_uid <", (*filter.MaxSlot+1)<<32)
 	}
-
-	if len(rows) == 0 {
-		return []*dbtypes.ElTransaction{}, 0, nil
+	if filter.FromID > 0 {
+		add("from_id =", filter.FromID)
 	}
-
-	txs := make([]*dbtypes.ElTransaction, len(rows))
-	var totalCount uint64
-	for i, row := range rows {
-		txs[i] = &row.ElTransaction
-		if i == 0 {
-			totalCount = row.TotalCount
+	if filter.ToID > 0 {
+		add("to_id =", filter.ToID)
+	}
+	if filter.Reverted != nil {
+		// revert_id 0 = success; any value > 0 = reverted.
+		if *filter.Reverted {
+			add("revert_id >", 0)
+		} else {
+			add("revert_id =", 0)
 		}
 	}
-
-	return txs, totalCount, nil
+	if filter.MinGasUsed != nil {
+		add("gas_used >=", *filter.MinGasUsed)
+	}
+	if filter.MaxGasUsed != nil {
+		add("gas_used <=", *filter.MaxGasUsed)
+	}
+	if filter.MinAmount != nil {
+		add("amount >=", *filter.MinAmount)
+	}
+	if filter.MaxAmount != nil {
+		add("amount <=", *filter.MaxAmount)
+	}
+	if filter.MinTip != nil {
+		add("tip_price >=", *filter.MinTip)
+	}
+	if filter.MaxTip != nil {
+		add("tip_price <=", *filter.MaxTip)
+	}
+	if len(filter.TxTypes) > 0 {
+		// Match each type both plain and with the create flag set (one extra value).
+		placeholders := make([]string, 0, len(filter.TxTypes)*2)
+		for _, t := range filter.TxTypes {
+			*args = append(*args, t, t|dbtypes.ElTxFlagCreate)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(*args)-1), fmt.Sprintf("$%d", len(*args)))
+		}
+		fmt.Fprintf(sql, " %s tx_type IN (%s)", filterOp, strings.Join(placeholders, ", "))
+		filterOp = "AND"
+	}
+	return filterOp
 }
 
-func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.ElTransactionFilter) ([]*dbtypes.ElTransaction, uint64, error) {
+// GetElTransactionsFiltered returns transactions matching the given filter
+// using keyset (boundary) pagination, ordered by tx_uid DESC. Pass
+// beforeTxUid = 0 for the first (newest) page, then the tx_uid of the last
+// returned row to fetch the next (older) page. Returns the page (up to limit
+// rows) and whether more (older) rows exist. Fetches limit+1 rows to detect
+// the next page without a separate count scan.
+func GetElTransactionsFiltered(ctx context.Context, filter *dbtypes.ElTransactionFilter, beforeTxUid uint64, limit uint32) ([]*dbtypes.ElTransaction, bool, error) {
 	var sql strings.Builder
 	args := []any{}
 
-	fmt.Fprintf(&sql, `
-	WITH cte AS (
-		SELECT %s
-		FROM el_transactions
-	`, elTransactionColumns)
+	fmt.Fprintf(&sql, "SELECT %s FROM el_transactions", elTransactionColumns)
 
-	filterOp := "WHERE"
-	if filter.FromID > 0 {
-		args = append(args, filter.FromID)
-		fmt.Fprintf(&sql, " %v from_id = $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.ToID > 0 {
-		args = append(args, filter.ToID)
-		fmt.Fprintf(&sql, " %v to_id = $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.Reverted != nil {
-		args = append(args, *filter.Reverted)
-		fmt.Fprintf(&sql, " %v reverted = $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.MinGasUsed != nil {
-		args = append(args, *filter.MinGasUsed)
-		fmt.Fprintf(&sql, " %v gas_used >= $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.MaxGasUsed != nil {
-		args = append(args, *filter.MaxGasUsed)
-		fmt.Fprintf(&sql, " %v gas_used <= $%v", filterOp, len(args))
-		filterOp = "AND"
+	filterOp := appendElTransactionFilterConds(&sql, &args, filter, "WHERE")
+	if beforeTxUid > 0 {
+		args = append(args, beforeTxUid)
+		fmt.Fprintf(&sql, " %v tx_uid < $%v", filterOp, len(args))
 	}
 
-	fmt.Fprint(&sql, ")")
-
-	args = append(args, limit)
-	fmt.Fprintf(&sql, `
-	SELECT
-		count(*) AS tx_uid,
-		0 AS block_uid,
-		null AS tx_hash,
-		0 AS from_id,
-		0 AS to_id,
-		0 AS nonce,
-		false AS reverted,
-		0 AS amount,
-		null AS amount_raw,
-		null AS method_id,
-		0 AS gas_limit,
-		0 AS gas_used,
-		0 AS gas_price,
-		0 AS tip_price,
-		0 AS blob_count,
-		0 AS block_number,
-		0 AS tx_type,
-		0 AS eff_gas_price
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
-	LIMIT $%v`, len(args))
-
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
-	}
-	fmt.Fprint(&sql, ") AS t1")
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY tx_uid DESC LIMIT $%v", len(args))
 
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...)
-	if err != nil {
+	if err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...); err != nil {
 		logger.Errorf("Error while fetching filtered el transactions: %v", err)
-		return nil, 0, err
+		return nil, false, err
 	}
 
-	if len(txs) == 0 {
-		return []*dbtypes.ElTransaction{}, 0, nil
+	hasMore := false
+	if uint32(len(txs)) > limit {
+		hasMore = true
+		txs = txs[:limit]
 	}
-
-	count := txs[0].TxUid
-	return txs[1:], count, nil
+	return txs, hasMore, nil
 }
 
-// MaxAccountTransactionCount is the maximum count returned for address transaction queries.
-// If the actual count exceeds this, the query returns this limit and sets the "more" flag.
-const MaxAccountTransactionCount = 100000
-
-// GetElTransactionsByAccountIDCombined fetches transactions where the account is either
-// sender (from_id) or receiver (to_id). Results are sorted by tx_uid DESC.
-// Returns transactions, total count (capped at MaxAccountTransactionCount), whether count is capped, and error.
-func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, bool, error) {
-	// Use UNION ALL instead of OR for better index usage.
-	// The second query excludes rows where from_id = accountID to avoid duplicates
-	// (handles self-transfers where from_id = to_id = accountID).
-	// Push LIMIT into each UNION branch so PG can use composite indexes
-	// (from_id, block_uid DESC) and (to_id, block_uid DESC) efficiently.
-	// NULLS LAST is required to match the index definition and enable index scans.
+// GetElTransactionsPrevAnchor supports backward navigation for the keyset
+// transactions list. Given afterTxUid (the tx_uid of the current page's top
+// row), it probes for the rows immediately newer (ascending) and returns:
+//   - prevBeforeTxUid: the boundary cursor for the previous page (the
+//     (limit+1)-th newer row), valid only when atFirst is false;
+//   - hasPrev: whether any newer row exists at all (drives enabling First/<);
+//   - atFirst: true when fewer than limit+1 newer rows exist, i.e. the previous
+//     page is the newest page.
+func GetElTransactionsPrevAnchor(ctx context.Context, filter *dbtypes.ElTransactionFilter, afterTxUid uint64, limit uint32) (uint64, bool, bool, error) {
 	var sql strings.Builder
-	innerLimit := offset + uint64(limit)
-	// Placeholders must stay in ascending appearance order (see query_helpers.go).
-	args := []any{accountID, innerLimit, accountID, accountID, innerLimit}
+	args := []any{}
 
-	fmt.Fprintf(&sql, `
-		SELECT %s
-		FROM (
-			SELECT * FROM (SELECT %s
-			FROM el_transactions WHERE from_id = $1
-			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $2) AS a
-			UNION ALL
-			SELECT * FROM (SELECT %s
-			FROM el_transactions WHERE to_id = $3 AND from_id != $4
-			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $5) AS b
-		) combined
-		ORDER BY tx_uid DESC
-		LIMIT $6`, elTransactionColumns, elTransactionColumns, elTransactionColumns)
-	args = append(args, limit)
+	fmt.Fprint(&sql, "SELECT tx_uid FROM el_transactions")
 
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
+	filterOp := appendElTransactionFilterConds(&sql, &args, filter, "WHERE")
+	args = append(args, afterTxUid)
+	fmt.Fprintf(&sql, " %v tx_uid > $%v", filterOp, len(args))
+	args = append(args, limit+1)
+	fmt.Fprintf(&sql, " ORDER BY tx_uid ASC LIMIT $%v", len(args))
+
+	uids := []uint64{}
+	if err := ReaderDb.SelectContext(ctx, &uids, sql.String(), args...); err != nil {
+		logger.Errorf("Error while probing previous tx anchor: %v", err)
+		return 0, false, false, err
 	}
 
+	hasPrev := len(uids) > 0
+	if uint32(len(uids)) > limit {
+		return uids[limit], hasPrev, false, nil
+	}
+	return 0, hasPrev, true, nil
+}
+
+// Account transaction direction: which side of the tx the account is on.
+const (
+	AccountDirectionAll uint8 = 0
+	AccountDirectionOut uint8 = 1 // account is sender (from_id)
+	AccountDirectionIn  uint8 = 2 // account is recipient (to_id)
+)
+
+// buildElAccountTxQuery builds the keyset query for an account's transactions.
+// direction restricts to the from-side, to-side, or both (UNION). The filter's
+// FromID/ToID are counterparty filters applied to the opposite side; the other
+// filter fields apply uniformly. cursor + reverse drive keyset pagination
+// (forward: tx_uid < cursor DESC; reverse/prev-probe: tx_uid > cursor ASC).
+// colList selects the projected columns (full row vs just tx_uid for probes).
+func buildElAccountTxQuery(accountID uint64, direction uint8, filter *dbtypes.ElTransactionFilter, cursor uint64, limit uint32, reverse bool, colList string) (string, []any) {
+	args := []any{}
+	cmp, order := "<", "DESC"
+	if reverse {
+		cmp, order = ">", "ASC"
+	}
+
+	var counterFrom, counterTo uint64
+	uniform := dbtypes.ElTransactionFilter{}
+	if filter != nil {
+		counterFrom, counterTo = filter.FromID, filter.ToID
+		uniform = *filter
+		uniform.FromID, uniform.ToID = 0, 0
+	}
+
+	branch := func(sql *strings.Builder, accountIsFrom bool) {
+		fmt.Fprintf(sql, "SELECT %s FROM el_transactions WHERE ", colList)
+		if accountIsFrom {
+			args = append(args, accountID)
+			fmt.Fprintf(sql, "from_id = $%d", len(args))
+			if counterTo > 0 {
+				args = append(args, counterTo)
+				fmt.Fprintf(sql, " AND to_id = $%d", len(args))
+			}
+		} else {
+			args = append(args, accountID, accountID)
+			fmt.Fprintf(sql, "to_id = $%d AND from_id != $%d", len(args)-1, len(args))
+			if counterFrom > 0 {
+				args = append(args, counterFrom)
+				fmt.Fprintf(sql, " AND from_id = $%d", len(args))
+			}
+		}
+		appendElTransactionFilterConds(sql, &args, &uniform, "AND")
+		if cursor > 0 {
+			args = append(args, cursor)
+			fmt.Fprintf(sql, " AND tx_uid %s $%d", cmp, len(args))
+		}
+		args = append(args, limit+1)
+		fmt.Fprintf(sql, " ORDER BY block_uid %s NULLS LAST LIMIT $%d", order, len(args))
+	}
+
+	var sql strings.Builder
+	switch direction {
+	case AccountDirectionOut, AccountDirectionIn:
+		fmt.Fprintf(&sql, "SELECT %s FROM (", colList)
+		branch(&sql, direction == AccountDirectionOut)
+		args = append(args, limit+1)
+		fmt.Fprintf(&sql, ") AS x ORDER BY tx_uid %s LIMIT $%d", order, len(args))
+	default:
+		fmt.Fprintf(&sql, "SELECT %s FROM (SELECT * FROM (", colList)
+		branch(&sql, true)
+		fmt.Fprint(&sql, ") AS a UNION ALL SELECT * FROM (")
+		branch(&sql, false)
+		args = append(args, limit+1)
+		fmt.Fprintf(&sql, ") AS b) combined ORDER BY tx_uid %s LIMIT $%d", order, len(args))
+	}
+	return sql.String(), args
+}
+
+// GetElTransactionsByAccount returns the account's transactions with keyset
+// pagination, restricted by direction and filter. Returns the page (up to
+// limit) and whether more (older) rows exist.
+func GetElTransactionsByAccount(ctx context.Context, accountID uint64, direction uint8, filter *dbtypes.ElTransactionFilter, beforeTxUid uint64, limit uint32) ([]*dbtypes.ElTransaction, bool, error) {
+	sqlStr, args := buildElAccountTxQuery(accountID, direction, filter, beforeTxUid, limit, false, elTransactionColumns)
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching el transactions by account id (combined): %v", err)
-		return nil, 0, false, err
+	if err := ReaderDb.SelectContext(ctx, &txs, sqlStr, args...); err != nil {
+		logger.Errorf("Error while fetching el transactions by account: %v", err)
+		return nil, false, err
 	}
-
-	// Count using separate index-only scans per direction, capped at MaxAccountTransactionCount.
-	// Counts from_id and to_id separately (without from_id != exclusion) for index-only scan
-	// performance. May slightly overcount self-transfers, which is acceptable since the count
-	// is already an approximation (capped).
-	countSQL := `
-		SELECT
-			(SELECT COUNT(*) FROM (SELECT 1 FROM el_transactions WHERE from_id = $1 LIMIT $2) AS a) +
-			(SELECT COUNT(*) FROM (SELECT 1 FROM el_transactions WHERE to_id = $1 LIMIT $2) AS b)`
-	var totalCount uint64
-	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, accountID, MaxAccountTransactionCount)
-	if err != nil {
-		logger.Errorf("Error while counting el transactions by account id (combined): %v", err)
-		return nil, 0, false, err
+	hasMore := false
+	if uint32(len(txs)) > limit {
+		hasMore = true
+		txs = txs[:limit]
 	}
-
-	if totalCount > MaxAccountTransactionCount {
-		totalCount = MaxAccountTransactionCount
-	}
-
-	moreAvailable := totalCount >= MaxAccountTransactionCount
-
-	return txs, totalCount, moreAvailable, nil
+	return txs, hasMore, nil
 }
 
-func DeleteElTransaction(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64, txHash []byte) error {
-	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
-	return err
-}
-
-func DeleteElTransactionsByBlockUid(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64) error {
-	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_transactions WHERE block_uid = $1", blockUid)
-	return err
+// GetElTransactionsByAccountPrevAnchor probes for rows newer than afterTxUid
+// (the current page's top) to drive the First/< controls. Returns the previous
+// page's boundary cursor (when atFirst is false), whether any newer row exists,
+// and whether the previous page is the newest page.
+func GetElTransactionsByAccountPrevAnchor(ctx context.Context, accountID uint64, direction uint8, filter *dbtypes.ElTransactionFilter, afterTxUid uint64, limit uint32) (uint64, bool, bool, error) {
+	sqlStr, args := buildElAccountTxQuery(accountID, direction, filter, afterTxUid, limit, true, "tx_uid")
+	uids := []uint64{}
+	if err := ReaderDb.SelectContext(ctx, &uids, sqlStr, args...); err != nil {
+		logger.Errorf("Error while probing previous account tx anchor: %v", err)
+		return 0, false, false, err
+	}
+	hasPrev := len(uids) > 0
+	if uint32(len(uids)) > limit {
+		return uids[limit], hasPrev, false, nil
+	}
+	return 0, hasPrev, true, nil
 }

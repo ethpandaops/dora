@@ -219,13 +219,15 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 
 		for _, epochData := range epochData {
 			sim := newStateSimulator(indexer, epochData.epochStats)
+			paymentBase := indexer.dbWriter.resolveBuilderPaymentBase(pruneEpoch, epochData.epochStats)
 			dbEpoch := indexer.dbWriter.buildDbEpoch(pruneEpoch, epochData.chain, epochData.epochStats, epochData.epochVotes, func(block *Block, depositIndex *uint64) {
 				if persistedBlocks[block.Root] {
 					return
 				}
 
 				// persist pruned block data as orphaned here, the canonical blocks will be updated by the finalization or synchronization process later
-				_, err := indexer.dbWriter.persistBlockData(tx, block, epochData.epochStats, depositIndex, true, nil, sim)
+				payment := indexer.dbWriter.builderPaymentForSlot(block.Slot, epochData.epochVotes, paymentBase)
+				_, err := indexer.dbWriter.persistBlockData(tx, block, epochData.epochStats, payment, depositIndex, true, nil, sim)
 				if err != nil {
 					indexer.logger.Errorf("error persisting pruned slot %v: %v", block.Root.String(), err)
 				}
@@ -370,7 +372,7 @@ func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates 
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			for _, pruneBlock := range pruningData {
 				sim := newStateSimulator(indexer, pruneBlock.epochStats)
-				_, err := indexer.dbWriter.persistBlockData(tx, pruneBlock.block, pruneBlock.epochStats, nil, true, nil, sim)
+				_, err := indexer.dbWriter.persistBlockData(tx, pruneBlock.block, pruneBlock.epochStats, nil, nil, true, nil, sim)
 				if err != nil {
 					indexer.logger.Errorf("error persisting old pruned slot %v: %v", pruneBlock.block.Root.String(), err)
 				}

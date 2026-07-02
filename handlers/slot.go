@@ -31,6 +31,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types"
@@ -232,7 +233,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	}
 
 	if err != nil {
-		return nil, -1
+		// A by-hash lookup that errors has no slot to fall back to, so surface the
+		// not-found page. A by-number lookup must never 404 (it would break the
+		// prev/next header navigation when traversing slots by range) - fall through
+		// and render the slot as missed/unavailable instead.
+		if blockSlot < 0 {
+			return nil, -1
+		}
+		blockData = nil
 	}
 
 	var slot phase0.Slot
@@ -807,6 +815,45 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		executionPayload = body.ExecutionPayload
 	}
 
+	// Gloas payload vote quorum for this slot: same-slot attester balance vs the per-slot quorum
+	// base. Shown for every Gloas block; for builder-built blocks it also decides whether the
+	// builder's (delayed) payment settles. Resolved after the payload status above so a
+	// quorum-met-but-payload-not-included case can be explained. Base is recovered from weight/percent.
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+		var dbSlot *dbtypes.Slot
+		if cacheBlock := beaconIndexer.GetBlockByRoot(blockData.Root); cacheBlock != nil {
+			dbSlot = cacheBlock.GetDbBlock(beaconIndexer, !blockData.Orphaned)
+		} else {
+			dbSlot = db.GetSlotByRoot(ctx, blockData.Root[:])
+		}
+		if dbSlot != nil {
+			base := uint64(0)
+			if dbSlot.BuilderPaymentPercent > 0 {
+				base = uint64(float64(dbSlot.BuilderPaymentWeight) / float64(dbSlot.BuilderPaymentPercent) * 100)
+			}
+			// A bid at epoch N is settled at the N+1 epoch transition and swept out of the builder
+			// in epoch N+2. Bid value / payload status only apply to builder-built blocks.
+			settleEpoch := uint64(services.GlobalBeaconService.GetChainState().EpochOfSlot(blockData.Header.Message.Slot)) + 2
+			bidValue := uint64(0)
+			payloadNotIncluded := false
+			if pageData.PayloadHeader != nil {
+				bidValue = pageData.PayloadHeader.Value
+				payloadNotIncluded = pageData.PayloadHeader.PayloadStatus != uint16(dbtypes.PayloadStatusCanonical)
+			}
+			pageData.BuilderPayment = &models.SlotPageBuilderPayment{
+				Weight:             dbSlot.BuilderPaymentWeight,
+				Base:               base,
+				Percent:            float64(dbSlot.BuilderPaymentPercent),
+				Quorum:             statetransition.BuilderPaymentQuorumPercent,
+				MetQuorum:          float64(dbSlot.BuilderPaymentPercent) >= statetransition.BuilderPaymentQuorumPercent,
+				PayloadNotIncluded: payloadNotIncluded,
+				BidValue:           bidValue,
+				WithdrawalEpoch:    settleEpoch,
+			}
+		}
+	}
+
 	if executionPayload != nil {
 		pageData.ExecutionData = &models.SlotPageExecutionData{
 			ParentHash:   executionPayload.ParentHash[:],
@@ -1174,6 +1221,7 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 	if utils.Config.ExecutionIndexer.Enabled && len(pageData.Transactions) > 0 {
 		elTxs, err := db.GetElTransactionsByBlockUid(ctx, blockUid)
 		if err == nil && len(elTxs) > 0 {
+			revertIDMap := map[uint32][]*models.SlotPageTransaction{}
 			for _, elTx := range elTxs {
 				txData := txHashMap[string(elTx.TxHash)]
 				if txData == nil {
@@ -1181,13 +1229,30 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 				}
 
 				txData.HasElData = true
-				txData.Reverted = elTx.Reverted
+				txData.Reverted = elTx.RevertID > 0
+				if elTx.RevertID > 0 {
+					revertIDMap[elTx.RevertID] = append(revertIDMap[elTx.RevertID], txData)
+				}
 				txData.GasUsed = elTx.GasUsed
 				txData.EffGasPrice = elTx.EffGasPrice
 
 				// Calculate tx fee in ETH: gas_used * eff_gas_price (Gwei) / 1e9
 				if elTx.GasUsed > 0 && elTx.EffGasPrice > 0 {
 					txData.TxFee = float64(elTx.GasUsed) * elTx.EffGasPrice / 1e9
+				}
+			}
+
+			if len(revertIDMap) > 0 {
+				ids := make([]uint32, 0, len(revertIDMap))
+				for id := range revertIDMap {
+					ids = append(ids, id)
+				}
+				if reasons, rerr := db.GetElRevertReasonsByIDs(ctx, ids); rerr == nil {
+					for id, reason := range reasons {
+						for _, txData := range revertIDMap[id] {
+							txData.RevertReason = reason
+						}
+					}
 				}
 			}
 		}

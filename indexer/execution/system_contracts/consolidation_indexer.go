@@ -115,7 +115,7 @@ func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transac
 		return nil, fmt.Errorf("invalid consolidation log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]
@@ -133,7 +133,7 @@ func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transa
 		return nil, fmt.Errorf("invalid consolidation log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]
