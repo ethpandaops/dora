@@ -114,8 +114,8 @@ github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab h1:rvv6MJ
 github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab/go.mod h1:IuLm4IsPipXKF7CW5Lzf68PIbZ5yl7FFd74l/E0o9A8=
 github.com/ethereum/go-ethereum v1.17.4 h1:uA4q+qiLp7QImBsjdRbINu8iX6OEVmj4DPc5/E5Fsxc=
 github.com/ethereum/go-ethereum v1.17.4/go.mod h1:qMdgwqqRAen+aT8P7KKQKi0Qt6RzG4cfejVAbCpJgqA=
-github.com/ethpandaops/eth-das-guardian v0.1.1 h1:RN96h3HSAMyU4XUOCqkj/9+lB+UW7cVW4Wr4JzdjmZY=
-github.com/ethpandaops/eth-das-guardian v0.1.1/go.mod h1:7amdK4bN9N9Zp0b9Y9FcbDm1YrpeGBm8ix8qpiX0WuY=
+github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260702094214-e1a365ea3c01 h1:XxObBGjnyF2Nyf6evVMYIXnuCFGsAEgfqjmCeNmvA/Q=
+github.com/ethpandaops/eth-das-guardian v0.1.2-0.20260702094214-e1a365ea3c01/go.mod h1:y5sTESfKLcpUistOLU0TF7Do2MphBVTi8in+KdQkz8E=
 github.com/ethpandaops/ethcore v0.0.0-20260604021418-f61e8ea2d4ab h1:B3gbA1Jf9pCG4gKlv3WtXNY7pUJF/wC0G+axx/7rq/0=
 github.com/ethpandaops/ethcore v0.0.0-20260604021418-f61e8ea2d4ab/go.mod h1:jMel7Tumm/0Ni44yb4OTGC6MsMiK7FBQDP/n/GOthpw=
 github.com/ethpandaops/ethwallclock v0.4.0 h1:+sgnhf4pk6hLPukP076VxkiLloE4L0Yk1yat+ZyHh1g=
