@@ -155,12 +155,10 @@ func computeShuffledList(indexCount uint64, seed phase0.Root, specs *consensus.C
 	bucketCount := (indexCount + 255) / 256
 	sources := make([]phase0.Root, bucketCount)
 
-	// Worker pool sized to the available cores; the per-round position updates
-	// are independent and dominate the cost, so they are split across workers.
-	workers := runtime.NumCPU()
-	if workers < 1 {
-		workers = 1
-	}
+	// Fan the per-round position updates out across the schedulable cores; they
+	// are independent and dominate the cost. GOMAXPROCS (not NumCPU) so
+	// container CPU quotas and user overrides are respected.
+	workers := runtime.GOMAXPROCS(0)
 
 	for currentRound := uint64(0); currentRound < specs.ShuffleRoundCount; currentRound++ {
 		// Compute pivot once per round (depends only on seed + round).
@@ -191,6 +189,10 @@ func computeShuffledList(indexCount uint64, seed phase0.Root, specs *consensus.C
 
 // shuffleRound applies one swap-or-not round to result in place, dividing the
 // index range across workers goroutines (or running inline for small inputs).
+//
+// Spawning fresh goroutines per round beats a persistent channel-fed worker
+// pool here: the serial source-hash phase between rounds parks pool workers,
+// and waking them via channel sends measures slower than fresh spawns.
 func shuffleRound(result []uint64, sources []phase0.Root, pivot, indexCount uint64, workers int) {
 	apply := func(start, end uint64) {
 		for i := start; i < end; i++ {
@@ -217,20 +219,9 @@ func shuffleRound(result []uint64, sources []phase0.Root, pivot, indexCount uint
 
 	var wg sync.WaitGroup
 	chunk := (n + uint64(workers) - 1) / uint64(workers)
-	for w := 0; w < workers; w++ {
-		start := uint64(w) * chunk
-		end := start + chunk
-		if end > n {
-			end = n
-		}
-		if start >= end {
-			break
-		}
-		wg.Add(1)
-		go func(start, end uint64) {
-			defer wg.Done()
-			apply(start, end)
-		}(start, end)
+	for start := uint64(0); start < n; start += chunk {
+		end := min(start+chunk, n)
+		wg.Go(func() { apply(start, end) })
 	}
 	wg.Wait()
 }
@@ -276,9 +267,6 @@ func getCommitteeIndicesFromBits(committeeBits []byte) []uint64 {
 	}
 	return indices
 }
-
-// unused import guard
-var _ = binary.LittleEndian
 
 // processSyncCommitteeUpdates rotates the sync committee at period boundaries.
 // New in Altair: https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#sync-committee-updates
