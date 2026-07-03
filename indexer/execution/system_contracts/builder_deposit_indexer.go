@@ -113,7 +113,7 @@ func (bi *BuilderDepositIndexer) processFinalTx(log *types.Log, tx *types.Transa
 		return nil, fmt.Errorf("invalid builder deposit log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]
@@ -130,7 +130,7 @@ func (bi *BuilderDepositIndexer) processRecentTx(log *types.Log, tx *types.Trans
 		return nil, fmt.Errorf("invalid builder deposit log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]

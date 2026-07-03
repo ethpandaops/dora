@@ -293,13 +293,17 @@ func GetBuildersByExecutionAddress(ctx context.Context, address []byte) []*dbtyp
 	return builders
 }
 
-// GetBuilderIndexesByFilter returns builder indexes matching a filter
-func GetBuilderIndexesByFilter(ctx context.Context, filter dbtypes.BuilderFilter, currentEpoch uint64) ([]uint64, error) {
+// GetBuildersByFilter returns full builder rows matching a filter, ordered per filter.OrderBy.
+// Unlike GetBuilderIndexesByFilter this preserves builder identity (pubkey): a reused index can
+// yield multiple rows (the current occupant plus superseded predecessors), so the caller can
+// merge them with cache data without the index-collision that index-only streaming suffers from.
+func GetBuildersByFilter(ctx context.Context, filter dbtypes.BuilderFilter, currentEpoch uint64) ([]*dbtypes.Builder, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
 	SELECT
-		builder_index
+		pubkey, builder_index, version, execution_address,
+		deposit_epoch, withdrawable_epoch, superseded
 	FROM builders
 	`)
 
@@ -324,14 +328,14 @@ func GetBuilderIndexesByFilter(ctx context.Context, filter dbtypes.BuilderFilter
 		fmt.Fprint(&sql, " ORDER BY withdrawable_epoch DESC")
 	}
 
-	builderIds := []uint64{}
-	err := ReaderDb.SelectContext(ctx, &builderIds, sql.String(), args...)
+	builders := []*dbtypes.Builder{}
+	err := ReaderDb.SelectContext(ctx, &builders, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching builders by filter: %v", err)
 		return nil, err
 	}
 
-	return builderIds, nil
+	return builders, nil
 }
 
 func buildBuilderFilterSql(filter dbtypes.BuilderFilter, currentEpoch uint64, sql *strings.Builder, args []interface{}) []interface{} {

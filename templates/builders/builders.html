@@ -142,7 +142,13 @@
               <tbody>
                 {{ range $i, $builder := .Builders }}
                   <tr>
-                    <td><a href="/builder/{{ $builder.Index }}">{{ formatAddCommas $builder.Index }}</a></td>
+                    <td>
+                      {{- if eq $builder.State "Superseded" -}}
+                        <span class="text-muted" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This builder's former index {{ $builder.Index }} was reused by a different builder">&mdash;</span>
+                      {{- else -}}
+                        <a href="/builder/{{ $builder.Index }}">{{ formatAddCommas $builder.Index }}</a>
+                      {{- end -}}
+                    </td>
                     <td class="text-monospace"><a href="/builder/0x{{ printf "%x" $builder.PublicKey }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $builder.PublicKey }}</a></td>
                     <td>{{ ethAddressLink .ExecutionAddress }}</td>
                     <td>{{ formatEthFromGwei $builder.Balance }}</td>
