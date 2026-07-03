@@ -60,6 +60,9 @@ type BuilderPageData struct {
 	ExecutionAddress []byte `json:"execution_address"`
 	Version          uint8  `json:"version"`
 	State            string `json:"state"` // "Pending", "Active", "Exited", "Superseded"
+	// RouteKey is the canonical URL segment for this builder: the index for the current occupant,
+	// or "0x<pubkey>" for a superseded builder whose index was reused by a different builder.
+	RouteKey string `json:"route_key"`
 
 	// Deposit lifecycle
 	ShowDeposit  bool      `json:"show_deposit"`

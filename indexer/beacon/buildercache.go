@@ -132,8 +132,6 @@ func (cache *builderCache) updateBuilderSet(slot phase0.Slot, dependentRoot phas
 		if cachedBuilder == nil {
 			cachedBuilder = &builderEntry{}
 			cache.builderSetCache[i] = cachedBuilder
-
-			_ = cache.indexer.builderPubkeyCache.Add(builders[i].PublicKey, phase0.ValidatorIndex(uint64(i)))
 		} else {
 			parentBuilder = cachedBuilder.finalBuilder
 			parentChecksum = cachedBuilder.finalChecksum
@@ -185,6 +183,12 @@ func (cache *builderCache) updateBuilderSet(slot phase0.Slot, dependentRoot phas
 		if checksum == parentChecksum {
 			continue
 		}
+
+		// (Re-)register the pubkey -> index mapping whenever the builder at this index changes.
+		// Builder indexes are reused (EIP-8282): a new builder taking over an existing index must
+		// overwrite the mapping so pubkey lookups (deposit/exit indexing, balance crediting, the
+		// detail page) resolve to the current occupant instead of missing entirely.
+		_ = cache.indexer.builderPubkeyCache.Add(builders[i].PublicKey, phase0.ValidatorIndex(uint64(i)))
 
 		if isFinalizedBuilderSet {
 			cachedBuilder.finalBuilder = builders[i]

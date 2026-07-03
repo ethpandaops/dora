@@ -552,6 +552,12 @@ func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root, slot phase0.Sl
 	return db.GetBidsForBlockRoot(indexer.ctx, parentBlockRoot[:], uint64(slot))
 }
 
+// GetCachedBidsByBuilderIndex returns the not-yet-flushed (recent) bids for a builder index within
+// the given slot window. Callers merge these with the DB results (see ChainService.GetBuilderBids).
+func (indexer *Indexer) GetCachedBidsByBuilderIndex(builderIndex int64, minSlot uint64, maxSlot *uint64) []*dbtypes.BlockBid {
+	return indexer.blockBidCache.GetBidsByBuilderIndex(builderIndex, minSlot, maxSlot)
+}
+
 // StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.
 func (indexer *Indexer) StreamActiveBuilderDataForRoot(blockRoot phase0.Root, activeOnly bool, epoch *phase0.Epoch, cb BuilderSetStreamer) error {
 	return indexer.builderCache.streamBuilderSetForRoot(blockRoot, activeOnly, epoch, cb)
