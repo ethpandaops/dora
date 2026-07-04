@@ -81,9 +81,14 @@
     // container is reused across opens, so stale ENS state is reset first.
     function setTxDetailAddr(el, addr) {
       if (!el) return;
+      // reset any ENS state left from a previous open (the container is reused)
+      var existing = bootstrap.Tooltip.getInstance(el);
+      if (existing) existing.dispose();
       el.classList.remove('ens-name');
       el.removeAttribute('data-bs-html');
       el.removeAttribute('data-bs-toggle');
+      el.removeAttribute('data-bs-title');
+      el.removeAttribute('data-bs-original-title');
       el.removeAttribute('title');
       el.textContent = addr || '';
       if (addr && window.explorer.applyEnsToNode) {
