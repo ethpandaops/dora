@@ -41,6 +41,11 @@
       </a>
     </li>
     <li class="nav-item">
+      <a class="nav-link" id="ens-tab" data-bs-toggle="tab" data-bs-target="#ens" href="#ens" role="tab">
+        <i class="fa fa-tag me-1"></i> ENS Resolver
+      </a>
+    </li>
+    <li class="nav-item">
       <a class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" href="#database" role="tab">
         <i class="fa fa-server me-1"></i> Database
       </a>
@@ -71,6 +76,11 @@
     <!-- Execution Tab -->
     <div class="tab-pane fade" id="execution" role="tabpanel">
       {{ template "debugExecutionTab" . }}
+    </div>
+
+    <!-- ENS Resolver Tab -->
+    <div class="tab-pane fade" id="ens" role="tabpanel">
+      {{ template "debugEnsTab" . }}
     </div>
 
     <!-- Database Tab -->
@@ -156,6 +166,56 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+{{ end }}
+{{ end }}
+
+<!-- ENS Resolver Tab -->
+{{ define "debugEnsTab" }}
+{{ with .EnsResolver }}
+<div class="card mt-0" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+  <div class="card-body">
+    {{ if not .Enabled }}
+    <div class="alert alert-secondary mb-0">
+      <i class="fa fa-info-circle me-1"></i> The ENS resolver is disabled. Enable it via the <code>ensResolver</code> config block.
+    </div>
+    {{ else }}
+    <div class="row">
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3"><i class="fa fa-tasks me-1"></i> Queue &amp; Cache</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:220px;">Resolve Queue (pending / cap)</td><td>{{ formatNumber .QueueLen }} / {{ formatNumber .QueueCap }}</td></tr>
+            <tr><td class="text-muted">Name Cache (LRU / cap)</td><td>{{ formatNumber .CacheLen }} / {{ formatNumber .CacheCap }}</td></tr>
+            <tr><td class="text-muted">Refresh — found</td><td>{{ .RefreshPositive }}</td></tr>
+            <tr><td class="text-muted">Refresh — not found</td><td>{{ .RefreshNegative }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3"><i class="fa fa-network-wired me-1"></i> Registries &amp; Multicall</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:220px;">Probed</td><td>{{ if .Probed }}<span class="badge bg-success">yes</span>{{ else }}<span class="badge bg-secondary">pending</span>{{ end }}</td></tr>
+            <tr><td class="text-muted">Registries (usable / configured)</td><td>{{ len .Registries }} / {{ .ConfiguredRegistries }}</td></tr>
+            <tr><td class="text-muted">Multicall3</td><td>{{ if .MulticallReady }}<span class="badge bg-success">enabled</span> <code>{{ .MulticallAddress }}</code>{{ else }}<span class="badge bg-secondary">individual calls</span>{{ end }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h6 class="mt-2 mb-2">Working Registries</h6>
+    {{ if .Registries }}
+    <ul class="list-unstyled mb-0">
+      {{ range $i, $r := .Registries }}
+      <li class="mb-1"><span class="badge bg-primary me-1">{{ add $i 1 }}</span><code>{{ $r }}</code></li>
+      {{ end }}
+    </ul>
+    {{ else }}
+    <div class="text-muted">{{ if .Probed }}No usable registries found on the target chain.{{ else }}Not probed yet — the first resolve batch probes the configured registries.{{ end }}</div>
+    {{ end }}
+    {{ end }}
   </div>
 </div>
 {{ end }}

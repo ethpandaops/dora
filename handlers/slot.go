@@ -375,6 +375,33 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		}
 	}
 
+	if pageData.Block != nil {
+		block := pageData.Block
+		ensAddrs := make([][]byte, 0)
+		if block.ExecutionData != nil {
+			ensAddrs = append(ensAddrs, block.ExecutionData.FeeRecipient)
+		}
+		for _, tx := range block.Transactions {
+			ensAddrs = append(ensAddrs, tx.From, tx.To)
+		}
+		for _, wd := range block.Withdrawals {
+			ensAddrs = append(ensAddrs, wd.Address)
+		}
+		for _, change := range block.BLSChanges {
+			ensAddrs = append(ensAddrs, change.Address)
+		}
+		for _, req := range block.WithdrawalRequests {
+			ensAddrs = append(ensAddrs, req.Address)
+		}
+		for _, req := range block.ConsolidationRequests {
+			ensAddrs = append(ensAddrs, req.Address)
+		}
+		for _, req := range block.BuilderExitRequests {
+			ensAddrs = append(ensAddrs, req.SourceAddress)
+		}
+		pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+	}
+
 	return pageData, cacheTimeout
 }
 

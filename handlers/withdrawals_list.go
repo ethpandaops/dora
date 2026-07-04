@@ -345,6 +345,12 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 	}
 	pageData.WithdrawalCount = uint64(len(pageData.Withdrawals))
 
+	ensAddrs := make([][]byte, 0, len(pageData.Withdrawals))
+	for _, withdrawal := range pageData.Withdrawals {
+		ensAddrs = append(ensAddrs, withdrawal.Address)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	if pageData.WithdrawalCount > 0 {
 		pageData.FirstIndex = pageData.Withdrawals[0].SlotNumber
 		pageData.LastIndex = pageData.Withdrawals[pageData.WithdrawalCount-1].SlotNumber

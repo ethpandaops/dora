@@ -222,6 +222,15 @@ func buildBuilderExitsPageData(ctx context.Context, pageIdx uint64, pageSize uin
 	}
 	pageData.ExitCount = uint64(len(pageData.Exits))
 
+	ensAddrs := make([][]byte, 0, len(pageData.Exits))
+	for _, exit := range pageData.Exits {
+		ensAddrs = append(ensAddrs, exit.SourceAddress)
+		if exit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, exit.TransactionDetails.TxOrigin, exit.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	if pageData.ExitCount > 0 {
 		pageData.FirstIndex = pageData.Exits[0].SlotNumber
 		pageData.LastIndex = pageData.Exits[pageData.ExitCount-1].SlotNumber

@@ -34,6 +34,8 @@ type MevBlocksPageData struct {
 	LastPageLink  string `json:"last_page_link"`
 
 	UrlParams map[string]string `json:"url_params"`
+
+	EnsNameData
 }
 
 type MevBlocksPageDataBlock struct {

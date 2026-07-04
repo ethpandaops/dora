@@ -101,6 +101,7 @@
 {{ end }}
 
 {{ define "lazyPage" }}
+  <script type="application/json" class="ens-names">{{ ensNamesJson . }}</script>
   {{ if eq .TabView "recent" }}
     {{ template "recentExits" . }}
   {{ else if eq .TabView "exitrequests" }}

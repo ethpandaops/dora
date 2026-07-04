@@ -278,6 +278,12 @@ func buildBuildersPageData(ctx context.Context, pageNumber uint64, pageSize uint
 	pageData.FirstBuilder = pageNumber * pageSize
 	pageData.LastBuilder = pageData.FirstBuilder + uint64(len(pageData.Builders))
 
+	ensAddrs := make([][]byte, 0, len(pageData.Builders))
+	for _, builder := range pageData.Builders {
+		ensAddrs = append(ensAddrs, builder.ExecutionAddress)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	// Populate UrlParams for page jump functionality
 	pageData.UrlParams = make(map[string]string)
 	for key, values := range filterArgs {

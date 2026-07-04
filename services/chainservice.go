@@ -48,6 +48,7 @@ type ChainService struct {
 	mevRelayIndexer       *mevrelay.MevIndexer
 	snooperManager        *snooper.SnooperManager
 	txIndexer             *txindexer.TxIndexer
+	ensResolver           *EnsResolver
 	started               bool
 }
 
@@ -68,6 +69,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	buildoorInventory := NewBuildoorInventory(ctx)
 	mevRelayIndexer := mevrelay.NewMevIndexer(ctx, logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 	snooperManager := snooper.NewSnooperManager(ctx, logger.WithField("service", "snooper-manager"), beaconIndexer)
+	ensResolver := NewEnsResolver(ctx, logger.WithField("service", "ens-resolver"), executionPool)
 
 	// Set execution time provider
 	beaconIndexer.SetExecutionTimeProvider(snooper.NewExecutionTimeProvider(snooperManager.GetCache()))
@@ -82,6 +84,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 		buildoorInventory: buildoorInventory,
 		mevRelayIndexer:   mevRelayIndexer,
 		snooperManager:    snooperManager,
+		ensResolver:       ensResolver,
 	}
 }
 
@@ -388,7 +391,21 @@ func (cs *ChainService) StartService() error {
 	// start MEV relay indexer
 	cs.mevRelayIndexer.StartUpdater()
 
+	// start optional ENS resolver
+	if utils.Config.EnsResolver.Enabled {
+		cs.ensResolver.StartUpdater()
+	}
+
 	return nil
+}
+
+// GetEnsResolver returns the ENS resolver service (always non-nil; a no-op when the
+// feature is disabled).
+func (bs *ChainService) GetEnsResolver() *EnsResolver {
+	if bs == nil {
+		return nil
+	}
+	return bs.ensResolver
 }
 
 func (bs *ChainService) StopService() {

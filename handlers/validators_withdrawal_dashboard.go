@@ -214,6 +214,13 @@ func buildValidatorsWithdrawalDashboardPageData(query string) (*models.Validator
 	}
 	pageData.HealthStatus = validatorsWithdrawalDashboardHealth(pageData.ParticipationRate)
 
+	ensAddrs := make([][]byte, 0, len(pageData.Validators)+1)
+	ensAddrs = append(ensAddrs, pageData.NormalizedAddress)
+	for _, validator := range pageData.Validators {
+		ensAddrs = append(ensAddrs, validator.WithdrawalAddress)
+	}
+	pageData.SetEnsNames(resolveEnsNames(context.Background(), ensAddrs))
+
 	return pageData, cacheTime
 }
 

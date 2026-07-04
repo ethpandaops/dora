@@ -291,6 +291,27 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		}
 	}
 
+	// Collect execution addresses shown on the page for ENS name resolution.
+	ensAddrs := make([][]byte, 0, len(pageData.Transactions)*2+len(pageData.TokenBalances)+2)
+	ensAddrs = append(ensAddrs, pageData.Address, pageData.FundedBy)
+	for _, tb := range pageData.TokenBalances {
+		ensAddrs = append(ensAddrs, tb.Contract)
+	}
+	for _, tx := range pageData.Transactions {
+		ensAddrs = append(ensAddrs, tx.FromAddr, tx.ToAddr)
+	}
+	for _, t := range pageData.ERC20Transfers {
+		ensAddrs = append(ensAddrs, t.FromAddr, t.ToAddr, t.Contract)
+	}
+	for _, t := range pageData.NFTTransfers {
+		ensAddrs = append(ensAddrs, t.FromAddr, t.ToAddr, t.Contract)
+	}
+	ensNames := resolveEnsNames(ctx, ensAddrs)
+	pageData.SetEnsNames(ensNames)
+	// The page's own address is rendered full (not as a swappable link), so surface its
+	// name explicitly for the header to show alongside the address.
+	pageData.AddressEnsName = ensNames[strings.ToLower(common.BytesToAddress(pageData.Address).Hex())]
+
 	return pageData, 2 * time.Minute
 }
 

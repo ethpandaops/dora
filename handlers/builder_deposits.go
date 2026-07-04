@@ -283,6 +283,14 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 	pageData.NextPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
+	ensAddrs := make([][]byte, 0, len(pageData.Deposits)*2)
+	for _, deposit := range pageData.Deposits {
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	return pageData
 }
 
@@ -471,6 +479,14 @@ func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64,
 	pageData.PrevPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
 	pageData.NextPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/builders/deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
+
+	ensAddrs := make([][]byte, 0, len(pageData.Deposits)*2)
+	for _, deposit := range pageData.Deposits {
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 
 	return pageData
 }

@@ -354,6 +354,25 @@ func buildBuilderPageData(ctx context.Context, builder *gloas.Builder, builderIn
 		pageData.WithdrawalCount = uint64(len(pageData.Withdrawals))
 	}
 
+	ensAddrs := make([][]byte, 0, 1+len(pageData.RecentBlocks)+len(pageData.RecentBids)+len(pageData.RecentDeposits))
+	ensAddrs = append(ensAddrs, pageData.ExecutionAddress)
+	for _, block := range pageData.RecentBlocks {
+		ensAddrs = append(ensAddrs, block.FeeRecipient)
+	}
+	for _, bid := range pageData.RecentBids {
+		ensAddrs = append(ensAddrs, bid.FeeRecipient)
+	}
+	for _, deposit := range pageData.RecentDeposits {
+		ensAddrs = append(ensAddrs, deposit.DepositorAddress)
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	if pageData.ExitReasonTxDetails != nil {
+		ensAddrs = appendEnsHexAddrs(ensAddrs, pageData.ExitReasonTxDetails.TxOrigin, pageData.ExitReasonTxDetails.TxTarget)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	return pageData, 10 * time.Minute
 }
 

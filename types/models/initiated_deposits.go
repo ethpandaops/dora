@@ -33,6 +33,8 @@ type InitiatedDepositsPageData struct {
 	LastPageLink  string `json:"last_page_link"`
 
 	UrlParams []UrlParam `json:"url_params"`
+
+	EnsNameData
 }
 
 type InitiatedDepositsPageDataDeposit struct {
