@@ -23,8 +23,6 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-var logger_ens = logrus.StandardLogger().WithField("module", "ens_resolver")
-
 // EnsResolver resolves execution addresses to their primary ENS name. Resolution is
 // batched, asynchronous and persisted to the ens_names table. Handlers call
 // ResolveNames once per page to warm the in-memory cache and feed the resolve queue.

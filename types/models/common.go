@@ -36,10 +36,10 @@ func (d *EnsNameData) SetEnsNames(names map[string]string) {
 // (not pre-marshaled) so html/template JSON-encodes it exactly once in the script
 // context — pre-marshaling to a string would get double-encoded there.
 func (d *EnsNameData) EnsNamesForJS() map[string]string {
-	names := make(map[string]string, len(d.EnsNames))
 	if d == nil {
-		return names
+		return map[string]string{}
 	}
+	names := make(map[string]string, len(d.EnsNames))
 	for _, mapping := range d.EnsNames {
 		names[strings.ToLower(mapping.Address)] = mapping.Name
 	}
