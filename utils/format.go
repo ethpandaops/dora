@@ -1071,7 +1071,7 @@ func formatWithdrawalHash(hash []byte) template.HTML {
 		colorClass = "text-success"
 	} else if hash[0] == 0x02 {
 		colorClass = "text-info"
-	} else if hash[0] == 0x03 {
+	} else if hash[0] == 0xB0 {
 		colorClass = "text-primary"
 	} else {
 		colorClass = "text-warning"
@@ -1085,8 +1085,8 @@ func FormatWithdawalCredentials(hash []byte) template.HTML {
 		return "INVALID CREDENTIALS"
 	}
 
-	// For 0x01, 0x02 or 0x03 credentials, link to the address
-	if hash[0] == 0x01 || hash[0] == 0x02 || hash[0] == 0x03 {
+	// For 0x01, 0x02 or 0xB0 credentials, link to the address
+	if hash[0] == 0x01 || hash[0] == 0x02 || hash[0] == 0xB0 {
 		addr := fmt.Sprintf("0x%x", hash[12:])
 
 		// Use local link when execution indexer is enabled

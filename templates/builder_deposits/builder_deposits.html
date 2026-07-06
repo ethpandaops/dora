@@ -24,7 +24,7 @@
           <p class="mb-2">
             Gloas activates at epoch <strong>{{ .GloasForkEpoch }}</strong>
             (<span data-timer="{{ .GloasForkTime.Unix }}" data-bs-toggle="tooltip" data-bs-title="{{ .GloasForkTime }}">{{ formatRecentTimeShort .GloasForkTime }}</span>).
-            Builder deposits are not recorded on-chain yet &mdash; the entries below are the actual <strong>0x03-credential deposits</strong>,
+            Builder deposits are not recorded on-chain yet &mdash; the entries below are the actual <strong>0xB0-credential deposits</strong>,
             each annotated with its <strong>projected</strong> fate at the fork (based on the deposit churn limit and pending queue), and may change as deposits are submitted or processed.
             {{ if .ProjectionTruncated }}<span class="text-muted">(showing the first {{ len .Deposits }}; older deposits omitted)</span>{{ end }}
           </p>
