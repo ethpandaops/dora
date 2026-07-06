@@ -11,12 +11,12 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
-// builderWithdrawalCredType is BUILDER_WITHDRAWAL_PREFIX (Gloas/EIP-8282): the 0x03 withdrawal
+// builderWithdrawalCredType is BUILDER_WITHDRAWAL_PREFIX (Gloas/EIP-8282): the 0xB0 withdrawal
 // credential prefix that marks a deposit as a builder deposit, onboarded as a builder at the Gloas
 // fork transition (onboard_builders_from_pending_deposits).
-const builderWithdrawalCredType uint8 = 0x03
+const builderWithdrawalCredType uint8 = 0xB0
 
-// isBuilderCredential reports whether the withdrawal credentials use the builder prefix (0x03).
+// isBuilderCredential reports whether the withdrawal credentials use the builder prefix (0xB0).
 func isBuilderCredential(wc []byte) bool {
 	return len(wc) > 0 && wc[0] == builderWithdrawalCredType
 }
@@ -25,7 +25,7 @@ func isBuilderCredential(wc []byte) bool {
 // far above any realistic count of pre-fork builder deposits; hitting it sets Truncated.
 const projectionFetchCap = 10000
 
-// ProjectedBuilderDeposit is one builder-credential (0x03) deposit on chain together with its
+// ProjectedBuilderDeposit is one builder-credential (0xB0) deposit on chain together with its
 // projected fate at the upcoming Gloas fork transition. When none of the fate flags is set the
 // deposit is projected to be onboarded as a builder (Result distinguishes new vs top-up).
 type ProjectedBuilderDeposit struct {
@@ -96,7 +96,7 @@ type BuilderOnboardingProjection struct {
 // not scheduled (no finite fork epoch) or the chain head/queue cannot be resolved. It is meant for
 // the builder deposits page before the fork, where the real builder_deposits table is still empty.
 //
-// It enumerates every 0x03-credential deposit and classifies each: deposits already applied or that
+// It enumerates every 0xB0-credential deposit and classifies each: deposits already applied or that
 // the churn queue would process before the fork become regular validators ("too early"); the rest
 // register builders (or top up earlier ones), drop on an invalid proof-of-possession, or stay as
 // validator deposits when they share a pubkey with a validator — mirroring
@@ -162,7 +162,7 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 	}
 	tailEstimate := indexedQueue.EstimateAppendedDepositEpoch(depositAmount)
 
-	// Primary source: every builder-credential (0x03) deposit on chain (cache + DB merge). The
+	// Primary source: every builder-credential (0xB0) deposit on chain (cache + DB merge). The
 	// credential-type filter lives on the tx filter (both the cache and DB paths apply it there).
 	depositFilter := &dbtypes.DepositFilter{
 		WithOrphaned: 1,

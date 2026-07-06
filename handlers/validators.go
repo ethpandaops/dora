@@ -74,7 +74,7 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 			seen := map[uint8]bool{}
 			for _, v := range vals {
 				t, err := strconv.ParseUint(v, 10, 8)
-				if err != nil || t > 3 || seen[uint8(t)] {
+				if err != nil || (t > 2 && t != 0xB0) || seen[uint8(t)] {
 					continue
 				}
 				seen[uint8(t)] = true
