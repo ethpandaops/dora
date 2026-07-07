@@ -476,5 +476,22 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 		}
 	}
 
+	ensAddrs := make([][]byte, 0, len(pageData.InitiatedDeposits)+len(pageData.IncludedDeposits))
+	for _, deposit := range pageData.InitiatedDeposits {
+		ensAddrs = append(ensAddrs, deposit.Address)
+	}
+	for _, deposit := range pageData.IncludedDeposits {
+		ensAddrs = append(ensAddrs, deposit.DepositorAddress)
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	for _, deposit := range pageData.QueuedDeposits {
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	return pageData, 1 * time.Minute
 }

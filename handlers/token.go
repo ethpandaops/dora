@@ -158,6 +158,13 @@ func buildTokenPageData(ctx context.Context, contract []byte, beforeTxUid uint64
 	dbTransfers, hasNext, _ := db.GetElTokenTransfersFiltered(ctx, filter, beforeTxUid, beforeTxIdx, uint32(pageSize))
 	pageData.Transfers = enrichElTokenTransferRows(ctx, dbTransfers)
 
+	ensAddrs := make([][]byte, 0, len(pageData.Transfers)*3+1)
+	ensAddrs = append(ensAddrs, pageData.Contract)
+	for _, t := range pageData.Transfers {
+		ensAddrs = append(ensAddrs, t.FromAddr, t.ToAddr, t.Contract)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	tokenHex := common.BytesToAddress(token.Contract).Hex()
 	suffix := fmt.Sprintf("c=%v", pageSize)
 	if filterSuffix != "" {

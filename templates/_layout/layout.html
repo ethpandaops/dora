@@ -59,6 +59,7 @@
       </div>
       <script src="/js/typeahead.min.js"></script>
       <script src="/js/clipboard.min.js"></script>
+      <script type="application/json" class="ens-names">{{ ensNamesJson .Data }}</script>
       <script src="/js/explorer.js?{{ $buildTime }}"></script>
       {{ template "js" .Data }}
     </body>

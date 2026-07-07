@@ -213,6 +213,21 @@ type Config struct {
 		LogRequests       bool          `yaml:"logRequests" envconfig:"RPC_PROXY_LOG_REQUESTS"`
 		AllowedMethods    []string      `yaml:"allowedMethods" envconfig:"RPC_PROXY_ALLOWED_METHODS"`
 	} `yaml:"rpcProxy"`
+
+	// EnsResolver optionally resolves execution addresses to their primary ENS name.
+	// ENS lives on Ethereum mainnet, so Endpoints usually point at a mainnet RPC; when
+	// empty the resolver falls back to an available client from the main execution pool.
+	EnsResolver struct {
+		Enabled           bool             `yaml:"enabled" envconfig:"ENSRESOLVER_ENABLED"`
+		Endpoints         []EndpointConfig `yaml:"endpoints"`
+		RegistryAddresses []string         `yaml:"registryAddresses" envconfig:"ENSRESOLVER_REGISTRY_ADDRESSES"` // tried in config order; first verified name wins
+		MulticallAddress  string           `yaml:"multicallAddress" envconfig:"ENSRESOLVER_MULTICALL_ADDRESS"`   // used to batch lookups when deployed
+		RefreshPositive   time.Duration    `yaml:"refreshPositive" envconfig:"ENSRESOLVER_REFRESH_POSITIVE"`     // re-resolve interval for addresses with a name
+		RefreshNegative   time.Duration    `yaml:"refreshNegative" envconfig:"ENSRESOLVER_REFRESH_NEGATIVE"`     // re-resolve interval for addresses without a name
+		BatchSize         int              `yaml:"batchSize" envconfig:"ENSRESOLVER_BATCH_SIZE"`
+		QueueSize         int              `yaml:"queueSize" envconfig:"ENSRESOLVER_QUEUE_SIZE"`
+		CacheSize         int              `yaml:"cacheSize" envconfig:"ENSRESOLVER_CACHE_SIZE"`
+	} `yaml:"ensResolver"`
 }
 
 type EndpointConfig struct {

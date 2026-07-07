@@ -166,6 +166,8 @@ type TransactionPageData struct {
 	// State changes tab (prestateTracer diffMode)
 	StateChanges             []*TransactionPageDataStateChangeAccount `json:"state_changes"`
 	StateChangesNotAvailable bool                                     `json:"state_changes_not_available"`
+
+	EnsNameData
 }
 
 // TransactionAccessListEntry is one address+storage-keys pair from an EIP-2930 access list.

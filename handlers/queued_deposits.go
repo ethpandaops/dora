@@ -313,5 +313,14 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 	pageData.DepositsFrom = start + 1
 	pageData.DepositsTo = end
 	pageData.DepositCount = uint64(len(pageData.Deposits))
+
+	ensAddrs := make([][]byte, 0, len(pageData.Deposits)*2)
+	for _, deposit := range pageData.Deposits {
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	return pageData, cacheTimeout
 }

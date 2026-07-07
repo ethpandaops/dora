@@ -34,6 +34,8 @@ type ValidatorsWithdrawalDashboardPageData struct {
 	ActivityLink   string `json:"activity_link"`
 
 	Validators []*ValidatorsWithdrawalDashboardValidator `json:"validators"`
+
+	EnsNameData
 }
 
 type ValidatorsWithdrawalDashboardValidator struct {
