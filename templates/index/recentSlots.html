@@ -42,7 +42,7 @@
               <td>
                 <span data-bind="if: slot == 0" class="badge rounded-pill text-bg-info">Genesis</span>
                 <span data-bind="if: slot > 0 && status == 0" class="badge rounded-pill text-bg-warning">Missed</span>
-                <span data-bind="if: slot > 0 && status == 1, css: {'split-warning': payload_status == 0, 'split-info': payload_status == 2}, attr: {'data-bs-title': $root.slotStatusTooltip(status, payload_status)}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" class="badge rounded-pill text-bg-success">Proposed</span>
+                <span data-bind="if: slot > 0 && status == 1, css: {'slot-safe': safe, 'split-warning': payload_status == 0, 'split-info': payload_status == 2}, attr: {'data-bs-title': $root.slotStatusTooltip(status, payload_status)}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" class="badge rounded-pill text-bg-success">Proposed</span>
                 <span data-bind="if: slot > 0 && status == 2, css: {'split-warning': payload_status == 0, 'split-info': payload_status == 2}, attr: {'data-bs-title': $root.slotStatusTooltip(status, payload_status)}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
                 <span data-bind="if: slot > 0 && status > 2, css: {'split-warning': payload_status == 0, 'split-info': payload_status == 2}, attr: {'data-bs-title': $root.slotStatusTooltip(status, payload_status)}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" class="badge rounded-pill text-bg-dark">Unknown</span>
                 <i class="fa-solid fa-shield-halved text-success" data-bind="visible: safe" style="display:none;" data-bs-toggle="tooltip" data-bs-placement="top" title="Safe: this block is fast confirmed (fast confirmation rule)"></i>
@@ -98,7 +98,7 @@
                     {{ else if eq .Status 0 }}
                       <span class="badge rounded-pill text-bg-warning">Missed</span>
                     {{ else if eq .Status 1 }}
-                      <span class="badge rounded-pill text-bg-success {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Proposed</span>
+                      <span class="badge rounded-pill text-bg-success {{ if $slot.Safe }}slot-safe {{ end }}{{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Proposed</span>
                     {{ else if eq .Status 2 }}
                       <span class="badge rounded-pill text-bg-info {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Missed (Orphaned)</span>
                     {{ else }}
