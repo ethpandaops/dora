@@ -284,6 +284,12 @@ func buildExitsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64,
 		}
 		pageData.RecentExitRequestCount = uint64(len(pageData.RecentExitRequests))
 
+		ensAddrs := make([][]byte, 0, len(pageData.RecentExitRequests))
+		for _, exitReq := range pageData.RecentExitRequests {
+			ensAddrs = append(ensAddrs, exitReq.SourceAddr)
+		}
+		pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	case "exiting":
 		// Load exiting validators (limit to first 20 for tab)
 		count := uint64(len(nonConsolidatingValidators))

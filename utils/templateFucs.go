@@ -87,25 +87,26 @@ func GetTemplateFuncs() template.FuncMap {
 	}
 
 	customFuncs := template.FuncMap{
-		"includeHTML": IncludeHTML,
-		"includeJSON": IncludeJSON,
-		"html":        func(x string) template.HTML { return template.HTML(x) },
-		"float64":     toFloat64,
-		"bigIntCmp":   func(i *big.Int, j int) int { return i.Cmp(big.NewInt(int64(j))) },
-		"mod":         func(i, j int) bool { return i%j == 0 },
-		"sub":         func(i, j int) int { return i - j },
-		"subUI64":     func(i, j uint64) uint64 { return i - j },
-		"add":         func(i, j int) int { return i + j },
-		"addI64":      func(i, j int64) int64 { return i + j },
-		"addUI64":     func(i, j uint64) uint64 { return i + j },
-		"addFloat64":  func(i, j float64) float64 { return i + j },
-		"mul":         func(i, j float64) float64 { return i * j },
-		"div":         func(i, j float64) float64 { return i / j },
-		"divInt":      func(i, j int) float64 { return float64(i) / float64(j) },
-		"nef":         func(i, j float64) bool { return i != j },
-		"gtf":         func(i, j float64) bool { return i > j },
-		"ltf":         func(i, j float64) bool { return i < j },
-		"inlist":      checkInList,
+		"includeHTML":  IncludeHTML,
+		"includeJSON":  IncludeJSON,
+		"ensNamesJson": EnsNamesJSON,
+		"html":         func(x string) template.HTML { return template.HTML(x) },
+		"float64":      toFloat64,
+		"bigIntCmp":    func(i *big.Int, j int) int { return i.Cmp(big.NewInt(int64(j))) },
+		"mod":          func(i, j int) bool { return i%j == 0 },
+		"sub":          func(i, j int) int { return i - j },
+		"subUI64":      func(i, j uint64) uint64 { return i - j },
+		"add":          func(i, j int) int { return i + j },
+		"addI64":       func(i, j int64) int64 { return i + j },
+		"addUI64":      func(i, j uint64) uint64 { return i + j },
+		"addFloat64":   func(i, j float64) float64 { return i + j },
+		"mul":          func(i, j float64) float64 { return i * j },
+		"div":          func(i, j float64) float64 { return i / j },
+		"divInt":       func(i, j int) float64 { return float64(i) / float64(j) },
+		"nef":          func(i, j float64) bool { return i != j },
+		"gtf":          func(i, j float64) bool { return i > j },
+		"ltf":          func(i, j float64) bool { return i < j },
+		"inlist":       checkInList,
 		"round": func(i float64, n int) float64 {
 			return math.Round(i*math.Pow10(n)) / math.Pow10(n)
 		},
@@ -229,6 +230,22 @@ func IncludeJSON(obj any, escapeHTML bool) template.HTML {
 		s = html.EscapeString(s)
 	}
 	return template.HTML(s)
+}
+
+// ensNamesProvider is implemented by page models that embed models.EnsNameData.
+type ensNamesProvider interface {
+	EnsNamesForJS() map[string]string
+}
+
+// EnsNamesJSON returns a page model's embedded ENS names as an address->name map for the
+// client-side address swap. It returns the Go map (not a pre-marshaled string) so
+// html/template JSON-encodes it exactly once inside the <script> block — returning a
+// marshaled string there would be double-encoded. Empty map for models without names.
+func EnsNamesJSON(data any) map[string]string {
+	if provider, ok := data.(ensNamesProvider); ok {
+		return provider.EnsNamesForJS()
+	}
+	return map[string]string{}
 }
 
 func GraffitiToString(graffiti []byte) string {

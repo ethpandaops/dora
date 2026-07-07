@@ -24,4 +24,6 @@ type TokenPageData struct {
 	DisplayMethod bool   `json:"display_method"`
 	DisplayAmount bool   `json:"display_amount"`
 	DisplayStatus bool   `json:"display_status"`
+
+	EnsNameData
 }

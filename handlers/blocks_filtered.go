@@ -513,6 +513,12 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 		pageData.TotalPages++
 	}
 
+	ensAddrs := make([][]byte, 0, len(pageData.Blocks))
+	for _, block := range pageData.Blocks {
+		ensAddrs = append(ensAddrs, block.FeeRecipient)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	pageData.UrlParams = make([]models.UrlParam, 0, len(filterArgs)+1)
 	for key, values := range filterArgs {
 		if len(values) > 0 {

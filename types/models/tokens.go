@@ -12,6 +12,8 @@ type TokensPageData struct {
 	LastItem   uint64 `json:"last_item"`
 
 	Pager *PagerData `json:"pager"`
+
+	EnsNameData
 }
 
 // TokensPageDataToken is a single row of the tokens list.

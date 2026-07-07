@@ -23,6 +23,8 @@ type WithdrawalsPageData struct {
 
 	BeaconWithdrawals     []*WithdrawalsPageDataBeaconWithdrawal `json:"beacon_withdrawals"`
 	BeaconWithdrawalCount uint64                                 `json:"beacon_withdrawal_count"`
+
+	EnsNameData
 }
 
 type WithdrawalsPageDataRecentWithdrawal struct {

@@ -45,6 +45,8 @@ type TransfersPageData struct {
 	DisplayToken     bool   `json:"display_token"`
 	DisplayStatus    bool   `json:"display_status"`
 	DisplayTokenType bool   `json:"display_token_type"`
+
+	EnsNameData
 }
 
 // TransfersFilter holds the current transfer filter values as strings so the
