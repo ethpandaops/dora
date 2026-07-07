@@ -25,9 +25,11 @@
               </h5>
             </div>
             <div class="text-end p-2">
-              <div class="text-secondary mb-0">Current Slot</div>
+              <div class="text-secondary mb-0">
+                Current Slot<span data-bind="visible: fcr_enabled" {{ if not .FcrEnabled }}style="display:none;"{{ end }}> / <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent safe slot (fast confirmation rule)"><i class="fa-solid fa-shield-halved text-success"></i> Safe</span></span>
+              </div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent slot" data-bind="text: cur_slot">{{ .CurrentSlot }}</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent slot" data-bind="text: cur_slot">{{ .CurrentSlot }}</span><span data-bind="visible: fcr_enabled" {{ if not .FcrEnabled }}style="display:none;"{{ end }}> / <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent fast confirmed (safe) slot" data-bind="text: safe_slot">{{ .SafeSlot }}</span></span>
               </h5>
             </div>
           </div>

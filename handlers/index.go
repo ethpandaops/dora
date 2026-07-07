@@ -109,6 +109,7 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
+	safeSlot, safeRoot, lastFastConfirmation := chainState.GetFastConfirmedBlock()
 
 	syncState := dbtypes.IndexerSyncState{}
 	db.GetExplorerState(ctx, "indexer.syncstate", &syncState)
@@ -132,6 +133,9 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		CurrentSlot:           uint64(currentSlot),
 		CurrentScheduledCount: specs.SlotsPerEpoch - uint64(currentSlotIndex),
 		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(specs.SlotsPerEpoch),
+		FcrEnabled:            !lastFastConfirmation.IsZero(),
+		SafeSlot:              uint64(safeSlot),
+		SafeRoot:              safeRoot[:],
 	}
 	if utils.Config.Chain.DisplayName != "" {
 		pageData.NetworkName = utils.Config.Chain.DisplayName
@@ -499,6 +503,8 @@ func buildIndexPageRecentSlotsData(ctx context.Context, pageData *models.IndexPa
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
+	safeSlot, _, lastFastConfirmation := chainState.GetFastConfirmedBlock()
+	fcrEnabled := !lastFastConfirmation.IsZero()
 
 	// load slots
 	pageData.RecentSlots = make([]*models.IndexPageDataSlots, 0)
@@ -527,6 +533,7 @@ func buildIndexPageRecentSlotsData(ctx context.Context, pageData *models.IndexPa
 				Ts:            chainState.SlotToTime(phase0.Slot(slot)),
 				Status:        uint64(dbSlot.Status),
 				PayloadStatus: uint8(payloadStatus),
+				Safe:          fcrEnabled && dbSlot.Status == dbtypes.Canonical && slot <= uint64(safeSlot),
 				Proposer:      dbSlot.Proposer,
 				ProposerName:  services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				BlockRoot:     dbSlot.Root,

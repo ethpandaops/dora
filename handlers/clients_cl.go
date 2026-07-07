@@ -308,6 +308,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
+		safeSlot, safeRoot, lastFastConfirmation := client.GetLastFastConfirmation()
 
 		id := client.GetNodeIdentity()
 		var peerId string
@@ -421,9 +422,16 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),
 			HeadRoot:             lastHeadRoot[:],
+			FcrEnabled:           !lastFastConfirmation.IsZero(),
+			SafeSlot:             uint64(safeSlot),
+			SafeRoot:             safeRoot[:],
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
 			SpecWarnings:         client.GetSpecWarnings(),
+		}
+
+		if resClient.FcrEnabled {
+			pageData.ShowSafeSlotColumn = true
 		}
 
 		lastError := client.GetLastClientError()
@@ -642,6 +650,14 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	case "headslot-d":
 		sort.Slice(pageData.Clients, func(i, j int) bool {
 			return pageData.Clients[i].HeadSlot > pageData.Clients[j].HeadSlot
+		})
+	case "safeslot":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].SafeSlot < pageData.Clients[j].SafeSlot
+		})
+	case "safeslot-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].SafeSlot > pageData.Clients[j].SafeSlot
 		})
 	case "headroot":
 		sort.Slice(pageData.Clients, func(i, j int) bool {
