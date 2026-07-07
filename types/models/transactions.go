@@ -30,6 +30,8 @@ type TransactionsPageData struct {
 	DisplayGasUsed bool   `json:"display_gas_used"`
 	DisplayType    bool   `json:"display_type"`
 	DisplayNonce   bool   `json:"display_nonce"`
+
+	EnsNameData
 }
 
 // TransactionsFilter holds the current filter values as strings so the filter

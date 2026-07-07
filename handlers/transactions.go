@@ -262,6 +262,12 @@ func buildTransactionsPageData(ctx context.Context, beforeTxUid uint64, pageNum 
 	dbTxs, hasNext, _ := db.GetElTransactionsFiltered(ctx, filter, beforeTxUid, uint32(pageSize))
 	pageData.Transactions = enrichElTransactionRows(ctx, dbTxs)
 
+	ensAddrs := make([][]byte, 0, len(pageData.Transactions)*2)
+	for _, tx := range pageData.Transactions {
+		ensAddrs = append(ensAddrs, tx.FromAddr, tx.ToAddr)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	suffix := fmt.Sprintf("c=%v", pageSize)
 	if filterSuffix != "" {
 		suffix += "&" + filterSuffix

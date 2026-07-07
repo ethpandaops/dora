@@ -17,6 +17,8 @@ type ConsolidationsPageData struct {
 	QueuedConsolidations        []*ConsolidationsPageDataQueuedConsolidation `json:"queued_consolidations"`
 	QueuedTabCount              uint64                                       `json:"queued_tab_count"`
 	TabView                     string                                       `json:"tab_view"`
+
+	EnsNameData
 }
 
 type ConsolidationsPageDataRecentConsolidation struct {

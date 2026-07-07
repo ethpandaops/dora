@@ -882,5 +882,33 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 		}
 	}
 
+	ensAddrs := make([][]byte, 0)
+	ensAddrs = append(ensAddrs, pageData.WithdrawAddress)
+	for _, deposit := range pageData.RecentDeposits {
+		ensAddrs = append(ensAddrs, deposit.DepositorAddress)
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	for _, request := range pageData.WithdrawalRequests {
+		ensAddrs = append(ensAddrs, request.SourceAddr)
+		if request.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, request.TransactionDetails.TxOrigin, request.TransactionDetails.TxTarget)
+		}
+	}
+	for _, consolidation := range pageData.ConsolidationRequests {
+		ensAddrs = append(ensAddrs, consolidation.SourceAddr)
+		if consolidation.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, consolidation.TransactionDetails.TxOrigin, consolidation.TransactionDetails.TxTarget)
+		}
+	}
+	for _, withdrawal := range pageData.Withdrawals {
+		ensAddrs = append(ensAddrs, withdrawal.Address)
+	}
+	if pageData.ExitReasonTxDetails != nil {
+		ensAddrs = appendEnsHexAddrs(ensAddrs, pageData.ExitReasonTxDetails.TxOrigin, pageData.ExitReasonTxDetails.TxTarget)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	return pageData, 10 * time.Minute
 }

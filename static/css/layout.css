@@ -368,6 +368,18 @@ span.validator-label {
   font-size: 0.65rem;
 }
 
+/* ENS name swapped in for an address (static/js/explorer.js applyEnsNames): cap the
+   displayed width so long names can't break table layouts; the full name + address
+   are shown in the tooltip on hover. */
+.ens-name {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 /* Highlight equal address links across rows on hover (set by explorer.js). */
 .el-data-table .addr-cell a,
 .itx-wrap .itx-addr a {

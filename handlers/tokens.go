@@ -124,6 +124,12 @@ func buildTokensPageData(ctx context.Context, pageIdx uint64, pageSize uint64, s
 		})
 	}
 
+	ensAddrs := make([][]byte, 0, len(pageData.Tokens))
+	for _, t := range pageData.Tokens {
+		ensAddrs = append(ensAddrs, t.Contract)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	// Pagination via the shared offset pager (preserves page size + search).
 	params := []models.UrlParam{{Key: "c", Value: strconv.FormatUint(pageSize, 10)}}
 	if search != "" {

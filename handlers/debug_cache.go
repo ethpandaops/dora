@@ -55,6 +55,7 @@ type DebugPageData struct {
 	Database      *DatabaseDebugData
 	System        *SystemDebugData
 	ExecIndexer   *ExecIndexerDebugData
+	EnsResolver   *services.EnsResolverStats
 }
 
 // FrontendCacheDebugData holds frontend cache statistics.
@@ -282,6 +283,9 @@ func buildDebugPageData() *DebugPageData {
 
 	// Execution indexer stats
 	data.ExecIndexer = buildExecIndexerDebugData()
+
+	// ENS resolver stats
+	data.EnsResolver = services.GlobalBeaconService.GetEnsResolver().GetDebugStats()
 
 	// System stats
 	data.System = buildSystemDebugData()

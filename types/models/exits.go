@@ -23,6 +23,8 @@ type ExitsPageData struct {
 
 	RecentExitRequests     []*ExitsPageDataRecentExitRequest `json:"recent_exit_requests"`
 	RecentExitRequestCount uint64                            `json:"recent_exit_request_count"`
+
+	EnsNameData
 }
 
 type ExitsPageDataRecentExit struct {

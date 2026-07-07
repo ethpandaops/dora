@@ -183,6 +183,11 @@ executionIndexer:
   detailsEnabled: true
   tracesEnabled: true
   detailsMaxSize: "100GB"
+ensResolver:
+  enabled: true
+  # no dedicated endpoints -> resolve against the devnet's own EL pool
+  registryAddresses:
+    - "0xf7CFC9E18166c1BBae0749373C5fC80CabCaDD25"
 txsig:
   cbtBaseUrl: "https://cbt-api-mainnet.analytics.production.platform.ethpandaops.io/api/v1/dim_function_signature"
 database:
