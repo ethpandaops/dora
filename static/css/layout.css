@@ -350,12 +350,6 @@ span.validator-label {
   );
 }
 
-/* fast confirmed (safe) blocks get a teal status pill instead of the default green */
-.badge.text-bg-success.slot-safe {
-  background-color: #20c997 !important;
-  color: #000 !important;
-}
-
 .text-monospace {
   font-family: var(--bs-font-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace) !important;
 }

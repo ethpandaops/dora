@@ -116,7 +116,7 @@
                             <div class="graph-layer graph-layer-{{ $tile }}"></div>
                           {{- end -}}
                           {{- if $graph.Block }}
-                            <div class="graph-layer graph-layer-block{{ if $slot.Safe }} graph-block-safe{{ end }}"{{ if $slot.Safe }} data-bs-toggle="tooltip" data-bs-placement="top" title="Safe: this block is fast confirmed (fast confirmation rule)"{{ end }}>
+                            <div class="graph-layer graph-layer-block">
                               <i class="fas fa-circle"></i>
                             </div>
                           {{ end -}}
@@ -137,7 +137,7 @@
                       {{ if eq $slot.Slot 0 }}
                         <span class="badge rounded-pill text-bg-info">Genesis</span>
                       {{ else if eq $slot.Status 1 }}
-                        <span class="badge rounded-pill text-bg-success {{ if $slot.Safe }}slot-safe {{ end }}{{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Proposed</span>
+                        <span class="badge rounded-pill text-bg-success {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Proposed</span>
                       {{ else if eq $slot.Status 2 }}
                         <span class="badge rounded-pill text-bg-info {{ if eq $slot.PayloadStatus 0 }}split-warning{{ else if eq $slot.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $slot.Status $slot.PayloadStatus }}">Orphaned</span>
                       {{ else if $slot.Scheduled }}

@@ -92,6 +92,7 @@ type SlotsFilteredPageDataSlot struct {
 	Scheduled               bool                  `json:"finalized"`
 	Status                  uint8                 `json:"status"`
 	PayloadStatus           uint8                 `json:"payload_status"`
+	Safe                    bool                  `json:"safe"`
 	Synchronized            bool                  `json:"synchronized"`
 	Proposer                uint64                `json:"proposer"`
 	ProposerName            string                `json:"proposer_name"`
