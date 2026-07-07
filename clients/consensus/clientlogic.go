@@ -130,8 +130,10 @@ func (client *Client) buildEventStreamMask() uint16 {
 		events |= rpc.StreamInclusionListEvent
 	}
 
-	// fast confirmation is an optional node feature, the subscription is dropped
-	// silently if the node doesn't support the topic
+	// fast confirmation is an optional node feature. nodes reject the whole
+	// subscription with a HTTP 400 for unknown topics, so the topic is requested
+	// via a separate SSE stream that silently gives up on rejection instead of
+	// being mixed into the main block/head/finalized stream
 	events |= rpc.StreamFastConfirmationEvent
 
 	return events
