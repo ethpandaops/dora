@@ -2590,6 +2590,9 @@ const docTemplate = `{
                     "type": "object",
                     "additionalProperties": true
                 },
+                "fcr_enabled": {
+                    "type": "boolean"
+                },
                 "head_root": {
                     "type": "string"
                 },
@@ -2618,6 +2621,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "peers_outbound": {
+                    "type": "integer"
+                },
+                "safe_root": {
+                    "type": "string"
+                },
+                "safe_slot": {
                     "type": "integer"
                 },
                 "status": {
