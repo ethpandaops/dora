@@ -28,6 +28,10 @@
   color: black;
 }
 
+.graph-container .graph-fork .graph-layer-block.graph-block-safe {
+  color: var(--bs-success, #198754);
+}
+
 .graph-container .graph-fork .graph-layer-vline {
   background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAAXNSR0IArs4c6QAAAAlwSFlzAAAOxAAADsQBlSsOGwAAAAd0SU1FB9wIHAYSMjc5iPMAAAAiSURBVDjLY2AgDvyHYoKAiYHKYNTAUQNHDRw1cNTAoWIgAMbwAiWGIjvFAAAAAElFTkSuQmCC");
 }

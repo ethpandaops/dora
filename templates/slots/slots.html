@@ -115,7 +115,7 @@
                             <div class="graph-layer graph-layer-{{ $tile }}"></div>
                           {{- end -}}
                           {{- if $graph.Block }}
-                            <div class="graph-layer graph-layer-block">
+                            <div class="graph-layer graph-layer-block{{ if $slot.Safe }} graph-block-safe{{ end }}"{{ if $slot.Safe }} data-bs-toggle="tooltip" data-bs-placement="top" title="Safe: this block is fast confirmed (fast confirmation rule)"{{ end }}>
                               <i class="fas fa-circle"></i>
                             </div>
                           {{ end -}}

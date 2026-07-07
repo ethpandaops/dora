@@ -28,7 +28,7 @@
                   {{ html "<!-- ko foreach: tiles -->" }}
                     <div data-bind="class: 'graph-layer graph-layer-'+$data"></div>
                   {{ html "<!-- /ko -->" }}
-                  <div class="graph-layer graph-layer-block" data-bind="if: block">
+                  <div class="graph-layer graph-layer-block" data-bind="if: block, css: {'graph-block-safe': $parent.safe}, attr: {title: $parent.safe ? 'Safe: this block is fast confirmed (fast confirmation rule)' : null}">
                     <i class="fas fa-circle"></i>
                   </div>
                 </div>
@@ -79,7 +79,7 @@
                           <div class="graph-layer graph-layer-{{ $tile }}"></div>
                         {{- end -}}
                         {{- if $graph.Block }}
-                          <div class="graph-layer graph-layer-block">
+                          <div class="graph-layer graph-layer-block{{ if $slot.Safe }} graph-block-safe{{ end }}"{{ if $slot.Safe }} title="Safe: this block is fast confirmed (fast confirmation rule)"{{ end }}>
                             <i class="fas fa-circle"></i>
                           </div>
                         {{ end -}}
