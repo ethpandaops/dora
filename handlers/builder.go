@@ -79,15 +79,14 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if builder == nil {
-			// Fall back to DB
+			// Fall back to DB by pubkey (primary key). This returns the exact builder identity for
+			// this pubkey even if it was superseded (its index reused by a later builder), so we must
+			// NOT reload by index here - that would return the current occupant instead of this one.
 			dbBuilder := db.GetBuilderByPubkey(r.Context(), builderPubKey)
 			if dbBuilder != nil {
 				builderIndex = dbBuilder.BuilderIndex
 				superseded = dbBuilder.Superseded
-				builder = services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(dbBuilder.BuilderIndex))
-				if builder == nil {
-					builder = beacon.UnwrapDbBuilder(dbBuilder)
-				}
+				builder = beacon.UnwrapDbBuilder(dbBuilder)
 			}
 		}
 	}
@@ -107,7 +106,7 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getBuilderPageData(builderIndex, superseded, tabView)
+		data.Data, pageError = getBuilderPageData(builder, builderIndex, superseded, tabView)
 	}
 	if data.Data == nil {
 		pageError = errors.New("builder not found")
@@ -126,11 +125,13 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getBuilderPageData(builderIndex uint64, superseded bool, tabView string) (*models.BuilderPageData, error) {
+func getBuilderPageData(builder *gloas.Builder, builderIndex uint64, superseded bool, tabView string) (*models.BuilderPageData, error) {
 	pageData := &models.BuilderPageData{}
-	pageCacheKey := fmt.Sprintf("builder:%v:%v", builderIndex, tabView)
+	// Cache by pubkey, not index: a reused index can point to different builder identities and each
+	// must have its own cached page (the old index-only key mixed superseded and current builders).
+	pageCacheKey := fmt.Sprintf("builder:0x%x:%v", builder.PublicKey[:], tabView)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildBuilderPageData(pageCall.CallCtx, builderIndex, superseded, tabView)
+		pageData, cacheTimeout := buildBuilderPageData(pageCall.CallCtx, builder, builderIndex, superseded, tabView)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -144,31 +145,43 @@ func getBuilderPageData(builderIndex uint64, superseded bool, tabView string) (*
 	return pageData, pageErr
 }
 
-func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded bool, tabView string) (*models.BuilderPageData, time.Duration) {
-	logrus.Debugf("builder page called: %v", builderIndex)
+func buildBuilderPageData(ctx context.Context, builder *gloas.Builder, builderIndex uint64, superseded bool, tabView string) (*models.BuilderPageData, time.Duration) {
+	logrus.Debugf("builder page called: index=%v pubkey=0x%x superseded=%v", builderIndex, builder.PublicKey[:], superseded)
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	currentEpoch := chainState.CurrentEpoch()
 
-	// Get builder data
-	builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
-	if builder == nil {
-		// Try from DB
-		dbBuilder := db.GetActiveBuilderByIndex(ctx, builderIndex)
-		if dbBuilder != nil {
-			builder = beacon.UnwrapDbBuilder(dbBuilder)
-			superseded = dbBuilder.Superseded
+	// Balances are indexed by the current occupant of an index, so only apply the live balance
+	// override when this builder still owns its index (not superseded).
+	if !superseded {
+		balances := services.GlobalBeaconService.GetBuilderBalances()
+		if int(builderIndex) < len(balances) {
+			builder.Balance = balances[builderIndex]
 		}
 	}
-	if builder == nil {
-		return nil, 0
-	}
 
-	// Override balance from the latest epoch state (builder cache doesn't track balance changes within epochs).
-	balances := services.GlobalBeaconService.GetBuilderBalances()
-	if int(builderIndex) < len(balances) {
-		builder.Balance = balances[builderIndex]
+	// Resolve this builder's tenure on the index (EIP-8282 index reuse). Index-keyed data (blocks,
+	// bids, withdrawals) is scoped to [tenureStartSlot, tenureEndSlot] so a reused index only shows
+	// the data produced while THIS builder owned it. Deposits/exits are keyed by pubkey and need no
+	// window. minSlot is inclusive; maxSlot is inclusive.
+	//
+	// Only a SUPERSEDED builder has a bounded tenure (its index was taken over by a later builder).
+	// The current occupant (not superseded) still owns the index up to now, so its tenure is
+	// open-ended - it must never get a maxSlot, otherwise its own recent blocks/bids/withdrawals get
+	// clipped off the top.
+	tenureMinSlot := uint64(builder.DepositEpoch) * specs.SlotsPerEpoch
+	var tenureMaxSlot *uint64
+	if superseded {
+		if endEpoch := services.GlobalBeaconService.GetBuilderTenureEndEpoch(ctx, gloas.BuilderIndex(builderIndex), builder.DepositEpoch); endEpoch != nil {
+			// the successor takes over at its own deposit epoch; this builder's last slot is just before it
+			successorStartSlot := uint64(*endEpoch) * specs.SlotsPerEpoch
+			lastSlot := uint64(0)
+			if successorStartSlot > 0 {
+				lastSlot = successorStartSlot - 1
+			}
+			tenureMaxSlot = &lastSlot
+		}
 	}
 
 	// Determine state
@@ -195,6 +208,14 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 		IsSuperseded:     superseded,
 		TabView:          tabView,
 		GloasIsActive:    specs.GloasForkEpoch != nil && uint64(currentEpoch) >= *specs.GloasForkEpoch,
+	}
+
+	// Canonical URL segment: superseded builders no longer own their index (it was reused), so they
+	// must be addressed by pubkey; the current occupant is addressed by index.
+	if superseded {
+		pageData.RouteKey = fmt.Sprintf("0x%x", builder.PublicKey[:])
+	} else {
+		pageData.RouteKey = fmt.Sprintf("%d", builderIndex)
 	}
 
 	// Deposit epoch
@@ -258,12 +279,12 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 	// Load tab-specific data
 	switch tabView {
 	case "blocks":
-		pageData.RecentBlocks = buildBuilderRecentBlocks(ctx, builderIndex, chainState)
+		pageData.RecentBlocks = buildBuilderRecentBlocks(ctx, builderIndex, tenureMinSlot, tenureMaxSlot, chainState)
 		if len(pageData.RecentBlocks) >= 20 {
 			pageData.HasMoreBlocks = true
 		}
 	case "bids":
-		pageData.RecentBids = buildBuilderRecentBids(ctx, builderIndex, chainState)
+		pageData.RecentBids = buildBuilderRecentBids(ctx, builderIndex, tenureMinSlot, tenureMaxSlot, chainState)
 	case "deposits":
 		pageData.RecentDeposits = buildBuilderRecentDeposits(ctx, builder.PublicKey[:], chainState)
 	case "withdrawals":
@@ -271,6 +292,8 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 		withdrawalFilter := &dbtypes.WithdrawalFilter{
 			MinIndex:     builderValidatorIndex,
 			MaxIndex:     builderValidatorIndex,
+			MinSlot:      &tenureMinSlot,
+			MaxSlot:      tenureMaxSlot,
 			WithOrphaned: 1,
 		}
 		dbWithdrawals, totalRows := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, 0, 10)
@@ -331,14 +354,35 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 		pageData.WithdrawalCount = uint64(len(pageData.Withdrawals))
 	}
 
+	ensAddrs := make([][]byte, 0, 1+len(pageData.RecentBlocks)+len(pageData.RecentBids)+len(pageData.RecentDeposits))
+	ensAddrs = append(ensAddrs, pageData.ExecutionAddress)
+	for _, block := range pageData.RecentBlocks {
+		ensAddrs = append(ensAddrs, block.FeeRecipient)
+	}
+	for _, bid := range pageData.RecentBids {
+		ensAddrs = append(ensAddrs, bid.FeeRecipient)
+	}
+	for _, deposit := range pageData.RecentDeposits {
+		ensAddrs = append(ensAddrs, deposit.DepositorAddress)
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	if pageData.ExitReasonTxDetails != nil {
+		ensAddrs = appendEnsHexAddrs(ensAddrs, pageData.ExitReasonTxDetails.TxOrigin, pageData.ExitReasonTxDetails.TxTarget)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	return pageData, 10 * time.Minute
 }
 
-func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBlock {
-	// Filter blocks by builder index using the DB filter
+func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, minSlot uint64, maxSlot *uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBlock {
+	// Filter blocks by builder index, scoped to this builder's tenure on the index (index reuse).
 	builderIndexInt64 := int64(builderIndex)
 	filter := &dbtypes.BlockFilter{
 		BuilderIndex: &builderIndexInt64,
+		MinSlot:      &minSlot,
+		MaxSlot:      maxSlot,
 		WithOrphaned: 1, // Include both canonical and orphaned
 		WithMissing:  0, // Exclude missing blocks
 	}
@@ -351,26 +395,13 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 		if assignedSlot.Block == nil {
 			continue
 		}
-		slot := assignedSlot.Block
 
-		// Only include blocks with actual payloads
-		if slot.PayloadStatus != dbtypes.PayloadStatusCanonical && slot.PayloadStatus != dbtypes.PayloadStatusOrphaned {
-			continue
-		}
-
-		if len(slot.EthBlockHash) > 0 {
-			validBlocks = append(validBlocks, slot)
-		}
+		validBlocks = append(validBlocks, assignedSlot.Block)
 	}
 
-	// Look up bids via the indexer's bid accessor (checks in-memory cache first, then DB).
-	// Bids are keyed by parent block root, so we look up per block and match by block hash + builder.
-	indexer := services.GlobalBeaconService.GetBeaconIndexer()
-
-	// Build result
 	blocks := make([]*models.BuilderPageDataBlock, 0, len(validBlocks))
 	for _, slot := range validBlocks {
-		block := &models.BuilderPageDataBlock{
+		blocks = append(blocks, &models.BuilderPageDataBlock{
 			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(slot.Slot))),
 			Slot:         slot.Slot,
 			Ts:           chainState.SlotToTime(phase0.Slot(slot.Slot)),
@@ -379,28 +410,17 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 			Status:       uint16(slot.PayloadStatus),
 			FeeRecipient: slot.EthFeeRecipient,
 			GasLimit:     slot.EthGasLimit,
-		}
-
-		// Look up bid by parent root and slot, then match by block hash and builder index
-		var parentRoot phase0.Root
-		copy(parentRoot[:], slot.ParentRoot)
-		bids := indexer.GetBlockBids(parentRoot, phase0.Slot(slot.Slot))
-		for _, bid := range bids {
-			if bid.BuilderIndex == builderIndexInt64 && fmt.Sprintf("%x", bid.BlockHash) == fmt.Sprintf("%x", slot.EthBlockHash) {
-				block.Value = bid.Value
-				block.ElPayment = bid.ElPayment
-				break
-			}
-		}
-
-		blocks = append(blocks, block)
+			Value:        slot.EthBidValue,
+		})
 	}
 
 	return blocks
 }
 
-func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBid {
-	bids, _ := db.GetBidsByBuilderIndex(ctx, builderIndex, 0, 20)
+func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, tenureMinSlot uint64, tenureMaxSlot *uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBid {
+	// Scope bids to this builder's tenure on the index so a reused index doesn't mix predecessors' bids.
+	// Route through the chainservice so recent (not-yet-flushed) cached bids are included alongside DB.
+	bids := services.GlobalBeaconService.GetBuilderBids(ctx, builderIndex, tenureMinSlot, tenureMaxSlot, 20)
 	if len(bids) == 0 {
 		return nil
 	}

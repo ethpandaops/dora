@@ -21,8 +21,8 @@
     "ts-loader": "^9.6.2",
     "typescript": "^6.0.3",
     "url-loader": "^4.1.1",
-    "webpack": "^5.108.1",
-    "webpack-cli": "^7.1.0",
+    "webpack": "^5.108.4",
+    "webpack-cli": "^7.2.1",
     "webpack-visualizer-plugin2": "^2.0.0"
   },
   "dependencies": {
@@ -36,7 +36,7 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.2.7",
     "react-select": "^5.10.2",
-    "viem": "^2.53.1",
+    "viem": "^2.54.5",
     "wagmi": "^2.19.5"
   },
   "scripts": {

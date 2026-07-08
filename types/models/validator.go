@@ -77,6 +77,8 @@ type ValidatorPageData struct {
 	Withdrawals                         []*ValidatorPageDataBeaconWithdrawal `json:"withdrawals"`
 	WithdrawalCount                     uint64                               `json:"withdrawal_count"`
 	AdditionalWithdrawalCount           uint64                               `json:"additional_withdrawal_count"`
+
+	EnsNameData
 }
 
 type ValidatorPageDataBlock struct {

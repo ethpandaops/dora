@@ -76,6 +76,26 @@
   $(document).ready(function() {
     var lastPopover = null;
 
+    // setTxDetailAddr renders an address in the callout, swapping it for its ENS name
+    // when one is known (the copy button still copies the raw address). The shared
+    // container is reused across opens, so stale ENS state is reset first.
+    function setTxDetailAddr(el, addr) {
+      if (!el) return;
+      // reset any ENS state left from a previous open (the container is reused)
+      var existing = bootstrap.Tooltip.getInstance(el);
+      if (existing) existing.dispose();
+      el.classList.remove('ens-name');
+      el.removeAttribute('data-bs-html');
+      el.removeAttribute('data-bs-toggle');
+      el.removeAttribute('data-bs-title');
+      el.removeAttribute('data-bs-original-title');
+      el.removeAttribute('title');
+      el.textContent = addr || '';
+      if (addr && window.explorer.applyEnsToNode) {
+        window.explorer.applyEnsToNode(el, addr);
+      }
+    }
+
     $(window).on('click', function(evt) {
       if($(evt.target).is('.tx-details-btn') > 0 || $(evt.target).closest('.tx-details-btn').length > 0) {
         var target = $(evt.target);
@@ -94,9 +114,9 @@
         var blockTimeAbsolute = new Date(txdetails.block_time * 1000).toISOString();
         container.find(".txdetails-time").text(blockTimeRelative);
         container.find(".txdetails-time-copy").attr("data-clipboard-text", blockTimeAbsolute);
-        container.find(".txdetails-txorigin").text(txdetails.tx_origin);
+        setTxDetailAddr(container.find(".txdetails-txorigin").get(0), txdetails.tx_origin);
         container.find(".txdetails-txorigin-copy").attr("data-clipboard-text", txdetails.tx_origin);
-        container.find(".txdetails-txtarget").text(txdetails.tx_target);
+        setTxDetailAddr(container.find(".txdetails-txtarget").get(0), txdetails.tx_target);
         container.find(".txdetails-txtarget-copy").attr("data-clipboard-text", txdetails.tx_target);
 
         var txDetailsContent = container.html();

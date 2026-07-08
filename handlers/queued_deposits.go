@@ -213,7 +213,7 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 		queueEntry := filteredQueue[i]
 
 		wdCreds := queueEntry.PendingDeposit.WithdrawalCredentials[:]
-		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
+		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0xB0
 
 		// EpochEstimate is the churn-based epoch for normal deposits and the validator's
 		// withdrawable epoch for postponed ones; 0 means unknown.
@@ -313,5 +313,14 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 	pageData.DepositsFrom = start + 1
 	pageData.DepositsTo = end
 	pageData.DepositCount = uint64(len(pageData.Deposits))
+
+	ensAddrs := make([][]byte, 0, len(pageData.Deposits)*2)
+	for _, deposit := range pageData.Deposits {
+		if deposit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, deposit.TransactionDetails.TxOrigin, deposit.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	return pageData, cacheTimeout
 }

@@ -169,6 +169,16 @@ func (sm *SnooperManager) RemoveClient(clientID uint16) {
 	delete(sm.clients, clientID)
 }
 
+// getClientInfo looks up a client under the read lock. The lookup happens on the
+// event-listener goroutines while AddClient/RemoveClient mutate the map, so it
+// must be synchronized.
+func (sm *SnooperManager) getClientInfo(clientID uint16) (*snooperClientInfo, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	clientInfo, exists := sm.clients[clientID]
+	return clientInfo, exists
+}
+
 // GetCache returns the execution time cache
 func (sm *SnooperManager) GetCache() *ExecutionTimeCache {
 	return sm.cache
@@ -192,8 +202,7 @@ func (sm *SnooperManager) HandleExecutionTimeEvent(event *ExecutionTimeEvent) {
 		"execution_time": event.ExecutionTime,
 	}).Debug("received execution time event")
 
-	// Get client type ID for the client
-	clientInfo, exists := sm.clients[event.ClientID]
+	clientInfo, exists := sm.getClientInfo(event.ClientID)
 	if !exists {
 		return
 	}

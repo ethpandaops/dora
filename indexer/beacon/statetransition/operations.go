@@ -92,7 +92,7 @@ func applyExecutionRequests(s *stateAccessor, requests *all.ExecutionRequests) {
 // The request is appended to the pending_deposits queue. Gloas (EIP-8282)
 // removed the builder branch entirely: builder deposits now arrive via the
 // dedicated builder deposit contract (processBuilderDepositRequest), so a
-// 0x03-credential deposit via the regular deposit contract is queued as an
+// 0xB0-credential deposit via the regular deposit contract is queued as an
 // ordinary validator deposit like any other.
 //
 // https://github.com/ethereum/consensus-specs/pull/5359

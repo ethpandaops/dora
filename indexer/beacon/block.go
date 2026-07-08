@@ -679,7 +679,20 @@ func (block *Block) GetDbBlock(indexer *Indexer, isCanonical bool) *dbtypes.Slot
 		epochStats = indexer.epochCache.getEpochStats(chainState.EpochOfSlot(block.Slot), dependentBlock.Root)
 	}
 
-	dbBlock := indexer.dbWriter.buildDbBlock(block, epochStats, nil)
+	// Resolve the Gloas builder-payment quorum weight live for canonical blocks so the value shows
+	// on lists/detail before the slot is written to the db by finalization/pruning/sync. Epoch votes
+	// are cached, so this is cheap on repeat lookups within an epoch.
+	var payment *builderPaymentInfo
+	if isCanonical && epochStats != nil {
+		epoch := chainState.EpochOfSlot(block.Slot)
+		if chainState.IsEip7732Enabled(epoch) {
+			epochVotes := epochStats.GetEpochVotes(indexer, nil)
+			base := indexer.dbWriter.resolveBuilderPaymentBase(epoch, epochStats)
+			payment = indexer.dbWriter.builderPaymentForSlot(block.Slot, epochVotes, base)
+		}
+	}
+
+	dbBlock := indexer.dbWriter.buildDbBlock(block, epochStats, nil, payment)
 	if dbBlock == nil {
 		return nil
 	}

@@ -12,11 +12,11 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
 )
 
-// builderWithdrawalPrefix is BUILDER_WITHDRAWAL_PREFIX (Gloas/EIP-8282): the 0x03
+// builderWithdrawalPrefix is BUILDER_WITHDRAWAL_PREFIX (Gloas/EIP-8282): the 0xB0
 // withdrawal-credential prefix that marks a deposit as a builder deposit.
-const builderWithdrawalPrefix byte = 0x03
+const builderWithdrawalPrefix byte = 0xB0
 
-// isBuilderWithdrawalCredential reports whether the credentials use the builder prefix (0x03).
+// isBuilderWithdrawalCredential reports whether the credentials use the builder prefix (0xB0).
 func isBuilderWithdrawalCredential(wc []byte) bool {
 	return len(wc) > 0 && wc[0] == builderWithdrawalPrefix
 }

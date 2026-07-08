@@ -28,6 +28,11 @@ type ChainState struct {
 	finalityMutex sync.RWMutex
 	finality      *v1.Finality
 
+	fastConfirmationMutex sync.RWMutex
+	fastConfirmedSlot     phase0.Slot
+	fastConfirmedRoot     phase0.Root
+	lastFastConfirmation  time.Time
+
 	checkpointDispatcher     utils.Dispatcher[*v1.Finality]
 	wallclockEpochDispatcher utils.Dispatcher[*ethwallclock.Epoch]
 	wallclockSlotDispatcher  utils.Dispatcher[*ethwallclock.Slot]
@@ -227,6 +232,32 @@ func (cs *ChainState) GetSpecs() *ChainSpec {
 
 func (cs *ChainState) GetGenesis() *v1.Genesis {
 	return cs.genesis
+}
+
+// setFastConfirmedBlock tracks the network-wide safe block as the highest fast confirmed
+// block reported by any client via the fast_confirmation event stream.
+func (cs *ChainState) setFastConfirmedBlock(slot phase0.Slot, root phase0.Root) {
+	cs.fastConfirmationMutex.Lock()
+	defer cs.fastConfirmationMutex.Unlock()
+
+	cs.lastFastConfirmation = time.Now()
+
+	if slot < cs.fastConfirmedSlot {
+		return
+	}
+
+	cs.fastConfirmedSlot = slot
+	cs.fastConfirmedRoot = root
+}
+
+// GetFastConfirmedBlock returns the network-wide safe block (highest fast confirmed block
+// across all clients) and the time of the last fast confirmation event. The returned time
+// is zero if no client ever reported a fast confirmation.
+func (cs *ChainState) GetFastConfirmedBlock() (phase0.Slot, phase0.Root, time.Time) {
+	cs.fastConfirmationMutex.RLock()
+	defer cs.fastConfirmationMutex.RUnlock()
+
+	return cs.fastConfirmedSlot, cs.fastConfirmedRoot, cs.lastFastConfirmation
 }
 
 func (cs *ChainState) GetFinalizedCheckpoint() (phase0.Epoch, phase0.Root) {

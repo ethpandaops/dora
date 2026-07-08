@@ -47,6 +47,9 @@ type Client struct {
 	justifiedEpoch                phase0.Epoch
 	finalizedRoot                 phase0.Root
 	finalizedEpoch                phase0.Epoch
+	fastConfirmedRoot             phase0.Root
+	fastConfirmedSlot             phase0.Slot
+	lastFastConfirmation          time.Time
 	lastFinalityUpdateEpoch       phase0.Epoch
 	lastMetadataUpdateEpoch       phase0.Epoch
 	lastMetadataUpdateTime        time.Time
@@ -57,6 +60,7 @@ type Client struct {
 	executionPayloadDispatcher    utils.Dispatcher[*v1.ExecutionPayloadAvailableEvent]
 	executionPayloadBidDispatcher utils.Dispatcher[*gloas.SignedExecutionPayloadBid]
 	inclusionListDispatcher       utils.Dispatcher[*v1.InclusionListEvent]
+	fastConfirmationDispatcher    utils.Dispatcher[*rpc.FastConfirmationEvent]
 
 	specWarnings []string // warnings from incomplete spec checks
 	specs        map[string]interface{}
@@ -115,6 +119,10 @@ func (client *Client) SubscribeInclusionListEvent(capacity int, blocking bool) *
 	return client.inclusionListDispatcher.Subscribe(capacity, blocking)
 }
 
+func (client *Client) SubscribeFastConfirmationEvent(capacity int, blocking bool) *utils.Subscription[*rpc.FastConfirmationEvent] {
+	return client.fastConfirmationDispatcher.Subscribe(capacity, blocking)
+}
+
 func (client *Client) GetPool() *Pool {
 	return client.pool
 }
@@ -171,6 +179,16 @@ func (client *Client) GetFinalityCheckpoint() (finalitedEpoch phase0.Epoch, fina
 	defer client.headMutex.RUnlock()
 
 	return client.finalizedEpoch, client.finalizedRoot, client.justifiedEpoch, client.justifiedRoot
+}
+
+// GetLastFastConfirmation returns the most recent fast confirmed (safe) block reported
+// by the node via the fast_confirmation event stream. The returned time is the time the
+// last fast confirmation event was received (zero if the node never sent one).
+func (client *Client) GetLastFastConfirmation() (phase0.Slot, phase0.Root, time.Time) {
+	client.headMutex.RLock()
+	defer client.headMutex.RUnlock()
+
+	return client.fastConfirmedSlot, client.fastConfirmedRoot, client.lastFastConfirmation
 }
 
 func (client *Client) GetStatus() ClientStatus {

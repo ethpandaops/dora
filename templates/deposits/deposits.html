@@ -94,6 +94,7 @@
 {{ end }}
 
 {{ define "lazyPage" }}
+  <script type="application/json" class="ens-names">{{ ensNamesJson . }}</script>
   {{ if eq .TabView "included" }}
     {{ template "includedDeposits" . }}
   {{ else if eq .TabView "transactions" }}

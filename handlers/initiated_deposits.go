@@ -182,7 +182,7 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 	}
 
 	for _, depositTx := range dbDepositTxs {
-		isBuilder := len(depositTx.WithdrawalCredentials) > 0 && depositTx.WithdrawalCredentials[0] == 0x03
+		isBuilder := len(depositTx.WithdrawalCredentials) > 0 && depositTx.WithdrawalCredentials[0] == 0xB0
 
 		depositTxData := &models.InitiatedDepositsPageDataDeposit{
 			Index:                 depositTx.Index,
@@ -255,6 +255,12 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 		pageData.Deposits = append(pageData.Deposits, depositTxData)
 	}
 	pageData.DepositCount = uint64(len(pageData.Deposits))
+
+	ensAddrs := make([][]byte, 0, len(pageData.Deposits))
+	for _, deposit := range pageData.Deposits {
+		ensAddrs = append(ensAddrs, deposit.Address)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 
 	if pageData.DepositCount > 0 {
 		pageData.FirstIndex = pageData.Deposits[0].Index

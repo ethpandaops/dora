@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -392,4 +393,31 @@ func handleTemplateError(w http.ResponseWriter, r *http.Request, fileIdentifier 
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
 	return err
+}
+
+// resolveEnsNames resolves the primary ENS names for the given execution addresses via
+// the ENS resolver service. It returns an address->name map (empty when the resolver is
+// disabled) and enqueues unresolved/stale addresses for asynchronous resolution.
+//
+// Handlers call this once per page build with all addresses shown on the page; the
+// result is stored on the page model (models.EnsNameData) and rendered client-side.
+func resolveEnsNames(ctx context.Context, addrs [][]byte) map[string]string {
+	ensResolver := services.GlobalBeaconService.GetEnsResolver()
+	if ensResolver == nil {
+		return nil
+	}
+	return ensResolver.ResolveNames(ctx, addrs)
+}
+
+// appendEnsHexAddrs appends the 20-byte form of 0x-hex address strings to dst, skipping
+// empty or invalid entries. Used to include addresses that page models carry as hex
+// strings (e.g. the TxOrigin/TxTarget in tx-detail callouts) in the ENS resolve set.
+func appendEnsHexAddrs(dst [][]byte, hexAddrs ...string) [][]byte {
+	for _, hexAddr := range hexAddrs {
+		if hexAddr == "" || !common.IsHexAddress(hexAddr) {
+			continue
+		}
+		dst = append(dst, common.HexToAddress(hexAddr).Bytes())
+	}
+	return dst
 }

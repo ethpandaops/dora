@@ -86,6 +86,8 @@ definitions:
       enr_decoded:
         additionalProperties: true
         type: object
+      fcr_enabled:
+        type: boolean
       head_root:
         type: string
       head_slot:
@@ -105,6 +107,10 @@ definitions:
       peers_inbound:
         type: integer
       peers_outbound:
+        type: integer
+      safe_root:
+        type: string
+      safe_slot:
         type: integer
       status:
         type: string
@@ -720,6 +726,49 @@ definitions:
         type: array
       count:
         type: integer
+    type: object
+  api.APIFastConfirmationClient:
+    properties:
+      fcr_enabled:
+        type: boolean
+      index:
+        type: integer
+      last_fast_confirmation:
+        type: string
+      name:
+        type: string
+      safe_root:
+        type: string
+      safe_slot:
+        type: integer
+      status:
+        type: string
+    type: object
+  api.APIFastConfirmationData:
+    properties:
+      client_count:
+        type: integer
+      clients:
+        items:
+          $ref: '#/definitions/api.APIFastConfirmationClient'
+        type: array
+      fcr_enabled:
+        type: boolean
+      last_fast_confirmation:
+        type: string
+      safe_epoch:
+        type: integer
+      safe_root:
+        type: string
+      safe_slot:
+        type: integer
+    type: object
+  api.APIFastConfirmationResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APIFastConfirmationData'
+      status:
+        type: string
     type: object
   api.APIMassNodeResult:
     properties:
@@ -2579,6 +2628,29 @@ paths:
               type: string
             type: object
       summary: Get consensus client head forks
+      tags:
+      - network
+  /v1/network/fast_confirmation:
+    get:
+      description: Returns the network-wide safe block derived from the fast confirmation
+        rule (fast_confirmation event stream), plus the per-client fast confirmation
+        status. Clients that don't support the fast confirmation rule are listed with
+        fcr_enabled=false.
+      operationId: getNetworkFastConfirmation
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIFastConfirmationResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get fast confirmation (safe block) status
       tags:
       - network
   /v1/network/forks:
