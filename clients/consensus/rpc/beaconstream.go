@@ -2,16 +2,20 @@ package rpc
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc/eventstream"
@@ -24,11 +28,63 @@ const (
 	StreamExecutionPayloadEvent    uint16 = 0x08
 	StreamExecutionPayloadBidEvent uint16 = 0x10
 	StreamInclusionListEvent       uint16 = 0x20
+	StreamFastConfirmationEvent    uint16 = 0x40
 )
 
 type BeaconStreamEvent struct {
 	Event uint16
 	Data  interface{}
+}
+
+// FastConfirmationEvent is the payload of the fast_confirmation event stream topic.
+// Slot/Block identify the most recent fast confirmed (safe) block, CurrentSlot is the
+// wall-clock slot at which the fast confirmation rule was executed (optional, added
+// by ethereum/beacon-APIs#616).
+type FastConfirmationEvent struct {
+	Slot        phase0.Slot
+	Block       phase0.Root
+	CurrentSlot phase0.Slot
+}
+
+func (e *FastConfirmationEvent) UnmarshalJSON(input []byte) error {
+	var data struct {
+		Slot        string `json:"slot"`
+		Block       string `json:"block"`
+		CurrentSlot string `json:"current_slot"`
+	}
+
+	if err := json.Unmarshal(input, &data); err != nil {
+		return err
+	}
+
+	slot, err := strconv.ParseUint(data.Slot, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid value for slot: %w", err)
+	}
+
+	e.Slot = phase0.Slot(slot)
+
+	block, err := hex.DecodeString(strings.TrimPrefix(data.Block, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid value for block: %w", err)
+	}
+
+	if len(block) != len(e.Block) {
+		return fmt.Errorf("incorrect length %d for block", len(block))
+	}
+
+	copy(e.Block[:], block)
+
+	if data.CurrentSlot != "" {
+		currentSlot, err := strconv.ParseUint(data.CurrentSlot, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid value for current_slot: %w", err)
+		}
+
+		e.CurrentSlot = phase0.Slot(currentSlot)
+	}
+
+	return nil
 }
 
 type BeaconStreamStatus struct {
@@ -78,7 +134,7 @@ func (bs *BeaconStream) startStream() {
 	}()
 
 	basicEvents := bs.events & (StreamBlockEvent | StreamHeadEvent | StreamFinalizedEvent)
-	basicStream := bs.subscribeStream(bs.client.endpoint, basicEvents)
+	basicStream := bs.subscribeStream(bs.client.endpoint, basicEvents, false)
 	if basicStream == nil {
 		return
 	}
@@ -125,6 +181,11 @@ func (bs *BeaconStream) ensureAncillaryStreams(events uint16) {
 
 	hezeEvents := events & StreamInclusionListEvent
 	bs.startAncillaryStream(hezeEvents)
+
+	// fast confirmation is an optional node feature (not fork gated), so it gets its
+	// own stream that silently gives up if the node rejects the topic
+	fastConfirmationEvents := events & StreamFastConfirmationEvent
+	bs.startAncillaryStream(fastConfirmationEvents)
 }
 
 func (bs *BeaconStream) startAncillaryStream(events uint16) {
@@ -144,7 +205,10 @@ func (bs *BeaconStream) startAncillaryStream(events uint16) {
 }
 
 func (bs *BeaconStream) runAncillaryStream(events uint16) {
-	stream := bs.subscribeStream(bs.client.endpoint, events)
+	// streams carrying only optional topics give up when the node rejects the topic
+	optional := events&StreamFastConfirmationEvent == events
+
+	stream := bs.subscribeStream(bs.client.endpoint, events, optional)
 	if stream == nil {
 		return
 	}
@@ -162,13 +226,31 @@ func (bs *BeaconStream) runAncillaryStream(events uint16) {
 				bs.processExecutionPayloadBidEvent(evt)
 			case "inclusion_list":
 				bs.processInclusionListEvent(evt)
+			case "fast_confirmation":
+				bs.processFastConfirmationEvent(evt)
 			}
 		case <-stream.Ready:
-		case <-stream.Errors:
+		case err := <-stream.Errors:
+			if optional && isUnsupportedTopicError(err) {
+				bs.logger.Debugf("optional beacon event stream not supported by node (events: 0x%x): %v", events, err)
+				return
+			}
+
 			time.Sleep(10 * time.Millisecond)
 			stream.RetryNow()
 		}
 	}
+}
+
+// isUnsupportedTopicError checks if the given stream error indicates that the node
+// rejected the event subscription (4xx response, eg. unsupported topics).
+func isUnsupportedTopicError(err error) bool {
+	var subErr eventstream.SubscriptionError
+	if errors.As(err, &subErr) {
+		return subErr.Code >= 400 && subErr.Code < 500
+	}
+
+	return false
 }
 
 // handleStreamError handles stream errors and forwards them to the ReadyChan.
@@ -190,7 +272,7 @@ func (bs *BeaconStream) handleStreamError(stream *eventstream.Stream, err error)
 	}
 }
 
-func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventstream.Stream {
+func (bs *BeaconStream) subscribeStream(endpoint string, events uint16, optional bool) *eventstream.Stream {
 	var topics strings.Builder
 
 	topicsCount := 0
@@ -255,6 +337,16 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 		topicsCount++
 	}
 
+	if events&StreamFastConfirmationEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "fast_confirmation")
+
+		topicsCount++
+	}
+
 	if topicsCount == 0 {
 		return nil
 	}
@@ -274,6 +366,11 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 		}
 
 		if err != nil {
+			if optional && isUnsupportedTopicError(err) {
+				bs.logger.Debugf("optional beacon event stream %v not supported by node: %v", getRedactedURL(streamURL), err)
+				return nil
+			}
+
 			bs.logger.Warnf("Error while subscribing beacon event stream %v: %v", getRedactedURL(streamURL), err)
 			select {
 			case <-bs.ctx.Done():
@@ -366,6 +463,21 @@ func (bs *BeaconStream) processExecutionPayloadBidEvent(evt eventstream.StreamEv
 
 	bs.EventChan <- &BeaconStreamEvent{
 		Event: StreamExecutionPayloadBidEvent,
+		Data:  &parsed,
+	}
+}
+
+func (bs *BeaconStream) processFastConfirmationEvent(evt eventstream.StreamEvent) {
+	var parsed FastConfirmationEvent
+
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		bs.logger.Warnf("beacon block stream failed to decode fast_confirmation event: %v", err)
+		return
+	}
+
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamFastConfirmationEvent,
 		Data:  &parsed,
 	}
 }

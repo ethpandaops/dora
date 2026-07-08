@@ -219,6 +219,9 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 	// Get slot assignments
 	firstEpoch := chainState.EpochOfSlot(phase0.Slot(firstSlot))
 
+	safeSlot, _, lastFastConfirmation := chainState.GetFastConfirmedBlock()
+	fcrEnabled := !lastFastConfirmation.IsZero()
+
 	// load blocks
 	pageData.Blocks = make([]*models.BlocksPageDataSlot, 0)
 	dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(ctx, firstSlot, uint32(pageSize), false, true)
@@ -271,6 +274,7 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 				Finalized:             finalized,
 				Status:                uint8(dbSlot.Status),
 				PayloadStatus:         uint8(payloadStatus),
+				Safe:                  fcrEnabled && dbSlot.Status == dbtypes.Canonical && slot <= uint64(safeSlot),
 				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Synchronized:          dbSlot.SyncParticipation != -1,
 				Proposer:              dbSlot.Proposer,

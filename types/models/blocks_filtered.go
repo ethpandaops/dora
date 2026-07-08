@@ -76,6 +76,7 @@ type BlocksFilteredPageDataBlock struct {
 	Ts                  time.Time `json:"ts"`
 	Status              uint8     `json:"status"`
 	PayloadStatus       uint8     `json:"payload_status"`
+	Safe                bool      `json:"safe"`
 	EthTransactionCount uint64    `json:"eth_transaction_count"`
 	BlobCount           uint64    `json:"blob_count"`
 	ElExtraData         []byte    `json:"el_extra_data"`

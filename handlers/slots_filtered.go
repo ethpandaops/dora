@@ -518,6 +518,9 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 		}
 	}
 
+	safeSlot, _, lastFastConfirmation := chainState.GetFastConfirmedBlock()
+	fcrEnabled := !lastFastConfirmation.IsZero()
+
 	haveMore := false
 	for idx, dbBlock := range dbBlocks {
 		if idx >= int(pageSize) {
@@ -568,6 +571,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 				payloadStatus = dbtypes.PayloadStatusCanonical
 			}
 			slotData.PayloadStatus = uint8(payloadStatus)
+			slotData.Safe = fcrEnabled && dbBlock.Block.Status == dbtypes.Canonical && slot <= safeSlot
 
 			if pageData.DisplayMevBlock && dbBlock.Block.EthBlockHash != nil {
 				if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbBlock.Block.EthBlockHash)]; exists {

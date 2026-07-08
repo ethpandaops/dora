@@ -278,6 +278,9 @@
                       {{- else }}
                         <span class="badge rounded-pill text-bg-dark {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bs-title="{{ formatSlotStatusTooltip $block.Status $block.PayloadStatus }}">Unknown</span>
                       {{- end }}
+                      {{- if $block.Safe }}
+                        <i class="fa-solid fa-shield-halved text-success" data-bs-toggle="tooltip" data-bs-placement="top" title="Safe: this block is fast confirmed (fast confirmation rule)"></i>
+                      {{- end }}
                     </td>
                     {{- end }}
                     {{- if $g.DisplayTime }}

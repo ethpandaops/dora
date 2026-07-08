@@ -418,6 +418,9 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 		}
 	}
 
+	safeSlot, _, lastFastConfirmation := chainState.GetFastConfirmedBlock()
+	fcrEnabled := !lastFastConfirmation.IsZero()
+
 	haveMore := false
 	for idx, dbBlock := range dbBlocks {
 		if idx >= int(pageSize) {
@@ -467,6 +470,7 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 			Ts:                  chainState.SlotToTime(slot),
 			Status:              uint8(dbBlock.Block.Status),
 			PayloadStatus:       uint8(payloadStatus),
+			Safe:                fcrEnabled && dbBlock.Block.Status == dbtypes.Canonical && slot <= safeSlot,
 			EthTransactionCount: dbBlock.Block.EthTransactionCount,
 			BlobCount:           dbBlock.Block.BlobCount,
 			ElExtraData:         dbBlock.Block.EthBlockExtra,

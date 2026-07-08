@@ -277,6 +277,15 @@
                     <a href="/clients/consensus?o=headslot-d" class="sort-link {{ if eq .Sorting "headslot-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
                   </div>
                 </th>
+                {{ if .ShowSafeSlotColumn }}
+                <th>
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent fast confirmed (safe) slot reported by the node via the fast confirmation rule">Safe Slot</span>
+                  <div class="col-sorting">
+                    <a href="/clients/consensus?o=safeslot" class="sort-link {{ if eq .Sorting "safeslot" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/consensus?o=safeslot-d" class="sort-link {{ if eq .Sorting "safeslot-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                {{ end }}
                 <th>
                   Head Root
                   <div class="col-sorting">
@@ -325,6 +334,16 @@
                       </span>
                     </td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
+                    {{ if $root.ShowSafeSlotColumn }}
+                    <td>
+                      {{ if $client.FcrEnabled }}
+                        <i class="fa-solid fa-shield-halved text-success" data-toggle="tooltip" data-placement="top" title="Fast confirmation rule enabled"></i>
+                        <a href="/slot/0x{{ printf "%x" $client.SafeRoot }}">{{ formatAddCommas $client.SafeSlot }}</a>
+                      {{ else }}
+                        <span class="text-muted" data-toggle="tooltip" data-placement="top" title="No fast confirmation events received from this node">-</span>
+                      {{ end }}
+                    </td>
+                    {{ end }}
                     <td class="text-monospace">
                       <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
                       <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
