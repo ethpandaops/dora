@@ -419,10 +419,10 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			}
 		} else {
 			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return balances[valA.Index] > balances[valB.Index]
+				return balanceAt(balances, valA.Index) > balanceAt(balances, valB.Index)
 			}
 			sort.Slice(dbIndexes, func(i, j int) bool {
-				return balances[dbIndexes[i]] > balances[dbIndexes[j]]
+				return balanceAt(balances, phase0.ValidatorIndex(dbIndexes[i])) > balanceAt(balances, phase0.ValidatorIndex(dbIndexes[j]))
 			})
 		}
 	case dbtypes.ValidatorOrderActivationEpochAsc:

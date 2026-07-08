@@ -510,6 +510,13 @@ func FormatEthBlockHashLink(blockHash []byte) template.HTML {
 	return template.HTML(caption)
 }
 
+// ensAddrHook returns the class + data-address attributes used by the client-side ENS
+// name swap (static/js/explorer.js). The address is emitted lowercased so JS lookups
+// against the page's ENS map are case-insensitive; href/clipboard stay raw hex.
+func ensAddrHook(fullAddr string) string {
+	return fmt.Sprintf(`class="ens-addr" data-address="%s"`, strings.ToLower(fullAddr))
+}
+
 func FormatEthAddressLink(address []byte) template.HTML {
 	if len(address) == 0 {
 		return template.HTML("")
@@ -521,20 +528,20 @@ func FormatEthAddressLink(address []byte) template.HTML {
 
 	// Use local link when execution indexer is enabled
 	if Config.ExecutionIndexer.Enabled {
-		return template.HTML(fmt.Sprintf(`<a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
-			fullAddr, fullAddr, shortAddr))
+		return template.HTML(fmt.Sprintf(`<a %s href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+			ensAddrHook(fullAddr), fullAddr, fullAddr, shortAddr))
 	}
 
 	// Fall back to external explorer link
 	if Config.Frontend.EthExplorerLink != "" {
 		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fullAddr)
 		if err == nil {
-			return template.HTML(fmt.Sprintf(`<a href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
-				link, fullAddr, shortAddr))
+			return template.HTML(fmt.Sprintf(`<a %s href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
+				ensAddrHook(fullAddr), link, fullAddr, shortAddr))
 		}
 	}
 
-	return template.HTML(fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`, fullAddr, shortAddr))
+	return template.HTML(fmt.Sprintf(`<span %s data-bs-toggle="tooltip" title="%s">%s</span>`, ensAddrHook(fullAddr), fullAddr, shortAddr))
 }
 
 func FormatEthTransactionLink(hash []byte, width uint64) template.HTML {
@@ -625,20 +632,20 @@ func FormatEthAddressShortLink(address []byte, isContract bool, byteCount ...int
 
 	// Use local link when execution indexer is enabled
 	if Config.ExecutionIndexer.Enabled {
-		result += fmt.Sprintf(`<a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
-			fullAddr, fullAddr, shortAddr)
+		result += fmt.Sprintf(`<a %s href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+			ensAddrHook(fullAddr), fullAddr, fullAddr, shortAddr)
 	} else if Config.Frontend.EthExplorerLink != "" {
 		// Fall back to external explorer link
 		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fullAddr)
 		if err == nil {
-			result += fmt.Sprintf(`<a href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
-				link, fullAddr, shortAddr)
+			result += fmt.Sprintf(`<a %s href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
+				ensAddrHook(fullAddr), link, fullAddr, shortAddr)
 		} else {
-			result += fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`, fullAddr, shortAddr)
+			result += fmt.Sprintf(`<span %s data-bs-toggle="tooltip" title="%s">%s</span>`, ensAddrHook(fullAddr), fullAddr, shortAddr)
 		}
 	} else {
 		// No link available
-		result += fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`, fullAddr, shortAddr)
+		result += fmt.Sprintf(`<span %s data-bs-toggle="tooltip" title="%s">%s</span>`, ensAddrHook(fullAddr), fullAddr, shortAddr)
 	}
 
 	return template.HTML(result)
@@ -790,14 +797,14 @@ func FormatEthAddressFullLink(address []byte) template.HTML {
 
 	// Use local link when execution indexer is enabled
 	if Config.ExecutionIndexer.Enabled {
-		return template.HTML(fmt.Sprintf(`<a href="/address/%s">%s</a>`, fullAddr, fullAddr))
+		return template.HTML(fmt.Sprintf(`<a %s href="/address/%s">%s</a>`, ensAddrHook(fullAddr), fullAddr, fullAddr))
 	}
 
 	// Fall back to external explorer link
 	if Config.Frontend.EthExplorerLink != "" {
 		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fullAddr)
 		if err == nil {
-			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, fullAddr))
+			return template.HTML(fmt.Sprintf(`<a %s href="%v">%v</a>`, ensAddrHook(fullAddr), link, fullAddr))
 		}
 	}
 
@@ -835,22 +842,22 @@ func FormatContractCreationLink(fromAddr []byte, nonce uint64) template.HTML {
 
 	// Use local link when execution indexer is enabled
 	if Config.ExecutionIndexer.Enabled {
-		return template.HTML(fmt.Sprintf(`%s<a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
-			icon, fullAddr, fullAddr, shortAddr))
+		return template.HTML(fmt.Sprintf(`%s<a %s href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+			icon, ensAddrHook(fullAddr), fullAddr, fullAddr, shortAddr))
 	}
 
 	// Fall back to external explorer link
 	if Config.Frontend.EthExplorerLink != "" {
 		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fullAddr)
 		if err == nil {
-			return template.HTML(fmt.Sprintf(`%s<a href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
-				icon, link, fullAddr, shortAddr))
+			return template.HTML(fmt.Sprintf(`%s<a %s href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
+				icon, ensAddrHook(fullAddr), link, fullAddr, shortAddr))
 		}
 	}
 
 	// No link available
-	return template.HTML(fmt.Sprintf(`%s<span data-bs-toggle="tooltip" title="%s">%s</span>`,
-		icon, fullAddr, shortAddr))
+	return template.HTML(fmt.Sprintf(`%s<span %s data-bs-toggle="tooltip" title="%s">%s</span>`,
+		icon, ensAddrHook(fullAddr), fullAddr, shortAddr))
 }
 
 func FormatValidator(index uint64, name string) template.HTML {

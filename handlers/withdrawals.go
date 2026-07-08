@@ -319,5 +319,14 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 		pageData.QueuedTabCount = uint64(len(pageData.QueuedWithdrawals))
 	}
 
+	ensAddrs := make([][]byte, 0, len(pageData.RecentWithdrawals)+len(pageData.BeaconWithdrawals))
+	for _, withdrawal := range pageData.RecentWithdrawals {
+		ensAddrs = append(ensAddrs, withdrawal.SourceAddr)
+	}
+	for _, withdrawal := range pageData.BeaconWithdrawals {
+		ensAddrs = append(ensAddrs, withdrawal.Address)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	return pageData, 1 * time.Minute
 }

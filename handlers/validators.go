@@ -334,6 +334,12 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 	pageData.FirstValidator = pageNumber * pageSize
 	pageData.LastValidator = pageData.FirstValidator + uint64(len(pageData.Validators))
 
+	ensAddrs := make([][]byte, 0, len(pageData.Validators))
+	for _, validator := range pageData.Validators {
+		ensAddrs = append(ensAddrs, validator.WithdrawAddress)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	// Populate UrlParams for page jump functionality
 	pageData.UrlParams = make([]models.UrlParam, 0)
 	for key, values := range filterArgs {

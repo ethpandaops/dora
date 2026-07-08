@@ -31,6 +31,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/beacon/statetransition"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types"
@@ -232,7 +233,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	}
 
 	if err != nil {
-		return nil, -1
+		// A by-hash lookup that errors has no slot to fall back to, so surface the
+		// not-found page. A by-number lookup must never 404 (it would break the
+		// prev/next header navigation when traversing slots by range) - fall through
+		// and render the slot as missed/unavailable instead.
+		if blockSlot < 0 {
+			return nil, -1
+		}
+		blockData = nil
 	}
 
 	var slot phase0.Slot
@@ -365,6 +373,33 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 				Name:    name,
 			})
 		}
+	}
+
+	if pageData.Block != nil {
+		block := pageData.Block
+		ensAddrs := make([][]byte, 0)
+		if block.ExecutionData != nil {
+			ensAddrs = append(ensAddrs, block.ExecutionData.FeeRecipient)
+		}
+		for _, tx := range block.Transactions {
+			ensAddrs = append(ensAddrs, tx.From, tx.To)
+		}
+		for _, wd := range block.Withdrawals {
+			ensAddrs = append(ensAddrs, wd.Address)
+		}
+		for _, change := range block.BLSChanges {
+			ensAddrs = append(ensAddrs, change.Address)
+		}
+		for _, req := range block.WithdrawalRequests {
+			ensAddrs = append(ensAddrs, req.Address)
+		}
+		for _, req := range block.ConsolidationRequests {
+			ensAddrs = append(ensAddrs, req.Address)
+		}
+		for _, req := range block.BuilderExitRequests {
+			ensAddrs = append(ensAddrs, req.SourceAddress)
+		}
+		pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 	}
 
 	return pageData, cacheTimeout
@@ -807,6 +842,45 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		executionPayload = body.ExecutionPayload
 	}
 
+	// Gloas payload vote quorum for this slot: same-slot attester balance vs the per-slot quorum
+	// base. Shown for every Gloas block; for builder-built blocks it also decides whether the
+	// builder's (delayed) payment settles. Resolved after the payload status above so a
+	// quorum-met-but-payload-not-included case can be explained. Base is recovered from weight/percent.
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+		var dbSlot *dbtypes.Slot
+		if cacheBlock := beaconIndexer.GetBlockByRoot(blockData.Root); cacheBlock != nil {
+			dbSlot = cacheBlock.GetDbBlock(beaconIndexer, !blockData.Orphaned)
+		} else {
+			dbSlot = db.GetSlotByRoot(ctx, blockData.Root[:])
+		}
+		if dbSlot != nil {
+			base := uint64(0)
+			if dbSlot.BuilderPaymentPercent > 0 {
+				base = uint64(float64(dbSlot.BuilderPaymentWeight) / float64(dbSlot.BuilderPaymentPercent) * 100)
+			}
+			// A bid at epoch N is settled at the N+1 epoch transition and swept out of the builder
+			// in epoch N+2. Bid value / payload status only apply to builder-built blocks.
+			settleEpoch := uint64(services.GlobalBeaconService.GetChainState().EpochOfSlot(blockData.Header.Message.Slot)) + 2
+			bidValue := uint64(0)
+			payloadNotIncluded := false
+			if pageData.PayloadHeader != nil {
+				bidValue = pageData.PayloadHeader.Value
+				payloadNotIncluded = pageData.PayloadHeader.PayloadStatus != uint16(dbtypes.PayloadStatusCanonical)
+			}
+			pageData.BuilderPayment = &models.SlotPageBuilderPayment{
+				Weight:             dbSlot.BuilderPaymentWeight,
+				Base:               base,
+				Percent:            float64(dbSlot.BuilderPaymentPercent),
+				Quorum:             statetransition.BuilderPaymentQuorumPercent,
+				MetQuorum:          float64(dbSlot.BuilderPaymentPercent) >= statetransition.BuilderPaymentQuorumPercent,
+				PayloadNotIncluded: payloadNotIncluded,
+				BidValue:           bidValue,
+				WithdrawalEpoch:    settleEpoch,
+			}
+		}
+	}
+
 	if executionPayload != nil {
 		pageData.ExecutionData = &models.SlotPageExecutionData{
 			ParentHash:   executionPayload.ParentHash[:],
@@ -883,11 +957,11 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			if elDataCount == len(pageData.Transactions) {
 				blockGas := executionPayload.GasUsed
 				pageData.ExecutionData.SumTxGasUsed = &sumTxGas
-				if blockGas >= sumTxGas {
+				if blockGas > sumTxGas {
 					delta := blockGas - sumTxGas
 					pageData.ExecutionData.BlockGasDelta = &delta
 					pageData.ExecutionData.BlockGasDeltaExcess = true
-				} else {
+				} else if sumTxGas > blockGas {
 					delta := sumTxGas - blockGas
 					pageData.ExecutionData.BlockGasDelta = &delta
 					pageData.ExecutionData.BlockGasDeltaExcess = false

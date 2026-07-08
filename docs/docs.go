@@ -959,6 +959,36 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/network/fast_confirmation": {
+            "get": {
+                "description": "Returns the network-wide safe block derived from the fast confirmation rule (fast_confirmation event stream), plus the per-client fast confirmation status. Clients that don't support the fast confirmation rule are listed with fcr_enabled=false.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "network"
+                ],
+                "summary": "Get fast confirmation (safe block) status",
+                "operationId": "getNetworkFastConfirmation",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIFastConfirmationResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/network/forks": {
             "get": {
                 "description": "Returns comprehensive information about past, current, and future network forks including consensus forks and BPO (Block Parameter Override) forks with fork digests",
@@ -2590,6 +2620,9 @@ const docTemplate = `{
                     "type": "object",
                     "additionalProperties": true
                 },
+                "fcr_enabled": {
+                    "type": "boolean"
+                },
                 "head_root": {
                     "type": "string"
                 },
@@ -2618,6 +2651,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "peers_outbound": {
+                    "type": "integer"
+                },
+                "safe_root": {
+                    "type": "string"
+                },
+                "safe_slot": {
                     "type": "integer"
                 },
                 "status": {
@@ -3555,6 +3594,72 @@ const docTemplate = `{
                 },
                 "count": {
                     "type": "integer"
+                }
+            }
+        },
+        "api.APIFastConfirmationClient": {
+            "type": "object",
+            "properties": {
+                "fcr_enabled": {
+                    "type": "boolean"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "last_fast_confirmation": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "safe_root": {
+                    "type": "string"
+                },
+                "safe_slot": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIFastConfirmationData": {
+            "type": "object",
+            "properties": {
+                "client_count": {
+                    "type": "integer"
+                },
+                "clients": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIFastConfirmationClient"
+                    }
+                },
+                "fcr_enabled": {
+                    "type": "boolean"
+                },
+                "last_fast_confirmation": {
+                    "type": "string"
+                },
+                "safe_epoch": {
+                    "type": "integer"
+                },
+                "safe_root": {
+                    "type": "string"
+                },
+                "safe_slot": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIFastConfirmationResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIFastConfirmationData"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },

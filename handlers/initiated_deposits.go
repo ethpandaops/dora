@@ -256,6 +256,12 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 	}
 	pageData.DepositCount = uint64(len(pageData.Deposits))
 
+	ensAddrs := make([][]byte, 0, len(pageData.Deposits))
+	for _, deposit := range pageData.Deposits {
+		ensAddrs = append(ensAddrs, deposit.Address)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	if pageData.DepositCount > 0 {
 		pageData.FirstIndex = pageData.Deposits[0].Index
 		pageData.LastIndex = pageData.Deposits[pageData.DepositCount-1].Index

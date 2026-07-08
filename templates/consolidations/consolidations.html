@@ -87,6 +87,7 @@
 {{ end }}
 
 {{ define "lazyPage" }}
+  <script type="application/json" class="ens-names">{{ ensNamesJson . }}</script>
   {{ if eq .TabView "recent" }}
     {{ template "recentConsolidations" . }}
   {{ else if eq .TabView "queue" }}

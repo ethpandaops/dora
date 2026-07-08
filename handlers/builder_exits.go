@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -155,27 +153,27 @@ func buildBuilderExitsPageData(ctx context.Context, pageIdx uint64, pageSize uin
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
-	// builderIdxOf returns the builder index recorded for an exit (CL request preferred, else the
-	// pending EL tx), if any.
-	builderIdxOf := func(exit *services.CombinedBuilderExit) *uint64 {
-		if exit.Request != nil && exit.Request.BuilderIndex != nil {
-			return exit.Request.BuilderIndex
+	// pubkeyOf returns the builder pubkey for an exit (CL request preferred, else the pending EL tx).
+	pubkeyOf := func(exit *services.CombinedBuilderExit) []byte {
+		if exit.Request != nil {
+			return exit.Request.PublicKey
 		}
-		if exit.Transaction != nil && exit.Transaction.BuilderIndex != nil {
-			return exit.Transaction.BuilderIndex
+		if exit.Transaction != nil {
+			return exit.Transaction.PublicKey
 		}
 		return nil
 	}
 
-	// collect the builder indexes to resolve so we can batch-load the builders and tell whether
-	// each pubkey still owns its (reusable) index or was superseded.
-	indexes := make([]gloas.BuilderIndex, 0, len(combined))
+	// Resolve builders by pubkey (their stable identity). The persisted builder_index on an exit is
+	// unreliable - it can be nil (never resolved when the index was reused) or point at an index now
+	// owned by someone else - so we attribute each exit to its builder via the pubkey instead.
+	pubkeys := make([][]byte, 0, len(combined))
 	for _, exit := range combined {
-		if idx := builderIdxOf(exit); idx != nil {
-			indexes = append(indexes, gloas.BuilderIndex(*idx))
+		if pk := pubkeyOf(exit); len(pk) == 48 {
+			pubkeys = append(pubkeys, pk)
 		}
 	}
-	builders := services.GlobalBeaconService.GetActiveBuildersByIndexes(ctx, indexes)
+	buildersByPubkey := services.GlobalBeaconService.GetBuildersByPubkeys(ctx, pubkeys)
 
 	for _, exit := range combined {
 		exitData := &models.BuilderExitsPageDataExit{}
@@ -196,12 +194,13 @@ func buildBuilderExitsPageData(ctx context.Context, pageIdx uint64, pageSize uin
 			exitData.BlockNumber = exit.Transaction.BlockNumber
 		}
 
-		if idx := builderIdxOf(exit); idx != nil {
-			if b := builders[gloas.BuilderIndex(*idx)]; b != nil && bytes.Equal(b.PublicKey[:], exitData.PublicKey) {
-				exitData.HasBuilderIndex = true
-				exitData.BuilderIndex = *idx
-			} else {
+		if bwi, ok := buildersByPubkey[string(exitData.PublicKey)]; ok {
+			if bwi.Superseded {
+				// this pubkey's index was reused by a later builder; link by pubkey instead
 				exitData.IsInactiveBuilder = true
+			} else {
+				exitData.HasBuilderIndex = true
+				exitData.BuilderIndex = uint64(bwi.Index)
 			}
 		}
 
@@ -222,6 +221,15 @@ func buildBuilderExitsPageData(ctx context.Context, pageIdx uint64, pageSize uin
 		pageData.Exits = append(pageData.Exits, exitData)
 	}
 	pageData.ExitCount = uint64(len(pageData.Exits))
+
+	ensAddrs := make([][]byte, 0, len(pageData.Exits))
+	for _, exit := range pageData.Exits {
+		ensAddrs = append(ensAddrs, exit.SourceAddress)
+		if exit.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, exit.TransactionDetails.TxOrigin, exit.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 
 	if pageData.ExitCount > 0 {
 		pageData.FirstIndex = pageData.Exits[0].SlotNumber

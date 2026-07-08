@@ -15,7 +15,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/utils"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
-	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -282,39 +281,28 @@ func buildNetworkOverviewData(ctx context.Context) (*APINetworkOverviewData, tim
 			ExitingValidatorCount:  exitQueueLength,
 		}
 
-		// Electra deposit queue
-		depositQueue := services.GlobalBeaconService.GetBeaconIndexer().GetLatestDepositQueue(nil)
-		if depositQueue != nil {
-			depositAmount := phase0.Gwei(0)
-			validatorCount := uint64(0)
+		// Electra deposit queue - reuse the shared indexed queue so the entering counts match
+		// the deposits page (TotalNew counts projected validators the raw queue does not).
+		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
+		queuedDeposits := services.GlobalBeaconService.GetIndexedDepositQueue(ctx, headBlock)
+		if queuedDeposits != nil {
+			queueStats.EnteringValidatorCount = queuedDeposits.TotalNew
+			queueStats.EnteringEtherAmount = uint64(queuedDeposits.TotalGwei)
 
-			newValidators := map[phase0.BLSPubKey]interface{}{}
-			for _, deposit := range depositQueue {
-				depositAmount += deposit.Amount
-				_, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(deposit.Pubkey)
-				if !found {
-					_, isNew := newValidators[deposit.Pubkey]
-					if !isNew {
-						newValidators[deposit.Pubkey] = nil
-						validatorCount++
-					}
+			// QueueEstimation is the epoch the queue is fully processed; 0 for an empty or
+			// all-postponed queue, in which case the estimate is left at zero.
+			if queuedDeposits.QueueEstimation > 0 {
+				if depositTime := time.Until(chainState.EpochToTime(queuedDeposits.QueueEstimation)); depositTime > 0 {
+					queueStats.DepositEstimatedTimeToProcess = uint64(depositTime.Seconds())
 				}
 			}
-
-			queueStats.EnteringValidatorCount += validatorCount
-			queueStats.EnteringEtherAmount = uint64(depositAmount)
 
 			if validatorStats.TotalEligibleEther > 0 {
 				etherChurnPerEpoch := chainState.GetActivationExitChurnLimit(validatorStats.TotalEligibleEther)
 				queueStats.EtherChurnPerDay = etherChurnPerEpoch * 225 // ~225 epochs per day
 
 				if queueStats.EtherChurnPerDay > 0 {
-					// Calculate deposit time in seconds
-					depositDays := float64(depositAmount) / float64(queueStats.EtherChurnPerDay)
-					queueStats.DepositEstimatedTimeToProcess = uint64(depositDays * 24 * 60 * 60)
-
-					// Calculate exit time in seconds
-					// Assuming each validator has the average balance
+					// Calculate exit time in seconds, assuming each validator has the average balance
 					exitEtherAmount := queueStats.ExitingValidatorCount * validatorStats.AverageBalance
 					exitDays := float64(exitEtherAmount) / float64(queueStats.EtherChurnPerDay)
 					queueStats.ExitEstimatedTimeToProcess = uint64(exitDays * 24 * 60 * 60)

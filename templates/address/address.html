@@ -1,7 +1,7 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-wallet mx-2"></i> Address {{ formatEthAddressFull .Address }}</h1>
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-wallet mx-2"></i> Address {{ formatEthAddressFull .Address }}{{ if .AddressEnsName }} <span class="badge rounded-pill text-bg-primary align-middle ens-name" data-bs-toggle="tooltip" title="{{ .AddressEnsName }}"><i class="fa fa-tag me-1"></i>{{ .AddressEnsName }}</span>{{ end }}</h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
@@ -21,6 +21,15 @@
                 <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .Address }}"></i>
               </div>
             </div>
+            {{ if .AddressEnsName }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Primary ENS name">ENS Name:</span></div>
+              <div class="col-md-9 text-monospace">
+                {{ .AddressEnsName }}
+                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .AddressEnsName }}"></i>
+              </div>
+            </div>
+            {{ end }}
             {{ if .IsContract }}
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Type of address">Type:</span></div>
@@ -195,6 +204,7 @@
   </div>
 {{ end }}
 {{ define "lazyPage" }}
+  <script type="application/json" class="ens-names">{{ ensNamesJson . }}</script>
   {{ if eq .TabView "transactions" }}
     {{ template "transactions" . }}
   {{ else if eq .TabView "contract" }}

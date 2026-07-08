@@ -32,6 +32,8 @@ type BuilderExitsPageData struct {
 	LastPageLink  string `json:"last_page_link"`
 
 	UrlParams []UrlParam `json:"url_params"`
+
+	EnsNameData
 }
 
 type BuilderExitsPageDataExit struct {

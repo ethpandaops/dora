@@ -24,6 +24,9 @@ type APIConsensusClientNodeInfo struct {
 	ENRDecoded    map[string]interface{}      `json:"enr_decoded,omitempty"`
 	HeadSlot      uint64                      `json:"head_slot"`
 	HeadRoot      string                      `json:"head_root"`
+	FcrEnabled    bool                        `json:"fcr_enabled"`
+	SafeSlot      uint64                      `json:"safe_slot,omitempty"`
+	SafeRoot      string                      `json:"safe_root,omitempty"`
 	Status        string                      `json:"status"`
 	PeerCount     uint32                      `json:"peer_count"`
 	PeersInbound  uint32                      `json:"peers_inbound"`
@@ -113,6 +116,13 @@ func getConsensusClientNodeInfo() ([]APIConsensusClientNodeInfo, error) {
 		if headSlot, headRoot := client.GetLastHead(); headSlot > 0 {
 			clientInfo.HeadSlot = uint64(headSlot)
 			clientInfo.HeadRoot = fmt.Sprintf("%x", headRoot)
+		}
+
+		// Get fast confirmation (safe block) information
+		if safeSlot, safeRoot, lastFastConfirmation := client.GetLastFastConfirmation(); !lastFastConfirmation.IsZero() {
+			clientInfo.FcrEnabled = true
+			clientInfo.SafeSlot = uint64(safeSlot)
+			clientInfo.SafeRoot = fmt.Sprintf("%x", safeRoot)
 		}
 
 		// Get peer information

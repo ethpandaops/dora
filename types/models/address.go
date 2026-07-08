@@ -7,6 +7,7 @@ import (
 // AddressPageData is a struct to hold info for the address page
 type AddressPageData struct {
 	Address            []byte `json:"address"`
+	AddressEnsName     string `json:"address_ens_name"` // resolved primary ENS name for this address (empty if none)
 	AccountID          uint64 `json:"account_id"`
 	IsContract         bool   `json:"is_contract"`
 	DataRange          *ElDataRangeInfo
@@ -72,6 +73,8 @@ type AddressPageData struct {
 	BlockFees  []*AddressPageDataBlockFee `json:"block_fees"`
 	BfPageSize uint64                     `json:"bf_page_size"`
 	BfPager    *PagerData                 `json:"bf_pager"`
+
+	EnsNameData
 }
 
 // AddressPageDataTokenBalance represents a token balance in the sidebar
