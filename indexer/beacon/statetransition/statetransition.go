@@ -70,6 +70,12 @@ func (st *StateTransition) ApplyBlockWithInfo(state *all.BeaconState, block *all
 	return st.applyBlock(state, block, parentStateRoot, info)
 }
 
+// HashTreeRoot computes the hash tree root of the state.
+func (st *StateTransition) HashTreeRoot(state *all.BeaconState) (phase0.Root, error) {
+	r, err := st.dynSsz.HashTreeRoot(state)
+	return phase0.Root(r), err
+}
+
 // PrepareEpochPreState advances a post-block state to the pre-state of the target epoch.
 func (st *StateTransition) PrepareEpochPreState(state *all.BeaconState, epoch phase0.Epoch, info *TransitionInfo) error {
 	if state.Version < spec.DataVersionFulu {

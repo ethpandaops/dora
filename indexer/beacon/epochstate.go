@@ -409,9 +409,15 @@ func (s *epochState) tryReplayFromParentState(
 	// and the trailing epoch transition.
 	st := statetransition.NewStateTransition(specs, client.indexer.dynSsz)
 
-	// prevStateRoot is the verified post-block HTR from the previous iteration —
-	// the same value as the next block's pre-state HTR — passed as a hint to
-	// skip the expensive HTR computation in the first process_slot.
+	// prevStateRoot is the pre-state HTR hint for the next block's first
+	// process_slot. Each canonical block already carries its own post-state root
+	// (block.state_root), so we feed that forward as the next block's hint
+	// instead of recomputing a full HTR after every block. Any incorrect
+	// intermediate root (STF divergence) propagates into the cached
+	// state_roots/block_roots and therefore changes the final root, so a single
+	// end-of-epoch verification is sufficient — a mismatch triggers the same
+	// API fallback as before. This turns N per-block HTRs (each hundreds of ms
+	// on mainnet) into one.
 	var prevStateRoot phase0.Root
 
 	replayStart := time.Now()
@@ -427,25 +433,27 @@ func (s *epochState) tryReplayFromParentState(
 			client.logger.Warnf("replay: ApplyBlock failed at slot %v: %v", blk.Slot, err)
 			return nil
 		}
-
-		// Verify post-block state root matches the block header. In Gloas, block
-		// processing now includes processing the parent payload's requests via
-		// block.body.parent_execution_requests, so the post-block HTR already
-		// reflects everything — no separate payload application step.
-		expectedStateRoot := beaconBlock.Message.StateRoot
-		gotRootBytes, htrErr := client.indexer.dynSsz.HashTreeRoot(parentState)
-		gotStateRoot := phase0.Root(gotRootBytes)
-		if htrErr != nil {
-			client.logger.Warnf("replay: HTR failed at slot %v: %v", blk.Slot, htrErr)
-			return nil
-		}
-		if gotStateRoot != expectedStateRoot {
-			client.logger.Warnf("replay: state root mismatch at slot %v (got %v, expected %v), falling back to API",
-				blk.Slot, gotStateRoot.String(), expectedStateRoot.String())
-			return nil
-		}
-		prevStateRoot = gotStateRoot
 		blockApplyTotal += time.Since(blockStart)
+
+		// Trust the block's stated post-state root as the next block's hint;
+		// verified collectively by the single HTR after the loop. After the last
+		// iteration this holds the final block's stated root.
+		prevStateRoot = beaconBlock.Message.StateRoot
+	}
+
+	// Single end-of-epoch verification: the post-state of the last replayed block
+	// must hash to that block's stated state root (held in prevStateRoot). In
+	// Gloas, block processing already includes the parent payload's requests, so
+	// the post-block HTR reflects everything.
+	gotRootBytes, htrErr := client.indexer.dynSsz.HashTreeRoot(parentState)
+	if htrErr != nil {
+		client.logger.Warnf("replay: HTR failed for epoch %v: %v", parentEpoch, htrErr)
+		return nil
+	}
+	if phase0.Root(gotRootBytes) != prevStateRoot {
+		client.logger.Warnf("replay: state root mismatch for epoch %v (got %v, expected %v), falling back to API",
+			parentEpoch, phase0.Root(gotRootBytes).String(), prevStateRoot.String())
+		return nil
 	}
 	blockReplayDur := time.Since(replayStart)
 
