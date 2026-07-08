@@ -398,6 +398,7 @@
   </div>
 {{ end }}
 {{ define "lazyPage" }}
+  <script type="application/json" class="ens-names">{{ ensNamesJson . }}</script>
   {{ if eq .TabView "events" }}
     {{ template "events" . }}
   {{ else if eq .TabView "statechanges" }}

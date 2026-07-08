@@ -174,17 +174,20 @@ func buildTransactionPageData(ctx context.Context, txHash []byte, tabView string
 		if time.Since(blockTime) > 5*time.Minute {
 			cacheTimeout = 15 * time.Minute
 		}
+		setTransactionEnsNames(ctx, pageData)
 		return pageData, cacheTimeout
 	}
 
 	// Not in DB - reconstruct from blockdb (relational row pruned but still
 	// within the longer blockdb/details retention).
 	if buildTransactionPageDataFromBlockdb(ctx, pageData, txHash, chainState) {
+		setTransactionEnsNames(ctx, pageData)
 		return pageData, 15 * time.Minute
 	}
 
 	// Not in DB or blockdb - try to fetch from EL client
 	if buildTransactionPageDataFromEL(ctx, pageData, txHash, chainState) {
+		setTransactionEnsNames(ctx, pageData)
 		return pageData, 30 * time.Minute
 	}
 
@@ -192,6 +195,34 @@ func buildTransactionPageData(ctx context.Context, txHash []byte, tabView string
 	pageData.TxNotFound = true
 	pageData.ViewMode = models.TxViewModeNone
 	return pageData, 1 * time.Minute
+}
+
+// setTransactionEnsNames collects every execution address shown on the transaction
+// detail page (main from/to plus the events, token-transfer, internal-tx, access-list,
+// state-change and authorization sub-lists of the active tab) and resolves their ENS
+// names once for client-side display.
+func setTransactionEnsNames(ctx context.Context, pageData *models.TransactionPageData) {
+	ensAddrs := make([][]byte, 0, 8)
+	ensAddrs = append(ensAddrs, pageData.FromAddr, pageData.ToAddr)
+	for _, event := range pageData.Events {
+		ensAddrs = append(ensAddrs, event.SourceAddr, event.EthTransferFrom, event.EthTransferTo)
+	}
+	for _, transfer := range pageData.TokenTransfers {
+		ensAddrs = append(ensAddrs, transfer.Contract, transfer.FromAddr, transfer.ToAddr)
+	}
+	for _, itx := range pageData.InternalTxs {
+		ensAddrs = append(ensAddrs, itx.FromAddr, itx.ToAddr)
+	}
+	for _, entry := range pageData.AccessListEntries {
+		ensAddrs = append(ensAddrs, entry.Address)
+	}
+	for _, change := range pageData.StateChanges {
+		ensAddrs = append(ensAddrs, change.Address)
+	}
+	for _, auth := range pageData.Authorizations {
+		ensAddrs = append(ensAddrs, auth.AuthorityAddr, auth.DelegateAddr)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 }
 
 // buildTransactionPageDataFromDB builds page data from database entries.

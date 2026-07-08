@@ -131,9 +131,9 @@ func IsProjectedValidator(v *phase0.Validator) bool {
 }
 
 // isBuilderWithdrawalCredential reports whether the credentials use the Gloas
-// builder prefix (0x03).
+// builder prefix (0xB0).
 func isBuilderWithdrawalCredential(wc []byte) bool {
-	return len(wc) > 0 && wc[0] == 0x03
+	return len(wc) > 0 && wc[0] == 0xB0
 }
 
 // depositProcessingEstimator estimates the epoch at which each pending deposit is
@@ -164,7 +164,7 @@ func newDepositProcessingEstimator(currentEpoch phase0.Epoch, depositBalanceToCo
 }
 
 // next returns the estimated processing epoch for a deposit of the given amount and
-// advances the estimator. onboarded is true when the deposit is a builder (0x03) that
+// advances the estimator. onboarded is true when the deposit is a builder (0xB0) that
 // reaches the Gloas fork unprocessed: at the fork such deposits are onboarded as
 // builders (onboard_builders_from_pending_deposits), removed from the queue, and never
 // become validators — so they consume no further deposit churn, which lets the normal

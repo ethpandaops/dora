@@ -83,51 +83,65 @@
           <div class="col-md-9">{{ .EthTransactionCount }} / {{ .BlobCount }}</div>
         </div>
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-3">Correct Target Votes:</div>
+          <div class="col-md-3">Target Votes:</div>
           <div class="col-md-9">
             <div>
               {{ formatEthAddCommasFromGwei .TargetVoted }} ETH of
-              {{ formatEthAddCommasFromGwei .EligibleEther }} ETH
+              {{ formatEthAddCommasFromGwei .EligibleEther }} ETH count for finality
               <small class="text-muted ml-1">({{ formatFloat .TargetVoteParticipation 2 }}%)</small>
+              {{ if gt .TargetVotedSlashed 0 }}
+              <small class="text-warning ml-1">+ {{ formatEthAddCommasFromGwei .TargetVotedSlashed }} ETH slashed ({{ formatFloat .TargetVoteSlashedParticipation 2 }}%) ignored</small>
+              {{ end }}
             </div>
-            <div class="progress" style="height: 5px; width: 250px;">
-              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .TargetVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat .TargetVoteParticipation 2 }}" aria-valuemin="0" aria-valuemax="100"></div>
+            <div class="position-relative" style="max-width: 520px;">
+              <div class="progress" style="height: 18px;">
+                <div class="progress-bar bg-success" role="progressbar" style="width: {{ formatFloat .TargetVoteParticipation 2 }}%;" title="Voted correctly: {{ formatFloat .TargetVoteParticipation 2 }}%"></div>
+                <div class="progress-bar progress-bar-striped text-dark" role="progressbar" style="width: {{ formatFloat .TargetVoteSlashedParticipation 2 }}%; background-color: #fd7e14;" title="Slashed, ignored for finality: {{ formatFloat .TargetVoteSlashedParticipation 2 }}%"></div>
+                <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .TargetVoteWrongParticipation 2 }}%; background-color: var(--vote-wrong-color);" title="Attested but wrong/no target: {{ formatFloat .TargetVoteWrongParticipation 2 }}%"></div>
+              </div>
+              <div class="position-absolute" style="top: -3px; bottom: -3px; left: {{ formatFloat .FinalityThreshold 4 }}%; width: 2px; background-color: #dc3545;" title="Finality threshold (66.7%)"></div>
             </div>
+            {{ if lt .TargetVoteParticipation .FinalityThreshold }}
+            <div class="mt-1"><small class="text-danger">Below the 66.7% finality threshold &rarr; this epoch cannot be justified.</small></div>
+            {{ end }}
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-3">Correct Head Votes:</div>
+          <div class="col-md-3">Head Votes:</div>
           <div class="col-md-9">
             <div>
               {{ formatEthAddCommasFromGwei .HeadVoted }} ETH of
               {{ formatEthAddCommasFromGwei .EligibleEther }} ETH
               <small class="text-muted ml-1">({{ formatFloat .HeadVoteParticipation 2 }}%)</small>
             </div>
-            <div class="progress" style="height: 5px; width: 250px;">
-              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .HeadVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat .HeadVoteParticipation 2 }}" aria-valuemin="0" aria-valuemax="100"></div>
-            </div>
-          </div>
-        </div>
-        <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-3">Total Votes:</div>
-          <div class="col-md-9">
-            <div>
-              {{ formatEthAddCommasFromGwei .TotalVoted }} ETH of
-              {{ formatEthAddCommasFromGwei .EligibleEther }} ETH
-              <small class="text-muted ml-1">({{ formatFloat .TotalVoteParticipation 2 }}%)</small>
-            </div>
-            <div class="progress" style="height: 5px; width: 250px;">
-              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .TotalVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat .TotalVoteParticipation 2 }}" aria-valuemin="0" aria-valuemax="100"></div>
+            <div class="progress" style="height: 18px; max-width: 520px;">
+              <div class="progress-bar bg-success" role="progressbar" style="width: {{ formatFloat .HeadVoteParticipation 2 }}%;" title="Voted correctly: {{ formatFloat .HeadVoteParticipation 2 }}%"></div>
+              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .HeadVoteWrongParticipation 2 }}%; background-color: var(--vote-wrong-color);" title="Attested but wrong head: {{ formatFloat .HeadVoteWrongParticipation 2 }}%"></div>
             </div>
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3">Sync Participation:</div>
           <div class="col-md-9">
-            <div>{{ formatFloat .SyncParticipation 2 }} % (only counting proposed blocks)</div>
-            <div class="progress" style="height: 5px; width: 250px;">
-              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .SyncParticipation 2 }}%;" aria-valuenow="{{ formatFloat .SyncParticipation 2 }}" aria-valuemin="0" aria-valuemax="100"></div>
+            <div>
+              {{ formatFloat .SyncParticipation 2 }} %
+              <small class="text-muted ml-1">(only counting proposed blocks)</small>
             </div>
+            <div class="progress" style="height: 18px; max-width: 520px;">
+              <div class="progress-bar bg-success" role="progressbar" style="width: {{ formatFloat .SyncParticipation 2 }}%;" title="Voted correctly: {{ formatFloat .SyncParticipation 2 }}%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"></div>
+          <div class="col-md-9">
+            <small class="text-muted">
+              <span class="badge bg-success">&nbsp;</span> voted correctly &nbsp;
+              {{ if gt .TargetVotedSlashed 0 }}<span class="badge progress-bar-striped text-dark" style="background-color: #fd7e14;">&nbsp;</span> slashed (ignored) &nbsp;{{ end }}
+              <span class="badge" style="background-color: var(--vote-wrong-color);">&nbsp;</span> voted, wrong target/head &nbsp;
+              <span class="badge border" style="background-color: var(--bs-secondary-bg);">&nbsp;</span> missing / not voting &nbsp;
+              <span style="color: #dc3545;">&#124;</span> 66.7% finality threshold
+            </small>
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
@@ -223,4 +237,10 @@
 {{ define "js" }}
 {{ end }}
 {{ define "css" }}
+<style>
+  /* "voted, wrong target/head" bar segment: lighter grey in light mode, the darker
+     legacy grey in dark mode (where the light grey washes out against the dark track). */
+  :root { --vote-wrong-color: #adb5bd; }
+  [data-bs-theme="dark"] { --vote-wrong-color: #6c757d; }
+</style>
 {{ end }}

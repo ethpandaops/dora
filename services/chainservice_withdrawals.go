@@ -459,6 +459,15 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 	cachedMatches := make([]*dbtypes.Withdrawal, 0)
 	for slotIdx := int64(currentSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
 		slot := uint64(slotIdx)
+		// Apply the slot window here too: the cache path must honor the same filter fields as the
+		// DB query, otherwise recent/unfinalized withdrawals ignore MinSlot/MaxSlot. Slots descend,
+		// so once we drop below MinSlot every remaining slot is also below it.
+		if filter.MaxSlot != nil && slot > *filter.MaxSlot {
+			continue
+		}
+		if filter.MinSlot != nil && slot < *filter.MinSlot {
+			break
+		}
 		blocks := bs.beaconIndexer.GetBlocksBySlot(phase0.Slot(slot))
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {

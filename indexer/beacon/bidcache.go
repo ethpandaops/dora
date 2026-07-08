@@ -134,6 +134,30 @@ func (cache *blockBidCache) GetBidsForBlockRoot(blockRoot phase0.Root, slot phas
 	return result
 }
 
+// GetBidsByBuilderIndex returns all cached bids for a builder index within the [minSlot, maxSlot]
+// slot window (maxSlot nil = no upper bound). Recent bids live only in this cache until they are
+// flushed to the DB, so callers must merge these with the DB results to get a complete picture.
+func (cache *blockBidCache) GetBidsByBuilderIndex(builderIndex int64, minSlot uint64, maxSlot *uint64) []*dbtypes.BlockBid {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	result := make([]*dbtypes.BlockBid, 0)
+	for key, bid := range cache.bids {
+		if key.BuilderIndex != builderIndex {
+			continue
+		}
+		if bid.Slot < minSlot {
+			continue
+		}
+		if maxSlot != nil && bid.Slot > *maxSlot {
+			continue
+		}
+		result = append(result, bid)
+	}
+
+	return result
+}
+
 // checkAndFlush checks if the cache needs to be flushed and performs the flush if necessary.
 // This should be called periodically (e.g., on each new block).
 func (cache *blockBidCache) checkAndFlush() error {

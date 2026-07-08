@@ -308,8 +308,8 @@ func (bs *ChainService) GetDepositOperationsByFilter(ctx context.Context, filter
 
 			if len(txFilter.WithdrawalAddress) > 0 {
 				wdcreds := depositWithTx.WithdrawalCredentials
-				// 0x01 = ETH1, 0x02 = compounding, 0x03 = builder deposit
-				if wdcreds[0] != 0x01 && wdcreds[0] != 0x02 && wdcreds[0] != 0x03 {
+				// 0x01 = ETH1, 0x02 = compounding, 0xB0 = builder deposit
+				if wdcreds[0] != 0x01 && wdcreds[0] != 0x02 && wdcreds[0] != 0xB0 {
 					continue
 				}
 
@@ -792,7 +792,7 @@ func isSyntheticPendingDeposit(deposit *electra.PendingDeposit) bool {
 //
 // Post-Gloas (EIP-8282) builder deposits arrive via the dedicated builder deposit contract
 // and never appear in the regular deposit stream, so every included regular deposit (any
-// credential type, including 0x03) enters the pending_deposits queue and is a valid anchor;
+// credential type, including 0xB0) enters the pending_deposits queue and is a valid anchor;
 // the EL deposit index sequence stays contiguous with the queue.
 func (bs *ChainService) getRecentIncludedDeposits(ctx context.Context, headRoot phase0.Root) *dbtypes.Deposit {
 	headBlock := bs.beaconIndexer.GetBlockByRoot(headRoot)

@@ -178,7 +178,7 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
     signingDomain.set(forkDataRoot.slice(0, 28), 4);
 
     return json.map((deposit: IDeposit) => {
-      const credsOk = deposit.withdrawal_credentials.replace(/^0x/, "").substring(0, 2).toLowerCase() === "03";
+      const credsOk = deposit.withdrawal_credentials.replace(/^0x/, "").substring(0, 2).toLowerCase() === "b0";
       deposit.validity = props.deposits ? credsOk : (credsOk && verifyDeposit(deposit, signingDomain));
       return deposit;
     });

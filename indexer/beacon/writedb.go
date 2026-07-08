@@ -97,9 +97,9 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 	return nil
 }
 
-func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *EpochStats, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) (*dbtypes.Slot, error) {
+func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *EpochStats, payment *builderPaymentInfo, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) (*dbtypes.Slot, error) {
 	// insert block
-	dbBlock := dbw.buildDbBlock(block, epochStats, overrideForkId)
+	dbBlock := dbw.buildDbBlock(block, epochStats, overrideForkId, payment)
 	if dbBlock == nil {
 		return nil, fmt.Errorf("error while building db block: %v", block.Slot)
 	}
@@ -203,8 +203,11 @@ func (dbw *dbWriter) persistEpochData(tx *sqlx.Tx, epoch phase0.Epoch, blocks []
 		sim = newStateSimulator(dbw.indexer, epochStats)
 	}
 
+	paymentBase := dbw.resolveBuilderPaymentBase(epoch, epochStats)
+
 	dbEpoch := dbw.buildDbEpoch(epoch, blocks, epochStats, epochVotes, func(block *Block, depositIndex *uint64) {
-		_, err := dbw.persistBlockData(tx, block, epochStats, depositIndex, false, &canonicalForkId, sim)
+		payment := dbw.builderPaymentForSlot(block.Slot, epochVotes, paymentBase)
+		_, err := dbw.persistBlockData(tx, block, epochStats, payment, depositIndex, false, &canonicalForkId, sim)
 		if err != nil {
 			dbw.indexer.logger.Errorf("error persisting slot: %v", err)
 		}
@@ -260,7 +263,63 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 	return db.InsertSyncAssignments(dbw.indexer.ctx, tx, syncAssignments)
 }
 
-func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey) *dbtypes.Slot {
+// builderPaymentInfo carries the resolved Gloas builder-payment quorum figures for a single slot.
+type builderPaymentInfo struct {
+	Weight  uint64  // same-slot attester balance backing the payment (Gwei)
+	Percent float32 // Weight as a percentage of the per-slot quorum base
+}
+
+// resolveBuilderPaymentBase returns the per-slot quorum base for an epoch's builder payments:
+// get_total_active_balance / SLOTS_PER_EPOCH. Settlement uses the *next* epoch's active balance,
+// so prefer epoch+1's stats for an exact base and fall back to the current epoch when they are not
+// available yet (e.g. live sync at the head). Returns 0 for pre-Gloas epochs (no builder payments).
+func (dbw *dbWriter) resolveBuilderPaymentBase(epoch phase0.Epoch, epochStats *EpochStats) phase0.Gwei {
+	chainState := dbw.indexer.consensusPool.GetChainState()
+	if !chainState.IsEip7732Enabled(epoch) {
+		return 0
+	}
+	slotsPerEpoch := phase0.Gwei(chainState.GetSpecs().SlotsPerEpoch)
+	if slotsPerEpoch == 0 {
+		return 0
+	}
+
+	totalActive := phase0.Gwei(0)
+	for _, nextStats := range dbw.indexer.epochCache.getEpochStatsByEpoch(epoch + 1) {
+		if values := nextStats.GetValues(false); values != nil && values.EffectiveBalance > 0 {
+			totalActive = values.EffectiveBalance
+			break
+		}
+	}
+	if totalActive == 0 && epochStats != nil {
+		if values := epochStats.GetValues(true); values != nil {
+			totalActive = values.EffectiveBalance
+		}
+	}
+	if totalActive == 0 {
+		return 0
+	}
+	return totalActive / slotsPerEpoch
+}
+
+// builderPaymentForSlot resolves the per-slot builder-payment figures from the aggregated epoch
+// votes and the quorum base. Returns nil when unavailable (pre-Gloas, no aggregation, or out of range).
+func (dbw *dbWriter) builderPaymentForSlot(slot phase0.Slot, epochVotes *EpochVotes, base phase0.Gwei) *builderPaymentInfo {
+	if epochVotes == nil || epochVotes.SlotWeights == nil {
+		return nil
+	}
+	slotIndex := dbw.indexer.consensusPool.GetChainState().SlotToSlotIndex(slot)
+	if int(slotIndex) >= len(epochVotes.SlotWeights) {
+		return nil
+	}
+	weight := epochVotes.SlotWeights[slotIndex]
+	percent := float32(0)
+	if base > 0 {
+		percent = float32(float64(weight) / float64(base) * 100)
+	}
+	return &builderPaymentInfo{Weight: uint64(weight), Percent: percent}
+}
+
+func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey, payment *builderPaymentInfo) *dbtypes.Slot {
 	if block.Slot == 0 {
 		// genesis block
 		header := block.GetHeader()
@@ -371,8 +430,9 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	// Extract execution payload bid from Gloas/Heze blocks and add to bid cache.
 	// This ensures bids are persisted even when syncing from blocks (not just SSE events).
-	if bid := getBlockBid(blockBody); bid != nil {
-		dbw.indexer.blockBidCache.AddBid(bid)
+	blockBid := getBlockBid(blockBody)
+	if blockBid != nil {
+		dbw.indexer.blockBidCache.AddBid(blockBid)
 	}
 
 	dbBlock := dbtypes.Slot{
@@ -497,6 +557,25 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	}
 
+	// Missed payload (Gloas): the execution payload was never revealed, so the eth_* fields above
+	// were not written (they depend on executionBlockNumber, which is unknown here). The block still
+	// commits to an execution payload bid that references the execution block hash (plus parent hash,
+	// fee recipient and gas limit), so populate those from the bid - a missed-payload block must show
+	// its committed block hash, not nothing. The block number stays unset (the bid does not carry it).
+	if payloadStatus == dbtypes.PayloadStatusMissing && blockBid != nil && len(dbBlock.EthBlockHash) == 0 {
+		dbBlock.EthBlockHash = blockBid.BlockHash
+		dbBlock.EthBlockParentHash = blockBid.ParentHash
+		dbBlock.EthFeeRecipient = blockBid.FeeRecipient
+		dbBlock.EthGasLimit = blockBid.GasLimit
+	}
+
+	// Gloas builder-payment quorum weight for this slot (same-slot attester balance), resolved by
+	// the epoch-vote aggregation. Only set on canonical persistence paths that pass it through.
+	if payment != nil {
+		dbBlock.BuilderPaymentWeight = payment.Weight
+		dbBlock.BuilderPaymentPercent = payment.Percent
+	}
+
 	return &dbBlock
 }
 
@@ -520,6 +599,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 	}
 	if epochVotes != nil {
 		dbEpoch.VotedTarget = clampInt64(uint64(epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount))
+		dbEpoch.VotedTargetSlashed = clampInt64(uint64(epochVotes.CurrentEpoch.TargetVoteAmountSlashed + epochVotes.NextEpoch.TargetVoteAmountSlashed))
 		dbEpoch.VotedHead = clampInt64(uint64(epochVotes.CurrentEpoch.HeadVoteAmount + epochVotes.NextEpoch.HeadVoteAmount))
 		dbEpoch.VotedTotal = clampInt64(uint64(epochVotes.CurrentEpoch.TotalVoteAmount + epochVotes.NextEpoch.TotalVoteAmount))
 	}
@@ -696,7 +776,7 @@ func (dbw *dbWriter) persistBlockDeposits(tx *sqlx.Tx, block *Block, depositInde
 // reconcileOnboardedBuilderDeposits keeps the upgrade_to_gloas onboarded builder deposit copies in
 // sync with their source validator deposits. The copies are written once at the fork boundary with
 // the then-unfinalized fork id and are not re-persisted per block, so when a source deposit (a
-// pre-gloas builder 0x03 deposit) is persisted canonically its matching copy is moved onto the same
+// pre-gloas builder 0xB0 deposit) is persisted canonically its matching copy is moved onto the same
 // fork id; otherwise the copy keeps its unfinalized fork id and later shows up as orphaned. It only
 // runs once the fork has activated (i.e. the copy exists).
 func (dbw *dbWriter) reconcileOnboardedBuilderDeposits(tx *sqlx.Tx, deposits []*dbtypes.Deposit, forkId ForkKey) error {
@@ -708,9 +788,9 @@ func (dbw *dbWriter) reconcileOnboardedBuilderDeposits(tx *sqlx.Tx, deposits []*
 
 	onboardingSlot := uint64(chainState.EpochToSlot(phase0.Epoch(*gloasForkEpoch)))
 	for _, deposit := range deposits {
-		// only pre-gloas builder (0x03) deposits are onboarded into builder_deposits by the fork
+		// only pre-gloas builder (0xB0) deposits are onboarded into builder_deposits by the fork
 		// transition, so only those have a copy to reconcile.
-		if deposit.CredType != 0x03 || uint64(chainState.EpochOfSlot(phase0.Slot(deposit.SlotNumber))) >= *gloasForkEpoch {
+		if deposit.CredType != 0xB0 || uint64(chainState.EpochOfSlot(phase0.Slot(deposit.SlotNumber))) >= *gloasForkEpoch {
 			continue
 		}
 

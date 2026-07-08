@@ -10,6 +10,11 @@ import (
 const (
 	BuilderPaymentThresholdNumerator   = 6
 	BuilderPaymentThresholdDenominator = 10
+
+	// BuilderPaymentQuorumPercent is the payment quorum as a percentage of the per-slot base
+	// (BUILDER_PAYMENT_THRESHOLD_NUMERATOR / DENOMINATOR). These are fixed spec constants (not
+	// preset/config), so this value is not network-configurable.
+	BuilderPaymentQuorumPercent = 100.0 * BuilderPaymentThresholdNumerator / BuilderPaymentThresholdDenominator
 )
 
 // processBuilderPendingPayments implements process_builder_pending_payments (Gloas).

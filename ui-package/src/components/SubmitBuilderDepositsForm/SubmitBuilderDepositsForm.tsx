@@ -21,7 +21,7 @@ const SubmitBuilderDepositsForm = (props: ISubmitBuilderDepositsFormProps): Reac
       <div className="row">
         <div className="col-12">
           <h3>Submit builder deposits</h3>
-          <p>This tool submits builder deposits to the builder deposit contract. Builder deposits carry a 0x03 withdrawal credential and a proof-of-possession signed under the dedicated builder-deposit domain.</p>
+          <p>This tool submits builder deposits to the builder deposit contract. Builder deposits carry a 0xB0 withdrawal credential and a proof-of-possession signed under the dedicated builder-deposit domain.</p>
           <div className="alert alert-warning">
             <b>Don't provide your keystore or mnemonic to us or any other website.</b> The generator below is for devnet testing only.
           </div>
@@ -62,7 +62,7 @@ const SubmitBuilderDepositsForm = (props: ISubmitBuilderDepositsFormProps): Reac
               Generate
             </button>
           </div>
-          <p className="text-secondary-emphasis mt-2">The deposit data file is a JSON array of builder deposits (pubkey, 0x03 withdrawal_credentials, amount, signature).</p>
+          <p className="text-secondary-emphasis mt-2">The deposit data file is a JSON array of builder deposits (pubkey, 0xB0 withdrawal_credentials, amount, signature).</p>
         </div>
 
         {(file || generatedDeposits) && isConnected && (

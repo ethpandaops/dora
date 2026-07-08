@@ -110,7 +110,7 @@ func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, 
 		return nil, fmt.Errorf("invalid deposit log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]
@@ -133,7 +133,7 @@ func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction,
 		return nil, fmt.Errorf("invalid deposit log")
 	}
 
-	txTo := *tx.To()
+	txTo := txRecipient(tx, log)
 
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]

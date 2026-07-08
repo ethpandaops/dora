@@ -130,6 +130,12 @@ func (client *Client) buildEventStreamMask() uint16 {
 		events |= rpc.StreamInclusionListEvent
 	}
 
+	// fast confirmation is an optional node feature. nodes reject the whole
+	// subscription with a HTTP 400 for unknown topics, so the topic is requested
+	// via a separate SSE stream that silently gives up on rejection instead of
+	// being mixed into the main block/head/finalized stream
+	events |= rpc.StreamFastConfirmationEvent
+
 	return events
 }
 
@@ -191,6 +197,9 @@ func (client *Client) runClientLogic() error {
 
 			case rpc.StreamInclusionListEvent:
 				client.inclusionListDispatcher.Fire(evt.Data.(*v1.InclusionListEvent))
+
+			case rpc.StreamFastConfirmationEvent:
+				client.processFastConfirmationEvent(evt.Data.(*rpc.FastConfirmationEvent))
 			}
 
 			// fire through stream dispatcher first to preserve SSE ordering
@@ -361,6 +370,17 @@ func (client *Client) processHeadEvent(evt *v1.HeadEvent) error {
 	client.headMutex.Unlock()
 
 	return nil
+}
+
+func (client *Client) processFastConfirmationEvent(evt *rpc.FastConfirmationEvent) {
+	client.headMutex.Lock()
+	client.fastConfirmedSlot = evt.Slot
+	client.fastConfirmedRoot = evt.Block
+	client.lastFastConfirmation = time.Now()
+	client.headMutex.Unlock()
+
+	client.pool.chainState.setFastConfirmedBlock(evt.Slot, evt.Block)
+	client.fastConfirmationDispatcher.Fire(evt)
 }
 
 func (client *Client) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) error {

@@ -298,6 +298,15 @@ func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pag
 
 	pageData.RequestCount = uint64(len(pageData.ElRequests))
 
+	ensAddrs := make([][]byte, 0, len(pageData.ElRequests))
+	for _, elWithdrawal := range pageData.ElRequests {
+		ensAddrs = append(ensAddrs, elWithdrawal.SourceAddr)
+		if elWithdrawal.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, elWithdrawal.TransactionDetails.TxOrigin, elWithdrawal.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	if pageData.RequestCount > 0 {
 		pageData.FirstIndex = pageData.ElRequests[0].SlotNumber
 		pageData.LastIndex = pageData.ElRequests[pageData.RequestCount-1].SlotNumber

@@ -31,6 +31,8 @@ type ValidatorsPageData struct {
 	FilteredPageLink string                         `json:"filtered_page_link"`
 
 	UrlParams []UrlParam `json:"url_params"`
+
+	EnsNameData
 }
 
 type ValidatorsPageDataStatusOption struct {

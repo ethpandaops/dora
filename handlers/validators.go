@@ -74,7 +74,7 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 			seen := map[uint8]bool{}
 			for _, v := range vals {
 				t, err := strconv.ParseUint(v, 10, 8)
-				if err != nil || t > 3 || seen[uint8(t)] {
+				if err != nil || (t > 2 && t != 0xB0) || seen[uint8(t)] {
 					continue
 				}
 				seen[uint8(t)] = true
@@ -333,6 +333,12 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 	pageData.ValidatorCount = validatorSetLen
 	pageData.FirstValidator = pageNumber * pageSize
 	pageData.LastValidator = pageData.FirstValidator + uint64(len(pageData.Validators))
+
+	ensAddrs := make([][]byte, 0, len(pageData.Validators))
+	for _, validator := range pageData.Validators {
+		ensAddrs = append(ensAddrs, validator.WithdrawAddress)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 
 	// Populate UrlParams for page jump functionality
 	pageData.UrlParams = make([]models.UrlParam, 0)

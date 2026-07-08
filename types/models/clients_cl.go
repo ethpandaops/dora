@@ -11,6 +11,7 @@ type ClientsCLPageData struct {
 	PeerMap                *ClientCLPageDataPeerMap   `json:"peer_map"`
 	ShowSensitivePeerInfos bool                       `json:"show_sensitive_peer_infos"`
 	ShowPeerDASInfos       bool                       `json:"show_peer_das_infos"`
+	ShowSafeSlotColumn     bool                       `json:"show_safe_slot_column"`
 	PeerDASInfos           *ClientCLPagePeerDAS       `json:"peer_das"`
 
 	// DAS Guardian configuration
@@ -95,6 +96,9 @@ type ClientsCLPageDataClient struct {
 	Version              string    `json:"version"`
 	HeadSlot             uint64    `json:"head_slot"`
 	HeadRoot             []byte    `json:"head_root"`
+	FcrEnabled           bool      `json:"fcr_enabled"`
+	SafeSlot             uint64    `json:"safe_slot"`
+	SafeRoot             []byte    `json:"safe_root"`
 	Status               string    `json:"status"`
 	LastRefresh          time.Time `json:"refresh"`
 	LastError            string    `json:"error"`

@@ -200,19 +200,32 @@ func GetBidsBySlots(ctx context.Context, slots []uint64, builderIndex int64) map
 	return result
 }
 
-// GetBidsByBuilderIndex returns bids submitted by a specific builder, ordered by slot descending
-func GetBidsByBuilderIndex(ctx context.Context, builderIndex uint64, offset uint64, limit uint32) ([]*dbtypes.BlockBid, uint64) {
-	var sql strings.Builder
+// GetBidsByBuilderIndex returns bids submitted by a specific builder, ordered by slot descending.
+// Builder indexes can be reused (EIP-8282), so an optional [minSlot, maxSlot] window restricts the
+// bids to the tenure during which a specific builder owned the index (nil = unbounded on that side).
+func GetBidsByBuilderIndex(ctx context.Context, builderIndex uint64, minSlot *uint64, maxSlot *uint64, offset uint64, limit uint32) ([]*dbtypes.BlockBid, uint64) {
+	var whereSql strings.Builder
 	args := []any{
 		builderIndex,
 	}
-	fmt.Fprint(&sql, `
+	fmt.Fprint(&whereSql, "WHERE builder_index = $1")
+	if minSlot != nil {
+		args = append(args, *minSlot)
+		fmt.Fprintf(&whereSql, " AND slot >= $%d", len(args))
+	}
+	if maxSlot != nil {
+		args = append(args, *maxSlot)
+		fmt.Fprintf(&whereSql, " AND slot <= $%d", len(args))
+	}
+
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `
 	SELECT
 		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
 	FROM block_bids
-	WHERE builder_index = $1
+	%s
 	ORDER BY slot DESC, value DESC
-	`)
+	`, whereSql.String())
 
 	if limit > 0 {
 		fmt.Fprintf(&sql, " LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
@@ -226,9 +239,13 @@ func GetBidsByBuilderIndex(ctx context.Context, builderIndex uint64, offset uint
 		return nil, 0
 	}
 
-	// Get total count
+	// Get total count (same window, without limit/offset args)
+	countArgs := args
+	if limit > 0 {
+		countArgs = args[:len(args)-2]
+	}
 	var totalCount uint64
-	err = ReaderDb.GetContext(ctx, &totalCount, `SELECT COUNT(*) FROM block_bids WHERE builder_index = $1`, builderIndex)
+	err = ReaderDb.GetContext(ctx, &totalCount, fmt.Sprintf("SELECT COUNT(*) FROM block_bids %s", whereSql.String()), countArgs...)
 	if err != nil {
 		logger.Errorf("Error while counting bids for builder index %d: %v", builderIndex, err)
 		return bids, 0
