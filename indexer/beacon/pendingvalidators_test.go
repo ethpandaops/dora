@@ -119,7 +119,7 @@ func TestProjectOrderingAndGating(t *testing.T) {
 }
 
 // TestProjectGloasBuilderFilter verifies that, when a Gloas fork is scheduled, new
-// 0x03 (builder) deposits whose estimated processing epoch is at or after the fork
+// 0xB0 (builder) deposits whose estimated processing epoch is at or after the fork
 // are dropped (they are onboarded as builders at the fork), while those processed
 // before the fork — and all non-builder deposits — still project.
 func TestProjectGloasBuilderFilter(t *testing.T) {
@@ -127,7 +127,7 @@ func TestProjectGloasBuilderFilter(t *testing.T) {
 	const amount = phase0.Gwei(32_000_000_000)
 
 	builderWc := make([]byte, 32)
-	builderWc[0] = 0x03
+	builderWc[0] = 0xB0
 	execWc := make([]byte, 32)
 	execWc[0] = 0x01
 

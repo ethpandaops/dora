@@ -87,7 +87,7 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 			seen := map[uint8]bool{}
 			for _, v := range vals {
 				t, err := strconv.ParseUint(v, 10, 8)
-				if err != nil || t > 3 || seen[uint8(t)] {
+				if err != nil || (t > 2 && t != 0xB0) || seen[uint8(t)] {
 					continue
 				}
 				seen[uint8(t)] = true
@@ -222,7 +222,7 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 
 	for _, deposit := range dbDeposits {
 		wdCreds := deposit.WithdrawalCredentials()
-		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
+		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0xB0
 
 		depositData := &models.IncludedDepositsPageDataDeposit{
 			PublicKey:             deposit.PublicKey(),

@@ -121,7 +121,7 @@ func TestResolveQueueDepositIndexes(t *testing.T) {
 			wantPostponed: []bool{false, false, false},
 		},
 		{
-			name:          "0x03 (builder-cred) regular deposit is indexed contiguously like any validator deposit",
+			name:          "0xB0 (builder-cred) regular deposit is indexed contiguously like any validator deposit",
 			queue:         []*electra.PendingDeposit{regularDeposit(10, 1), regularDeposit(11, 2)},
 			anchor:        anchorAt(8, 11),
 			wantIndexes:   []*uint64{u64p(7), u64p(8)},

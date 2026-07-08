@@ -139,7 +139,7 @@ export const DEPOSIT_TYPES = {
   BLS: 0x00,
   EXECUTION: 0x01,
   COMPOUNDING: 0x02,
-  EPBS: 0x03,
+  EPBS: 0xb0,
   TOPUP: 0xffff
 } as const;
 
@@ -148,7 +148,7 @@ export const DEPOSIT_TYPE_LABELS: Record<number, string> = {
   [DEPOSIT_TYPES.BLS]: "BLS Withdrawal (0x00)",
   [DEPOSIT_TYPES.EXECUTION]: "Execution Withdrawal (0x01)",
   [DEPOSIT_TYPES.COMPOUNDING]: "Compounding (0x02)",
-  [DEPOSIT_TYPES.EPBS]: "ePBS Builder (0x03)",
+  [DEPOSIT_TYPES.EPBS]: "ePBS Builder (0xB0)",
   [DEPOSIT_TYPES.TOPUP]: "Topup Deposits"
 };
 
@@ -157,7 +157,7 @@ export const PREFIX_TO_DEPOSIT_TYPE: Record<string, number> = {
   "00": DEPOSIT_TYPES.BLS,
   "01": DEPOSIT_TYPES.EXECUTION,
   "02": DEPOSIT_TYPES.COMPOUNDING,
-  "03": DEPOSIT_TYPES.EPBS
+  "b0": DEPOSIT_TYPES.EPBS
 };
 
 // Deposit gate config interface

@@ -160,8 +160,8 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 		// load initiated deposits
 		dbDepositTxs := db.GetDepositTxs(ctx, 0, 20)
 		for _, depositTx := range dbDepositTxs {
-			// Check if this is a builder deposit (0x03 withdrawal credentials)
-			isBuilder := len(depositTx.WithdrawalCredentials) > 0 && depositTx.WithdrawalCredentials[0] == 0x03
+			// Check if this is a builder deposit (0xB0 withdrawal credentials)
+			isBuilder := len(depositTx.WithdrawalCredentials) > 0 && depositTx.WithdrawalCredentials[0] == 0xB0
 
 			depositTxData := &models.DepositsPageDataInitiatedDeposit{
 				Index:                 depositTx.Index,
@@ -251,9 +251,9 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 
 		dbDeposits, _ := services.GlobalBeaconService.GetDepositRequestsByFilter(ctx, depositFilter, 0, uint32(20))
 		for _, deposit := range dbDeposits {
-			// Check if this is a builder deposit (0x03 withdrawal credentials)
+			// Check if this is a builder deposit (0xB0 withdrawal credentials)
 			wdCreds := deposit.WithdrawalCredentials()
-			isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
+			isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0xB0
 
 			depositData := &models.DepositsPageDataIncludedDeposit{
 				PublicKey:             deposit.PublicKey(),
@@ -376,9 +376,9 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 			}
 
 			for _, queueEntry := range queuedDeposits.Queue[:limit] {
-				// Check if this is a builder deposit (0x03 withdrawal credentials)
+				// Check if this is a builder deposit (0xB0 withdrawal credentials)
 				wdCreds := queueEntry.PendingDeposit.WithdrawalCredentials[:]
-				isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
+				isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0xB0
 
 				// EpochEstimate is the churn-based epoch for normal deposits and the
 				// validator's withdrawable epoch for postponed ones; 0 means unknown.

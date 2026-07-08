@@ -182,7 +182,7 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 	}
 
 	for _, depositTx := range dbDepositTxs {
-		isBuilder := len(depositTx.WithdrawalCredentials) > 0 && depositTx.WithdrawalCredentials[0] == 0x03
+		isBuilder := len(depositTx.WithdrawalCredentials) > 0 && depositTx.WithdrawalCredentials[0] == 0xB0
 
 		depositTxData := &models.InitiatedDepositsPageDataDeposit{
 			Index:                 depositTx.Index,
