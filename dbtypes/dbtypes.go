@@ -656,6 +656,14 @@ type ElAccount struct {
 	LastBlockUid uint64 `db:"last_block_uid"`
 }
 
+// EnsName holds a resolved primary ENS name for an execution address.
+// An empty Name is a persisted negative result (address has no primary name).
+type EnsName struct {
+	Address      []byte `db:"address"`
+	Name         string `db:"name"`
+	ResolvedTime int64  `db:"resolved_time"`
+}
+
 // Token type constants
 const (
 	TokenTypeERC20   = 1

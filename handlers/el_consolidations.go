@@ -276,6 +276,15 @@ func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, 
 
 	pageData.RequestCount = uint64(len(pageData.ElRequests))
 
+	ensAddrs := make([][]byte, 0, len(pageData.ElRequests))
+	for _, elConsolidation := range pageData.ElRequests {
+		ensAddrs = append(ensAddrs, elConsolidation.SourceAddr)
+		if elConsolidation.TransactionDetails != nil {
+			ensAddrs = appendEnsHexAddrs(ensAddrs, elConsolidation.TransactionDetails.TxOrigin, elConsolidation.TransactionDetails.TxTarget)
+		}
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	if pageData.RequestCount > 0 {
 		pageData.FirstIndex = pageData.ElRequests[0].SlotNumber
 		pageData.LastIndex = pageData.ElRequests[pageData.RequestCount-1].SlotNumber

@@ -189,3 +189,22 @@ rpcProxy:
     - "eth_chainId"          # Network chain ID
     - "net_version"          # Network version
 
+# Optional ENS resolver: resolves execution addresses to their primary ENS name.
+ensResolver:
+  enabled: false # enable ENS name resolution & display
+  # optional dedicated EL RPC endpoints (usually Ethereum mainnet). If empty, an
+  # available client from the main execution pool is used.
+  endpoints: []
+  #  - url: "https://ethereum-rpc.publicnode.com"
+  #    name: "mainnet"
+  # ENS registries to query, in priority order (first verified name wins). Each is
+  # probed for bytecode on the target chain and skipped if not deployed.
+  registryAddresses:
+    - "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e" # ENS registry (mainnet)
+  multicallAddress: "0xcA11bde05977b3631167028862bE2a173976CA11" # Multicall3 (batches lookups when deployed)
+  refreshPositive: 24h # re-resolve interval for addresses that have a name
+  refreshNegative: 6h  # re-resolve interval for addresses without a name
+  batchSize: 100       # addresses resolved per worker batch
+  queueSize: 50000     # capped in-memory queue of pending addresses
+  cacheSize: 50000     # in-memory LRU name cache size
+

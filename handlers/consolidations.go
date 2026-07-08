@@ -177,6 +177,12 @@ func buildConsolidationsPageData(ctx context.Context, firstEpoch uint64, pageSiz
 		}
 		pageData.RecentConsolidationCount = uint64(len(pageData.RecentConsolidations))
 
+		ensAddrs := make([][]byte, 0, len(pageData.RecentConsolidations))
+		for _, consolidation := range pageData.RecentConsolidations {
+			ensAddrs = append(ensAddrs, consolidation.SourceAddr)
+		}
+		pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	case "queue":
 		// Load consolidation queue
 		queueConsolidations, _ := services.GlobalBeaconService.GetConsolidationQueueByFilter(ctx, &services.ConsolidationQueueFilter{}, 0, 20)

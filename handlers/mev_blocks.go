@@ -263,6 +263,12 @@ func buildFilteredMevBlocksPageData(ctx context.Context, pageIdx uint64, pageSiz
 	}
 	pageData.BlockCount = uint64(len(pageData.MevBlocks))
 
+	ensAddrs := make([][]byte, 0, len(pageData.MevBlocks))
+	for _, mevBlock := range pageData.MevBlocks {
+		ensAddrs = append(ensAddrs, mevBlock.FeeRecipient)
+	}
+	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
+
 	if pageData.BlockCount > 0 {
 		pageData.FirstIndex = pageData.MevBlocks[0].SlotNumber
 		pageData.LastIndex = pageData.MevBlocks[pageData.BlockCount-1].SlotNumber

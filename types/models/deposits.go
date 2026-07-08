@@ -22,6 +22,8 @@ type DepositsPageData struct {
 	QueuedDepositCount     uint64                              `json:"queued_deposit_count"`
 	IsElectraActive        bool                                `json:"is_electra_active"`
 	TabView                string                              `json:"tab_view"`
+
+	EnsNameData
 }
 
 type DepositsPageDataInitiatedDeposit struct {

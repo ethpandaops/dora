@@ -25,6 +25,8 @@ type SlotPageData struct {
 	TracoorUrl             string                  `json:"tracoor_url"`
 	SystemContracts        []*types.SystemContract `json:"system_contracts"`
 	TransactionDetails     []*SlotPageTransaction  `json:"transaction_details"`
+
+	EnsNameData
 }
 
 // SlotPageSlotBlock represents a block entry for the slot (for multi-block display)
