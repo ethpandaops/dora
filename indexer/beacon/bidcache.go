@@ -172,32 +172,40 @@ func (cache *blockBidCache) checkAndFlush() error {
 	// Calculate the cutoff slot - we'll flush bids older than this
 	cutoffSlot := cache.maxSlot - bidCacheRetainSlots
 
-	// Collect bids to flush (from minSlot to cutoffSlot)
+	// Collect bids to flush (from minSlot to cutoffSlot) without removing them yet
+	flushKeys := make([]bidCacheKey, 0)
 	bidsToFlush := make([]*dbtypes.BlockBid, 0)
 	for key, bid := range cache.bids {
 		if phase0.Slot(bid.Slot) < cutoffSlot {
+			flushKeys = append(flushKeys, key)
 			bidsToFlush = append(bidsToFlush, bid)
-			delete(cache.bids, key)
 		}
 	}
-
-	// Update minSlot
-	cache.minSlot = cutoffSlot
 
 	cache.cacheMutex.Unlock()
 
-	// Write to DB outside of lock
-	if len(bidsToFlush) > 0 {
-		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return db.InsertBids(bidsToFlush, tx)
-		})
-		if err != nil {
-			cache.indexer.logger.Errorf("error flushing bids to db: %v", err)
-			return err
-		}
-		cache.indexer.logger.Debugf("flushed %d bids to DB (slots < %d)", len(bidsToFlush), cutoffSlot)
+	if len(bidsToFlush) == 0 {
+		return nil
 	}
 
+	// Write to DB before dropping the cached copies, so a failed write keeps the
+	// bids for the next flush instead of losing them.
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.InsertBids(bidsToFlush, tx)
+	})
+	if err != nil {
+		cache.indexer.logger.Errorf("error flushing bids to db: %v", err)
+		return err
+	}
+
+	cache.cacheMutex.Lock()
+	for _, key := range flushKeys {
+		delete(cache.bids, key)
+	}
+	cache.minSlot = cutoffSlot
+	cache.cacheMutex.Unlock()
+
+	cache.indexer.logger.Debugf("flushed %d bids to DB (slots < %d)", len(bidsToFlush), cutoffSlot)
 	return nil
 }
 
@@ -216,14 +224,9 @@ func (cache *blockBidCache) flushAll() error {
 		bidsToFlush = append(bidsToFlush, bid)
 	}
 
-	// Clear the cache
-	cache.bids = make(map[bidCacheKey]*dbtypes.BlockBid, 64)
-	cache.minSlot = 0
-	cache.maxSlot = 0
-
 	cache.cacheMutex.Unlock()
 
-	// Write to DB outside of lock
+	// Write to DB before clearing the cache so a failed write does not lose the bids.
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		return db.InsertBids(bidsToFlush, tx)
 	})
@@ -231,6 +234,12 @@ func (cache *blockBidCache) flushAll() error {
 		cache.indexer.logger.Errorf("error flushing all bids to db: %v", err)
 		return err
 	}
+
+	cache.cacheMutex.Lock()
+	cache.bids = make(map[bidCacheKey]*dbtypes.BlockBid, 64)
+	cache.minSlot = 0
+	cache.maxSlot = 0
+	cache.cacheMutex.Unlock()
 
 	cache.indexer.logger.Infof("flushed %d bids to DB on shutdown", len(bidsToFlush))
 	return nil
