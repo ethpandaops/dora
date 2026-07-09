@@ -742,7 +742,23 @@
                       <strong>Metadata Only</strong> - Quick scan for node status and custody information (no DAS column validation)
                     </label>
                   </div>
-                  
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="scanType" id="scanProposerPreferences" value="preferences">
+                    <label class="form-check-label" for="scanProposerPreferences">
+                      <strong>Proposer Preferences</strong> - Subscribe to the Gloas <code>proposer_preferences</code> gossip and report messages this peer relayed during the wait window (Gloas only)
+                    </label>
+                  </div>
+
+                  <!-- Proposer Preferences options (hidden by default) -->
+                  <div id="preferencesSelectionSection" style="display: none;" class="mt-3 p-3 border rounded">
+                    <h6>Gossip Wait Window</h6>
+                    <p class="text-muted small mb-2">SignedProposerPreferences are broadcast a slot or two before a proposal. A longer wait increases the chance of catching one, at the cost of scan latency.</p>
+                    <div class="mb-3">
+                      <label for="preferencesWaitSeconds" class="form-label">Wait seconds (1–60):</label>
+                      <input type="number" class="form-control" id="preferencesWaitSeconds" min="1" max="60" value="24">
+                    </div>
+                  </div>
+
                   <!-- Slot Selection (hidden by default) -->
                   <div id="slotSelectionSection" style="display: none;" class="mt-3 p-3 border rounded">
                     <h6>Select Slots to Scan</h6>
@@ -2011,11 +2027,14 @@
       const scanType = $(this).val();
       $('#slotSelectionSection').hide();
       $('#randomSlotSelectionSection').hide();
-      
+      $('#preferencesSelectionSection').hide();
+
       if (scanType === 'slots') {
         $('#slotSelectionSection').show();
       } else if (scanType === 'random') {
         $('#randomSlotSelectionSection').show();
+      } else if (scanType === 'preferences') {
+        $('#preferencesSelectionSection').show();
       }
     });
     
@@ -2146,6 +2165,12 @@
         const randomCount = parseInt($('#randomSlotCount').val()) || 4;
         requestData.random_mode = randomMode;
         requestData.random_count = randomCount;
+      } else if (scanType === 'preferences') {
+        let wait = parseInt($('#preferencesWaitSeconds').val()) || 24;
+        if (wait < 1) wait = 1;
+        if (wait > 60) wait = 60;
+        requestData.wait_for_proposer_preferences_seconds = wait;
+        $('#dasGuardianLoading p').text('Listening for proposer_preferences gossip (' + wait + 's)…');
       }
       
       // Make API call
@@ -2283,7 +2308,48 @@
             </table>
           </div>`;
         }
-        
+
+        const preferencesScan = $('input[name="scanType"]:checked').val() === 'preferences';
+        if ((result.proposer_preferences && result.proposer_preferences.length > 0) || preferencesScan) {
+          const prefs = result.proposer_preferences || [];
+          html += `<div class="mb-4">
+            <h6 class="border-bottom pb-2">
+              <i class="fa-solid fa-user-tie"></i> Proposer Preferences
+              <span class="badge bg-secondary ms-1">${prefs.length}</span>
+              <small class="text-muted ms-2">(Gloas <code>proposer_preferences</code> gossip sniffed during scan)</small>
+            </h6>`;
+          if (prefs.length === 0) {
+            html += `<div class="alert alert-secondary mb-0"><i class="fa-solid fa-circle-info"></i> No <code>SignedProposerPreferences</code> were observed from this peer during the wait window. This is expected pre-Gloas, or if none of the peer's validators were due to propose soon.</div>`;
+          } else {
+            html += `<div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead>
+                    <tr>
+                      <th>Validator</th>
+                      <th>Proposal Slot</th>
+                      <th>Fee Recipient</th>
+                      <th class="text-end">Gas Limit</th>
+                      <th>Received</th>
+                    </tr>
+                  </thead>
+                  <tbody>`;
+            for (const pref of prefs) {
+              const feeShort = pref.fee_recipient
+                ? pref.fee_recipient.slice(0, 10) + '…' + pref.fee_recipient.slice(-6)
+                : '-';
+              html += `<tr>
+                  <td><a href="/validator/${pref.validator_index}">${pref.validator_index.toLocaleString()}</a></td>
+                  <td><a href="/slot/${pref.proposal_slot}">${pref.proposal_slot.toLocaleString()}</a></td>
+                  <td><code title="${escapeHtml(pref.fee_recipient)}">${escapeHtml(feeShort)}</code></td>
+                  <td class="text-end">${pref.gas_limit.toLocaleString()}</td>
+                  <td><span title="${escapeHtml(pref.received_at)}">${escapeHtml(pref.received_at)}</span></td>
+                </tr>`;
+            }
+            html += `</tbody></table></div>`;
+          }
+          html += `</div>`;
+        }
+
         // DAS Evaluation Results
         if (result.eval_result) {
           const evalResult = result.eval_result;
