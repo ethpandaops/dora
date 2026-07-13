@@ -19,7 +19,7 @@
     "style-loader": "^4.0.0",
     "terser-webpack-plugin": "^5.6.1",
     "ts-loader": "^9.6.2",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "url-loader": "^4.1.1",
     "webpack": "^5.108.4",
     "webpack-cli": "^7.2.1",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@chainsafe/bls": "^8.2.0",
-    "@chainsafe/ssz": "^1.6.0",
+    "@chainsafe/ssz": "^1.6.1",
     "@rainbow-me/rainbowkit": "^2.2.11",
     "@tanstack/react-query": "^5.101.2",
     "@types/react": "^19.2.17",
@@ -36,7 +36,7 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.2.7",
     "react-select": "^5.10.2",
-    "viem": "^2.54.5",
+    "viem": "^2.55.1",
     "wagmi": "^2.19.5"
   },
   "scripts": {
