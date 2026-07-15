@@ -393,6 +393,16 @@ func (vn *ValidatorNames) nameSourceIsReady() bool {
 	return len(vn.nameHistoryRaw) == 0 || vn.nameHistoryBuilt
 }
 
+// stampingActive reports whether name-id stamping is enabled: only networks whose
+// inventory serves an assignment history get stamped rows. On yaml-based networks
+// names are identity labels that may be renamed retroactively - freezing them into
+// rows would be wrong, so those networks keep plain current-name resolution.
+func (vn *ValidatorNames) stampingActive() bool {
+	vn.namesMutex.RLock()
+	defer vn.namesMutex.RUnlock()
+	return vn.nameSourceOk && vn.nameHistoryBuilt && len(vn.nameHistory) > 0
+}
+
 // GetValidatorNameIdAt resolves the dictionary id of the name valid at the given slot.
 // Returns nil while name sources are unavailable (rows get repaired later); 0 means
 // "resolved, no name". Cache-only: it is called from within indexer write transactions,
@@ -400,7 +410,7 @@ func (vn *ValidatorNames) nameSourceIsReady() bool {
 // Dictionary inserts happen in syncNameDict on the updater tick; unknown names resolve
 // to nil until then and are repaired afterwards.
 func (vn *ValidatorNames) GetValidatorNameIdAt(index phase0.ValidatorIndex, slot phase0.Slot) *uint64 {
-	if !vn.nameSourceIsReady() {
+	if !vn.stampingActive() {
 		return nil
 	}
 
@@ -463,6 +473,10 @@ func (vn *ValidatorNames) loadNameDict() error {
 // only dictionary write path and runs on the updater tick, outside any indexer write
 // transaction — the resolver itself is cache-only.
 func (vn *ValidatorNames) syncNameDict() error {
+	if !vn.stampingActive() {
+		return nil
+	}
+
 	vn.dictMutex.RLock()
 	dictLoaded := vn.dictLoaded
 	dictSynced := vn.dictSynced
@@ -529,7 +543,7 @@ func (vn *ValidatorNames) getOrCreateNameId(name string) (uint64, error) {
 // repairSlotNameIds stamps slot rows that were persisted before name sources were
 // available (or before this feature existed). One batch per updater tick.
 func (vn *ValidatorNames) repairSlotNameIds() error {
-	if !vn.nameSourceIsReady() {
+	if !vn.stampingActive() {
 		return nil
 	}
 	vn.dictMutex.RLock()
