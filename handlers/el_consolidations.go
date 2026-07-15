@@ -220,20 +220,15 @@ func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, 
 			TargetPublicKey: consolidation.TargetPubkey(),
 		}
 
-		requestSlot := chainState.CurrentSlot()
-		if request := consolidation.Request; request != nil {
-			requestSlot = phase0.Slot(request.SlotNumber)
-		}
-
 		if sourceIndex := consolidation.SourceIndex(); sourceIndex != nil {
 			elConsolidationData.SourceValidatorIndex = *sourceIndex
-			elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorNameAt(*sourceIndex, requestSlot)
+			elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*sourceIndex)
 			elConsolidationData.SourceValidatorValid = true
 		}
 
 		if targetIndex := consolidation.TargetIndex(); targetIndex != nil {
 			elConsolidationData.TargetValidatorIndex = *targetIndex
-			elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorNameAt(*targetIndex, requestSlot)
+			elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*targetIndex)
 			elConsolidationData.TargetValidatorValid = true
 		}
 

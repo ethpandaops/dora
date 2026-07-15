@@ -190,9 +190,9 @@ func buildFilteredSlashingsPageData(ctx context.Context, pageIdx uint64, pageSiz
 			Orphaned:        slashing.Orphaned,
 			Reason:          uint8(slashing.Reason),
 			ValidatorIndex:  slashing.ValidatorIndex,
-			ValidatorName:   services.GlobalBeaconService.GetValidatorNameAt(slashing.ValidatorIndex, phase0.Slot(slashing.SlotNumber)),
+			ValidatorName:   services.GlobalBeaconService.GetValidatorName(slashing.ValidatorIndex),
 			SlasherIndex:    slashing.SlasherIndex,
-			SlasherName:     services.GlobalBeaconService.GetValidatorNameAt(slashing.SlasherIndex, phase0.Slot(slashing.SlotNumber)),
+			SlasherName:     services.GlobalBeaconService.GetValidatorName(slashing.SlasherIndex),
 			ValidatorStatus: "",
 		}
 

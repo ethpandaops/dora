@@ -538,7 +538,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 			Synchronized: true,
 			Scheduled:    slot >= currentSlot,
 			Proposer:     dbBlock.Proposer,
-			ProposerName: services.GlobalBeaconService.GetValidatorNameAt(dbBlock.Proposer, slot),
+			ProposerName: services.GlobalBeaconService.GetValidatorName(dbBlock.Proposer),
 		}
 
 		if dbBlock.Block != nil {

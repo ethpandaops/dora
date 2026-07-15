@@ -61,7 +61,6 @@ type BlockFilter struct {
 	ProposerIndex        *uint64
 	ProposerName         string
 	InvertProposer       bool
-	ProposerNameHistory  bool // match ProposerName against the assignment valid at each slot (validator_name_history)
 	WithOrphaned         uint8
 	WithMissing          uint8
 	WithPayloadMask      PayloadStatusMask

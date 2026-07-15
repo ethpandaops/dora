@@ -169,7 +169,7 @@ func buildFilteredVoluntaryExitsPageData(ctx context.Context, pageIdx uint64, pa
 		}
 
 		voluntaryExitData.ValidatorIndex = voluntaryExit.ValidatorIndex
-		voluntaryExitData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(voluntaryExit.ValidatorIndex, phase0.Slot(voluntaryExit.SlotNumber))
+		voluntaryExitData.ValidatorName = services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex)
 
 		validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(voluntaryExit.ValidatorIndex), false)
 		if validator == nil {

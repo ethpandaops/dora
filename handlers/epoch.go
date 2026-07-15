@@ -219,7 +219,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 				Status:                uint8(dbSlot.Status),
 				PayloadStatus:         uint8(payloadStatus),
 				Proposer:              dbSlot.Proposer,
-				ProposerName:          services.GlobalBeaconService.GetValidatorNameAt(dbSlot.Proposer, phase0.Slot(slot)),
+				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				AttestationCount:      dbSlot.AttestationCount,
 				DepositCount:          dbSlot.DepositCount,
 				ExitCount:             dbSlot.ExitCount,

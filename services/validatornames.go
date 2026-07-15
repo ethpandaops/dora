@@ -53,7 +53,6 @@ type ValidatorNames struct {
 	nameHistoryRaw        []validatorNamesHistoryEntry
 	nameHistoryBuilt      bool
 	nameHistory           []validatorNameSnapshot
-	nameHistoryDirty      bool
 }
 
 type validatorNameEntry struct {
@@ -122,10 +121,8 @@ func (vn *ValidatorNames) runUpdater() error {
 	}
 
 	// retried on the 30s updater tick until chain specs & genesis are available
-	if changed, err := vn.ensureNameHistory(); err != nil {
+	if err := vn.ensureNameHistory(); err != nil {
 		logger_vn.Debugf("validator name history pending: %v", err)
-	} else if changed {
-		needUpdate = true
 	}
 
 	if time.Since(vn.lastResolvedMapUpdate) > utils.Config.Frontend.ValidatorNamesResolveInterval {
@@ -330,30 +327,22 @@ func (vn *ValidatorNames) GetValidatorNameAt(index uint64, slot phase0.Slot) str
 	return vn.GetValidatorName(index)
 }
 
-func (vn *ValidatorNames) HasNameHistory() bool {
-	if !vn.namesMutex.TryRLock() {
-		return false
-	}
-	defer vn.namesMutex.RUnlock()
-	return len(vn.nameHistory) > 0
-}
-
 // ensureNameHistory converts the raw inventory history into slot-bounded snapshots.
 // Returns an error (and stays unbuilt) while chain specs or genesis are unknown.
-func (vn *ValidatorNames) ensureNameHistory() (bool, error) {
+func (vn *ValidatorNames) ensureNameHistory() error {
 	vn.namesMutex.RLock()
 	built := vn.nameHistoryBuilt
 	rawHistory := vn.nameHistoryRaw
 	vn.namesMutex.RUnlock()
 
 	if built {
-		return false, nil
+		return nil
 	}
 
 	var snapshots []validatorNameSnapshot
 	if len(rawHistory) > 0 {
 		if vn.chainState.GetSpecs() == nil || vn.chainState.GetGenesis() == nil {
-			return false, fmt.Errorf("chain specs not initialized")
+			return fmt.Errorf("chain specs not initialized")
 		}
 		snapshots = buildNameSnapshots(rawHistory, func(ts int64) phase0.Slot {
 			return vn.chainState.TimeToSlot(time.Unix(ts, 0))
@@ -363,13 +352,11 @@ func (vn *ValidatorNames) ensureNameHistory() (bool, error) {
 	vn.namesMutex.Lock()
 	defer vn.namesMutex.Unlock()
 	vn.nameHistoryBuilt = true
-	if reflect.DeepEqual(vn.nameHistory, snapshots) {
-		return false, nil
+	if !reflect.DeepEqual(vn.nameHistory, snapshots) {
+		vn.nameHistory = snapshots
+		logger_vn.Infof("built validator name history: %v snapshots", len(snapshots))
 	}
-	vn.nameHistory = snapshots
-	vn.nameHistoryDirty = true
-	logger_vn.Infof("built validator name history: %v snapshots", len(snapshots))
-	return true, nil
+	return nil
 }
 
 func buildNameSnapshots(entries []validatorNamesHistoryEntry, timeToSlot func(int64) phase0.Slot) []validatorNameSnapshot {
@@ -745,51 +732,6 @@ func (vn *ValidatorNames) UpdateDb(ctx context.Context) error {
 
 		lastIndex = maxIndex + 1
 		nameIdx = maxIdx
-	}
-
-	vn.namesMutex.RLock()
-	historyDirty := vn.nameHistoryDirty
-	nameHistory := vn.nameHistory
-	vn.namesMutex.RUnlock()
-
-	if historyDirty {
-		// per-index rows, only for intervals differing from the current name: keeps the
-		// table small and the join an index-seekable equality join, while COALESCE
-		// falls back to validator_names for unchanged intervals
-		currentNames := make(map[uint64]string, len(nameRows))
-		for _, nameRow := range nameRows {
-			currentNames[nameRow.Index] = nameRow.Name
-		}
-
-		historyRows := make([]*dbtypes.ValidatorNameHistory, 0)
-		for _, snapshot := range nameHistory {
-			for _, nameRange := range snapshot.ranges {
-				for index := nameRange.startIndex; index <= nameRange.endIndex; index++ {
-					if currentNames[index] == nameRange.name {
-						continue
-					}
-					historyRows = append(historyRows, &dbtypes.ValidatorNameHistory{
-						Index:     index,
-						StartSlot: uint64(snapshot.startSlot),
-						EndSlot:   uint64(snapshot.endSlot),
-						Name:      nameRange.name,
-					})
-				}
-			}
-		}
-
-		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return db.ReplaceValidatorNameHistory(ctx, tx, historyRows)
-		})
-		if err != nil {
-			return err
-		}
-
-		vn.namesMutex.Lock()
-		vn.nameHistoryDirty = false
-		vn.namesMutex.Unlock()
-
-		logger_vn.Infof("updated validator name history: %v snapshots, %v rows", len(nameHistory), len(historyRows))
 	}
 
 	return nil

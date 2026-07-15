@@ -47,53 +47,6 @@ func InsertValidatorNames(ctx context.Context, tx *sqlx.Tx, validatorNames []*db
 	return nil
 }
 
-func GetValidatorNameHistory(ctx context.Context) []*dbtypes.ValidatorNameHistory {
-	rows := []*dbtypes.ValidatorNameHistory{}
-	err := ReaderDb.SelectContext(ctx, &rows, `
-		SELECT "index", "start_slot", "end_slot", "name"
-		FROM validator_name_history
-		ORDER BY "index" ASC, "start_slot" ASC`)
-	if err != nil {
-		logger.Errorf("Error while fetching validator name history: %v", err)
-		return nil
-	}
-	return rows
-}
-
-// ReplaceValidatorNameHistory replaces the full validator_name_history table.
-// Rows only cover reassigned validators (intervals differing from the current name),
-// so a full replace stays cheap and idempotent.
-func ReplaceValidatorNameHistory(ctx context.Context, tx *sqlx.Tx, rows []*dbtypes.ValidatorNameHistory) error {
-	_, err := tx.ExecContext(ctx, `DELETE FROM validator_name_history`)
-	if err != nil {
-		return err
-	}
-
-	batchSize := 1000
-	for start := 0; start < len(rows); start += batchSize {
-		end := start + batchSize
-		if end > len(rows) {
-			end = len(rows)
-		}
-
-		var sql strings.Builder
-		fmt.Fprint(&sql, `INSERT INTO validator_name_history ("index", "start_slot", "end_slot", "name") VALUES `)
-		args := make([]any, 0, (end-start)*4)
-		for i, row := range rows[start:end] {
-			if i > 0 {
-				fmt.Fprint(&sql, ", ")
-			}
-			fmt.Fprintf(&sql, "($%v, $%v, $%v, $%v)", len(args)+1, len(args)+2, len(args)+3, len(args)+4)
-			args = append(args, row.Index, row.StartSlot, row.EndSlot, row.Name)
-		}
-		_, err = tx.ExecContext(ctx, sql.String(), args...)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func DeleteValidatorNames(ctx context.Context, tx *sqlx.Tx, validatorNames []uint64) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql, `DELETE FROM validator_names WHERE "index" IN (`)

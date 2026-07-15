@@ -10,17 +10,6 @@ type ValidatorName struct {
 	Name  string `db:"name"`
 }
 
-// ValidatorNameHistory is a time-bounded name assignment for a single validator index.
-// Rows exist only for intervals whose name differs from the current validator_names entry,
-// so lookups fall back to the current name via COALESCE. Slot intervals are
-// [StartSlot, EndSlot); the open interval uses EndSlot = math.MaxInt64.
-type ValidatorNameHistory struct {
-	Index     uint64 `db:"index"`
-	StartSlot uint64 `db:"start_slot"`
-	EndSlot   uint64 `db:"end_slot"`
-	Name      string `db:"name"`
-}
-
 type SlotStatus uint8
 
 const (

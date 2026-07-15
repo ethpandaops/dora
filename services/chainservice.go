@@ -592,10 +592,6 @@ func (bs *ChainService) GetValidatorNameAt(index uint64, slot phase0.Slot) strin
 	return bs.validatorNames.GetValidatorNameAt(index, slot)
 }
 
-func (bs *ChainService) HasValidatorNameHistory() bool {
-	return bs.validatorNames.HasNameHistory()
-}
-
 func (bs *ChainService) GetBuilderURL(builderIndex uint64) string {
 	return bs.buildoorInventory.GetBuilderURL(builderIndex)
 }
