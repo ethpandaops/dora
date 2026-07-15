@@ -334,8 +334,8 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 	if filter.ProposerName != "" {
 		fmt.Fprintf(&sql, ` LEFT JOIN validator_names ON validator_names."index" = slots.proposer `)
 		if filter.ProposerNameHistory {
-			// ranges within a snapshot are disjoint and snapshots are time-disjoint, so at most one row matches
-			fmt.Fprintf(&sql, ` LEFT JOIN validator_name_history ON slots.proposer >= validator_name_history.range_start AND slots.proposer <= validator_name_history.range_end AND slots.slot >= validator_name_history.start_slot AND slots.slot < validator_name_history.end_slot `)
+			// intervals per index are disjoint, so at most one row matches per slot
+			fmt.Fprintf(&sql, ` LEFT JOIN validator_name_history ON validator_name_history."index" = slots.proposer AND slots.slot >= validator_name_history.start_slot AND slots.slot < validator_name_history.end_slot `)
 		}
 	}
 

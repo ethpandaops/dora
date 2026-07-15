@@ -50,9 +50,9 @@ func InsertValidatorNames(ctx context.Context, tx *sqlx.Tx, validatorNames []*db
 func GetValidatorNameHistory(ctx context.Context) []*dbtypes.ValidatorNameHistory {
 	rows := []*dbtypes.ValidatorNameHistory{}
 	err := ReaderDb.SelectContext(ctx, &rows, `
-		SELECT "range_start", "range_end", "start_slot", "end_slot", "name"
+		SELECT "index", "start_slot", "end_slot", "name"
 		FROM validator_name_history
-		ORDER BY "start_slot" ASC, "range_start" ASC`)
+		ORDER BY "index" ASC, "start_slot" ASC`)
 	if err != nil {
 		logger.Errorf("Error while fetching validator name history: %v", err)
 		return nil
@@ -61,7 +61,8 @@ func GetValidatorNameHistory(ctx context.Context) []*dbtypes.ValidatorNameHistor
 }
 
 // ReplaceValidatorNameHistory replaces the full validator_name_history table.
-// The table is range-compressed and devnet-sized (ranges x reassignments), so a full replace is cheap.
+// Rows only cover reassigned validators (intervals differing from the current name),
+// so a full replace stays cheap and idempotent.
 func ReplaceValidatorNameHistory(ctx context.Context, tx *sqlx.Tx, rows []*dbtypes.ValidatorNameHistory) error {
 	_, err := tx.ExecContext(ctx, `DELETE FROM validator_name_history`)
 	if err != nil {
@@ -76,14 +77,14 @@ func ReplaceValidatorNameHistory(ctx context.Context, tx *sqlx.Tx, rows []*dbtyp
 		}
 
 		var sql strings.Builder
-		fmt.Fprint(&sql, `INSERT INTO validator_name_history ("range_start", "range_end", "start_slot", "end_slot", "name") VALUES `)
-		args := make([]any, 0, (end-start)*5)
+		fmt.Fprint(&sql, `INSERT INTO validator_name_history ("index", "start_slot", "end_slot", "name") VALUES `)
+		args := make([]any, 0, (end-start)*4)
 		for i, row := range rows[start:end] {
 			if i > 0 {
 				fmt.Fprint(&sql, ", ")
 			}
-			fmt.Fprintf(&sql, "($%v, $%v, $%v, $%v, $%v)", len(args)+1, len(args)+2, len(args)+3, len(args)+4, len(args)+5)
-			args = append(args, row.RangeStart, row.RangeEnd, row.StartSlot, row.EndSlot, row.Name)
+			fmt.Fprintf(&sql, "($%v, $%v, $%v, $%v)", len(args)+1, len(args)+2, len(args)+3, len(args)+4)
+			args = append(args, row.Index, row.StartSlot, row.EndSlot, row.Name)
 		}
 		_, err = tx.ExecContext(ctx, sql.String(), args...)
 		if err != nil {

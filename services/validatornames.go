@@ -31,6 +31,10 @@ import (
 
 var logger_vn = logrus.StandardLogger().WithField("module", "validator_names")
 
+// maxValidatorNameRangeSize caps per-index expansion of inventory ranges so a
+// malformed range (e.g. "0-18446744073709551615") can't hang the loader.
+const maxValidatorNameRangeSize = 10_000_000
+
 type ValidatorNames struct {
 	ctx                   context.Context
 	beaconIndexer         *beacon.Indexer
@@ -415,7 +419,7 @@ func parseValidatorNameRanges(ranges map[string]string) []validatorNameRange {
 				continue
 			}
 		}
-		if maxIdx < minIdx {
+		if maxIdx < minIdx || maxIdx-minIdx >= maxValidatorNameRangeSize {
 			logger_vn.Warnf("invalid range bounds in validator name history: %v", key)
 			continue
 		}
@@ -587,6 +591,10 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 					continue
 				}
 			}
+			if maxIdx < minIdx || maxIdx-minIdx >= maxValidatorNameRangeSize {
+				logger_vn.Warnf("invalid validator name range bounds: %v", idxStr)
+				continue
+			}
 			for idx := minIdx; idx <= maxIdx; idx++ {
 				vn.namesByIndex[idx] = nameEntry
 				nameCount++
@@ -745,16 +753,28 @@ func (vn *ValidatorNames) UpdateDb(ctx context.Context) error {
 	vn.namesMutex.RUnlock()
 
 	if historyDirty {
+		// per-index rows, only for intervals differing from the current name: keeps the
+		// table small and the join an index-seekable equality join, while COALESCE
+		// falls back to validator_names for unchanged intervals
+		currentNames := make(map[uint64]string, len(nameRows))
+		for _, nameRow := range nameRows {
+			currentNames[nameRow.Index] = nameRow.Name
+		}
+
 		historyRows := make([]*dbtypes.ValidatorNameHistory, 0)
 		for _, snapshot := range nameHistory {
 			for _, nameRange := range snapshot.ranges {
-				historyRows = append(historyRows, &dbtypes.ValidatorNameHistory{
-					RangeStart: nameRange.startIndex,
-					RangeEnd:   nameRange.endIndex,
-					StartSlot:  uint64(snapshot.startSlot),
-					EndSlot:    uint64(snapshot.endSlot),
-					Name:       nameRange.name,
-				})
+				for index := nameRange.startIndex; index <= nameRange.endIndex; index++ {
+					if currentNames[index] == nameRange.name {
+						continue
+					}
+					historyRows = append(historyRows, &dbtypes.ValidatorNameHistory{
+						Index:     index,
+						StartSlot: uint64(snapshot.startSlot),
+						EndSlot:   uint64(snapshot.endSlot),
+						Name:      nameRange.name,
+					})
+				}
 			}
 		}
 

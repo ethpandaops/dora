@@ -3,12 +3,11 @@
 
 CREATE TABLE IF NOT EXISTS "validator_name_history"
 (
-    "range_start" bigint NOT NULL,
-    "range_end" bigint NOT NULL,
+    "index" bigint NOT NULL,
     "start_slot" bigint NOT NULL,
     "end_slot" bigint NOT NULL,
     "name" character varying(250) NOT NULL,
-    PRIMARY KEY ("range_start", "start_slot")
+    PRIMARY KEY ("index", "start_slot")
 );
 
 -- +goose StatementEnd

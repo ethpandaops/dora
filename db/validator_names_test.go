@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"math"
 	"testing"
 
 	"github.com/ethpandaops/dora/dbtypes"
@@ -15,7 +14,8 @@ import (
 func TestGetFilteredSlotsProposerNameHistory(t *testing.T) {
 	newTestDB(t)
 
-	// validator 5 was "old-node" for slots [0, 100), then "new-node"
+	// validator 5 was "old-node" for slots [0, 100), then "new-node"; only the
+	// differing interval gets a history row, [100, max) resolves via COALESCE fallback
 	insertTestSlot(t, 50, 5)
 	insertTestSlot(t, 150, 5)
 
@@ -24,8 +24,7 @@ func TestGetFilteredSlotsProposerNameHistory(t *testing.T) {
 			return err
 		}
 		return ReplaceValidatorNameHistory(context.Background(), tx, []*dbtypes.ValidatorNameHistory{
-			{RangeStart: 0, RangeEnd: 9, StartSlot: 0, EndSlot: 100, Name: "old-node"},
-			{RangeStart: 0, RangeEnd: 9, StartSlot: 100, EndSlot: math.MaxInt64, Name: "new-node"},
+			{Index: 5, StartSlot: 0, EndSlot: 100, Name: "old-node"},
 		})
 	})
 	if err != nil {
