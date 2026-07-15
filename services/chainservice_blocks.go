@@ -884,6 +884,11 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 		filter.WithPayloadMask = dbtypes.PayloadStatusMaskAll
 	}
 
+	// stamped rows filter by dictionary id; unstamped rows fall back to the legacy name join
+	if filter.ProposerName != "" {
+		filter.ProposerNameIds = bs.validatorNames.MatchNameIds(filter.ProposerName)
+	}
+
 	// get blocks from cache
 	// iterate from current slot to finalized slot
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
@@ -1034,8 +1039,8 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 				}
 			}
 			if filter.ProposerName != "" {
-				proposerName := bs.validatorNames.GetValidatorName(proposer)
-				nameMatches := strings.Contains(proposerName, filter.ProposerName)
+				proposerName := bs.validatorNames.GetValidatorNameAt(proposer, block.Slot)
+				nameMatches := strings.Contains(strings.ToLower(proposerName), strings.ToLower(filter.ProposerName))
 				if filter.InvertProposer {
 					// For inverted filter, include empty/null names AND non-matching names
 					if proposerName != "" && nameMatches {
@@ -1244,8 +1249,8 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 					}
 				}
 				if filter.ProposerName != "" {
-					assignedName := bs.validatorNames.GetValidatorName(uint64(canonicalProposer))
-					nameMatches := assignedName != "" && strings.Contains(assignedName, filter.ProposerName)
+					assignedName := bs.validatorNames.GetValidatorNameAt(uint64(canonicalProposer), slot)
+					nameMatches := assignedName != "" && strings.Contains(strings.ToLower(assignedName), strings.ToLower(filter.ProposerName))
 					if filter.InvertProposer {
 						// For inverted filter, include empty/null names AND non-matching names
 						if assignedName != "" && nameMatches {

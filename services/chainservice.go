@@ -74,6 +74,9 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	// Set execution time provider
 	beaconIndexer.SetExecutionTimeProvider(snooper.NewExecutionTimeProvider(snooperManager.GetCache()))
 
+	// stamp slot rows with the proposer name valid at the slot
+	beaconIndexer.SetValidatorNameIdResolver(validatorNames.GetValidatorNameIdAt)
+
 	GlobalBeaconService = &ChainService{
 		ctx:               ctx,
 		logger:            logger,
@@ -590,6 +593,21 @@ func (bs *ChainService) GetValidatorNameAt(index uint64, slot phase0.Slot) strin
 		}
 	}
 	return bs.validatorNames.GetValidatorNameAt(index, slot)
+}
+
+// GetProposerName returns the display name for a slot proposer: the stamped
+// dictionary name when the row was resolved (0 = authoritative "no name"),
+// otherwise the time-aware in-memory lookup.
+func (bs *ChainService) GetProposerName(nameId *uint64, proposer uint64, slot phase0.Slot) string {
+	if nameId != nil {
+		if *nameId == 0 {
+			return ""
+		}
+		if name := bs.validatorNames.GetValidatorNameById(*nameId); name != "" {
+			return name
+		}
+	}
+	return bs.GetValidatorNameAt(proposer, slot)
 }
 
 func (bs *ChainService) GetBuilderURL(builderIndex uint64) string {

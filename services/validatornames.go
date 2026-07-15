@@ -53,6 +53,11 @@ type ValidatorNames struct {
 	nameHistoryRaw        []validatorNamesHistoryEntry
 	nameHistoryBuilt      bool
 	nameHistory           []validatorNameSnapshot
+	nameSourceOk          bool
+	dictMutex             sync.RWMutex
+	dictByName            map[string]uint64
+	dictById              map[uint64]string
+	dictLoaded            bool
 }
 
 type validatorNameEntry struct {
@@ -123,6 +128,16 @@ func (vn *ValidatorNames) runUpdater() error {
 	// retried on the 30s updater tick until chain specs & genesis are available
 	if err := vn.ensureNameHistory(); err != nil {
 		logger_vn.Debugf("validator name history pending: %v", err)
+	}
+
+	if !vn.dictLoaded {
+		if err := vn.loadNameDict(); err != nil {
+			logger_vn.WithError(err).Warnf("could not load validator name dictionary")
+		}
+	}
+
+	if err := vn.repairSlotNameIds(); err != nil {
+		logger_vn.WithError(err).Warnf("slot name id repair failed")
 	}
 
 	if time.Since(vn.lastResolvedMapUpdate) > utils.Config.Frontend.ValidatorNamesResolveInterval {
@@ -304,6 +319,19 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 	return ""
 }
 
+// lookupHistoryName finds the name assignment covering (index, slot) in the snapshots.
+func lookupHistoryName(history []validatorNameSnapshot, index uint64, slot phase0.Slot) (string, bool) {
+	snapIdx := sort.Search(len(history), func(i int) bool { return history[i].startSlot > slot }) - 1
+	if snapIdx >= 0 && slot < history[snapIdx].endSlot {
+		ranges := history[snapIdx].ranges
+		rangeIdx := sort.Search(len(ranges), func(i int) bool { return ranges[i].startIndex > index }) - 1
+		if rangeIdx >= 0 && index <= ranges[rangeIdx].endIndex {
+			return ranges[rangeIdx].name, true
+		}
+	}
+	return "", false
+}
+
 // GetValidatorNameAt returns the name assignment valid at the given slot.
 // Falls back to the current name when no history snapshot covers the slot or index,
 // so networks without name history behave identically to GetValidatorName.
@@ -315,16 +343,171 @@ func (vn *ValidatorNames) GetValidatorNameAt(index uint64, slot phase0.Slot) str
 	vn.namesMutex.RUnlock()
 
 	// snapshots are immutable once published, searching outside the lock is safe
-	snapIdx := sort.Search(len(history), func(i int) bool { return history[i].startSlot > slot }) - 1
-	if snapIdx >= 0 && slot < history[snapIdx].endSlot {
-		ranges := history[snapIdx].ranges
-		rangeIdx := sort.Search(len(ranges), func(i int) bool { return ranges[i].startIndex > index }) - 1
-		if rangeIdx >= 0 && index <= ranges[rangeIdx].endIndex {
-			return ranges[rangeIdx].name
-		}
+	if name, found := lookupHistoryName(history, index, slot); found {
+		return name
 	}
 
 	return vn.GetValidatorName(index)
+}
+
+// resolveNameAt is the blocking variant of GetValidatorNameAt for the stamping path:
+// it must never return "" due to lock contention, only when there really is no name.
+func (vn *ValidatorNames) resolveNameAt(index uint64, slot phase0.Slot) string {
+	vn.namesMutex.RLock()
+	defer vn.namesMutex.RUnlock()
+
+	if name, found := lookupHistoryName(vn.nameHistory, index, slot); found {
+		return name
+	}
+	if entry := vn.namesByIndex[index]; entry != nil {
+		return entry.name
+	}
+	if entry := vn.resolvedNamesByIndex[index]; entry != nil {
+		return entry.name
+	}
+	return ""
+}
+
+// nameSourceIsReady reports whether name sources are loaded well enough to stamp
+// rows authoritatively: the last inventory/yaml load succeeded and the history
+// (when served) has been converted to slot-bounded snapshots.
+func (vn *ValidatorNames) nameSourceIsReady() bool {
+	vn.namesMutex.RLock()
+	defer vn.namesMutex.RUnlock()
+	if !vn.nameSourceOk {
+		return false
+	}
+	return len(vn.nameHistoryRaw) == 0 || vn.nameHistoryBuilt
+}
+
+// GetValidatorNameIdAt resolves the dictionary id of the name valid at the given slot.
+// Returns nil while name sources are unavailable (rows get repaired later); 0 means
+// "resolved, no name".
+func (vn *ValidatorNames) GetValidatorNameIdAt(index phase0.ValidatorIndex, slot phase0.Slot) *uint64 {
+	if !vn.nameSourceIsReady() {
+		return nil
+	}
+
+	name := vn.resolveNameAt(uint64(index), slot)
+	if name == "" {
+		zero := uint64(0)
+		return &zero
+	}
+
+	id, err := vn.getOrCreateNameId(name)
+	if err != nil {
+		logger_vn.WithError(err).Warnf("could not resolve name id for %v", name)
+		return nil
+	}
+	return &id
+}
+
+func (vn *ValidatorNames) GetValidatorNameById(id uint64) string {
+	vn.dictMutex.RLock()
+	defer vn.dictMutex.RUnlock()
+	return vn.dictById[id]
+}
+
+// MatchNameIds returns the dictionary ids of all names containing the pattern (case-insensitive).
+func (vn *ValidatorNames) MatchNameIds(pattern string) []uint64 {
+	pattern = strings.ToLower(pattern)
+	vn.dictMutex.RLock()
+	defer vn.dictMutex.RUnlock()
+
+	ids := make([]uint64, 0)
+	for name, id := range vn.dictByName {
+		if strings.Contains(strings.ToLower(name), pattern) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(a, b int) bool { return ids[a] < ids[b] })
+	return ids
+}
+
+func (vn *ValidatorNames) loadNameDict() error {
+	entries, err := db.GetValidatorNameDictEntries(vn.ctx)
+	if err != nil {
+		return err
+	}
+
+	vn.dictMutex.Lock()
+	defer vn.dictMutex.Unlock()
+	vn.dictByName = make(map[string]uint64, len(entries))
+	vn.dictById = make(map[uint64]string, len(entries))
+	for _, entry := range entries {
+		vn.dictByName[entry.Name] = entry.Id
+		vn.dictById[entry.Id] = entry.Name
+	}
+	vn.dictLoaded = true
+	return nil
+}
+
+func (vn *ValidatorNames) getOrCreateNameId(name string) (uint64, error) {
+	vn.dictMutex.RLock()
+	id, found := vn.dictByName[name]
+	dictLoaded := vn.dictLoaded
+	vn.dictMutex.RUnlock()
+	if found {
+		return id, nil
+	}
+	if !dictLoaded {
+		return 0, fmt.Errorf("name dictionary not loaded")
+	}
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		var err error
+		id, err = db.InsertValidatorNameDictEntry(vn.ctx, tx, name)
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	vn.dictMutex.Lock()
+	vn.dictByName[name] = id
+	vn.dictById[id] = name
+	vn.dictMutex.Unlock()
+	return id, nil
+}
+
+// repairSlotNameIds stamps slot rows that were persisted before name sources were
+// available (or before this feature existed). One batch per updater tick.
+func (vn *ValidatorNames) repairSlotNameIds() error {
+	if !vn.nameSourceIsReady() {
+		return nil
+	}
+	vn.dictMutex.RLock()
+	dictLoaded := vn.dictLoaded
+	vn.dictMutex.RUnlock()
+	if !dictLoaded {
+		return nil
+	}
+
+	stamps := db.GetSlotsWithoutNameId(vn.ctx, 10000)
+	if len(stamps) == 0 {
+		return nil
+	}
+
+	resolved := make([]*dbtypes.SlotNameStamp, 0, len(stamps))
+	for _, stamp := range stamps {
+		stamp.ProposerNameId = vn.GetValidatorNameIdAt(phase0.ValidatorIndex(stamp.Proposer), phase0.Slot(stamp.Slot))
+		if stamp.ProposerNameId != nil {
+			resolved = append(resolved, stamp)
+		}
+	}
+	if len(resolved) == 0 {
+		return nil
+	}
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.UpdateSlotNameIds(vn.ctx, tx, resolved)
+	})
+	if err != nil {
+		return err
+	}
+
+	logger_vn.Infof("stamped %v slot rows with proposer name ids", len(resolved))
+	return nil
 }
 
 // ensureNameHistory converts the raw inventory history into slot-bounded snapshots.
@@ -470,12 +653,16 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 		vn.namesByDepositTarget = make(map[common.Address]*validatorNameEntry)
 		vn.nameHistoryRaw = nil
 		vn.nameHistoryBuilt = false
+		vn.nameSourceOk = false // stamping pauses during reload; affected rows are repaired later
 		vn.namesMutex.Unlock()
+
+		loadOk := true
 
 		if utils.Config.Frontend.ValidatorNamesInventory != "" {
 			err := vn.loadFromRangesApi(utils.Config.Frontend.ValidatorNamesInventory)
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names inventory")
+				loadOk = false
 			}
 		}
 
@@ -488,13 +675,19 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 			err := vn.loadFromInternalYaml(validatorNamesYaml[10:])
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names from internal yaml")
+				loadOk = false
 			}
 		} else if validatorNamesYaml != "" {
 			err := vn.loadFromYaml(validatorNamesYaml)
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names from yaml")
+				loadOk = false
 			}
 		}
+
+		vn.namesMutex.Lock()
+		vn.nameSourceOk = loadOk
+		vn.namesMutex.Unlock()
 	}()
 
 	return vn.loading

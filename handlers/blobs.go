@@ -129,7 +129,7 @@ func buildBlobsPageData(ctx context.Context) (*models.BlobsPageData, time.Durati
 			Timestamp:    chainState.SlotToTime(blockSlot),
 			BlobCount:    block.BlobCount,
 			Proposer:     block.Proposer,
-			ProposerName: services.GlobalBeaconService.GetValidatorName(block.Proposer),
+			ProposerName: services.GlobalBeaconService.GetProposerName(block.ProposerNameId, block.Proposer, blockSlot),
 			BlockRoot:    block.Root,
 			Finalized:    finalized,
 		})

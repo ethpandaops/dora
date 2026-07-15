@@ -63,6 +63,13 @@ func newDbWriter(indexer *Indexer) *dbWriter {
 	}
 }
 
+func (dbw *dbWriter) resolveProposerNameId(proposer phase0.ValidatorIndex, slot phase0.Slot) *uint64 {
+	if dbw.indexer.validatorNameIdResolver == nil {
+		return nil
+	}
+	return dbw.indexer.validatorNameIdResolver(proposer, slot)
+}
+
 func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks []*Block, epochStats *EpochStats) error {
 	chainState := dbw.indexer.consensusPool.GetChainState()
 	epochStatsValues := epochStats.GetValues(true)
@@ -84,9 +91,10 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 		}
 
 		missedSlot := &dbtypes.SlotHeader{
-			Slot:     uint64(slot),
-			Proposer: uint64(proposer),
-			Status:   dbtypes.Missing,
+			Slot:           uint64(slot),
+			Proposer:       uint64(proposer),
+			Status:         dbtypes.Missing,
+			ProposerNameId: dbw.resolveProposerNameId(proposer, slot),
 		}
 
 		err := db.InsertMissingSlot(dbw.indexer.ctx, tx, missedSlot)
@@ -336,12 +344,13 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 
 		return &dbtypes.Slot{
-			Slot:       0,
-			Proposer:   math.MaxInt64,
-			Status:     dbtypes.Canonical,
-			Root:       block.Root[:],
-			ParentRoot: header.Message.ParentRoot[:],
-			StateRoot:  header.Message.StateRoot[:],
+			Slot:           0,
+			Proposer:       math.MaxInt64,
+			Status:         dbtypes.Canonical,
+			Root:           block.Root[:],
+			ParentRoot:     header.Message.ParentRoot[:],
+			StateRoot:      header.Message.StateRoot[:],
+			ProposerNameId: dbw.resolveProposerNameId(math.MaxInt64, 0),
 		}
 	}
 
@@ -438,6 +447,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	dbBlock := dbtypes.Slot{
 		Slot:                  uint64(block.header.Message.Slot),
 		Proposer:              uint64(block.header.Message.ProposerIndex),
+		ProposerNameId:        dbw.resolveProposerNameId(block.header.Message.ProposerIndex, block.Slot),
 		Status:                dbtypes.Canonical,
 		ForkId:                uint64(block.forkId),
 		Root:                  block.Root[:],

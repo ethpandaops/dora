@@ -25,12 +25,13 @@ const EtherGweiFactor = 1_000_000_000
 
 // Indexer is responsible for indexing the ethereum beacon chain.
 type Indexer struct {
-	ctx                   context.Context
-	logger                logrus.FieldLogger
-	consensusPool         *consensus.Pool
-	dynSsz                *dynssz.DynSsz
-	synchronizer          *synchronizer
-	executionTimeProvider ExecutionTimeProvider
+	ctx                     context.Context
+	logger                  logrus.FieldLogger
+	consensusPool           *consensus.Pool
+	dynSsz                  *dynssz.DynSsz
+	synchronizer            *synchronizer
+	executionTimeProvider   ExecutionTimeProvider
+	validatorNameIdResolver ValidatorNameIdResolver
 
 	// configuration
 	disableSync           bool
@@ -147,6 +148,17 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 
 func (indexer *Indexer) SetExecutionTimeProvider(executionTimeProvider ExecutionTimeProvider) {
 	indexer.executionTimeProvider = executionTimeProvider
+}
+
+// ValidatorNameIdResolver resolves the dictionary id of the validator name valid at a slot.
+// Returns nil while name sources are not loaded yet (0 = resolved, no name).
+type ValidatorNameIdResolver func(index phase0.ValidatorIndex, slot phase0.Slot) *uint64
+
+// SetValidatorNameIdResolver sets the resolver used to stamp slot rows with the
+// dictionary id of the proposer name valid at the slot. The resolver returns nil
+// while name sources are not loaded yet; affected rows are repaired later.
+func (indexer *Indexer) SetValidatorNameIdResolver(resolver ValidatorNameIdResolver) {
+	indexer.validatorNameIdResolver = resolver
 }
 
 func (indexer *Indexer) GetActivityHistoryLength() uint16 {

@@ -60,6 +60,7 @@ type BlockFilter struct {
 	InvertExtraData      bool
 	ProposerIndex        *uint64
 	ProposerName         string
+	ProposerNameIds      []uint64 // dictionary ids matching ProposerName, resolved by the service layer
 	InvertProposer       bool
 	WithOrphaned         uint8
 	WithMissing          uint8

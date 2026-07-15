@@ -530,6 +530,11 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 		slot := phase0.Slot(dbBlock.Slot)
 		epoch := chainState.EpochOfSlot(slot)
 
+		var proposerNameId *uint64
+		if dbBlock.Block != nil {
+			proposerNameId = dbBlock.Block.ProposerNameId
+		}
+
 		slotData := &models.SlotsFilteredPageDataSlot{
 			Slot:         uint64(slot),
 			Epoch:        uint64(epoch),
@@ -538,7 +543,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 			Synchronized: true,
 			Scheduled:    slot >= currentSlot,
 			Proposer:     dbBlock.Proposer,
-			ProposerName: services.GlobalBeaconService.GetValidatorName(dbBlock.Proposer),
+			ProposerName: services.GlobalBeaconService.GetProposerName(proposerNameId, dbBlock.Proposer, slot),
 		}
 
 		if dbBlock.Block != nil {

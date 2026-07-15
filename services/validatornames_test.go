@@ -200,6 +200,48 @@ func TestParseValidatorNameRanges(t *testing.T) {
 	}
 }
 
+func TestGetValidatorNameIdAt_Readiness(t *testing.T) {
+	vn := &ValidatorNames{
+		namesMutex:   sync.RWMutex{},
+		namesByIndex: map[uint64]*validatorNameEntry{},
+	}
+
+	// name sources not loaded -> nil (row gets repaired later)
+	if id := vn.GetValidatorNameIdAt(5, 100); id != nil {
+		t.Errorf("expected nil id while sources not ready, got %v", *id)
+	}
+
+	// sources ready, validator has no name -> 0 (resolved, no name)
+	vn.nameSourceOk = true
+	if id := vn.GetValidatorNameIdAt(5, 100); id == nil || *id != 0 {
+		t.Errorf("expected id 0 for unnamed validator, got %v", id)
+	}
+
+	// history served but not yet converted to snapshots -> not ready
+	vn.nameHistoryRaw = []validatorNamesHistoryEntry{{EffectiveFrom: 0, Ranges: map[string]string{"0-9": "node-1"}}}
+	if id := vn.GetValidatorNameIdAt(5, 100); id != nil {
+		t.Errorf("expected nil id while history unbuilt, got %v", *id)
+	}
+}
+
+func TestMatchNameIds(t *testing.T) {
+	vn := &ValidatorNames{
+		dictByName: map[string]uint64{
+			"lighthouse-geth-1": 1,
+			"Lighthouse-Geth-2": 2,
+			"prysm-besu-1":      3,
+		},
+	}
+
+	ids := vn.MatchNameIds("lighthouse")
+	if len(ids) != 2 || ids[0] != 1 || ids[1] != 2 {
+		t.Errorf("case-insensitive match failed: %v", ids)
+	}
+	if ids := vn.MatchNameIds("nonexistent"); len(ids) != 0 {
+		t.Errorf("expected no matches, got %v", ids)
+	}
+}
+
 func TestGetValidatorName_Concurrency(t *testing.T) {
 	vn := &ValidatorNames{
 		namesMutex:           sync.RWMutex{},

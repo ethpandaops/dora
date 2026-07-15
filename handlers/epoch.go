@@ -219,7 +219,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 				Status:                uint8(dbSlot.Status),
 				PayloadStatus:         uint8(payloadStatus),
 				Proposer:              dbSlot.Proposer,
-				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
+				ProposerName:          services.GlobalBeaconService.GetProposerName(dbSlot.ProposerNameId, dbSlot.Proposer, phase0.Slot(slot)),
 				AttestationCount:      dbSlot.AttestationCount,
 				DepositCount:          dbSlot.DepositCount,
 				ExitCount:             dbSlot.ExitCount,
@@ -262,7 +262,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 				Status:        uint8(dbtypes.Missing),
 				PayloadStatus: uint8(dbtypes.PayloadStatusCanonical),
 				Proposer:      proposer,
-				ProposerName:  services.GlobalBeaconService.GetValidatorName(proposer),
+				ProposerName:  services.GlobalBeaconService.GetProposerName(nil, proposer, phase0.Slot(slot)),
 			})
 			pageData.ScheduledCount++
 			blockCount++

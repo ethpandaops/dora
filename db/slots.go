@@ -22,8 +22,9 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 				eth_block_parent_hash, eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count,
 				eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
-				max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value, builder_payment_weight, builder_payment_percent
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)
+				max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value, builder_payment_weight, builder_payment_percent,
+				proposer_name_id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41)
 			ON CONFLICT (slot, root) DO UPDATE SET
 				status = excluded.status,
 				eth_block_extra = excluded.eth_block_extra,
@@ -31,7 +32,8 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 				fork_id = excluded.fork_id,
 				payload_status = excluded.payload_status,
 				builder_payment_weight = excluded.builder_payment_weight,
-				builder_payment_percent = excluded.builder_payment_percent`,
+				builder_payment_percent = excluded.builder_payment_percent,
+				proposer_name_id = COALESCE(excluded.proposer_name_id, slots.proposer_name_id)`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
@@ -39,8 +41,9 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 				eth_block_parent_hash, eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count,
 				eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
-				max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value, builder_payment_weight, builder_payment_percent
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)`,
+				max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value, builder_payment_weight, builder_payment_percent,
+				proposer_name_id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41)`,
 	}),
 		slot.Slot, slot.Proposer, slot.Status, slot.Root, slot.ParentRoot, slot.StateRoot, slot.Graffiti, slot.GraffitiText,
 		slot.AttestationCount, slot.DepositCount, slot.ExitCount, slot.WithdrawCount, slot.WithdrawAmount, slot.AttesterSlashingCount,
@@ -48,7 +51,7 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 		slot.EthBlockParentHash, slot.EthBlockExtra, slot.EthBlockExtraText, slot.SyncParticipation, slot.ForkId, slot.BlobCount,
 		slot.EthGasUsed, slot.EthGasLimit, slot.EthBaseFee, slot.EthFeeRecipient, slot.BlockSize, slot.RecvDelay, slot.MinExecTime,
 		slot.MaxExecTime, slot.ExecTimes, slot.BlockUid, slot.PayloadStatus, slot.BuilderIndex, slot.EthBidValue,
-		slot.BuilderPaymentWeight, slot.BuilderPaymentPercent)
+		slot.BuilderPaymentWeight, slot.BuilderPaymentPercent, slot.ProposerNameId)
 	if err != nil {
 		return err
 	}
@@ -80,16 +83,17 @@ func InsertMissingSlot(ctx context.Context, tx *sqlx.Tx, block *dbtypes.SlotHead
 	_, err = tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO slots (
-				slot, proposer, status, root
-			) VALUES ($1, $2, $3, '0x')
+				slot, proposer, status, root, proposer_name_id
+			) VALUES ($1, $2, $3, '0x', $4)
 			ON CONFLICT (slot, root) DO UPDATE SET
-			proposer = excluded.proposer`,
+			proposer = excluded.proposer,
+			proposer_name_id = COALESCE(excluded.proposer_name_id, slots.proposer_name_id)`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO slots (
-				slot, proposer, status, root
-			) VALUES ($1, $2, $3, '0x')`,
+				slot, proposer, status, root, proposer_name_id
+			) VALUES ($1, $2, $3, '0x', $4)`,
 	}),
-		block.Slot, block.Proposer, block.Status)
+		block.Slot, block.Proposer, block.Status, block.ProposerNameId)
 	if err != nil {
 		return err
 	}
@@ -106,7 +110,7 @@ func GetSlotsRange(ctx context.Context, firstSlot uint64, lastSlot uint64, withM
 		"eth_block_parent_hash", "eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id", "blob_count",
 		"eth_gas_used", "eth_gas_limit", "eth_base_fee", "eth_fee_recipient", "block_size", "recv_delay", "min_exec_time",
 		"max_exec_time", "exec_times", "block_uid", "payload_status", "builder_index", "eth_bid_value",
-		"builder_payment_weight", "builder_payment_percent",
+		"builder_payment_weight", "builder_payment_percent", "proposer_name_id",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -325,7 +329,7 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		"eth_block_parent_hash", "eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id", "blob_count",
 		"eth_gas_used", "eth_gas_limit", "eth_base_fee", "eth_fee_recipient", "block_size", "recv_delay", "min_exec_time",
 		"max_exec_time", "exec_times", "block_uid", "payload_status", "builder_index", "eth_bid_value",
-		"builder_payment_weight", "builder_payment_percent",
+		"builder_payment_weight", "builder_payment_percent", "proposer_name_id",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -408,17 +412,35 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		args = append(args, "%"+filter.ExtraData+"%")
 	}
 	if filter.ProposerName != "" {
+		// stamped rows match by dictionary id; rows not stamped yet (proposer_name_id IS NULL)
+		// fall back to the legacy current-name join until the repair pass catches up
+		idList := strings.Builder{}
+		for i, nameId := range filter.ProposerNameIds {
+			if i > 0 {
+				fmt.Fprintf(&idList, ", ")
+			}
+			argIdx++
+			fmt.Fprintf(&idList, "$%v", argIdx)
+			args = append(args, nameId)
+		}
+
 		argIdx++
+		likeOp := EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  `ilike`,
+			dbtypes.DBEngineSqlite: `LIKE`,
+		})
 		if filter.InvertProposer {
-			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT ilike $%v) `,
-				dbtypes.DBEngineSqlite: ` AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT LIKE $%v) `,
-			}), argIdx)
+			stampedArm := `slots.proposer_name_id IS NOT NULL`
+			if len(filter.ProposerNameIds) > 0 {
+				stampedArm = fmt.Sprintf(`slots.proposer_name_id IS NOT NULL AND slots.proposer_name_id NOT IN (%v)`, idList.String())
+			}
+			fmt.Fprintf(&sql, ` AND ((%v) OR (slots.proposer_name_id IS NULL AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT %v $%v))) `, stampedArm, likeOp, argIdx)
 		} else {
-			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
-				dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
-			}), argIdx)
+			stampedArm := `FALSE`
+			if len(filter.ProposerNameIds) > 0 {
+				stampedArm = fmt.Sprintf(`slots.proposer_name_id IN (%v)`, idList.String())
+			}
+			fmt.Fprintf(&sql, ` AND ((%v) OR (slots.proposer_name_id IS NULL AND validator_names.name %v $%v)) `, stampedArm, likeOp, argIdx)
 		}
 		args = append(args, "%"+filter.ProposerName+"%")
 	}

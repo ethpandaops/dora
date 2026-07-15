@@ -329,6 +329,12 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		}
 
 		slot := phase0.Slot(dbBlock.Slot)
+
+		var proposerNameId *uint64
+		if dbBlock.Block != nil {
+			proposerNameId = dbBlock.Block.ProposerNameId
+		}
+
 		slotItem := &APISlotListItem{
 			Slot:         uint64(slot),
 			Epoch:        uint64(chainState.EpochOfSlot(slot)),
@@ -336,7 +342,7 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(slot),
 			Scheduled:    slot >= currentSlot,
 			Proposer:     dbBlock.Proposer,
-			ProposerName: services.GlobalBeaconService.GetValidatorName(dbBlock.Proposer),
+			ProposerName: services.GlobalBeaconService.GetProposerName(proposerNameId, dbBlock.Proposer, slot),
 		}
 
 		if dbBlock.Block != nil {

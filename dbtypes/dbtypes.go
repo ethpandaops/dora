@@ -10,6 +10,14 @@ type ValidatorName struct {
 	Name  string `db:"name"`
 }
 
+// ValidatorNameDictEntry is a distinct validator name with a stable id.
+// Event rows reference names by id, stamped at write time with the name
+// valid at the event's slot. Id 0 is reserved for "resolved, no name".
+type ValidatorNameDictEntry struct {
+	Id   uint64 `db:"id"`
+	Name string `db:"name"`
+}
+
 type SlotStatus uint8
 
 const (
@@ -27,9 +35,10 @@ const (
 )
 
 type SlotHeader struct {
-	Slot     uint64     `db:"slot"`
-	Proposer uint64     `db:"proposer"`
-	Status   SlotStatus `db:"status"`
+	Slot           uint64     `db:"slot"`
+	Proposer       uint64     `db:"proposer"`
+	Status         SlotStatus `db:"status"`
+	ProposerNameId *uint64    `db:"proposer_name_id"`
 }
 
 type Slot struct {
@@ -69,6 +78,7 @@ type Slot struct {
 	ExecTimes             []byte        `db:"exec_times"`
 	PayloadStatus         PayloadStatus `db:"payload_status"`
 	BlockUid              uint64        `db:"block_uid"`
+	ProposerNameId        *uint64       `db:"proposer_name_id"`        // Dictionary id of the proposer name valid at this slot; nil = not resolved yet, 0 = no name
 	BuilderIndex          int64         `db:"builder_index"`           // Builder index, -1 for self-built blocks (MaxUint64)
 	EthBidValue           uint64        `db:"eth_bid_value"`           // Bid value in Gwei (0 for self-builds and pre-gloas blocks)
 	BuilderPaymentWeight  uint64        `db:"builder_payment_weight"`  // Gloas: same-slot attester balance backing the builder payment quorum (Gwei); 0 pre-gloas
@@ -116,6 +126,14 @@ type OrphanedBlock struct {
 type SlotAssignment struct {
 	Slot     uint64 `db:"slot"`
 	Proposer uint64 `db:"proposer"`
+}
+
+// SlotNameStamp identifies a slot row and the proposer name id to stamp on it.
+type SlotNameStamp struct {
+	Slot           uint64  `db:"slot"`
+	Root           []byte  `db:"root"`
+	Proposer       uint64  `db:"proposer"`
+	ProposerNameId *uint64 `db:"proposer_name_id"`
 }
 
 type SyncAssignment struct {
