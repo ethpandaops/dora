@@ -333,6 +333,10 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 	fmt.Fprintf(&sql, ` FROM slots `)
 	if filter.ProposerName != "" {
 		fmt.Fprintf(&sql, ` LEFT JOIN validator_names ON validator_names."index" = slots.proposer `)
+		if filter.ProposerNameHistory {
+			// ranges within a snapshot are disjoint and snapshots are time-disjoint, so at most one row matches
+			fmt.Fprintf(&sql, ` LEFT JOIN validator_name_history ON slots.proposer >= validator_name_history.range_start AND slots.proposer <= validator_name_history.range_end AND slots.slot >= validator_name_history.start_slot AND slots.slot < validator_name_history.end_slot `)
+		}
 	}
 
 	argIdx := 0
@@ -409,16 +413,18 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 	}
 	if filter.ProposerName != "" {
 		argIdx++
+		nameExpr := `validator_names.name`
+		if filter.ProposerNameHistory {
+			nameExpr = `COALESCE(validator_name_history.name, validator_names.name)`
+		}
+		likeOp := EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  `ilike`,
+			dbtypes.DBEngineSqlite: `LIKE`,
+		})
 		if filter.InvertProposer {
-			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT ilike $%v) `,
-				dbtypes.DBEngineSqlite: ` AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT LIKE $%v) `,
-			}), argIdx)
+			fmt.Fprintf(&sql, ` AND (%[1]v IS NULL OR %[1]v = '' OR %[1]v NOT %[2]v $%[3]v) `, nameExpr, likeOp, argIdx)
 		} else {
-			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
-				dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
-			}), argIdx)
+			fmt.Fprintf(&sql, ` AND %v %v $%v `, nameExpr, likeOp, argIdx)
 		}
 		args = append(args, "%"+filter.ProposerName+"%")
 	}

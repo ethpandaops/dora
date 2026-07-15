@@ -243,6 +243,11 @@ func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pag
 			PublicKey:  elWithdrawal.ValidatorPubkey(),
 		}
 
+		requestSlot := chainState.CurrentSlot()
+		if request := elWithdrawal.Request; request != nil {
+			requestSlot = phase0.Slot(request.SlotNumber)
+		}
+
 		if validatorIndex := elWithdrawal.ValidatorIndex(); validatorIndex != nil {
 			if *validatorIndex&services.BuilderIndexFlag != 0 {
 				elWithdrawalData.IsBuilder = true
@@ -250,7 +255,7 @@ func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pag
 			} else {
 				elWithdrawalData.ValidatorIndex = *validatorIndex
 			}
-			elWithdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
+			elWithdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(*validatorIndex, requestSlot)
 			elWithdrawalData.ValidatorValid = true
 		}
 

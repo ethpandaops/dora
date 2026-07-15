@@ -10,6 +10,16 @@ type ValidatorName struct {
 	Name  string `db:"name"`
 }
 
+// ValidatorNameHistory is a time-bounded name assignment for a contiguous validator index range.
+// Slot intervals are [StartSlot, EndSlot); the open interval uses EndSlot = math.MaxInt64.
+type ValidatorNameHistory struct {
+	RangeStart uint64 `db:"range_start"`
+	RangeEnd   uint64 `db:"range_end"`
+	StartSlot  uint64 `db:"start_slot"`
+	EndSlot    uint64 `db:"end_slot"`
+	Name       string `db:"name"`
+}
+
 type SlotStatus uint8
 
 const (

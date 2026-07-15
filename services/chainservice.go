@@ -581,6 +581,21 @@ func (bs *ChainService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }
 
+// GetValidatorNameAt returns the validator name assignment valid at the given slot.
+// Identical to GetValidatorName on networks without name history.
+func (bs *ChainService) GetValidatorNameAt(index uint64, slot phase0.Slot) string {
+	if index&BuilderIndexFlag != 0 {
+		if name := bs.buildoorInventory.GetBuilderName(index); name != "" {
+			return name
+		}
+	}
+	return bs.validatorNames.GetValidatorNameAt(index, slot)
+}
+
+func (bs *ChainService) HasValidatorNameHistory() bool {
+	return bs.validatorNames.HasNameHistory()
+}
+
 func (bs *ChainService) GetBuilderURL(builderIndex uint64) string {
 	return bs.buildoorInventory.GetBuilderURL(builderIndex)
 }

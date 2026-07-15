@@ -884,6 +884,11 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 		filter.WithPayloadMask = dbtypes.PayloadStatusMaskAll
 	}
 
+	// time-aware name matching only when history data exists, so networks without it keep the plain indexed query
+	if filter.ProposerName != "" {
+		filter.ProposerNameHistory = bs.validatorNames.HasNameHistory()
+	}
+
 	// get blocks from cache
 	// iterate from current slot to finalized slot
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
@@ -1034,7 +1039,7 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 				}
 			}
 			if filter.ProposerName != "" {
-				proposerName := bs.validatorNames.GetValidatorName(proposer)
+				proposerName := bs.validatorNames.GetValidatorNameAt(proposer, block.Slot)
 				nameMatches := strings.Contains(proposerName, filter.ProposerName)
 				if filter.InvertProposer {
 					// For inverted filter, include empty/null names AND non-matching names
@@ -1244,7 +1249,7 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 					}
 				}
 				if filter.ProposerName != "" {
-					assignedName := bs.validatorNames.GetValidatorName(uint64(canonicalProposer))
+					assignedName := bs.validatorNames.GetValidatorNameAt(uint64(canonicalProposer), slot)
 					nameMatches := assignedName != "" && strings.Contains(assignedName, filter.ProposerName)
 					if filter.InvertProposer {
 						// For inverted filter, include empty/null names AND non-matching names

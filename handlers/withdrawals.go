@@ -143,6 +143,11 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 				PublicKey:  withdrawal.ValidatorPubkey(),
 			}
 
+			requestSlot := chainState.CurrentSlot()
+			if request := withdrawal.Request; request != nil {
+				requestSlot = phase0.Slot(request.SlotNumber)
+			}
+
 			if validatorIndex := withdrawal.ValidatorIndex(); validatorIndex != nil {
 				if *validatorIndex&services.BuilderIndexFlag != 0 {
 					withdrawalData.IsBuilder = true
@@ -150,7 +155,7 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 				} else {
 					withdrawalData.ValidatorIndex = *validatorIndex
 				}
-				withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
+				withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(*validatorIndex, requestSlot)
 				withdrawalData.ValidatorValid = true
 			}
 
@@ -247,7 +252,7 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 			} else {
 				withdrawalData.ValidatorIndex = withdrawal.Validator
 			}
-			withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(withdrawal.Validator)
+			withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(withdrawal.Validator, phase0.Slot(slot))
 
 			if withdrawal.AccountID > 0 {
 				if acct, ok := accountMap[withdrawal.AccountID]; ok {

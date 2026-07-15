@@ -319,7 +319,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		if pageData.Proposer == math.MaxInt64 && len(slotBlockProposers) == 1 {
 			pageData.Proposer = slotBlockProposers[0]
 		}
-		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
+		pageData.ProposerName = services.GlobalBeaconService.GetValidatorNameAt(pageData.Proposer, slot)
 	} else {
 		if blockData.Orphaned {
 			pageData.Status = uint16(models.SlotStatusOrphaned)
@@ -327,7 +327,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 			pageData.Status = uint16(models.SlotStatusFound)
 		}
 		pageData.Proposer = uint64(blockData.Header.Message.ProposerIndex)
-		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
+		pageData.ProposerName = services.GlobalBeaconService.GetValidatorNameAt(pageData.Proposer, blockData.Header.Message.Slot)
 
 		blockUid := uint64(blockData.Header.Message.Slot)<<16 | 0xffff
 		if cacheBlock := services.GlobalBeaconService.GetBeaconIndexer().GetBlockByRoot(blockData.Root); cacheBlock != nil {

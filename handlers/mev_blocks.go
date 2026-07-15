@@ -237,7 +237,7 @@ func buildFilteredMevBlocksPageData(ctx context.Context, pageIdx uint64, pageSiz
 			BlockNumber:    mevBlock.BlockNumber,
 			Time:           chainState.SlotToTime(phase0.Slot(mevBlock.SlotNumber)),
 			ValidatorIndex: mevBlock.ProposerIndex,
-			ValidatorName:  services.GlobalBeaconService.GetValidatorName(mevBlock.ProposerIndex),
+			ValidatorName:  services.GlobalBeaconService.GetValidatorNameAt(mevBlock.ProposerIndex, phase0.Slot(mevBlock.SlotNumber)),
 			BuilderPubkey:  mevBlock.BuilderPubkey,
 			Proposed:       mevBlock.Proposed,
 			Relays:         []*models.MevBlocksPageDataRelay{},

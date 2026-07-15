@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,10 +46,28 @@ type ValidatorNames struct {
 	namesByDepositOrigin  map[common.Address]*validatorNameEntry
 	namesByDepositTarget  map[common.Address]*validatorNameEntry
 	resolvedNamesByIndex  map[uint64]*validatorNameEntry
+	nameHistoryRaw        []validatorNamesHistoryEntry
+	nameHistoryBuilt      bool
+	nameHistory           []validatorNameSnapshot
+	nameHistoryDirty      bool
 }
 
 type validatorNameEntry struct {
 	name string
+}
+
+type validatorNameRange struct {
+	startIndex uint64
+	endIndex   uint64 // inclusive
+	name       string
+}
+
+// validatorNameSnapshot holds the full range assignment valid for [startSlot, endSlot).
+// Snapshots are immutable once published and sorted by startSlot; ranges are disjoint and sorted by startIndex.
+type validatorNameSnapshot struct {
+	startSlot phase0.Slot
+	endSlot   phase0.Slot // exclusive; math.MaxInt64 for the open interval
+	ranges    []validatorNameRange
 }
 
 func NewValidatorNames(ctx context.Context, beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *ValidatorNames {
@@ -94,6 +114,13 @@ func (vn *ValidatorNames) runUpdater() error {
 		logger_vn.Infof("refreshing validator inventory")
 		loadingChan := vn.LoadValidatorNames()
 		<-loadingChan
+		needUpdate = true
+	}
+
+	// retried on the 30s updater tick until chain specs & genesis are available
+	if changed, err := vn.ensureNameHistory(); err != nil {
+		logger_vn.Debugf("validator name history pending: %v", err)
+	} else if changed {
 		needUpdate = true
 	}
 
@@ -276,6 +303,138 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 	return ""
 }
 
+// GetValidatorNameAt returns the name assignment valid at the given slot.
+// Falls back to the current name when no history snapshot covers the slot or index,
+// so networks without name history behave identically to GetValidatorName.
+func (vn *ValidatorNames) GetValidatorNameAt(index uint64, slot phase0.Slot) string {
+	if !vn.namesMutex.TryRLock() {
+		return ""
+	}
+	history := vn.nameHistory
+	vn.namesMutex.RUnlock()
+
+	// snapshots are immutable once published, searching outside the lock is safe
+	snapIdx := sort.Search(len(history), func(i int) bool { return history[i].startSlot > slot }) - 1
+	if snapIdx >= 0 && slot < history[snapIdx].endSlot {
+		ranges := history[snapIdx].ranges
+		rangeIdx := sort.Search(len(ranges), func(i int) bool { return ranges[i].startIndex > index }) - 1
+		if rangeIdx >= 0 && index <= ranges[rangeIdx].endIndex {
+			return ranges[rangeIdx].name
+		}
+	}
+
+	return vn.GetValidatorName(index)
+}
+
+func (vn *ValidatorNames) HasNameHistory() bool {
+	if !vn.namesMutex.TryRLock() {
+		return false
+	}
+	defer vn.namesMutex.RUnlock()
+	return len(vn.nameHistory) > 0
+}
+
+// ensureNameHistory converts the raw inventory history into slot-bounded snapshots.
+// Returns an error (and stays unbuilt) while chain specs or genesis are unknown.
+func (vn *ValidatorNames) ensureNameHistory() (bool, error) {
+	vn.namesMutex.RLock()
+	built := vn.nameHistoryBuilt
+	rawHistory := vn.nameHistoryRaw
+	vn.namesMutex.RUnlock()
+
+	if built {
+		return false, nil
+	}
+
+	var snapshots []validatorNameSnapshot
+	if len(rawHistory) > 0 {
+		if vn.chainState.GetSpecs() == nil || vn.chainState.GetGenesis() == nil {
+			return false, fmt.Errorf("chain specs not initialized")
+		}
+		snapshots = buildNameSnapshots(rawHistory, func(ts int64) phase0.Slot {
+			return vn.chainState.TimeToSlot(time.Unix(ts, 0))
+		})
+	}
+
+	vn.namesMutex.Lock()
+	defer vn.namesMutex.Unlock()
+	vn.nameHistoryBuilt = true
+	if reflect.DeepEqual(vn.nameHistory, snapshots) {
+		return false, nil
+	}
+	vn.nameHistory = snapshots
+	vn.nameHistoryDirty = true
+	logger_vn.Infof("built validator name history: %v snapshots", len(snapshots))
+	return true, nil
+}
+
+func buildNameSnapshots(entries []validatorNamesHistoryEntry, timeToSlot func(int64) phase0.Slot) []validatorNameSnapshot {
+	sorted := make([]validatorNamesHistoryEntry, len(entries))
+	copy(sorted, entries)
+	sort.SliceStable(sorted, func(a, b int) bool {
+		return sorted[a].EffectiveFrom < sorted[b].EffectiveFrom
+	})
+
+	var snapshots []validatorNameSnapshot
+	for idx, entry := range sorted {
+		startSlot := timeToSlot(entry.EffectiveFrom)
+		endSlot := phase0.Slot(math.MaxInt64)
+		if idx < len(sorted)-1 {
+			endSlot = timeToSlot(sorted[idx+1].EffectiveFrom)
+		}
+		if startSlot >= endSlot {
+			continue // zero-length interval, fully shadowed by the next snapshot
+		}
+		snapshots = append(snapshots, validatorNameSnapshot{
+			startSlot: startSlot,
+			endSlot:   endSlot,
+			ranges:    parseValidatorNameRanges(entry.Ranges),
+		})
+	}
+	return snapshots
+}
+
+func parseValidatorNameRanges(ranges map[string]string) []validatorNameRange {
+	result := make([]validatorNameRange, 0, len(ranges))
+	for key, name := range ranges {
+		if strings.Contains(key, ":") {
+			logger_vn.Warnf("unsupported key in validator name history: %v", key)
+			continue
+		}
+		rangeParts := strings.Split(key, "-")
+		minIdx, err := strconv.ParseUint(rangeParts[0], 10, 64)
+		if err != nil {
+			logger_vn.Warnf("invalid range key in validator name history: %v", key)
+			continue
+		}
+		maxIdx := minIdx
+		if len(rangeParts) > 1 {
+			maxIdx, err = strconv.ParseUint(rangeParts[1], 10, 64)
+			if err != nil {
+				logger_vn.Warnf("invalid range key in validator name history: %v", key)
+				continue
+			}
+		}
+		if maxIdx < minIdx {
+			logger_vn.Warnf("invalid range bounds in validator name history: %v", key)
+			continue
+		}
+		result = append(result, validatorNameRange{startIndex: minIdx, endIndex: maxIdx, name: name})
+	}
+	sort.Slice(result, func(a, b int) bool { return result[a].startIndex < result[b].startIndex })
+
+	// disjoint ranges are required for unambiguous lookups and duplicate-free SQL joins
+	deduped := result[:0]
+	for _, nameRange := range result {
+		if len(deduped) > 0 && nameRange.startIndex <= deduped[len(deduped)-1].endIndex {
+			logger_vn.Warnf("overlapping range in validator name history: %v-%v (%v)", nameRange.startIndex, nameRange.endIndex, nameRange.name)
+			continue
+		}
+		deduped = append(deduped, nameRange)
+	}
+	return deduped
+}
+
 func (vn *ValidatorNames) GetValidatorNameByPubkey(pubkey []byte) string {
 	validatorIndex, found := vn.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(pubkey))
 	if !found {
@@ -318,6 +477,8 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 		vn.namesByWithdrawal = make(map[common.Address]*validatorNameEntry)
 		vn.namesByDepositOrigin = make(map[common.Address]*validatorNameEntry)
 		vn.namesByDepositTarget = make(map[common.Address]*validatorNameEntry)
+		vn.nameHistoryRaw = nil
+		vn.nameHistoryBuilt = false
 		vn.namesMutex.Unlock()
 
 		if utils.Config.Frontend.ValidatorNamesInventory != "" {
@@ -436,7 +597,15 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 }
 
 type validatorNamesRangesResponse struct {
-	Ranges map[string]string `json:"ranges"`
+	Ranges  map[string]string            `json:"ranges"`
+	History []validatorNamesHistoryEntry `json:"history"`
+}
+
+// validatorNamesHistoryEntry is a full range snapshot valid from EffectiveFrom (unix seconds)
+// until the next entry. EffectiveFrom values at or before genesis mean "since genesis".
+type validatorNamesHistoryEntry struct {
+	EffectiveFrom int64             `json:"effective_from"`
+	Ranges        map[string]string `json:"ranges"`
 }
 
 func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
@@ -465,6 +634,14 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 
 	nameCount := vn.parseNamesMap(rangesResponse.Ranges)
 	logger_vn.Infof("loaded %v validator names from inventory api (%v)", nameCount, utils.GetRedactedUrl(apiUrl))
+
+	vn.namesMutex.Lock()
+	vn.nameHistoryRaw = rangesResponse.History
+	vn.namesMutex.Unlock()
+	if len(rangesResponse.History) > 0 {
+		logger_vn.Infof("loaded %v validator name history snapshots from inventory api", len(rangesResponse.History))
+	}
+
 	return nil
 }
 
@@ -560,6 +737,39 @@ func (vn *ValidatorNames) UpdateDb(ctx context.Context) error {
 
 		lastIndex = maxIndex + 1
 		nameIdx = maxIdx
+	}
+
+	vn.namesMutex.RLock()
+	historyDirty := vn.nameHistoryDirty
+	nameHistory := vn.nameHistory
+	vn.namesMutex.RUnlock()
+
+	if historyDirty {
+		historyRows := make([]*dbtypes.ValidatorNameHistory, 0)
+		for _, snapshot := range nameHistory {
+			for _, nameRange := range snapshot.ranges {
+				historyRows = append(historyRows, &dbtypes.ValidatorNameHistory{
+					RangeStart: nameRange.startIndex,
+					RangeEnd:   nameRange.endIndex,
+					StartSlot:  uint64(snapshot.startSlot),
+					EndSlot:    uint64(snapshot.endSlot),
+					Name:       nameRange.name,
+				})
+			}
+		}
+
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return db.ReplaceValidatorNameHistory(ctx, tx, historyRows)
+		})
+		if err != nil {
+			return err
+		}
+
+		vn.namesMutex.Lock()
+		vn.nameHistoryDirty = false
+		vn.namesMutex.Unlock()
+
+		logger_vn.Infof("updated validator name history: %v snapshots, %v rows", len(nameHistory), len(historyRows))
 	}
 
 	return nil
