@@ -58,6 +58,7 @@ type ValidatorNames struct {
 	dictByName            map[string]uint64
 	dictById              map[uint64]string
 	dictLoaded            bool
+	dictSynced            bool
 }
 
 type validatorNameEntry struct {
@@ -134,6 +135,10 @@ func (vn *ValidatorNames) runUpdater() error {
 		if err := vn.loadNameDict(); err != nil {
 			logger_vn.WithError(err).Warnf("could not load validator name dictionary")
 		}
+	}
+
+	if err := vn.syncNameDict(); err != nil {
+		logger_vn.WithError(err).Warnf("name dictionary sync failed")
 	}
 
 	if err := vn.reconcileNameHistoryState(); err != nil {
@@ -292,6 +297,10 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 		vn.namesMutex.Lock()
 		vn.resolvedNamesByIndex = newResolvedNames
 		vn.namesMutex.Unlock()
+
+		vn.dictMutex.Lock()
+		vn.dictSynced = false
+		vn.dictMutex.Unlock()
 	}
 
 	return hasUpdates, nil
@@ -386,7 +395,10 @@ func (vn *ValidatorNames) nameSourceIsReady() bool {
 
 // GetValidatorNameIdAt resolves the dictionary id of the name valid at the given slot.
 // Returns nil while name sources are unavailable (rows get repaired later); 0 means
-// "resolved, no name".
+// "resolved, no name". Cache-only: it is called from within indexer write transactions,
+// so it must never open a DB transaction itself (nested write tx deadlocks on sqlite).
+// Dictionary inserts happen in syncNameDict on the updater tick; unknown names resolve
+// to nil until then and are repaired afterwards.
 func (vn *ValidatorNames) GetValidatorNameIdAt(index phase0.ValidatorIndex, slot phase0.Slot) *uint64 {
 	if !vn.nameSourceIsReady() {
 		return nil
@@ -398,9 +410,10 @@ func (vn *ValidatorNames) GetValidatorNameIdAt(index phase0.ValidatorIndex, slot
 		return &zero
 	}
 
-	id, err := vn.getOrCreateNameId(name)
-	if err != nil {
-		logger_vn.WithError(err).Warnf("could not resolve name id for %v", name)
+	vn.dictMutex.RLock()
+	id, found := vn.dictByName[name]
+	vn.dictMutex.RUnlock()
+	if !found {
 		return nil
 	}
 	return &id
@@ -443,6 +456,45 @@ func (vn *ValidatorNames) loadNameDict() error {
 		vn.dictById[entry.Id] = entry.Name
 	}
 	vn.dictLoaded = true
+	return nil
+}
+
+// syncNameDict inserts dictionary entries for all currently known names. It is the
+// only dictionary write path and runs on the updater tick, outside any indexer write
+// transaction — the resolver itself is cache-only.
+func (vn *ValidatorNames) syncNameDict() error {
+	vn.dictMutex.RLock()
+	dictLoaded := vn.dictLoaded
+	dictSynced := vn.dictSynced
+	vn.dictMutex.RUnlock()
+	if !dictLoaded || dictSynced {
+		return nil
+	}
+
+	names := map[string]bool{}
+	vn.namesMutex.RLock()
+	for _, entry := range vn.namesByIndex {
+		names[entry.name] = true
+	}
+	for _, entry := range vn.resolvedNamesByIndex {
+		names[entry.name] = true
+	}
+	for _, snapshot := range vn.nameHistory {
+		for _, nameRange := range snapshot.ranges {
+			names[nameRange.name] = true
+		}
+	}
+	vn.namesMutex.RUnlock()
+
+	for name := range names {
+		if _, err := vn.getOrCreateNameId(name); err != nil {
+			return err
+		}
+	}
+
+	vn.dictMutex.Lock()
+	vn.dictSynced = true
+	vn.dictMutex.Unlock()
 	return nil
 }
 
@@ -798,6 +850,10 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 		vn.namesMutex.Lock()
 		vn.nameSourceOk = loadOk
 		vn.namesMutex.Unlock()
+
+		vn.dictMutex.Lock()
+		vn.dictSynced = false
+		vn.dictMutex.Unlock()
 	}()
 
 	return vn.loading

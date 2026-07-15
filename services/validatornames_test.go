@@ -217,9 +217,21 @@ func TestGetValidatorNameIdAt_Readiness(t *testing.T) {
 		t.Errorf("expected id 0 for unnamed validator, got %v", id)
 	}
 
+	// named validator without a dict entry -> nil (cache-only resolver, repaired after sync)
+	vn.namesByIndex[7] = &validatorNameEntry{name: "node-1"}
+	if id := vn.GetValidatorNameIdAt(7, 100); id != nil {
+		t.Errorf("expected nil id for name missing from dict, got %v", *id)
+	}
+
+	// named validator with a dict entry -> dictionary id
+	vn.dictByName = map[string]uint64{"node-1": 42}
+	if id := vn.GetValidatorNameIdAt(7, 100); id == nil || *id != 42 {
+		t.Errorf("expected dict id 42, got %v", id)
+	}
+
 	// history served but not yet converted to snapshots -> not ready
 	vn.nameHistoryRaw = []validatorNamesHistoryEntry{{EffectiveFrom: 0, Ranges: map[string]string{"0-9": "node-1"}}}
-	if id := vn.GetValidatorNameIdAt(5, 100); id != nil {
+	if id := vn.GetValidatorNameIdAt(7, 100); id != nil {
 		t.Errorf("expected nil id while history unbuilt, got %v", *id)
 	}
 }
