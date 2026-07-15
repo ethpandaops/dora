@@ -136,6 +136,10 @@ func (vn *ValidatorNames) runUpdater() error {
 		}
 	}
 
+	if err := vn.reconcileNameHistoryState(); err != nil {
+		logger_vn.WithError(err).Warnf("name history reconciliation failed")
+	}
+
 	if err := vn.repairSlotNameIds(); err != nil {
 		logger_vn.WithError(err).Warnf("slot name id repair failed")
 	}
@@ -511,15 +515,21 @@ func (vn *ValidatorNames) repairSlotNameIds() error {
 }
 
 // ensureNameHistory converts the raw inventory history into slot-bounded snapshots.
-// Returns an error (and stays unbuilt) while chain specs or genesis are unknown.
+// Returns an error (and stays unbuilt) while chain specs or genesis are unknown or the
+// last source load failed — previous snapshots are kept, so a transient inventory
+// outage never degrades resolution or churns stamped rows.
 func (vn *ValidatorNames) ensureNameHistory() error {
 	vn.namesMutex.RLock()
 	built := vn.nameHistoryBuilt
 	rawHistory := vn.nameHistoryRaw
+	sourceOk := vn.nameSourceOk
 	vn.namesMutex.RUnlock()
 
 	if built {
 		return nil
+	}
+	if !sourceOk {
+		return fmt.Errorf("name sources not loaded")
 	}
 
 	var snapshots []validatorNameSnapshot
@@ -540,6 +550,106 @@ func (vn *ValidatorNames) ensureNameHistory() error {
 		logger_vn.Infof("built validator name history: %v snapshots", len(snapshots))
 	}
 	return nil
+}
+
+// nameHistoryDiffBoundary returns the first slot from which name resolution differs
+// between two snapshot sets, or nil when they resolve identically. endSlot changes are
+// ignored: appending a history entry re-bounds the previously open snapshot without
+// changing what earlier slots resolve to.
+func nameHistoryDiffBoundary(oldSnaps []validatorNameSnapshot, newSnaps []validatorNameSnapshot) *phase0.Slot {
+	minLen := len(oldSnaps)
+	if len(newSnaps) < minLen {
+		minLen = len(newSnaps)
+	}
+	for i := 0; i < minLen; i++ {
+		if oldSnaps[i].startSlot != newSnaps[i].startSlot || !reflect.DeepEqual(oldSnaps[i].ranges, newSnaps[i].ranges) {
+			boundary := oldSnaps[i].startSlot
+			if newSnaps[i].startSlot < boundary {
+				boundary = newSnaps[i].startSlot
+			}
+			return &boundary
+		}
+	}
+	if len(oldSnaps) > minLen {
+		return &oldSnaps[minLen].startSlot
+	}
+	if len(newSnaps) > minLen {
+		return &newSnaps[minLen].startSlot
+	}
+	return nil
+}
+
+type nameHistoryStateRange struct {
+	Start uint64 `json:"s"`
+	End   uint64 `json:"e"`
+	Name  string `json:"n"`
+}
+
+type nameHistoryStateSnapshot struct {
+	StartSlot uint64                  `json:"start"`
+	EndSlot   uint64                  `json:"end"`
+	Ranges    []nameHistoryStateRange `json:"ranges"`
+}
+
+func nameHistoryToState(snapshots []validatorNameSnapshot) []nameHistoryStateSnapshot {
+	state := make([]nameHistoryStateSnapshot, len(snapshots))
+	for i, snapshot := range snapshots {
+		ranges := make([]nameHistoryStateRange, len(snapshot.ranges))
+		for j, nameRange := range snapshot.ranges {
+			ranges[j] = nameHistoryStateRange{Start: nameRange.startIndex, End: nameRange.endIndex, Name: nameRange.name}
+		}
+		state[i] = nameHistoryStateSnapshot{StartSlot: uint64(snapshot.startSlot), EndSlot: uint64(snapshot.endSlot), Ranges: ranges}
+	}
+	return state
+}
+
+func nameHistoryFromState(state []nameHistoryStateSnapshot) []validatorNameSnapshot {
+	snapshots := make([]validatorNameSnapshot, len(state))
+	for i, stateSnapshot := range state {
+		ranges := make([]validatorNameRange, len(stateSnapshot.Ranges))
+		for j, stateRange := range stateSnapshot.Ranges {
+			ranges[j] = validatorNameRange{startIndex: stateRange.Start, endIndex: stateRange.End, name: stateRange.Name}
+		}
+		snapshots[i] = validatorNameSnapshot{startSlot: phase0.Slot(stateSnapshot.StartSlot), endSlot: phase0.Slot(stateSnapshot.EndSlot), ranges: ranges}
+	}
+	return snapshots
+}
+
+// reconcileNameHistoryState compares the current snapshots against the persisted
+// state from the last run and resets stamped slot rows from the first slot whose
+// resolution changed, so the repair pass re-stamps them with the corrected names.
+// Covers slots stamped with a stale mapping before the inventory refresh caught up,
+// as well as retroactive history amendments — across restarts.
+func (vn *ValidatorNames) reconcileNameHistoryState() error {
+	if !vn.nameSourceIsReady() {
+		return nil
+	}
+
+	vn.namesMutex.RLock()
+	snapshots := vn.nameHistory
+	vn.namesMutex.RUnlock()
+
+	persistedState := []nameHistoryStateSnapshot{}
+	if _, err := db.GetExplorerState(vn.ctx, "validator_names.history_state", &persistedState); err != nil && len(snapshots) == 0 {
+		return nil // nothing persisted, nothing built: no-history network, keep zero footprint
+	}
+
+	boundary := nameHistoryDiffBoundary(nameHistoryFromState(persistedState), snapshots)
+	if boundary == nil {
+		return nil
+	}
+
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		resetCount, err := db.ResetSlotNameIdsFromSlot(vn.ctx, tx, uint64(*boundary))
+		if err != nil {
+			return err
+		}
+		if err := db.SetExplorerState(vn.ctx, tx, "validator_names.history_state", nameHistoryToState(snapshots)); err != nil {
+			return err
+		}
+		logger_vn.Infof("validator name history changed at slot %v, reset %v slot stamps for re-resolution", *boundary, resetCount)
+		return nil
+	})
 }
 
 func buildNameSnapshots(entries []validatorNamesHistoryEntry, timeToSlot func(int64) phase0.Slot) []validatorNameSnapshot {

@@ -51,6 +51,17 @@ func GetSlotsWithoutNameId(ctx context.Context, limit uint32) []*dbtypes.SlotNam
 	return stamps
 }
 
+// ResetSlotNameIdsFromSlot clears stamps from the given slot on so the repair pass
+// re-resolves them against changed name history. Returns the number of reset rows.
+func ResetSlotNameIdsFromSlot(ctx context.Context, tx *sqlx.Tx, slot uint64) (int64, error) {
+	res, err := tx.ExecContext(ctx, `UPDATE slots SET proposer_name_id = NULL WHERE slot >= $1 AND proposer_name_id IS NOT NULL`, slot)
+	if err != nil {
+		return 0, err
+	}
+	count, _ := res.RowsAffected()
+	return count, nil
+}
+
 func UpdateSlotNameIds(ctx context.Context, tx *sqlx.Tx, stamps []*dbtypes.SlotNameStamp) error {
 	stmt, err := tx.PreparexContext(ctx, `UPDATE slots SET proposer_name_id = $1 WHERE slot = $2 AND root = $3`)
 	if err != nil {

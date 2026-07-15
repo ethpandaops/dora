@@ -242,6 +242,85 @@ func TestMatchNameIds(t *testing.T) {
 	}
 }
 
+func TestNameHistoryDiffBoundary(t *testing.T) {
+	ranges1 := []validatorNameRange{{startIndex: 0, endIndex: 99, name: "node-1"}}
+	ranges2 := []validatorNameRange{{startIndex: 0, endIndex: 99, name: "node-2"}}
+
+	openSnap := func(start phase0.Slot, ranges []validatorNameRange) validatorNameSnapshot {
+		return validatorNameSnapshot{startSlot: start, endSlot: phase0.Slot(math.MaxInt64), ranges: ranges}
+	}
+	boundedSnap := func(start, end phase0.Slot, ranges []validatorNameRange) validatorNameSnapshot {
+		return validatorNameSnapshot{startSlot: start, endSlot: end, ranges: ranges}
+	}
+
+	tests := []struct {
+		name     string
+		old      []validatorNameSnapshot
+		new      []validatorNameSnapshot
+		boundary *uint64
+	}{
+		{
+			name:     "both empty",
+			boundary: nil,
+		},
+		{
+			name:     "identical",
+			old:      []validatorNameSnapshot{openSnap(0, ranges1)},
+			new:      []validatorNameSnapshot{openSnap(0, ranges1)},
+			boundary: nil,
+		},
+		{
+			name:     "appended entry re-bounds open snapshot, resolution before boundary unchanged",
+			old:      []validatorNameSnapshot{openSnap(0, ranges1)},
+			new:      []validatorNameSnapshot{boundedSnap(0, 500, ranges1), openSnap(500, ranges2)},
+			boundary: func() *uint64 { b := uint64(500); return &b }(),
+		},
+		{
+			name:     "amended ranges mid-history",
+			old:      []validatorNameSnapshot{boundedSnap(0, 500, ranges1), openSnap(500, ranges2)},
+			new:      []validatorNameSnapshot{boundedSnap(0, 500, ranges2), openSnap(500, ranges2)},
+			boundary: func() *uint64 { b := uint64(0); return &b }(),
+		},
+		{
+			name:     "first history on previously empty state",
+			new:      []validatorNameSnapshot{openSnap(100, ranges1)},
+			boundary: func() *uint64 { b := uint64(100); return &b }(),
+		},
+		{
+			name:     "history removed",
+			old:      []validatorNameSnapshot{openSnap(100, ranges1)},
+			boundary: func() *uint64 { b := uint64(100); return &b }(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := nameHistoryDiffBoundary(tt.old, tt.new)
+			if (result == nil) != (tt.boundary == nil) {
+				t.Fatalf("boundary = %v, want %v", result, tt.boundary)
+			}
+			if result != nil && uint64(*result) != *tt.boundary {
+				t.Errorf("boundary = %v, want %v", *result, *tt.boundary)
+			}
+		})
+	}
+}
+
+func TestNameHistoryStateRoundtrip(t *testing.T) {
+	snapshots := []validatorNameSnapshot{
+		{startSlot: 0, endSlot: 500, ranges: []validatorNameRange{{startIndex: 0, endIndex: 99, name: "node-1"}}},
+		{startSlot: 500, endSlot: phase0.Slot(math.MaxInt64), ranges: []validatorNameRange{{startIndex: 0, endIndex: 99, name: "node-2"}}},
+	}
+
+	restored := nameHistoryFromState(nameHistoryToState(snapshots))
+	if boundary := nameHistoryDiffBoundary(snapshots, restored); boundary != nil {
+		t.Errorf("state roundtrip changed resolution from slot %v", *boundary)
+	}
+	if restored[0].endSlot != 500 || restored[1].endSlot != phase0.Slot(math.MaxInt64) {
+		t.Errorf("state roundtrip changed interval bounds: %+v", restored)
+	}
+}
+
 func TestGetValidatorName_Concurrency(t *testing.T) {
 	vn := &ValidatorNames{
 		namesMutex:           sync.RWMutex{},
