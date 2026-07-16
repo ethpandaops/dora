@@ -31,11 +31,11 @@ type contractIndexer[TxType any] struct {
 
 // contractIndexerOptions defines the configuration for the contract indexer
 type contractIndexerOptions[TxType any] struct {
-	stateKey        string         // key to identify the indexer state in the database
-	batchSize       int            // number of logs to fetch per request
-	contractAddress common.Address // address of the contract to index
-	deployBlock     uint64         // block number from where to start crawling logs
-	dequeueRate     uint64         // number of logs to dequeue per block, 0 for no queue
+	stateKey        string                // key to identify the indexer state in the database
+	batchSize       int                   // number of logs to fetch per request
+	contractAddress func() common.Address // resolves the address of the contract to index (re-evaluated per scan, as client configs may arrive after startup)
+	deployBlock     uint64                // block number from where to start crawling logs
+	dequeueRate     uint64                // number of logs to dequeue per block, 0 for no queue
 
 	// processFinalTx processes a finalized transaction log
 	processFinalTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*TxType) (*TxType, error)
@@ -227,7 +227,7 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 			FromBlock: big.NewInt(0).SetUint64(ci.state.FinalBlock + 1),
 			ToBlock:   big.NewInt(0).SetUint64(toBlock),
 			Addresses: []common.Address{
-				ci.options.contractAddress,
+				ci.options.contractAddress(),
 			},
 			// Match any topic. A nil Topics serializes to "topics": null, which some
 			// execution clients (e.g. ethrex) reject as a missing parameter; a non-nil
@@ -462,7 +462,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 				FromBlock: big.NewInt(0).SetUint64(startBlockNumber),
 				ToBlock:   big.NewInt(0).SetUint64(toBlock),
 				Addresses: []common.Address{
-					ci.options.contractAddress,
+					ci.options.contractAddress(),
 				},
 				// Match any topic. A nil Topics serializes to "topics": null, which some
 				// execution clients (e.g. ethrex) reject as a missing parameter; a non-nil
