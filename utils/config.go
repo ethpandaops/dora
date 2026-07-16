@@ -29,7 +29,7 @@ func ReadConfig(cfg *types.Config, path string) error {
 
 	// Load beacon endpoints from URL if specified
 	if cfg.BeaconApi.EndpointsURL != "" && len(cfg.BeaconApi.Endpoints) == 0 {
-		endpoints, err := loadEndpointsFromUrl(cfg.BeaconApi.EndpointsURL)
+		endpoints, err := LoadEndpointsFromURL(cfg.BeaconApi.EndpointsURL)
 		if err != nil {
 			return fmt.Errorf("failed to load beacon endpoints from URL: %w", err)
 		}
@@ -68,7 +68,7 @@ func ReadConfig(cfg *types.Config, path string) error {
 
 	// Load execution endpoints from URL if specified
 	if cfg.ExecutionApi.EndpointsURL != "" && len(cfg.ExecutionApi.Endpoints) == 0 {
-		endpoints, err := loadEndpointsFromUrl(cfg.ExecutionApi.EndpointsURL)
+		endpoints, err := LoadEndpointsFromURL(cfg.ExecutionApi.EndpointsURL)
 		if err != nil {
 			return fmt.Errorf("failed to load execution endpoints from URL: %w", err)
 		}
@@ -121,8 +121,8 @@ func readConfigEnv(cfg *types.Config) error {
 	return envconfig.Process("", cfg)
 }
 
-// loadEndpointsFromUrl loads endpoint configurations from a URL or file path
-func loadEndpointsFromUrl(endpointsURL string) ([]types.EndpointConfig, error) {
+// LoadEndpointsFromURL loads endpoint configurations from a URL or file path
+func LoadEndpointsFromURL(endpointsURL string) ([]types.EndpointConfig, error) {
 	var data []byte
 	var err error
 

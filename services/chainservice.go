@@ -37,6 +37,7 @@ type ChainService struct {
 	logger                logrus.FieldLogger
 	consensusPool         *consensus.Pool
 	executionPool         *execution.Pool
+	executionIndexerCtx   *execindexer.IndexerCtx
 	beaconIndexer         *beacon.Indexer
 	validatorNames        *ValidatorNames
 	buildoorInventory     *BuildoorInventory
@@ -159,6 +160,82 @@ func applyAuthGroupToEndpoint(endpoint *types.EndpointConfig) (*types.EndpointCo
 	return &endpointCopy, nil
 }
 
+// addConsensusClient wires a beacon endpoint into the consensus pool and beacon indexer.
+// Safe to call while the service is running - hot-added clients start indexing immediately.
+func (cs *ChainService) addConsensusClient(endpoint *types.EndpointConfig) error {
+	processedEndpoint, err := applyAuthGroupToEndpoint(endpoint)
+	if err != nil {
+		return fmt.Errorf("could not apply authGroup: %w", err)
+	}
+
+	endpointConfig := &consensus.ClientConfig{
+		URL:        processedEndpoint.Url,
+		Name:       processedEndpoint.Name,
+		Headers:    processedEndpoint.Headers,
+		DisableSSZ: utils.Config.KillSwitch.DisableSSZRequests,
+	}
+
+	if processedEndpoint.Ssh != nil {
+		endpointConfig.SshConfig = &sshtunnel.SshConfig{
+			Host:     processedEndpoint.Ssh.Host,
+			Port:     processedEndpoint.Ssh.Port,
+			User:     processedEndpoint.Ssh.User,
+			Password: processedEndpoint.Ssh.Password,
+			Keyfile:  processedEndpoint.Ssh.Keyfile,
+		}
+	}
+
+	client, err := cs.consensusPool.AddEndpoint(endpointConfig)
+	if err != nil {
+		return fmt.Errorf("could not add to pool: %w", err)
+	}
+
+	cs.beaconIndexer.AddClient(client.GetIndex(), client, processedEndpoint.Priority, processedEndpoint.Archive, processedEndpoint.SkipValidators)
+
+	return nil
+}
+
+// addExecutionClient wires an execution endpoint into the execution pool and indexer context.
+// Safe to call while the service is running.
+func (cs *ChainService) addExecutionClient(endpoint *types.EndpointConfig) error {
+	processedEndpoint, err := applyAuthGroupToEndpoint(endpoint)
+	if err != nil {
+		return fmt.Errorf("could not apply authGroup: %w", err)
+	}
+
+	endpointConfig := &execution.ClientConfig{
+		URL:     processedEndpoint.Url,
+		Name:    processedEndpoint.Name,
+		Headers: processedEndpoint.Headers,
+	}
+
+	if processedEndpoint.Ssh != nil {
+		endpointConfig.SshConfig = &sshtunnel.SshConfig{
+			Host:     processedEndpoint.Ssh.Host,
+			Port:     processedEndpoint.Ssh.Port,
+			User:     processedEndpoint.Ssh.User,
+			Password: processedEndpoint.Ssh.Password,
+			Keyfile:  processedEndpoint.Ssh.Keyfile,
+		}
+	}
+
+	client, err := cs.executionPool.AddEndpoint(endpointConfig)
+	if err != nil {
+		return fmt.Errorf("could not add to pool: %w", err)
+	}
+
+	cs.executionIndexerCtx.AddClientInfo(client, processedEndpoint.Priority, processedEndpoint.Archive)
+
+	// Add snooper client if configured
+	if processedEndpoint.EngineSnooperUrl != "" {
+		if err := cs.snooperManager.AddClient(client, processedEndpoint.EngineSnooperUrl); err != nil {
+			cs.logger.WithError(err).Errorf("could not add snooper client for '%v'", processedEndpoint.Name)
+		}
+	}
+
+	return nil
+}
+
 // StartService is used to start the beaconchain service
 func (cs *ChainService) StartService() error {
 	if cs.started {
@@ -167,6 +244,7 @@ func (cs *ChainService) StartService() error {
 	cs.started = true
 
 	executionIndexerCtx := execindexer.NewIndexerCtx(cs.ctx, cs.logger.WithField("service", "el-indexer"), cs.executionPool, cs.consensusPool, cs.beaconIndexer)
+	cs.executionIndexerCtx = executionIndexerCtx
 
 	// load genesis config if configured
 	if utils.Config.ExecutionApi.GenesisConfig != "" {
@@ -180,38 +258,10 @@ func (cs *ChainService) StartService() error {
 	}
 
 	// add consensus clients
-	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
-		// Apply authGroup settings if configured
-		processedEndpoint, err := applyAuthGroupToEndpoint(&endpoint)
-		if err != nil {
-			cs.logger.Errorf("could not apply authGroup to beacon client '%v': %v", endpoint.Name, err)
-			continue
+	for _, endpoint := range utils.Config.BeaconApi.Endpoints {
+		if err := cs.addConsensusClient(&endpoint); err != nil {
+			cs.logger.Errorf("could not add beacon client '%v': %v", endpoint.Name, err)
 		}
-
-		endpointConfig := &consensus.ClientConfig{
-			URL:        processedEndpoint.Url,
-			Name:       processedEndpoint.Name,
-			Headers:    processedEndpoint.Headers,
-			DisableSSZ: utils.Config.KillSwitch.DisableSSZRequests,
-		}
-
-		if processedEndpoint.Ssh != nil {
-			endpointConfig.SshConfig = &sshtunnel.SshConfig{
-				Host:     processedEndpoint.Ssh.Host,
-				Port:     processedEndpoint.Ssh.Port,
-				User:     processedEndpoint.Ssh.User,
-				Password: processedEndpoint.Ssh.Password,
-				Keyfile:  processedEndpoint.Ssh.Keyfile,
-			}
-		}
-
-		client, err := cs.consensusPool.AddEndpoint(endpointConfig)
-		if err != nil {
-			cs.logger.Errorf("could not add beacon client '%v' to pool: %v", processedEndpoint.Name, err)
-			continue
-		}
-
-		cs.beaconIndexer.AddClient(uint16(index), client, processedEndpoint.Priority, processedEndpoint.Archive, processedEndpoint.SkipValidators)
 	}
 
 	if len(cs.consensusPool.GetAllEndpoints()) == 0 {
@@ -220,42 +270,8 @@ func (cs *ChainService) StartService() error {
 
 	// add execution clients
 	for _, endpoint := range utils.Config.ExecutionApi.Endpoints {
-		// Apply authGroup settings if configured
-		processedEndpoint, err := applyAuthGroupToEndpoint(&endpoint)
-		if err != nil {
-			cs.logger.Errorf("could not apply authGroup to execution client '%v': %v", endpoint.Name, err)
-			continue
-		}
-
-		endpointConfig := &execution.ClientConfig{
-			URL:     processedEndpoint.Url,
-			Name:    processedEndpoint.Name,
-			Headers: processedEndpoint.Headers,
-		}
-
-		if processedEndpoint.Ssh != nil {
-			endpointConfig.SshConfig = &sshtunnel.SshConfig{
-				Host:     processedEndpoint.Ssh.Host,
-				Port:     processedEndpoint.Ssh.Port,
-				User:     processedEndpoint.Ssh.User,
-				Password: processedEndpoint.Ssh.Password,
-				Keyfile:  processedEndpoint.Ssh.Keyfile,
-			}
-		}
-
-		client, err := cs.executionPool.AddEndpoint(endpointConfig)
-		if err != nil {
-			cs.logger.Errorf("could not add execution client '%v' to pool: %v", processedEndpoint.Name, err)
-			continue
-		}
-
-		executionIndexerCtx.AddClientInfo(client, processedEndpoint.Priority, processedEndpoint.Archive)
-
-		// Add snooper client if configured
-		if processedEndpoint.EngineSnooperUrl != "" {
-			if err := cs.snooperManager.AddClient(client, processedEndpoint.EngineSnooperUrl); err != nil {
-				cs.logger.WithError(err).Errorf("could not add snooper client for '%v'", processedEndpoint.Name)
-			}
+		if err := cs.addExecutionClient(&endpoint); err != nil {
+			cs.logger.Errorf("could not add execution client '%v': %v", endpoint.Name, err)
 		}
 	}
 
@@ -395,6 +411,9 @@ func (cs *ChainService) StartService() error {
 	if utils.Config.EnsResolver.Enabled {
 		cs.ensResolver.StartUpdater()
 	}
+
+	// start watching endpointsUrl sources for new endpoints
+	cs.startEndpointsReloader()
 
 	return nil
 }

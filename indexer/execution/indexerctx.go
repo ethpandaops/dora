@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -16,13 +17,14 @@ import (
 
 // IndexerCtx is the context for the execution indexer
 type IndexerCtx struct {
-	Ctx              context.Context
-	Logger           logrus.FieldLogger
-	BeaconIndexer    *beacon.Indexer
-	ExecutionPool    *execution.Pool
-	ConsensusPool    *consensus.Pool
-	ChainState       *consensus.ChainState
-	executionClients map[*execution.Client]*indexerElClientInfo
+	Ctx                   context.Context
+	Logger                logrus.FieldLogger
+	BeaconIndexer         *beacon.Indexer
+	ExecutionPool         *execution.Pool
+	ConsensusPool         *consensus.Pool
+	ChainState            *consensus.ChainState
+	executionClientsMutex sync.RWMutex
+	executionClients      map[*execution.Client]*indexerElClientInfo
 }
 
 // indexerElClientInfo holds information about a client and its priority
@@ -46,6 +48,9 @@ func NewIndexerCtx(ctx context.Context, logger logrus.FieldLogger, executionPool
 
 // AddClientInfo adds client info to the indexer context
 func (ictx *IndexerCtx) AddClientInfo(client *execution.Client, priority int, archive bool) {
+	ictx.executionClientsMutex.Lock()
+	defer ictx.executionClientsMutex.Unlock()
+
 	ictx.executionClients[client] = &indexerElClientInfo{
 		priority: priority,
 		archive:  archive,
@@ -92,8 +97,20 @@ func (ictx *IndexerCtx) GetClientsOnFork(forkId beacon.ForkKey, clientType execu
 // SortClients sorts clients by priority, but randomizes the order for equal priority.
 // Returns true if clientA should come before clientB.
 func (ictx *IndexerCtx) SortClients(clientA *execution.Client, clientB *execution.Client, preferArchive bool) bool {
+	ictx.executionClientsMutex.RLock()
 	clientAInfo := ictx.executionClients[clientA]
 	clientBInfo := ictx.executionClients[clientB]
+	ictx.executionClientsMutex.RUnlock()
+
+	// hot-added clients may briefly be visible in the pool before their info is registered
+	defaultInfo := &indexerElClientInfo{}
+	if clientAInfo == nil {
+		clientAInfo = defaultInfo
+	}
+
+	if clientBInfo == nil {
+		clientBInfo = defaultInfo
+	}
 
 	if preferArchive && clientAInfo.archive != clientBInfo.archive {
 		return clientAInfo.archive

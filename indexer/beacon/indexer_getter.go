@@ -25,6 +25,9 @@ func (indexer *Indexer) GetDynSSZ() *dynssz.DynSsz {
 
 // GetAllClients returns a slice of all clients in the indexer.
 func (indexer *Indexer) GetAllClients() []*Client {
+	indexer.clientsMutex.RLock()
+	defer indexer.clientsMutex.RUnlock()
+
 	clients := make([]*Client, len(indexer.clients))
 	copy(clients, indexer.clients)
 	return clients
@@ -36,7 +39,7 @@ func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedEpoch phase0.Epoch,
 
 	finalizedSlot := indexer.consensusPool.GetChainState().EpochToSlot(finalizedEpoch)
 
-	for _, client := range indexer.clients {
+	for _, client := range indexer.GetAllClients() {
 		if client.client.GetStatus() != consensus.ClientStatusOnline {
 			continue
 		}
@@ -83,7 +86,7 @@ func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedEpoch phase0.Epoch,
 func (indexer *Indexer) GetReadyClientsByBlockRoot(blockRoot phase0.Root, preferArchive bool) []*Client {
 	clients := make([]*Client, 0)
 
-	for _, client := range indexer.clients {
+	for _, client := range indexer.GetAllClients() {
 		if client.client.GetStatus() != consensus.ClientStatusOnline {
 			continue
 		}

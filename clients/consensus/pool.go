@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"math/rand/v2"
@@ -15,6 +16,7 @@ import (
 type Pool struct {
 	ctx           context.Context
 	logger        logrus.FieldLogger
+	clientsMutex  sync.RWMutex
 	clientCounter uint16
 	clients       []*Client
 	chainState    *ChainState
@@ -46,6 +48,9 @@ func (pool *Pool) GetChainState() *ChainState {
 }
 
 func (pool *Pool) AddEndpoint(endpoint *ClientConfig) (*Client, error) {
+	pool.clientsMutex.Lock()
+	defer pool.clientsMutex.Unlock()
+
 	clientIdx := pool.clientCounter
 	pool.clientCounter++
 
@@ -60,13 +65,19 @@ func (pool *Pool) AddEndpoint(endpoint *ClientConfig) (*Client, error) {
 }
 
 func (pool *Pool) GetAllEndpoints() []*Client {
-	return pool.clients
+	pool.clientsMutex.RLock()
+	defer pool.clientsMutex.RUnlock()
+
+	clients := make([]*Client, len(pool.clients))
+	copy(clients, pool.clients)
+
+	return clients
 }
 
 func (pool *Pool) GetReadyEndpoint(clientType ClientType) *Client {
 	readyClients := []*Client{}
 
-	for _, client := range pool.clients {
+	for _, client := range pool.GetAllEndpoints() {
 		if !client.isOnline {
 			continue
 		}

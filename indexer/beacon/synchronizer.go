@@ -213,7 +213,7 @@ func (s *synchronizer) getSyncClients(epoch phase0.Epoch) []*Client {
 	archiveClients := make([]*Client, 0)
 	normalClients := make([]*Client, 0)
 
-	for _, client := range s.indexer.clients {
+	for _, client := range s.indexer.GetAllClients() {
 		if client.client.GetStatus() != consensus.ClientStatusOnline {
 			continue
 		}

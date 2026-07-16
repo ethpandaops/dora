@@ -78,6 +78,12 @@ beaconapi:
     - name: "local"
       url: "http://127.0.0.1:5052"
 
+  # alternatively, load the endpoints list from a URL or file path (yaml list of endpoint objects).
+  # the source is re-fetched periodically and new endpoints are hot-added at runtime;
+  # changed or removed endpoints still require a restart.
+  #endpointsUrl: ""
+  #endpointsReloadInterval: 1h # 0 = default (1h), negative = disable reloading
+
   # local cache for page models
   localCacheSize: 100 # 100MB
 
@@ -90,7 +96,13 @@ executionapi:
   endpoints:
     - name: "local"
       url: "http://127.0.0.1:8545"
-  
+
+  # alternatively, load the endpoints list from a URL or file path (yaml list of endpoint objects).
+  # the source is re-fetched periodically and new endpoints are hot-added at runtime;
+  # changed or removed endpoints still require a restart.
+  #endpointsUrl: ""
+  #endpointsReloadInterval: 1h # 0 = default (1h), negative = disable reloading
+
   logBatchSize: 1000
   depositDeployBlock: 0 # el block number from where to crawl the deposit contract (should be <=, but close to the deposit contract deployment block)
   electraDeployBlock: 0 # el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -27,7 +28,7 @@ type Client struct {
 	index    uint16
 	client   *consensus.Client
 	logger   logrus.FieldLogger
-	indexing bool
+	indexing atomic.Bool
 
 	priority       int
 	archive        bool
@@ -44,11 +45,10 @@ type Client struct {
 // newClient creates a new indexer client for a given consensus pool client.
 func newClient(index uint16, client *consensus.Client, priority int, archive bool, skipValidators bool, indexer *Indexer, logger logrus.FieldLogger) *Client {
 	return &Client{
-		indexer:  indexer,
-		index:    index,
-		client:   client,
-		logger:   logger,
-		indexing: false,
+		indexer: indexer,
+		index:   index,
+		client:  client,
+		logger:  logger,
 
 		priority:       priority,
 		archive:        archive,
@@ -75,11 +75,9 @@ func (c *Client) GetIndex() uint16 {
 // startIndexing starts the indexing process for this client.
 // attaches block & head event handlers and starts the event processing subroutine.
 func (c *Client) startIndexing() {
-	if c.indexing {
+	if !c.indexing.CompareAndSwap(false, true) {
 		return
 	}
-
-	c.indexing = true
 
 	// single ordered subscription for block & head events to preserve SSE ordering
 	c.streamSubscription = c.client.SubscribeStreamEvent(100, true)

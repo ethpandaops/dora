@@ -55,6 +55,7 @@ type Indexer struct {
 	inclusionListCache *inclusionListCache
 
 	// indexer state
+	clientsMutex          sync.RWMutex
 	clients               []*Client
 	dbWriter              *dbWriter
 	running               bool
@@ -224,21 +225,33 @@ func (indexer *Indexer) awaitBackfillComplete(ctx context.Context, timeout time.
 }
 
 // AddClient adds a new consensus pool client to the indexer.
+// Clients added while the indexer is already running start indexing immediately.
 func (indexer *Indexer) AddClient(index uint16, client *consensus.Client, priority int, archive bool, skipValidators bool) *Client {
 	logger := indexer.logger.WithField("client", client.GetName())
 	indexerClient := newClient(index, client, priority, archive, skipValidators, indexer, logger)
+
+	indexer.clientsMutex.Lock()
 	indexer.clients = append(indexer.clients, indexerClient)
+	running := indexer.running
+	indexer.clientsMutex.Unlock()
+
+	if running {
+		indexerClient.startIndexing()
+	}
 
 	return indexerClient
 }
 
 // StartIndexer starts the indexing process.
 func (indexer *Indexer) StartIndexer() {
+	indexer.clientsMutex.Lock()
 	if indexer.running {
+		indexer.clientsMutex.Unlock()
 		return
 	}
 
 	indexer.running = true
+	indexer.clientsMutex.Unlock()
 	chainState := indexer.consensusPool.GetChainState()
 
 	// initialize dynamic SSZ encoder
@@ -450,7 +463,7 @@ func (indexer *Indexer) StartIndexer() {
 	indexer.blockBidCache.loadFromDB(chainState.CurrentSlot())
 
 	// start indexing for all clients
-	for _, client := range indexer.clients {
+	for _, client := range indexer.GetAllClients() {
 		client.startIndexing()
 	}
 
