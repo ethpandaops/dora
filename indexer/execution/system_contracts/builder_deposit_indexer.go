@@ -51,11 +51,13 @@ func NewBuilderDepositIndexer(indexer *execution.IndexerCtx) *BuilderDepositInde
 		indexer,
 		indexer.Logger.WithField("contract-indexer", "builder_deposits"),
 		&contractIndexerOptions[dbtypes.BuilderDepositTx]{
-			stateKey:        "indexer.builderdepositindexer",
-			batchSize:       batchSize,
-			contractAddress: bi.indexerCtx.GetSystemContractAddress(rpc.BuilderDepositRequestContract),
-			deployBlock:     uint64(utils.Config.ExecutionApi.GloasDeployBlock),
-			dequeueRate:     specs.MaxBuilderDepositRequestsPerPayload,
+			stateKey:  "indexer.builderdepositindexer",
+			batchSize: batchSize,
+			contractAddress: func() common.Address {
+				return bi.indexerCtx.GetSystemContractAddress(rpc.BuilderDepositRequestContract)
+			},
+			deployBlock: uint64(utils.Config.ExecutionApi.GloasDeployBlock),
+			dequeueRate: specs.MaxBuilderDepositRequestsPerPayload,
 
 			processFinalTx:  bi.processFinalTx,
 			processRecentTx: bi.processRecentTx,

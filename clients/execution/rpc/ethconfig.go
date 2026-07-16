@@ -11,8 +11,8 @@ const (
 	DepositContract               = "DEPOSIT_CONTRACT_ADDRESS"
 	ConsolidationRequestContract  = "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS"
 	WithdrawalRequestContract     = "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS"
-	BuilderDepositRequestContract = "BUILDER_DEPOSIT_REQUEST_PREDEPLOY_ADDRESS"
-	BuilderExitRequestContract    = "BUILDER_EXIT_REQUEST_PREDEPLOY_ADDRESS"
+	BuilderDepositRequestContract = "BUILDER_DEPOSIT_CONTRACT_ADDRESS"
+	BuilderExitRequestContract    = "BUILDER_EXIT_CONTRACT_ADDRESS"
 	BeaconRootsContract           = "BEACON_ROOTS_ADDRESS"
 	HistoryStorageContract        = "HISTORY_STORAGE_ADDRESS"
 )
