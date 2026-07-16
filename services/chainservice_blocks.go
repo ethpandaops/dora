@@ -884,11 +884,6 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 		filter.WithPayloadMask = dbtypes.PayloadStatusMaskAll
 	}
 
-	// stamped rows filter by dictionary id; unstamped rows fall back to the legacy name join
-	if filter.ProposerName != "" {
-		filter.ProposerNameIds = bs.validatorNames.MatchNameIds(filter.ProposerName)
-	}
-
 	// get blocks from cache
 	// iterate from current slot to finalized slot
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)

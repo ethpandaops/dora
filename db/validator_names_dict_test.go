@@ -104,12 +104,12 @@ func TestGetFilteredSlotsStampedNames(t *testing.T) {
 	}{
 		{
 			name:      "stamped id match",
-			filter:    &dbtypes.BlockFilter{ProposerName: "old-node", ProposerNameIds: []uint64{oldNodeId}, WithMissing: 1, WithOrphaned: 1},
+			filter:    &dbtypes.BlockFilter{ProposerName: "old-node", WithMissing: 1, WithOrphaned: 1},
 			wantSlots: []uint64{50},
 		},
 		{
 			name:      "stamped id match plus legacy fallback for unstamped row",
-			filter:    &dbtypes.BlockFilter{ProposerName: "new-node", ProposerNameIds: []uint64{newNodeId}, WithMissing: 1, WithOrphaned: 1},
+			filter:    &dbtypes.BlockFilter{ProposerName: "new-node", WithMissing: 1, WithOrphaned: 1},
 			wantSlots: []uint64{250, 150},
 		},
 		{
@@ -119,7 +119,7 @@ func TestGetFilteredSlotsStampedNames(t *testing.T) {
 		},
 		{
 			name:      "inverted match includes no-name, non-matching stamps and legacy fallback",
-			filter:    &dbtypes.BlockFilter{ProposerName: "old-node", ProposerNameIds: []uint64{oldNodeId}, InvertProposer: true, WithMissing: 1, WithOrphaned: 1},
+			filter:    &dbtypes.BlockFilter{ProposerName: "old-node", InvertProposer: true, WithMissing: 1, WithOrphaned: 1},
 			wantSlots: []uint64{350, 250, 150},
 		},
 	}

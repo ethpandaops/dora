@@ -337,6 +337,7 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 	fmt.Fprintf(&sql, ` FROM slots `)
 	if filter.ProposerName != "" {
 		fmt.Fprintf(&sql, ` LEFT JOIN validator_names ON validator_names."index" = slots.proposer `)
+		fmt.Fprintf(&sql, ` LEFT JOIN validator_names_dict ON validator_names_dict."id" = slots.proposer_name_id `)
 	}
 
 	argIdx := 0
@@ -412,37 +413,24 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		args = append(args, "%"+filter.ExtraData+"%")
 	}
 	if filter.ProposerName != "" {
-		// stamped rows match by dictionary id; rows not stamped yet (proposer_name_id IS NULL)
-		// fall back to the legacy current-name join until the repair pass catches up
-		idList := strings.Builder{}
-		for i, nameId := range filter.ProposerNameIds {
-			if i > 0 {
-				fmt.Fprintf(&idList, ", ")
-			}
-			argIdx++
-			fmt.Fprintf(&idList, "$%v", argIdx)
-			args = append(args, nameId)
-		}
-
-		argIdx++
+		// stamped rows match the dictionary name valid at the slot; rows not stamped yet
+		// (proposer_name_id IS NULL) fall back to the legacy current-name join. Two args
+		// because sqlite binds $N placeholders by appearance order.
 		likeOp := EngineQuery(map[dbtypes.DBEngineType]string{
 			dbtypes.DBEnginePgsql:  `ilike`,
 			dbtypes.DBEngineSqlite: `LIKE`,
 		})
+		dictArg := argIdx + 1
+		legacyArg := argIdx + 2
+		argIdx += 2
 		if filter.InvertProposer {
-			stampedArm := `slots.proposer_name_id IS NOT NULL`
-			if len(filter.ProposerNameIds) > 0 {
-				stampedArm = fmt.Sprintf(`slots.proposer_name_id IS NOT NULL AND slots.proposer_name_id NOT IN (%v)`, idList.String())
-			}
-			fmt.Fprintf(&sql, ` AND ((%v) OR (slots.proposer_name_id IS NULL AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT %v $%v))) `, stampedArm, likeOp, argIdx)
+			fmt.Fprintf(&sql, ` AND ((slots.proposer_name_id IS NOT NULL AND (validator_names_dict.name IS NULL OR validator_names_dict.name NOT %[1]v $%[2]v))
+				OR (slots.proposer_name_id IS NULL AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT %[1]v $%[3]v))) `, likeOp, dictArg, legacyArg)
 		} else {
-			stampedArm := `FALSE`
-			if len(filter.ProposerNameIds) > 0 {
-				stampedArm = fmt.Sprintf(`slots.proposer_name_id IN (%v)`, idList.String())
-			}
-			fmt.Fprintf(&sql, ` AND ((%v) OR (slots.proposer_name_id IS NULL AND validator_names.name %v $%v)) `, stampedArm, likeOp, argIdx)
+			fmt.Fprintf(&sql, ` AND ((slots.proposer_name_id IS NOT NULL AND validator_names_dict.name %[1]v $%[2]v)
+				OR (slots.proposer_name_id IS NULL AND validator_names.name %[1]v $%[3]v)) `, likeOp, dictArg, legacyArg)
 		}
-		args = append(args, "%"+filter.ProposerName+"%")
+		args = append(args, "%"+filter.ProposerName+"%", "%"+filter.ProposerName+"%")
 	}
 	if filter.MinSyncParticipation != nil {
 		argIdx++

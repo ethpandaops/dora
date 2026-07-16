@@ -435,22 +435,6 @@ func (vn *ValidatorNames) GetValidatorNameById(id uint64) string {
 	return vn.dictById[id]
 }
 
-// MatchNameIds returns the dictionary ids of all names containing the pattern (case-insensitive).
-func (vn *ValidatorNames) MatchNameIds(pattern string) []uint64 {
-	pattern = strings.ToLower(pattern)
-	vn.dictMutex.RLock()
-	defer vn.dictMutex.RUnlock()
-
-	ids := make([]uint64, 0)
-	for name, id := range vn.dictByName {
-		if strings.Contains(strings.ToLower(name), pattern) {
-			ids = append(ids, id)
-		}
-	}
-	sort.Slice(ids, func(a, b int) bool { return ids[a] < ids[b] })
-	return ids
-}
-
 func (vn *ValidatorNames) loadNameDict() error {
 	entries, err := db.GetValidatorNameDictEntries(vn.ctx)
 	if err != nil {

@@ -246,24 +246,6 @@ func TestGetValidatorNameIdAt_Readiness(t *testing.T) {
 	}
 }
 
-func TestMatchNameIds(t *testing.T) {
-	vn := &ValidatorNames{
-		dictByName: map[string]uint64{
-			"lighthouse-geth-1": 1,
-			"Lighthouse-Geth-2": 2,
-			"prysm-besu-1":      3,
-		},
-	}
-
-	ids := vn.MatchNameIds("lighthouse")
-	if len(ids) != 2 || ids[0] != 1 || ids[1] != 2 {
-		t.Errorf("case-insensitive match failed: %v", ids)
-	}
-	if ids := vn.MatchNameIds("nonexistent"); len(ids) != 0 {
-		t.Errorf("expected no matches, got %v", ids)
-	}
-}
-
 func TestNameHistoryDiffBoundary(t *testing.T) {
 	ranges1 := []validatorNameRange{{startIndex: 0, endIndex: 99, name: "node-1"}}
 	ranges2 := []validatorNameRange{{startIndex: 0, endIndex: 99, name: "node-2"}}
