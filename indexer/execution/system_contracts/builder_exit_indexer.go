@@ -50,11 +50,13 @@ func NewBuilderExitIndexer(indexer *execution.IndexerCtx) *BuilderExitIndexer {
 		indexer,
 		indexer.Logger.WithField("contract-indexer", "builder_exits"),
 		&contractIndexerOptions[dbtypes.BuilderExitTx]{
-			stateKey:        "indexer.builderexitindexer",
-			batchSize:       batchSize,
-			contractAddress: bi.indexerCtx.GetSystemContractAddress(rpc.BuilderExitRequestContract),
-			deployBlock:     uint64(utils.Config.ExecutionApi.GloasDeployBlock),
-			dequeueRate:     specs.MaxBuilderExitRequestsPerPayload,
+			stateKey:  "indexer.builderexitindexer",
+			batchSize: batchSize,
+			contractAddress: func() common.Address {
+				return bi.indexerCtx.GetSystemContractAddress(rpc.BuilderExitRequestContract)
+			},
+			deployBlock: uint64(utils.Config.ExecutionApi.GloasDeployBlock),
+			dequeueRate: specs.MaxBuilderExitRequestsPerPayload,
 
 			processFinalTx:  bi.processFinalTx,
 			processRecentTx: bi.processRecentTx,
