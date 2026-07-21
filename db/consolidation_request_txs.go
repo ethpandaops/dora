@@ -169,21 +169,17 @@ func GetConsolidationRequestTxsFiltered(ctx context.Context, offset uint64, limi
 		filterOp = "AND"
 	}
 	if filter.SrcValidatorName != "" {
-		args = append(args, "%"+filter.SrcValidatorName+"%")
-		fmt.Fprintf(&sql, " %v ", filterOp)
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` source_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` source_names.name LIKE $%v `,
-		}), len(args))
+		var namePredicate string
+		namePredicate, args = AppendValidatorNameHistoryFilter(args, "consolidation_request_txs.source_index", "", "consolidation_request_txs.block_time",
+			"source_names.name", "%"+filter.SrcValidatorName+"%", false)
+		fmt.Fprintf(&sql, " %v %v ", filterOp, namePredicate)
 		filterOp = "AND"
 	}
 	if filter.TgtValidatorName != "" {
-		args = append(args, "%"+filter.TgtValidatorName+"%")
-		fmt.Fprintf(&sql, " %v ", filterOp)
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` target_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` target_names.name LIKE $%v `,
-		}), len(args))
+		var namePredicate string
+		namePredicate, args = AppendValidatorNameHistoryFilter(args, "consolidation_request_txs.target_index", "", "consolidation_request_txs.block_time",
+			"target_names.name", "%"+filter.TgtValidatorName+"%", false)
+		fmt.Fprintf(&sql, " %v %v ", filterOp, namePredicate)
 		filterOp = "AND"
 	}
 

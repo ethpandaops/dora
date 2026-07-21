@@ -408,19 +408,11 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		args = append(args, "%"+filter.ExtraData+"%")
 	}
 	if filter.ProposerName != "" {
-		argIdx++
-		if filter.InvertProposer {
-			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT ilike $%v) `,
-				dbtypes.DBEngineSqlite: ` AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT LIKE $%v) `,
-			}), argIdx)
-		} else {
-			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
-				dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
-			}), argIdx)
-		}
-		args = append(args, "%"+filter.ProposerName+"%")
+		var namePredicate string
+		namePredicate, args = AppendValidatorNameHistoryFilter(args, "slots.proposer", "slots.slot", "",
+			"validator_names.name", "%"+filter.ProposerName+"%", filter.InvertProposer)
+		argIdx = len(args)
+		fmt.Fprintf(&sql, ` AND %v `, namePredicate)
 	}
 	if filter.MinSyncParticipation != nil {
 		argIdx++

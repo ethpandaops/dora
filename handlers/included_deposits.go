@@ -276,7 +276,7 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 			depositData.ValidatorIndex = uint64(validatorIdx)
 			depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIdx)
 			depositData.IsBuilder = false
-			depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
+			depositData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(uint64(validatorIdx), phase0.Slot(deposit.Request.SlotNumber))
 
 			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
 			if validator == nil {

@@ -73,7 +73,7 @@ func buildSlotDutiesData(ctx context.Context, slot phase0.Slot, isPtc bool, comm
 
 	result := &models.SlotDutiesResponse{Validators: []uint64{}, Names: make(map[uint64]string)}
 	addName := func(idx uint64) {
-		if name := cs.GetValidatorName(idx); name != "" {
+		if name := cs.GetValidatorNameAt(idx, slot); name != "" {
 			result.Names[idx] = name
 		}
 	}

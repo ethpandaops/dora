@@ -336,7 +336,7 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(slot),
 			Scheduled:    slot >= currentSlot,
 			Proposer:     dbBlock.Proposer,
-			ProposerName: services.GlobalBeaconService.GetValidatorName(dbBlock.Proposer),
+			ProposerName: services.GlobalBeaconService.GetValidatorNameAt(dbBlock.Proposer, slot),
 		}
 
 		if dbBlock.Block != nil {

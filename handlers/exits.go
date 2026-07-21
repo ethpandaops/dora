@@ -192,7 +192,7 @@ func buildExitsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64,
 			} else {
 				// Regular validator exit
 				exitData.ValidatorIndex = voluntaryExit.ValidatorIndex
-				exitData.ValidatorName = services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex)
+				exitData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(voluntaryExit.ValidatorIndex, phase0.Slot(voluntaryExit.SlotNumber))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(voluntaryExit.ValidatorIndex), false)
 				if validator == nil {
@@ -249,7 +249,7 @@ func buildExitsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64,
 
 			if validatorIndex := exitReq.ValidatorIndex(); validatorIndex != nil {
 				exitReqData.ValidatorValid = true
-				exitReqData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
+				exitReqData.ValidatorName = exitReq.ResolveValidatorName(services.GlobalBeaconService)
 				if *validatorIndex&services.BuilderIndexFlag != 0 {
 					exitReqData.IsBuilder = true
 					exitReqData.ValidatorIndex = *validatorIndex &^ services.BuilderIndexFlag

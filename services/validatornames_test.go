@@ -1,11 +1,13 @@
 package services
 
 import (
+	"math"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 func TestGetValidatorName(t *testing.T) {
@@ -74,6 +76,175 @@ func TestGetValidatorName(t *testing.T) {
 				t.Errorf("GetValidatorName() = %q, want %q", result, tt.expectedResult)
 			}
 		})
+	}
+}
+
+func TestGetValidatorNameAt(t *testing.T) {
+	currentEntry := &validatorNameEntry{name: "current-node"}
+	history := []validatorNameSnapshot{
+		{
+			startSlot: 100,
+			endSlot:   500,
+			ranges: []validatorNameRange{
+				{startIndex: 0, endIndex: 99, name: "old-node-1"},
+				{startIndex: 100, endIndex: 199, name: "old-node-2"},
+			},
+		},
+		{
+			startSlot: 500,
+			endSlot:   phase0.Slot(math.MaxInt64),
+			ranges: []validatorNameRange{
+				{startIndex: 0, endIndex: 199, name: "new-node"},
+			},
+		},
+	}
+
+	vn := &ValidatorNames{
+		namesMutex:   sync.RWMutex{},
+		namesByIndex: map[uint64]*validatorNameEntry{50: currentEntry, 5000: currentEntry},
+	}
+	vn.nameHistory.Store(&history)
+
+	tests := []struct {
+		name     string
+		index    uint64
+		slot     phase0.Slot
+		expected string
+	}{
+		{"first snapshot, first range", 50, 200, "old-node-1"},
+		{"first snapshot, second range", 150, 200, "old-node-2"},
+		{"exactly at snapshot start", 50, 100, "old-node-1"},
+		{"exactly at transition boundary", 50, 500, "new-node"},
+		{"open snapshot", 150, 99999, "new-node"},
+		{"slot before first snapshot falls back to current", 50, 99, "current-node"},
+		{"uncovered index falls back to current", 5000, 200, "current-node"},
+		{"uncovered index without current name", 6000, 200, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if result := vn.GetValidatorNameAt(tt.index, tt.slot); result != tt.expected {
+				t.Errorf("GetValidatorNameAt(%v, %v) = %q, want %q", tt.index, tt.slot, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetValidatorNameAtTime(t *testing.T) {
+	history := []validatorNameSnapshot{
+		{
+			startSlot: 100, endSlot: 500,
+			startTime: 2200, endTime: 7000,
+			ranges: []validatorNameRange{{startIndex: 0, endIndex: 99, name: "old-node"}},
+		},
+		{
+			startSlot: 500, endSlot: phase0.Slot(math.MaxInt64),
+			startTime: 7000, endTime: math.MaxInt64,
+			ranges: []validatorNameRange{{startIndex: 0, endIndex: 99, name: "new-node"}},
+		},
+	}
+
+	vn := &ValidatorNames{
+		namesMutex:   sync.RWMutex{},
+		namesByIndex: map[uint64]*validatorNameEntry{50: {name: "current-node"}},
+	}
+	vn.nameHistory.Store(&history)
+
+	tests := []struct {
+		name     string
+		ts       int64
+		expected string
+	}{
+		{"within first snapshot", 3000, "old-node"},
+		{"exactly at transition", 7000, "new-node"},
+		{"open snapshot", 999999, "new-node"},
+		{"before first snapshot falls back to current", 100, "current-node"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if result := vn.GetValidatorNameAtTime(50, tt.ts); result != tt.expected {
+				t.Errorf("GetValidatorNameAtTime(50, %v) = %q, want %q", tt.ts, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetValidatorNameAt_NoHistory(t *testing.T) {
+	vn := &ValidatorNames{
+		namesMutex:   sync.RWMutex{},
+		namesByIndex: map[uint64]*validatorNameEntry{123: {name: "test-validator"}},
+	}
+
+	if result := vn.GetValidatorNameAt(123, 42); result != "test-validator" {
+		t.Errorf("GetValidatorNameAt() without history = %q, want %q", result, "test-validator")
+	}
+	if result := vn.GetValidatorNameAt(456, 42); result != "" {
+		t.Errorf("GetValidatorNameAt() for unknown index = %q, want empty", result)
+	}
+}
+
+func TestBuildNameSnapshots(t *testing.T) {
+	// 12s slots starting at genesis time 1000
+	timeToSlot := func(ts int64) phase0.Slot {
+		if ts <= 1000 {
+			return 0
+		}
+		return phase0.Slot((ts - 1000) / 12)
+	}
+
+	// unsorted input with an entry fully shadowed by an equal effective_from slot
+	entries := []validatorNamesHistoryEntry{
+		{EffectiveFrom: 1000 + 1200, Ranges: map[string]string{"0-99": "node-b"}},
+		{EffectiveFrom: 0, Ranges: map[string]string{"0-99": "node-a"}},
+		{EffectiveFrom: 1000 + 1205, Ranges: map[string]string{"0-99": "node-c"}},
+	}
+
+	snapshots := buildNameSnapshots(entries, timeToSlot)
+
+	if len(snapshots) != 2 {
+		t.Fatalf("expected 2 snapshots (shadowed entry dropped), got %v", len(snapshots))
+	}
+	if snapshots[0].startSlot != 0 || snapshots[0].endSlot != 100 {
+		t.Errorf("snapshot 0 interval = [%v, %v), want [0, 100)", snapshots[0].startSlot, snapshots[0].endSlot)
+	}
+	if snapshots[0].ranges[0].name != "node-a" {
+		t.Errorf("snapshot 0 name = %q, want node-a", snapshots[0].ranges[0].name)
+	}
+	if snapshots[1].startSlot != 100 || snapshots[1].endSlot != phase0.Slot(math.MaxInt64) {
+		t.Errorf("snapshot 1 interval = [%v, %v), want [100, max)", snapshots[1].startSlot, snapshots[1].endSlot)
+	}
+	if snapshots[1].ranges[0].name != "node-c" {
+		t.Errorf("snapshot 1 name = %q, want node-c", snapshots[1].ranges[0].name)
+	}
+	if snapshots[0].startTime != 0 || snapshots[0].endTime != 1000+1205 {
+		t.Errorf("snapshot 0 time bounds = [%v, %v), want [0, 2205)", snapshots[0].startTime, snapshots[0].endTime)
+	}
+	if snapshots[1].startTime != 1000+1205 || snapshots[1].endTime != math.MaxInt64 {
+		t.Errorf("snapshot 1 time bounds = [%v, %v), want [2205, max)", snapshots[1].startTime, snapshots[1].endTime)
+	}
+	if snapshots[0].rangesHash == "" || snapshots[0].rangesHash == snapshots[1].rangesHash {
+		t.Errorf("expected distinct non-empty range hashes, got %q and %q", snapshots[0].rangesHash, snapshots[1].rangesHash)
+	}
+}
+
+func TestParseValidatorNameRanges(t *testing.T) {
+	ranges := parseValidatorNameRanges(map[string]string{
+		"0-99":                "node-1",
+		"100":                 "node-2",
+		"50-150":              "overlapping",
+		"invalid":             "bad-key",
+		"withdrawal:0x123abc": "address-key",
+		"200-100":             "inverted-bounds",
+	})
+
+	if len(ranges) != 2 {
+		t.Fatalf("expected 2 valid ranges, got %v: %+v", len(ranges), ranges)
+	}
+	if ranges[0].startIndex != 0 || ranges[0].endIndex != 99 || ranges[0].name != "node-1" {
+		t.Errorf("unexpected range 0: %+v", ranges[0])
+	}
+	if ranges[1].startIndex != 100 || ranges[1].endIndex != 100 || ranges[1].name != "node-2" {
+		t.Errorf("unexpected range 1: %+v", ranges[1])
 	}
 }
 

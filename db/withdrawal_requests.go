@@ -111,12 +111,10 @@ func GetWithdrawalRequestsFiltered(ctx context.Context, offset uint64, limit uin
 		filterOp = "AND"
 	}
 	if filter.ValidatorName != "" {
-		args = append(args, "%"+filter.ValidatorName+"%")
-		fmt.Fprintf(&sql, " %v ", filterOp)
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` source_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` source_names.name LIKE $%v `,
-		}), len(args))
+		var namePredicate string
+		namePredicate, args = AppendValidatorNameHistoryFilter(args, "withdrawal_requests.validator_index", "withdrawal_requests.slot_number", "",
+			"source_names.name", "%"+filter.ValidatorName+"%", false)
+		fmt.Fprintf(&sql, " %v %v ", filterOp, namePredicate)
 		filterOp = "AND"
 	}
 	if filter.MinAmount != nil {

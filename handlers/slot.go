@@ -319,7 +319,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		if pageData.Proposer == math.MaxInt64 && len(slotBlockProposers) == 1 {
 			pageData.Proposer = slotBlockProposers[0]
 		}
-		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
+		pageData.ProposerName = services.GlobalBeaconService.GetValidatorNameAt(pageData.Proposer, slot)
 	} else {
 		if blockData.Orphaned {
 			pageData.Status = uint16(models.SlotStatusOrphaned)
@@ -327,7 +327,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 			pageData.Status = uint16(models.SlotStatusFound)
 		}
 		pageData.Proposer = uint64(blockData.Header.Message.ProposerIndex)
-		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
+		pageData.ProposerName = services.GlobalBeaconService.GetValidatorNameAt(pageData.Proposer, blockData.Header.Message.Slot)
 
 		blockUid := uint64(blockData.Header.Message.Slot)<<16 | 0xffff
 		if cacheBlock := services.GlobalBeaconService.GetBeaconIndexer().GetBlockByRoot(blockData.Root); cacheBlock != nil {
@@ -646,7 +646,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		}
 		pageData.VoluntaryExits[i] = &models.SlotPageVoluntaryExit{
 			ValidatorIndex: displayIndex,
-			ValidatorName:  services.GlobalBeaconService.GetValidatorName(validatorIndex),
+			ValidatorName:  services.GlobalBeaconService.GetValidatorNameAt(validatorIndex, blockData.Header.Message.Slot),
 			IsBuilder:      isBuilder,
 			Epoch:          uint64(exit.Message.Epoch),
 			Signature:      exit.Signature[:],
@@ -707,7 +707,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		for _, valIdx := range utils.FindMatchingIndices(att1AttestingIndices, att2AttestingIndices) {
 			slashingData.SlashedValidators = append(slashingData.SlashedValidators, types.NamedValidator{
 				Index: valIdx,
-				Name:  services.GlobalBeaconService.GetValidatorName(valIdx),
+				Name:  services.GlobalBeaconService.GetValidatorNameAt(valIdx, blockData.Header.Message.Slot),
 			})
 		}
 	}
@@ -716,7 +716,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	for i, slashing := range proposerSlashings {
 		pageData.ProposerSlashings[i] = &models.SlotPageProposerSlashing{
 			ProposerIndex:     uint64(slashing.SignedHeader1.Message.ProposerIndex),
-			ProposerName:      services.GlobalBeaconService.GetValidatorName(uint64(slashing.SignedHeader1.Message.ProposerIndex)),
+			ProposerName:      services.GlobalBeaconService.GetValidatorNameAt(uint64(slashing.SignedHeader1.Message.ProposerIndex), blockData.Header.Message.Slot),
 			Header1Slot:       uint64(slashing.SignedHeader1.Message.Slot),
 			Header1ParentRoot: slashing.SignedHeader1.Message.ParentRoot[:],
 			Header1StateRoot:  slashing.SignedHeader1.Message.StateRoot[:],
@@ -751,7 +751,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			for idx, vidx := range syncAssignments {
 				pageData.SyncAggCommittee[idx] = types.NamedValidator{
 					Index: vidx,
-					Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+					Name:  services.GlobalBeaconService.GetValidatorNameAt(vidx, blockData.Header.Message.Slot),
 				}
 			}
 		} else {
@@ -1022,9 +1022,9 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		}
 
 		if requests != nil {
-			getSlotPageDepositRequests(pageData, requests.Deposits)
-			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
-			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+			getSlotPageDepositRequests(pageData, requests.Deposits, blockData.Header.Message.Slot)
+			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals, blockData.Header.Message.Slot)
+			getSlotPageConsolidationRequests(pageData, requests.Consolidations, blockData.Header.Message.Slot)
 			getSlotPageBuilderDeposits(ctx, pageData, requests.BuilderDeposits)
 			getSlotPageBuilderExits(ctx, pageData, requests.BuilderExits)
 		}
@@ -1036,7 +1036,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		for i, blschange := range blsToExecChanges {
 			pageData.BLSChanges[i] = &models.SlotPageBLSChange{
 				ValidatorIndex: uint64(blschange.Message.ValidatorIndex),
-				ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(blschange.Message.ValidatorIndex)),
+				ValidatorName:  services.GlobalBeaconService.GetValidatorNameAt(uint64(blschange.Message.ValidatorIndex), blockData.Header.Message.Slot),
 				BlsPubkey:      []byte(blschange.Message.FromBLSPubkey[:]),
 				Address:        []byte(blschange.Message.ToExecutionAddress[:]),
 				Signature:      []byte(blschange.Signature[:]),
@@ -1286,7 +1286,7 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 	}
 }
 
-func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositRequests []*electra.DepositRequest) {
+func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositRequests []*electra.DepositRequest, slot phase0.Slot) {
 	pageData.DepositRequests = make([]*models.SlotPageDepositRequest, 0)
 
 	for _, depositRequest := range depositRequests {
@@ -1307,7 +1307,7 @@ func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositReque
 			} else {
 				receiptData.ValidatorIndex = rawIndex
 			}
-			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(rawIndex)
+			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(rawIndex, slot)
 		}
 
 		pageData.DepositRequests = append(pageData.DepositRequests, receiptData)
@@ -1316,7 +1316,7 @@ func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositReque
 	pageData.DepositRequestsCount = uint64(len(pageData.DepositRequests))
 }
 
-func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.WithdrawalRequest) {
+func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.WithdrawalRequest, slot phase0.Slot) {
 	pageData.WithdrawalRequests = make([]*models.SlotPageWithdrawalRequest, 0)
 
 	for _, withdrawalRequest := range withdrawalRequests {
@@ -1335,7 +1335,7 @@ func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawa
 			} else {
 				requestData.ValidatorIndex = fullIndex
 			}
-			requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(fullIndex)
+			requestData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(fullIndex, slot)
 		}
 
 		pageData.WithdrawalRequests = append(pageData.WithdrawalRequests, requestData)
@@ -1344,7 +1344,7 @@ func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawa
 	pageData.WithdrawalRequestsCount = uint64(len(pageData.WithdrawalRequests))
 }
 
-func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consolidationRequests []*electra.ConsolidationRequest) {
+func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consolidationRequests []*electra.ConsolidationRequest, slot phase0.Slot) {
 	pageData.ConsolidationRequests = make([]*models.SlotPageConsolidationRequest, 0)
 
 	for _, consolidationRequest := range consolidationRequests {
@@ -1363,7 +1363,7 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 			} else {
 				requestData.SourceIndex = fullIndex
 			}
-			requestData.SourceName = services.GlobalBeaconService.GetValidatorName(fullIndex)
+			requestData.SourceName = services.GlobalBeaconService.GetValidatorNameAt(fullIndex, slot)
 		}
 
 		if targetValidatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(consolidationRequest.TargetPubkey)); found {
@@ -1375,7 +1375,7 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 			} else {
 				requestData.TargetIndex = fullIndex
 			}
-			requestData.TargetName = services.GlobalBeaconService.GetValidatorName(fullIndex)
+			requestData.TargetName = services.GlobalBeaconService.GetValidatorNameAt(fullIndex, slot)
 		}
 
 		pageData.ConsolidationRequests = append(pageData.ConsolidationRequests, requestData)
@@ -1682,7 +1682,7 @@ func getSlotPageInclusionLists(pageData *models.SlotPageBlockData, slot phase0.S
 		ilData := &models.SlotPageInclusionList{
 			Validator: types.NamedValidator{
 				Index: uint64(il.Message.ValidatorIndex),
-				Name:  services.GlobalBeaconService.GetValidatorName(uint64(il.Message.ValidatorIndex)),
+				Name:  services.GlobalBeaconService.GetValidatorNameAt(uint64(il.Message.ValidatorIndex), slot),
 			},
 			InclusionListCommitteeRoot: il.Message.InclusionListCommitteeRoot[:],
 			Signature:                  il.Signature[:],
