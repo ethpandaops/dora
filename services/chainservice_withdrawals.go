@@ -58,6 +58,23 @@ func (cwr *CombinedWithdrawalRequest) ValidatorPubkey() []byte {
 	return nil
 }
 
+// ResolveValidatorName returns the display name for the request's validator, resolved
+// at the request's inclusion slot (or the request transaction's EL block time while the
+// request is still pending).
+func (cwr *CombinedWithdrawalRequest) ResolveValidatorName(bs *ChainService) string {
+	index := cwr.ValidatorIndex()
+	if index == nil {
+		return ""
+	}
+	if cwr.Request != nil {
+		return bs.GetValidatorNameAt(*index, phase0.Slot(cwr.Request.SlotNumber))
+	}
+	if cwr.Transaction != nil {
+		return bs.GetValidatorNameAtTime(*index, int64(cwr.Transaction.BlockTime))
+	}
+	return bs.GetValidatorName(*index)
+}
+
 func (cwr *CombinedWithdrawalRequest) Amount() uint64 {
 	if cwr.Request != nil {
 		return db.ConvertInt64ToUint64(cwr.Request.Amount)
@@ -226,8 +243,8 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(ctx context.Conte
 						if withdrawalRequest.ValidatorIndex == nil {
 							continue
 						}
-						validatorName := bs.validatorNames.GetValidatorName(*withdrawalRequest.ValidatorIndex)
-						if !strings.Contains(validatorName, filter.ValidatorName) {
+						validatorName := bs.validatorNames.GetValidatorNameAt(*withdrawalRequest.ValidatorIndex, phase0.Slot(withdrawalRequest.SlotNumber))
+						if !strings.Contains(strings.ToLower(validatorName), strings.ToLower(filter.ValidatorName)) {
 							continue
 						}
 					}
@@ -512,8 +529,8 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 						continue
 					}
 					if filter.ValidatorName != "" {
-						validatorName := bs.validatorNames.GetValidatorName(withdrawal.Validator)
-						if !strings.Contains(validatorName, filter.ValidatorName) {
+						validatorName := bs.validatorNames.GetValidatorNameAt(withdrawal.Validator, phase0.Slot(withdrawal.BlockUid>>16))
+						if !strings.Contains(strings.ToLower(validatorName), strings.ToLower(filter.ValidatorName)) {
 							continue
 						}
 					}

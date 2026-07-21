@@ -159,7 +159,7 @@ func APIVoluntaryExitsV1(w http.ResponseWriter, r *http.Request) {
 			Time:           chainState.SlotToTime(phase0.Slot(voluntaryExit.SlotNumber)).Unix(),
 			Orphaned:       voluntaryExit.Orphaned,
 			ValidatorIndex: voluntaryExit.ValidatorIndex,
-			ValidatorName:  services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex),
+			ValidatorName:  services.GlobalBeaconService.GetValidatorNameAt(voluntaryExit.ValidatorIndex, phase0.Slot(voluntaryExit.SlotNumber)),
 		}
 
 		// Get validator information

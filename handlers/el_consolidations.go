@@ -222,13 +222,13 @@ func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, 
 
 		if sourceIndex := consolidation.SourceIndex(); sourceIndex != nil {
 			elConsolidationData.SourceValidatorIndex = *sourceIndex
-			elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*sourceIndex)
+			elConsolidationData.SourceValidatorName = consolidation.ResolveSourceName(services.GlobalBeaconService)
 			elConsolidationData.SourceValidatorValid = true
 		}
 
 		if targetIndex := consolidation.TargetIndex(); targetIndex != nil {
 			elConsolidationData.TargetValidatorIndex = *targetIndex
-			elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*targetIndex)
+			elConsolidationData.TargetValidatorName = consolidation.ResolveTargetName(services.GlobalBeaconService)
 			elConsolidationData.TargetValidatorValid = true
 		}
 

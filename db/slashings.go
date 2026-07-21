@@ -136,23 +136,17 @@ func GetSlashingsFiltered(ctx context.Context, offset uint64, limit uint32, fina
 		filterOp = "AND"
 	}
 	if filter.ValidatorName != "" {
-		args = append(args, "%"+filter.ValidatorName+"%")
-		fmt.Fprintf(&sql, " %v ", filterOp)
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` validator_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` validator_names.name LIKE $%v `,
-		}), len(args))
-
+		var namePredicate string
+		namePredicate, args = AppendValidatorNameHistoryFilter(args, "slashings.validator", "slashings.slot_number", "",
+			"validator_names.name", "%"+filter.ValidatorName+"%", false)
+		fmt.Fprintf(&sql, " %v %v ", filterOp, namePredicate)
 		filterOp = "AND"
 	}
 	if filter.SlasherName != "" {
-		args = append(args, "%"+filter.SlasherName+"%")
-		fmt.Fprintf(&sql, " %v ", filterOp)
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` slasher_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` slasher_names.name LIKE $%v `,
-		}), len(args))
-
+		var namePredicate string
+		namePredicate, args = AppendValidatorNameHistoryFilter(args, "slashings.slasher", "slashings.slot_number", "",
+			"slasher_names.name", "%"+filter.SlasherName+"%", false)
+		fmt.Fprintf(&sql, " %v %v ", filterOp, namePredicate)
 		filterOp = "AND"
 	}
 

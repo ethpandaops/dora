@@ -222,7 +222,7 @@ func APIDepositsIncludedV1(w http.ResponseWriter, r *http.Request) {
 		validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey()))
 		if found {
 			depositInfo.ValidatorIndex = int64(validatorIndex)
-			depositInfo.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
+			depositInfo.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(uint64(validatorIndex), phase0.Slot(deposit.Request.SlotNumber))
 		} else {
 			depositInfo.ValidatorIndex = -1
 		}

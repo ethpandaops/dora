@@ -204,7 +204,7 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				depositTxData.ValidatorIndex = uint64(validatorIndex)
 				depositTxData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIndex)
 				depositTxData.IsBuilder = false
-				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
+				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAtTime(uint64(validatorIndex), int64(depositTx.BlockTime))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
 				if validator == nil {
@@ -319,7 +319,7 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				depositData.ValidatorIndex = uint64(validatorIndex)
 				depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIndex)
 				depositData.IsBuilder = false
-				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
+				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(uint64(validatorIndex), phase0.Slot(deposit.Request.SlotNumber))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
 				if validator == nil {

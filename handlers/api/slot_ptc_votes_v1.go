@@ -181,7 +181,7 @@ func APISlotPtcVotesV1(w http.ResponseWriter, r *http.Request) {
 			seenValidators[vidx] = true
 			aggregate.Validators = append(aggregate.Validators, APISlotPtcValidator{
 				Index: vidx,
-				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+				Name:  services.GlobalBeaconService.GetValidatorNameAt(vidx, resolvedSlot),
 			})
 		}
 		aggregate.VoteCount = bitVoteCount
@@ -208,7 +208,7 @@ func APISlotPtcVotesV1(w http.ResponseWriter, r *http.Request) {
 		for vidx := range nonVoterSet {
 			nonVoters = append(nonVoters, APISlotPtcValidator{
 				Index: vidx,
-				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+				Name:  services.GlobalBeaconService.GetValidatorNameAt(vidx, resolvedSlot),
 			})
 		}
 		data.NonVoters = nonVoters

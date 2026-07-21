@@ -10,10 +10,6 @@ type SearchGraffitiResult struct {
 	Graffiti string `db:"graffiti"`
 }
 
-type SearchNameResult struct {
-	Name string `db:"name"`
-}
-
 type SearchAheadEpochsResult []struct {
 	Epoch uint64 `db:"epoch"`
 }

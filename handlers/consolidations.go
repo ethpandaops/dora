@@ -144,13 +144,13 @@ func buildConsolidationsPageData(ctx context.Context, firstEpoch uint64, pageSiz
 
 			if sourceIndex := consolidation.SourceIndex(); sourceIndex != nil {
 				consolidationData.SourceValidatorIndex = *sourceIndex
-				consolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*sourceIndex)
+				consolidationData.SourceValidatorName = consolidation.ResolveSourceName(services.GlobalBeaconService)
 				consolidationData.SourceValidatorValid = true
 			}
 
 			if targetIndex := consolidation.TargetIndex(); targetIndex != nil {
 				consolidationData.TargetValidatorIndex = *targetIndex
-				consolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*targetIndex)
+				consolidationData.TargetValidatorName = consolidation.ResolveTargetName(services.GlobalBeaconService)
 				consolidationData.TargetValidatorValid = true
 			}
 

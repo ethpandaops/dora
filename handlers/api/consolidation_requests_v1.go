@@ -209,14 +209,14 @@ func APIConsolidationRequestsV1(w http.ResponseWriter, r *http.Request) {
 		// Set source validator information
 		if sourceIndex := consolidation.SourceIndex(); sourceIndex != nil {
 			requestInfo.SourceValidatorIndex = *sourceIndex
-			requestInfo.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*sourceIndex)
+			requestInfo.SourceValidatorName = consolidation.ResolveSourceName(services.GlobalBeaconService)
 			requestInfo.SourceValidatorValid = true
 		}
 
 		// Set target validator information
 		if targetIndex := consolidation.TargetIndex(); targetIndex != nil {
 			requestInfo.TargetValidatorIndex = *targetIndex
-			requestInfo.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*targetIndex)
+			requestInfo.TargetValidatorName = consolidation.ResolveTargetName(services.GlobalBeaconService)
 			requestInfo.TargetValidatorValid = true
 		}
 

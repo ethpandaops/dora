@@ -219,7 +219,7 @@ func APIDepositsTransactionsV1(w http.ResponseWriter, r *http.Request) {
 			depositInfo.ValidatorStatus = "Deposited"
 		} else {
 			depositInfo.ValidatorIndex = int64(validatorIndex)
-			depositInfo.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
+			depositInfo.ValidatorName = services.GlobalBeaconService.GetValidatorNameAtTime(uint64(validatorIndex), int64(tx.BlockTime))
 
 			// Get validator status and liveness
 			validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), false)

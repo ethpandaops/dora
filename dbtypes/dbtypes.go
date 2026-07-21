@@ -10,6 +10,27 @@ type ValidatorName struct {
 	Name  string `db:"name"`
 }
 
+// ValidatorNameSnapshot describes one historic validator name assignment period:
+// the range rows referencing it via snapshot_slot are valid for [StartSlot, EndSlot)
+// resp. [StartTime, EndTime). The last snapshot is open-ended (math.MaxInt64 bounds).
+type ValidatorNameSnapshot struct {
+	StartSlot  uint64 `db:"start_slot"`
+	EndSlot    uint64 `db:"end_slot"`
+	StartTime  uint64 `db:"start_time"`
+	EndTime    uint64 `db:"end_time"`
+	RangesHash string `db:"ranges_hash"`
+}
+
+// ValidatorNameRange assigns a name to the validator index range [StartIndex, EndIndex]
+// during the snapshot period identified by SnapshotSlot. Ranges within a snapshot are
+// disjoint, which allows point lookups via a single top-1 index descent.
+type ValidatorNameRange struct {
+	SnapshotSlot uint64 `db:"snapshot_slot"`
+	StartIndex   uint64 `db:"start_index"`
+	EndIndex     uint64 `db:"end_index"`
+	Name         string `db:"name"`
+}
+
 type SlotStatus uint8
 
 const (

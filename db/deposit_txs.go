@@ -258,11 +258,10 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 		filterOp = "AND"
 	}
 	if filter.ValidatorName != "" {
-		args = append(args, "%"+filter.ValidatorName+"%")
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  " %v validator_names.name ilike $%v",
-			dbtypes.DBEngineSqlite: " %v validator_names.name LIKE $%v",
-		}), filterOp, len(args))
+		var namePredicate string
+		namePredicate, args = AppendValidatorNameHistoryFilter(args, "validators.validator_index", "", "deposit_txs.block_time",
+			"validator_names.name", "%"+filter.ValidatorName+"%", false)
+		fmt.Fprintf(&sql, " %v %v", filterOp, namePredicate)
 		filterOp = "AND"
 	}
 

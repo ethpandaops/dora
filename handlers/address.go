@@ -1022,7 +1022,7 @@ func loadWithdrawalsTab(ctx context.Context, pageData *models.AddressPageData, a
 			BlockTime:     chainState.SlotToTime(phase0.Slot(slot)),
 			Type:          w.Type,
 			Amount:        w.Amount,
-			ValidatorName: services.GlobalBeaconService.GetValidatorName(w.Validator),
+			ValidatorName: services.GlobalBeaconService.GetValidatorNameAt(w.Validator, phase0.Slot(slot)),
 		}
 		if w.Validator&services.BuilderIndexFlag != 0 {
 			entry.IsBuilder = true
