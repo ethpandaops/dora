@@ -507,7 +507,7 @@ func clampToUnsigned(value int64) uint64 {
 func hashNameRanges(ranges []validatorNameRange) string {
 	hasher := sha256.New()
 	for _, nameRange := range ranges {
-		fmt.Fprintf(hasher, "%d-%d:%s\n", nameRange.startIndex, nameRange.endIndex, nameRange.name)
+		hasher.Write(fmt.Appendf(nil, "%d-%d:%s\n", nameRange.startIndex, nameRange.endIndex, nameRange.name))
 	}
 	return hex.EncodeToString(hasher.Sum(nil))
 }
