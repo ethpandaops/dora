@@ -102,8 +102,8 @@ func TestGetValidatorNameAt(t *testing.T) {
 	vn := &ValidatorNames{
 		namesMutex:   sync.RWMutex{},
 		namesByIndex: map[uint64]*validatorNameEntry{50: currentEntry, 5000: currentEntry},
-		nameHistory:  history,
 	}
+	vn.nameHistory.Store(&history)
 
 	tests := []struct {
 		name     string
@@ -125,6 +125,45 @@ func TestGetValidatorNameAt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if result := vn.GetValidatorNameAt(tt.index, tt.slot); result != tt.expected {
 				t.Errorf("GetValidatorNameAt(%v, %v) = %q, want %q", tt.index, tt.slot, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetValidatorNameAtTime(t *testing.T) {
+	history := []validatorNameSnapshot{
+		{
+			startSlot: 100, endSlot: 500,
+			startTime: 2200, endTime: 7000,
+			ranges: []validatorNameRange{{startIndex: 0, endIndex: 99, name: "old-node"}},
+		},
+		{
+			startSlot: 500, endSlot: phase0.Slot(math.MaxInt64),
+			startTime: 7000, endTime: math.MaxInt64,
+			ranges: []validatorNameRange{{startIndex: 0, endIndex: 99, name: "new-node"}},
+		},
+	}
+
+	vn := &ValidatorNames{
+		namesMutex:   sync.RWMutex{},
+		namesByIndex: map[uint64]*validatorNameEntry{50: {name: "current-node"}},
+	}
+	vn.nameHistory.Store(&history)
+
+	tests := []struct {
+		name     string
+		ts       int64
+		expected string
+	}{
+		{"within first snapshot", 3000, "old-node"},
+		{"exactly at transition", 7000, "new-node"},
+		{"open snapshot", 999999, "new-node"},
+		{"before first snapshot falls back to current", 100, "current-node"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if result := vn.GetValidatorNameAtTime(50, tt.ts); result != tt.expected {
+				t.Errorf("GetValidatorNameAtTime(50, %v) = %q, want %q", tt.ts, result, tt.expected)
 			}
 		})
 	}
@@ -176,6 +215,15 @@ func TestBuildNameSnapshots(t *testing.T) {
 	}
 	if snapshots[1].ranges[0].name != "node-c" {
 		t.Errorf("snapshot 1 name = %q, want node-c", snapshots[1].ranges[0].name)
+	}
+	if snapshots[0].startTime != 0 || snapshots[0].endTime != 1000+1205 {
+		t.Errorf("snapshot 0 time bounds = [%v, %v), want [0, 2205)", snapshots[0].startTime, snapshots[0].endTime)
+	}
+	if snapshots[1].startTime != 1000+1205 || snapshots[1].endTime != math.MaxInt64 {
+		t.Errorf("snapshot 1 time bounds = [%v, %v), want [2205, max)", snapshots[1].startTime, snapshots[1].endTime)
+	}
+	if snapshots[0].rangesHash == "" || snapshots[0].rangesHash == snapshots[1].rangesHash {
+		t.Errorf("expected distinct non-empty range hashes, got %q and %q", snapshots[0].rangesHash, snapshots[1].rangesHash)
 	}
 }
 

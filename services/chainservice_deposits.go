@@ -48,6 +48,19 @@ func (ccr *CombinedDepositRequest) DepositIndex() uint64 {
 	return math.MaxUint64
 }
 
+// ResolveValidatorName returns the display name for the deposit's validator, resolved
+// at the deposit's inclusion slot (or the deposit transaction's EL block time while the
+// deposit is not included yet).
+func (ccr *CombinedDepositRequest) ResolveValidatorName(bs *ChainService, index uint64) string {
+	if ccr.Request != nil {
+		return bs.GetValidatorNameAt(index, phase0.Slot(ccr.Request.SlotNumber))
+	}
+	if ccr.Transaction != nil {
+		return bs.GetValidatorNameAtTime(index, int64(ccr.Transaction.BlockTime))
+	}
+	return bs.GetValidatorName(index)
+}
+
 func (ccr *CombinedDepositRequest) PublicKey() []byte {
 	if ccr.Request != nil {
 		return ccr.Request.PublicKey

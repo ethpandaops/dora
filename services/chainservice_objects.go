@@ -53,8 +53,8 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(ctx context.Context, filter *d
 						continue
 					}
 					if filter.ValidatorName != "" {
-						validatorName := bs.validatorNames.GetValidatorName(voluntaryExit.ValidatorIndex)
-						if !strings.Contains(validatorName, filter.ValidatorName) {
+						validatorName := bs.validatorNames.GetValidatorNameAt(voluntaryExit.ValidatorIndex, phase0.Slot(voluntaryExit.SlotNumber))
+						if !strings.Contains(strings.ToLower(validatorName), strings.ToLower(filter.ValidatorName)) {
 							continue
 						}
 					}
@@ -168,14 +168,14 @@ func (bs *ChainService) GetSlashingsByFilter(ctx context.Context, filter *dbtype
 						continue
 					}
 					if filter.ValidatorName != "" {
-						validatorName := bs.validatorNames.GetValidatorName(slashing.ValidatorIndex)
-						if !strings.Contains(validatorName, filter.ValidatorName) {
+						validatorName := bs.validatorNames.GetValidatorNameAt(slashing.ValidatorIndex, phase0.Slot(slashing.SlotNumber))
+						if !strings.Contains(strings.ToLower(validatorName), strings.ToLower(filter.ValidatorName)) {
 							continue
 						}
 					}
 					if filter.SlasherName != "" {
-						slasherName := bs.validatorNames.GetValidatorName(slashing.SlasherIndex)
-						if !strings.Contains(slasherName, filter.SlasherName) {
+						slasherName := bs.validatorNames.GetValidatorNameAt(slashing.SlasherIndex, phase0.Slot(slashing.SlotNumber))
+						if !strings.Contains(strings.ToLower(slasherName), strings.ToLower(filter.SlasherName)) {
 							continue
 						}
 					}

@@ -242,13 +242,10 @@ func GetMevBlocksFiltered(ctx context.Context, offset uint64, limit uint32, filt
 		filterOp = "AND"
 	}
 	if filter.ProposerName != "" {
-		args = append(args, "%"+filter.ProposerName+"%")
-		fmt.Fprintf(&sql, " %v ", filterOp)
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` validator_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` validator_names.name LIKE $%v `,
-		}), len(args))
-
+		var namePredicate string
+		namePredicate, args = AppendValidatorNameHistoryFilter(args, "mev_blocks.proposer_index", "mev_blocks.slot_number", "",
+			"validator_names.name", "%"+filter.ProposerName+"%", false)
+		fmt.Fprintf(&sql, " %v %v ", filterOp, namePredicate)
 		filterOp = "AND"
 	}
 

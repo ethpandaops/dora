@@ -592,6 +592,17 @@ func (bs *ChainService) GetValidatorNameAt(index uint64, slot phase0.Slot) strin
 	return bs.validatorNames.GetValidatorNameAt(index, slot)
 }
 
+// GetValidatorNameAtTime returns the validator name assignment valid at the given unix
+// time. Used for rows that only carry an execution layer block time instead of a slot.
+func (bs *ChainService) GetValidatorNameAtTime(index uint64, ts int64) string {
+	if index&BuilderIndexFlag != 0 {
+		if name := bs.buildoorInventory.GetBuilderName(index); name != "" {
+			return name
+		}
+	}
+	return bs.validatorNames.GetValidatorNameAtTime(index, ts)
+}
+
 func (bs *ChainService) GetBuilderURL(builderIndex uint64) string {
 	return bs.buildoorInventory.GetBuilderURL(builderIndex)
 }

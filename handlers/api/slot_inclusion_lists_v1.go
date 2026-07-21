@@ -110,7 +110,7 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 		valIndex := uint64(il.Message.ValidatorIndex)
 		listEntry := &APISlotInclusionList{
 			ValidatorIndex:             valIndex,
-			ValidatorName:              services.GlobalBeaconService.GetValidatorName(valIndex),
+			ValidatorName:              services.GlobalBeaconService.GetValidatorNameAt(valIndex, phase0.Slot(dbSlot.Slot)),
 			InclusionListCommitteeRoot: fmt.Sprintf("0x%x", il.Message.InclusionListCommitteeRoot[:]),
 			Signature:                  fmt.Sprintf("0x%x", il.Signature[:]),
 			Transactions:               make([]*APISlotInclusionListTransaction, 0, len(il.Message.Transactions)),

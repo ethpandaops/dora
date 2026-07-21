@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -52,7 +55,12 @@ type ValidatorNames struct {
 	resolvedNamesByIndex  map[uint64]*validatorNameEntry
 	nameHistoryRaw        []validatorNamesHistoryEntry
 	nameHistoryBuilt      bool
-	nameHistory           []validatorNameSnapshot
+	nameHistorySynced     bool
+	nameSourceOk          bool
+
+	// nameHistory holds the published slot-bounded snapshots. Snapshots are immutable
+	// once published, so lookups load the pointer and search without any locking.
+	nameHistory atomic.Pointer[[]validatorNameSnapshot]
 }
 
 type validatorNameEntry struct {
@@ -65,12 +73,16 @@ type validatorNameRange struct {
 	name       string
 }
 
-// validatorNameSnapshot holds the full range assignment valid for [startSlot, endSlot).
-// Snapshots are immutable once published and sorted by startSlot; ranges are disjoint and sorted by startIndex.
+// validatorNameSnapshot holds the full range assignment valid for [startSlot, endSlot)
+// resp. [startTime, endTime). Snapshots are immutable once published and sorted by
+// startSlot; ranges are disjoint and sorted by startIndex.
 type validatorNameSnapshot struct {
-	startSlot phase0.Slot
-	endSlot   phase0.Slot // exclusive; math.MaxInt64 for the open interval
-	ranges    []validatorNameRange
+	startSlot  phase0.Slot
+	endSlot    phase0.Slot // exclusive; math.MaxInt64 for the open interval
+	startTime  int64       // unix seconds
+	endTime    int64       // exclusive; math.MaxInt64 for the open interval
+	rangesHash string      // fingerprint of ranges for cheap db sync diffing
+	ranges     []validatorNameRange
 }
 
 func NewValidatorNames(ctx context.Context, beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *ValidatorNames {
@@ -123,6 +135,10 @@ func (vn *ValidatorNames) runUpdater() error {
 	// retried on the 30s updater tick until chain specs & genesis are available
 	if err := vn.ensureNameHistory(); err != nil {
 		logger_vn.Debugf("validator name history pending: %v", err)
+	}
+
+	if err := vn.syncNameHistoryDb(); err != nil {
+		logger_vn.WithError(err).Warnf("validator name history db sync failed")
 	}
 
 	if time.Since(vn.lastResolvedMapUpdate) > utils.Config.Frontend.ValidatorNamesResolveInterval {
@@ -304,23 +320,52 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 	return ""
 }
 
-// GetValidatorNameAt returns the name assignment valid at the given slot.
-// Falls back to the current name when no history snapshot covers the slot or index,
-// so networks without name history behave identically to GetValidatorName.
-func (vn *ValidatorNames) GetValidatorNameAt(index uint64, slot phase0.Slot) string {
-	if !vn.namesMutex.TryRLock() {
-		return ""
-	}
-	history := vn.nameHistory
-	vn.namesMutex.RUnlock()
-
-	// snapshots are immutable once published, searching outside the lock is safe
+// lookupHistoryName finds the name assignment covering (index, slot) in the snapshots.
+func lookupHistoryName(history []validatorNameSnapshot, index uint64, slot phase0.Slot) (string, bool) {
 	snapIdx := sort.Search(len(history), func(i int) bool { return history[i].startSlot > slot }) - 1
 	if snapIdx >= 0 && slot < history[snapIdx].endSlot {
 		ranges := history[snapIdx].ranges
 		rangeIdx := sort.Search(len(ranges), func(i int) bool { return ranges[i].startIndex > index }) - 1
 		if rangeIdx >= 0 && index <= ranges[rangeIdx].endIndex {
-			return ranges[rangeIdx].name
+			return ranges[rangeIdx].name, true
+		}
+	}
+	return "", false
+}
+
+// lookupHistoryNameByTime finds the name assignment covering (index, unix time) in the
+// snapshots. Snapshots are sorted by startSlot, which is equivalent to startTime order.
+func lookupHistoryNameByTime(history []validatorNameSnapshot, index uint64, ts int64) (string, bool) {
+	snapIdx := sort.Search(len(history), func(i int) bool { return history[i].startTime > ts }) - 1
+	if snapIdx >= 0 && ts < history[snapIdx].endTime {
+		ranges := history[snapIdx].ranges
+		rangeIdx := sort.Search(len(ranges), func(i int) bool { return ranges[i].startIndex > index }) - 1
+		if rangeIdx >= 0 && index <= ranges[rangeIdx].endIndex {
+			return ranges[rangeIdx].name, true
+		}
+	}
+	return "", false
+}
+
+// GetValidatorNameAt returns the name assignment valid at the given slot.
+// Falls back to the current name when no history snapshot covers the slot or index,
+// so networks without name history behave identically to GetValidatorName.
+func (vn *ValidatorNames) GetValidatorNameAt(index uint64, slot phase0.Slot) string {
+	if history := vn.nameHistory.Load(); history != nil {
+		if name, found := lookupHistoryName(*history, index, slot); found {
+			return name
+		}
+	}
+
+	return vn.GetValidatorName(index)
+}
+
+// GetValidatorNameAtTime returns the name assignment valid at the given unix time.
+// Used for rows that only carry an execution layer block time instead of a slot.
+func (vn *ValidatorNames) GetValidatorNameAtTime(index uint64, ts int64) string {
+	if history := vn.nameHistory.Load(); history != nil {
+		if name, found := lookupHistoryNameByTime(*history, index, ts); found {
+			return name
 		}
 	}
 
@@ -328,15 +373,21 @@ func (vn *ValidatorNames) GetValidatorNameAt(index uint64, slot phase0.Slot) str
 }
 
 // ensureNameHistory converts the raw inventory history into slot-bounded snapshots.
-// Returns an error (and stays unbuilt) while chain specs or genesis are unknown.
+// Returns an error (and stays unbuilt) while chain specs or genesis are unknown or the
+// last source load failed — previous snapshots are kept, so a transient inventory
+// outage never degrades resolution.
 func (vn *ValidatorNames) ensureNameHistory() error {
 	vn.namesMutex.RLock()
 	built := vn.nameHistoryBuilt
 	rawHistory := vn.nameHistoryRaw
+	sourceOk := vn.nameSourceOk
 	vn.namesMutex.RUnlock()
 
 	if built {
 		return nil
+	}
+	if !sourceOk {
+		return fmt.Errorf("name sources not loaded")
 	}
 
 	var snapshots []validatorNameSnapshot
@@ -352,11 +403,113 @@ func (vn *ValidatorNames) ensureNameHistory() error {
 	vn.namesMutex.Lock()
 	defer vn.namesMutex.Unlock()
 	vn.nameHistoryBuilt = true
-	if !reflect.DeepEqual(vn.nameHistory, snapshots) {
-		vn.nameHistory = snapshots
-		logger_vn.Infof("built validator name history: %v snapshots", len(snapshots))
+	current := vn.nameHistory.Load()
+	if current == nil || !reflect.DeepEqual(*current, snapshots) {
+		vn.nameHistory.Store(&snapshots)
+		vn.nameHistorySynced = false
+		if len(snapshots) > 0 {
+			logger_vn.Infof("built validator name history: %v snapshots", len(snapshots))
+		}
 	}
 	return nil
+}
+
+// syncNameHistoryDb mirrors the published snapshots into the validator_name_snapshots
+// and validator_name_ranges tables, which back the SQL-side name filters. The mapping
+// itself is persisted instead of denormalized per-row name ids, so a history change
+// (including retroactive amendments) is applied consistently with one small atomic
+// rewrite of the affected snapshots — no per-row repair is ever needed.
+func (vn *ValidatorNames) syncNameHistoryDb() error {
+	vn.namesMutex.RLock()
+	built := vn.nameHistoryBuilt
+	synced := vn.nameHistorySynced
+	vn.namesMutex.RUnlock()
+	if !built || synced {
+		return nil
+	}
+
+	var snapshots []validatorNameSnapshot
+	if historyPtr := vn.nameHistory.Load(); historyPtr != nil {
+		snapshots = *historyPtr
+	}
+
+	dbSnapshots, err := db.GetValidatorNameSnapshots(vn.ctx)
+	if err != nil {
+		return fmt.Errorf("could not load persisted name snapshots: %w", err)
+	}
+	staleDbSlots := make(map[uint64]*dbtypes.ValidatorNameSnapshot, len(dbSnapshots))
+	for _, dbSnapshot := range dbSnapshots {
+		staleDbSlots[dbSnapshot.StartSlot] = dbSnapshot
+	}
+
+	changedCount := 0
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		for i := range snapshots {
+			snapshot := &snapshots[i]
+			meta := &dbtypes.ValidatorNameSnapshot{
+				StartSlot:  uint64(snapshot.startSlot),
+				EndSlot:    uint64(snapshot.endSlot),
+				StartTime:  clampToUnsigned(snapshot.startTime),
+				EndTime:    clampToUnsigned(snapshot.endTime),
+				RangesHash: snapshot.rangesHash,
+			}
+
+			existing := staleDbSlots[meta.StartSlot]
+			delete(staleDbSlots, meta.StartSlot)
+			if existing != nil && *existing == *meta {
+				continue
+			}
+
+			rangeRows := make([]*dbtypes.ValidatorNameRange, len(snapshot.ranges))
+			for j, nameRange := range snapshot.ranges {
+				rangeRows[j] = &dbtypes.ValidatorNameRange{
+					SnapshotSlot: meta.StartSlot,
+					StartIndex:   nameRange.startIndex,
+					EndIndex:     nameRange.endIndex,
+					Name:         nameRange.name,
+				}
+			}
+			if err := db.UpsertValidatorNameSnapshot(vn.ctx, tx, meta, rangeRows); err != nil {
+				return err
+			}
+			changedCount++
+		}
+
+		for startSlot := range staleDbSlots {
+			if err := db.DeleteValidatorNameSnapshot(vn.ctx, tx, startSlot); err != nil {
+				return err
+			}
+			changedCount++
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	vn.namesMutex.Lock()
+	vn.nameHistorySynced = true
+	vn.namesMutex.Unlock()
+
+	if changedCount > 0 {
+		logger_vn.Infof("synced validator name history to db: %v snapshots written", changedCount)
+	}
+	return nil
+}
+
+func clampToUnsigned(value int64) uint64 {
+	if value < 0 {
+		return 0
+	}
+	return uint64(value)
+}
+
+func hashNameRanges(ranges []validatorNameRange) string {
+	hasher := sha256.New()
+	for _, nameRange := range ranges {
+		fmt.Fprintf(hasher, "%d-%d:%s\n", nameRange.startIndex, nameRange.endIndex, nameRange.name)
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func buildNameSnapshots(entries []validatorNamesHistoryEntry, timeToSlot func(int64) phase0.Slot) []validatorNameSnapshot {
@@ -366,20 +519,33 @@ func buildNameSnapshots(entries []validatorNamesHistoryEntry, timeToSlot func(in
 		return sorted[a].EffectiveFrom < sorted[b].EffectiveFrom
 	})
 
-	var snapshots []validatorNameSnapshot
+	// drop entries fully shadowed by the next entry within the same slot, so the kept
+	// entries produce non-empty slot windows and consistent time windows
+	kept := make([]validatorNamesHistoryEntry, 0, len(sorted))
 	for idx, entry := range sorted {
+		if idx < len(sorted)-1 && timeToSlot(entry.EffectiveFrom) >= timeToSlot(sorted[idx+1].EffectiveFrom) {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+
+	snapshots := make([]validatorNameSnapshot, 0, len(kept))
+	for idx, entry := range kept {
 		startSlot := timeToSlot(entry.EffectiveFrom)
 		endSlot := phase0.Slot(math.MaxInt64)
-		if idx < len(sorted)-1 {
-			endSlot = timeToSlot(sorted[idx+1].EffectiveFrom)
+		endTime := int64(math.MaxInt64)
+		if idx < len(kept)-1 {
+			endSlot = timeToSlot(kept[idx+1].EffectiveFrom)
+			endTime = kept[idx+1].EffectiveFrom
 		}
-		if startSlot >= endSlot {
-			continue // zero-length interval, fully shadowed by the next snapshot
-		}
+		ranges := parseValidatorNameRanges(entry.Ranges)
 		snapshots = append(snapshots, validatorNameSnapshot{
-			startSlot: startSlot,
-			endSlot:   endSlot,
-			ranges:    parseValidatorNameRanges(entry.Ranges),
+			startSlot:  startSlot,
+			endSlot:    endSlot,
+			startTime:  entry.EffectiveFrom,
+			endTime:    endTime,
+			rangesHash: hashNameRanges(ranges),
+			ranges:     ranges,
 		})
 	}
 	return snapshots
@@ -470,12 +636,16 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 		vn.namesByDepositTarget = make(map[common.Address]*validatorNameEntry)
 		vn.nameHistoryRaw = nil
 		vn.nameHistoryBuilt = false
+		vn.nameSourceOk = false // published snapshots stay live during reload
 		vn.namesMutex.Unlock()
+
+		loadOk := true
 
 		if utils.Config.Frontend.ValidatorNamesInventory != "" {
 			err := vn.loadFromRangesApi(utils.Config.Frontend.ValidatorNamesInventory)
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names inventory")
+				loadOk = false
 			}
 		}
 
@@ -488,13 +658,19 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 			err := vn.loadFromInternalYaml(validatorNamesYaml[10:])
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names from internal yaml")
+				loadOk = false
 			}
 		} else if validatorNamesYaml != "" {
 			err := vn.loadFromYaml(validatorNamesYaml)
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names from yaml")
+				loadOk = false
 			}
 		}
+
+		vn.namesMutex.Lock()
+		vn.nameSourceOk = loadOk
+		vn.namesMutex.Unlock()
 	}()
 
 	return vn.loading

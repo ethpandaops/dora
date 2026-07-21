@@ -206,7 +206,7 @@ func APIWithdrawalRequestsV1(w http.ResponseWriter, r *http.Request) {
 		// Set validator information
 		if validatorIndex := elWithdrawal.ValidatorIndex(); validatorIndex != nil {
 			requestInfo.ValidatorIndex = *validatorIndex
-			requestInfo.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
+			requestInfo.ValidatorName = elWithdrawal.ResolveValidatorName(services.GlobalBeaconService)
 			requestInfo.ValidatorValid = true
 		}
 

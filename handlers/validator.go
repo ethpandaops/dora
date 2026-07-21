@@ -484,7 +484,7 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 			} else {
 				depositData.ValidatorExists = true
 				depositData.ValidatorIndex = uint64(validatorIdx)
-				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
+				depositData.ValidatorName = deposit.ResolveValidatorName(services.GlobalBeaconService, uint64(validatorIdx))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
 				if validator == nil {
@@ -655,13 +655,13 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 			if sourceIndex := consolidation.SourceIndex(); sourceIndex != nil {
 				elConsolidationData.SourceValidatorValid = true
 				elConsolidationData.SourceValidatorIndex = *sourceIndex
-				elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*sourceIndex)
+				elConsolidationData.SourceValidatorName = consolidation.ResolveSourceName(services.GlobalBeaconService)
 			}
 
 			if targetIndex := consolidation.TargetIndex(); targetIndex != nil {
 				elConsolidationData.TargetValidatorValid = true
 				elConsolidationData.TargetValidatorIndex = *targetIndex
-				elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*targetIndex)
+				elConsolidationData.TargetValidatorName = consolidation.ResolveTargetName(services.GlobalBeaconService)
 			}
 
 			if request := consolidation.Request; request != nil {
@@ -865,7 +865,7 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 
 			if targetIndex := consolidation.TargetIndex(); targetIndex != nil {
 				pageData.ExitReasonTargetIndex = *targetIndex
-				pageData.ExitReasonTargetName = services.GlobalBeaconService.GetValidatorName(*targetIndex)
+				pageData.ExitReasonTargetName = consolidation.ResolveTargetName(services.GlobalBeaconService)
 			}
 
 			if consolidation.Transaction != nil {

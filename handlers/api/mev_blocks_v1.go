@@ -201,7 +201,7 @@ func APIMevBlocksV1(w http.ResponseWriter, r *http.Request) {
 			BlockNumber:    mevBlock.BlockNumber,
 			Time:           chainState.SlotToTime(phase0.Slot(mevBlock.SlotNumber)).Unix(),
 			ValidatorIndex: mevBlock.ProposerIndex,
-			ValidatorName:  services.GlobalBeaconService.GetValidatorName(mevBlock.ProposerIndex),
+			ValidatorName:  services.GlobalBeaconService.GetValidatorNameAt(mevBlock.ProposerIndex, phase0.Slot(mevBlock.SlotNumber)),
 			BuilderPubkey:  fmt.Sprintf("0x%x", mevBlock.BuilderPubkey),
 			Proposed:       mevBlock.Proposed,
 			FeeRecipient:   fmt.Sprintf("0x%x", mevBlock.FeeRecipient),

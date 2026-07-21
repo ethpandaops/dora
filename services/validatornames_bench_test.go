@@ -39,11 +39,12 @@ func benchVN() *ValidatorNames {
 		})
 	}
 
-	return &ValidatorNames{
+	vn := &ValidatorNames{
 		namesMutex:   sync.RWMutex{},
 		namesByIndex: names,
-		nameHistory:  history,
 	}
+	vn.nameHistory.Store(&history)
+	return vn
 }
 
 func BenchmarkGetValidatorName(b *testing.B) {
@@ -73,7 +74,7 @@ func BenchmarkGetValidatorNameAt_MissFallback(b *testing.B) {
 
 func BenchmarkGetValidatorNameAt_NoHistory(b *testing.B) {
 	vn := benchVN()
-	vn.nameHistory = nil
+	vn.nameHistory.Store(nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		vn.GetValidatorNameAt(uint64(i)%100000, phase0.Slot(uint64(i)%1000000))

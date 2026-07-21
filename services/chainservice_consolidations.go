@@ -68,6 +68,31 @@ func (ccr *CombinedConsolidationRequest) TargetIndex() *uint64 {
 	return nil
 }
 
+// resolveNameAtRequest resolves a validator name at the request's inclusion slot (or
+// the request transaction's EL block time while the request is still pending).
+func (ccr *CombinedConsolidationRequest) resolveNameAtRequest(bs *ChainService, index *uint64) string {
+	if index == nil {
+		return ""
+	}
+	if ccr.Request != nil {
+		return bs.GetValidatorNameAt(*index, phase0.Slot(ccr.Request.SlotNumber))
+	}
+	if ccr.Transaction != nil {
+		return bs.GetValidatorNameAtTime(*index, int64(ccr.Transaction.BlockTime))
+	}
+	return bs.GetValidatorName(*index)
+}
+
+// ResolveSourceName returns the display name for the request's source validator.
+func (ccr *CombinedConsolidationRequest) ResolveSourceName(bs *ChainService) string {
+	return ccr.resolveNameAtRequest(bs, ccr.SourceIndex())
+}
+
+// ResolveTargetName returns the display name for the request's target validator.
+func (ccr *CombinedConsolidationRequest) ResolveTargetName(bs *ChainService) string {
+	return ccr.resolveNameAtRequest(bs, ccr.TargetIndex())
+}
+
 func (ccr *CombinedConsolidationRequest) TargetPubkey() []byte {
 	if ccr.Request != nil {
 		return ccr.Request.TargetPubkey
@@ -238,8 +263,8 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(ctx context.Co
 						if consolidationRequest.SourceIndex == nil {
 							continue
 						}
-						validatorName := bs.validatorNames.GetValidatorName(*consolidationRequest.SourceIndex)
-						if !strings.Contains(validatorName, filter.SrcValidatorName) {
+						validatorName := bs.validatorNames.GetValidatorNameAt(*consolidationRequest.SourceIndex, phase0.Slot(consolidationRequest.SlotNumber))
+						if !strings.Contains(strings.ToLower(validatorName), strings.ToLower(filter.SrcValidatorName)) {
 							continue
 						}
 					}
@@ -254,8 +279,8 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(ctx context.Co
 						if consolidationRequest.TargetIndex == nil {
 							continue
 						}
-						validatorName := bs.validatorNames.GetValidatorName(*consolidationRequest.TargetIndex)
-						if !strings.Contains(validatorName, filter.TgtValidatorName) {
+						validatorName := bs.validatorNames.GetValidatorNameAt(*consolidationRequest.TargetIndex, phase0.Slot(consolidationRequest.SlotNumber))
+						if !strings.Contains(strings.ToLower(validatorName), strings.ToLower(filter.TgtValidatorName)) {
 							continue
 						}
 					}
