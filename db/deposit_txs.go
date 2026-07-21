@@ -193,6 +193,13 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 		FROM deposit_txs
 	`)
 
+	if filter.ValidatorName != "" {
+		fmt.Fprint(&sql, `
+		LEFT JOIN validators ON validators.pubkey = deposit_txs.publickey
+		LEFT JOIN validator_names ON validator_names."index" = validators.validator_index
+	`)
+	}
+
 	filterOp := "WHERE"
 	if filter.MinIndex > 0 {
 		args = append(args, filter.MinIndex)
@@ -248,6 +255,14 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 	if filter.MaxAmount > 0 {
 		args = append(args, filter.MaxAmount*utils.GWEI.Uint64())
 		fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.ValidatorName != "" {
+		args = append(args, "%"+filter.ValidatorName+"%")
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  " %v validator_names.name ilike $%v",
+			dbtypes.DBEngineSqlite: " %v validator_names.name LIKE $%v",
+		}), filterOp, len(args))
 		filterOp = "AND"
 	}
 

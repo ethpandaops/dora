@@ -52,11 +52,13 @@ func NewWithdrawalIndexer(indexer *execution.IndexerCtx) *WithdrawalIndexer {
 		indexer,
 		indexer.Logger.WithField("contract-indexer", "withdrawals"),
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
-			stateKey:        "indexer.withdrawalindexer",
-			batchSize:       batchSize,
-			contractAddress: wi.indexerCtx.GetSystemContractAddress(rpc.WithdrawalRequestContract),
-			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
-			dequeueRate:     specs.MaxWithdrawalRequestsPerPayload,
+			stateKey:  "indexer.withdrawalindexer",
+			batchSize: batchSize,
+			contractAddress: func() common.Address {
+				return wi.indexerCtx.GetSystemContractAddress(rpc.WithdrawalRequestContract)
+			},
+			deployBlock: uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
+			dequeueRate: specs.MaxWithdrawalRequestsPerPayload,
 
 			processFinalTx:  wi.processFinalTx,
 			processRecentTx: wi.processRecentTx,

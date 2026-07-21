@@ -70,11 +70,13 @@ func NewDepositIndexer(indexer *execution.IndexerCtx) *DepositIndexer {
 		indexer,
 		ds.logger.WithField("routine", "crawler"),
 		&contractIndexerOptions[dbtypes.DepositTx]{
-			stateKey:        "indexer.depositstate",
-			batchSize:       batchSize,
-			contractAddress: common.Address(specs.DepositContractAddress),
-			deployBlock:     uint64(utils.Config.ExecutionApi.DepositDeployBlock),
-			dequeueRate:     0,
+			stateKey:  "indexer.depositstate",
+			batchSize: batchSize,
+			contractAddress: func() common.Address {
+				return common.Address(specs.DepositContractAddress)
+			},
+			deployBlock: uint64(utils.Config.ExecutionApi.DepositDeployBlock),
+			dequeueRate: 0,
 
 			processFinalTx:  ds.processFinalTx,
 			processRecentTx: ds.processRecentTx,

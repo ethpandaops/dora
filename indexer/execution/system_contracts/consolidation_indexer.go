@@ -51,11 +51,13 @@ func NewConsolidationIndexer(indexer *execution.IndexerCtx) *ConsolidationIndexe
 		indexer,
 		indexer.Logger.WithField("contract-indexer", "consolidations"),
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
-			stateKey:        "indexer.consolidationindexer",
-			batchSize:       batchSize,
-			contractAddress: ci.indexerCtx.GetSystemContractAddress(rpc.ConsolidationRequestContract),
-			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
-			dequeueRate:     specs.MaxConsolidationRequestsPerPayload,
+			stateKey:  "indexer.consolidationindexer",
+			batchSize: batchSize,
+			contractAddress: func() common.Address {
+				return ci.indexerCtx.GetSystemContractAddress(rpc.ConsolidationRequestContract)
+			},
+			deployBlock: uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
+			dequeueRate: specs.MaxConsolidationRequestsPerPayload,
 
 			processFinalTx:  ci.processFinalTx,
 			processRecentTx: ci.processRecentTx,
