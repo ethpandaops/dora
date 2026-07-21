@@ -195,6 +195,82 @@ func TestGetFilteredSlotsHistoryNames(t *testing.T) {
 	}
 }
 
+// TestSearchValidatorNames checks that search matches historic names and that name
+// suggestion counts are time-scoped: covered slots count towards the name valid at the
+// slot, uncovered slots count towards the proposer's current name, without double
+// counting validators whose current name mirrors the open history snapshot.
+func TestSearchValidatorNames(t *testing.T) {
+	newTestDB(t)
+	seedNameHistory(t)
+
+	err := RunDBTransaction(func(tx *sqlx.Tx) error {
+		// current names: validator 5 mirrors the open history snapshot,
+		// validator 20 is uncovered by history
+		if err := InsertValidatorNames(context.Background(), tx, []*dbtypes.ValidatorName{
+			{Index: 5, Name: "new-node"},
+			{Index: 20, Name: "legacy-node"},
+		}); err != nil {
+			return err
+		}
+
+		for _, s := range []struct {
+			slot     uint64
+			proposer uint64
+		}{
+			{50, 5},   // covered -> "old-node"
+			{150, 5},  // covered -> "new-node"
+			{250, 20}, // uncovered -> "legacy-node"
+		} {
+			root := []byte{byte(s.slot), 0x01}
+			if err := InsertSlot(context.Background(), tx, &dbtypes.Slot{
+				Slot: s.slot, Proposer: s.proposer, Status: dbtypes.Canonical,
+				Root: root, ParentRoot: root, StateRoot: root,
+				Graffiti: []byte{}, ExecTimes: []byte{},
+				BlockUid: s.slot << 16,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	for pattern, want := range map[string]bool{
+		"%old-node%":    true, // historic name only
+		"%legacy-node%": true, // current name only
+		"%new-node%":    true,
+		"%unknown%":     false,
+	} {
+		match, err := HasValidatorNameMatch(context.Background(), pattern)
+		if err != nil {
+			t.Fatalf("HasValidatorNameMatch(%q): %v", pattern, err)
+		}
+		if match != want {
+			t.Errorf("HasValidatorNameMatch(%q) = %v, want %v", pattern, match, want)
+		}
+	}
+
+	names, err := SearchValidatorNameCounts(context.Background(), "%node%", 10)
+	if err != nil {
+		t.Fatalf("SearchValidatorNameCounts: %v", err)
+	}
+	counts := make(map[string]uint64, len(names))
+	for _, entry := range names {
+		counts[entry.Name] = entry.Count
+	}
+	expected := map[string]uint64{"old-node": 1, "new-node": 1, "legacy-node": 1}
+	if len(counts) != len(expected) {
+		t.Fatalf("got names %v, want %v", counts, expected)
+	}
+	for name, count := range expected {
+		if counts[name] != count {
+			t.Errorf("count for %q = %v, want %v (all: %v)", name, counts[name], count, counts)
+		}
+	}
+}
+
 // TestConsolidationRequestTxsHistoryNames checks the time-keyed variant of the name
 // filter used by tables that only store an EL block time.
 func TestConsolidationRequestTxsHistoryNames(t *testing.T) {

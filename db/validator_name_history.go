@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -84,6 +86,68 @@ func DeleteValidatorNameSnapshot(ctx context.Context, tx *sqlx.Tx, startSlot uin
 		return fmt.Errorf("error deleting validator name snapshot %v: %w", startSlot, err)
 	}
 	return nil
+}
+
+// HasValidatorNameMatch reports whether any current or historic validator name matches
+// the given pattern.
+func HasValidatorNameMatch(ctx context.Context, pattern string) (bool, error) {
+	likeOp := EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  "ilike",
+		dbtypes.DBEngineSqlite: "LIKE",
+	})
+
+	var name string
+	err := ReaderDb.GetContext(ctx, &name, fmt.Sprintf(`
+		SELECT "name" FROM validator_names WHERE "name" %[1]v $1
+		UNION
+		SELECT "name" FROM validator_name_ranges WHERE "name" %[1]v $2
+		LIMIT 1`, likeOp), pattern, pattern)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("error searching validator names: %w", err)
+	}
+	return true, nil
+}
+
+// SearchValidatorNameCounts returns current and historic validator names matching the
+// pattern, with the number of slots proposed under each name. Counts follow the same
+// semantics as the name filters: slots covered by a history range count towards the
+// name valid at the slot, uncovered slots count towards the proposer's current name.
+func SearchValidatorNameCounts(ctx context.Context, pattern string, limit uint32) (dbtypes.SearchAheadValidatorNameResult, error) {
+	likeOp := EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  "ilike",
+		dbtypes.DBEngineSqlite: "LIKE",
+	})
+	coverProbe := validatorNameHistoryProbeSql(`s."proposer"`,
+		`vns."start_slot" <= s."slot" AND vns."end_slot" > s."slot"`)
+
+	names := dbtypes.SearchAheadValidatorNameResult{}
+	err := ReaderDb.SelectContext(ctx, &names, fmt.Sprintf(`
+		SELECT "name", SUM(cnt) AS "count" FROM (
+			SELECT vnr."name" AS "name", COUNT(s2."slot") AS cnt
+			FROM validator_name_ranges vnr
+			JOIN validator_name_snapshots vns2 ON vns2."start_slot" = vnr."snapshot_slot"
+			LEFT JOIN slots s2 ON s2."proposer" >= vnr."start_index" AND s2."proposer" <= vnr."end_index"
+				AND s2."slot" >= vns2."start_slot" AND s2."slot" < vns2."end_slot"
+			WHERE vnr."name" %[1]v $1
+			GROUP BY vnr."name"
+			UNION ALL
+			SELECT vn."name" AS "name", COUNT(s."slot") AS cnt
+			FROM validator_names vn
+			LEFT JOIN slots s ON s."proposer" = vn."index"
+				AND NOT EXISTS (SELECT 1 FROM (%[2]v) vnh WHERE vnh."end_index" >= s."proposer")
+			WHERE vn."name" %[1]v $2
+			GROUP BY vn."name"
+		) combined
+		GROUP BY "name"
+		ORDER BY "count" DESC
+		LIMIT $3`, likeOp, coverProbe), pattern, pattern, limit)
+	if err != nil {
+		return nil, fmt.Errorf("error searching validator name counts: %w", err)
+	}
+	return names, nil
 }
 
 // validatorNameHistoryProbeSql builds the correlated top-1 probe subquery selecting the

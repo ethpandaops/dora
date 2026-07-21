@@ -150,20 +150,7 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 		}
 	}
 
-	names := &dbtypes.SearchNameResult{}
-	err = db.ReaderDb.GetContext(ctx, names, db.EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql: `
-			SELECT name
-			FROM validator_names
-			WHERE name ILIKE LOWER($1)
-			LIMIT 1`,
-		dbtypes.DBEngineSqlite: `
-			SELECT name
-			FROM validator_names
-			WHERE name LIKE LOWER($1)
-			LIMIT 1`,
-	}), "%"+searchQuery+"%")
-	if err == nil {
+	if nameMatch, err := db.HasValidatorNameMatch(ctx, "%"+searchQuery+"%"); err == nil && nameMatch {
 		return searchResolverResult{RedirectURL: "/slots/filtered?f&f.missing=1&f.orphaned=1&f.pname=" + searchQuery}, cacheTimeout
 	}
 
@@ -473,28 +460,11 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 			result = model
 		}
 	case "valname":
-		names := &dbtypes.SearchAheadValidatorNameResult{}
-		err = db.ReaderDb.SelectContext(ctx, names, db.EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql: `
-				SELECT name, count(*) as count
-				FROM validator_names
-				LEFT JOIN slots ON validator_names."index" = slots.proposer
-				WHERE name ILIKE LOWER($1)
-				GROUP BY name
-				ORDER BY count desc
-				LIMIT 10`,
-			dbtypes.DBEngineSqlite: `
-				SELECT name, count(*) as count
-				FROM validator_names
-				LEFT JOIN slots ON validator_names."index" = slots.proposer
-				WHERE name LIKE LOWER($1)
-				GROUP BY name
-				ORDER BY count desc
-				LIMIT 10`,
-		}), "%"+search+"%")
+		var names dbtypes.SearchAheadValidatorNameResult
+		names, err = db.SearchValidatorNameCounts(ctx, "%"+search+"%", 10)
 		if err == nil {
-			model := make([]models.SearchAheadValidatorNameResult, len(*names))
-			for i, entry := range *names {
+			model := make([]models.SearchAheadValidatorNameResult, len(names))
+			for i, entry := range names {
 				model[i] = models.SearchAheadValidatorNameResult{
 					Name:  utils.FormatGraffitiString(entry.Name),
 					Count: fmt.Sprintf("%v", entry.Count),
