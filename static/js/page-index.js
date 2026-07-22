@@ -211,6 +211,8 @@
 
   function formatValidator(idx, name) {
     var icon = "fa-male mr-2";
+    // MaxInt64 = "unknown proposer" sentinel. It exceeds 2^53, so JSON.parse rounds it;
+    // >= against the exact BigInt matches the rounded value (== would never match).
     if(idx >= 9223372036854775807n) {
       return `<span class="validator-label validator-index"><i class="fas ` + icon + `"></i> unknown</span>`;
     }
@@ -238,6 +240,8 @@
     }
 
     var iconHtml;
+    // MaxUint64 = "self-built payload" sentinel (db builder_index -1); rounded by JSON.parse
+    // above 2^53 like the proposer sentinel, hence >= against the exact BigInt.
     if(builderIdx >= 18446744073709551615n) {
       iconHtml = `<i class="fas fa-house mr-2" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Self-built payload"></i>`;
     } else {
