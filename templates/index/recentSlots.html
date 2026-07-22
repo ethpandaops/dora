@@ -52,7 +52,7 @@
               </td>
               <td>
                 <span data-bind="if: slot > 0">
-                  <span data-bind="html: $root.formatValidator(proposer, proposer_name)"></span>
+                  <span data-bind="html: $root.formatProposerWithBuildSource(status, proposer, proposer_name, has_builder, builder_index, builder_url)"></span>
                 </span>
               </td>
             </tr>
@@ -109,7 +109,7 @@
                     {{ end }}
                   </td>
                   <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
-                  <td>{{ if gt $slot.Slot 0 }}{{ formatValidator $slot.Proposer $slot.ProposerName }}{{ end }}</td>
+                  <td>{{ if gt $slot.Slot 0 }}{{ formatProposerWithBuildSource $slot.Status $slot.Proposer $slot.ProposerName $slot.HasBuilder $slot.BuilderIndex $slot.BuilderURL }}{{ end }}</td>
                 </tr>
               {{ end }}
             {{ else }}
