@@ -48,7 +48,7 @@
               <td data-bind="attr: {'data-timer': $root.unixtime(ts)}">
                 <span data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $root.timestamp(ts)}, text: $root.formatRecentTimeShort(ts)"></span>
               </td>
-              <td data-bind="html: $root.formatValidator(proposer, proposer_name)"></td>
+              <td data-bind="html: $root.formatProposerWithBuildSource(status, proposer, proposer_name, has_builder, builder_index, builder_url)"></td>
             </tr>
             {{ html "<!-- /ko -->" }}
             {{ html "<!-- ko if: blocks().length == 0 -->" }}
@@ -82,7 +82,7 @@
                     {{ end }}
                   </td>
                   <td data-timer="{{ $block.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Ts }}">{{ formatRecentTimeShort $block.Ts }}</span></td>
-                  <td>{{ formatValidator $block.Proposer $block.ProposerName }}</td>
+                  <td>{{ formatProposerWithBuildSource $block.Status $block.Proposer $block.ProposerName $block.HasBuilder $block.BuilderIndex $block.BuilderURL }}</td>
                 </tr>
               {{ end }}
             {{ else }}
