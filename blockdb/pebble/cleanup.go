@@ -22,6 +22,10 @@ const (
 
 	// Maximum number of LRU updates to buffer before forcing a flush.
 	maxLRUBufferSize = 1000
+
+	// defaultCleanupInterval is used when no cleanupInterval is configured.
+	// A negative configured interval disables the cleanup loop entirely.
+	defaultCleanupInterval = 12 * time.Hour
 )
 
 // CacheCleanup manages background cleanup of cached data.
@@ -73,9 +77,14 @@ type lruUpdate struct {
 func NewCacheCleanup(engine *PebbleEngine, logger logrus.FieldLogger, cacheMode bool) *CacheCleanup {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	config := engine.GetConfig()
+	if config.CleanupInterval == 0 {
+		config.CleanupInterval = defaultCleanupInterval
+	}
+
 	return &CacheCleanup{
 		engine:    engine,
-		config:    engine.GetConfig(),
+		config:    config,
 		logger:    logger.WithField("component", "pebble-cleanup"),
 		cacheMode: cacheMode,
 		ctx:       ctx,
@@ -86,8 +95,8 @@ func NewCacheCleanup(engine *PebbleEngine, logger logrus.FieldLogger, cacheMode 
 
 // Start begins the background cleanup loop.
 func (c *CacheCleanup) Start() {
-	if c.config.CleanupInterval == 0 {
-		c.logger.Info("cleanup disabled (interval is 0)")
+	if c.config.CleanupInterval < 0 {
+		c.logger.Info("cleanup disabled (negative interval)")
 		return
 	}
 

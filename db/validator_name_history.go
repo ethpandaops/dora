@@ -150,6 +150,119 @@ func SearchValidatorNameCounts(ctx context.Context, pattern string, limit uint32
 	return names, nil
 }
 
+// Caps for the pre-resolved name match set. Above these the set is marked truncated and
+// callers must not use it as a candidate restriction (the plain predicate still applies).
+// The index cap also bounds the bind variables of the generated IN list.
+const (
+	maxNameMatchIndexes = 5000
+	maxNameMatchRanges  = 1000
+)
+
+// ValidatorNameMatchRange is one name-history range matching a searched pattern,
+// combined with the slot/time window of its snapshot.
+type ValidatorNameMatchRange struct {
+	StartIndex uint64 `db:"start_index"`
+	EndIndex   uint64 `db:"end_index"`
+	StartSlot  uint64 `db:"start_slot"`
+	EndSlot    uint64 `db:"end_slot"`
+	StartTime  uint64 `db:"start_time"`
+	EndTime    uint64 `db:"end_time"`
+}
+
+// ValidatorNameMatches is the pre-resolved identity set of a validator-name pattern:
+// validator indexes whose current name matches and history ranges whose recorded name
+// matches. It is a superset of the rows the precise name predicate can accept, so it can
+// be used as a redundant, index-friendly candidate restriction. Truncated marks a set
+// that hit a resolver cap and therefore must not be used as a restriction.
+type ValidatorNameMatches struct {
+	Indexes   []uint64
+	Ranges    []*ValidatorNameMatchRange
+	Truncated bool
+}
+
+// GetValidatorNameMatches resolves the current-name indexes and history ranges matching
+// the given pattern.
+func GetValidatorNameMatches(ctx context.Context, pattern string) (*ValidatorNameMatches, error) {
+	likeOp := EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  "ilike",
+		dbtypes.DBEngineSqlite: "LIKE",
+	})
+
+	matches := &ValidatorNameMatches{}
+
+	err := ReaderDb.SelectContext(ctx, &matches.Indexes, fmt.Sprintf(
+		`SELECT "index" FROM validator_names WHERE "name" %v $1 LIMIT %v`,
+		likeOp, maxNameMatchIndexes+1), pattern)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving validator name indexes: %w", err)
+	}
+	if len(matches.Indexes) > maxNameMatchIndexes {
+		matches.Truncated = true
+		return matches, nil
+	}
+
+	err = ReaderDb.SelectContext(ctx, &matches.Ranges, fmt.Sprintf(`
+		SELECT vnr."start_index", vnr."end_index",
+			vns."start_slot", vns."end_slot", vns."start_time", vns."end_time"
+		FROM validator_name_ranges vnr
+		JOIN validator_name_snapshots vns ON vns."start_slot" = vnr."snapshot_slot"
+		WHERE vnr."name" %v $1 LIMIT %v`,
+		likeOp, maxNameMatchRanges+1), pattern)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving validator name ranges: %w", err)
+	}
+	if len(matches.Ranges) > maxNameMatchRanges {
+		matches.Truncated = true
+	}
+
+	return matches, nil
+}
+
+// IsEmpty reports whether the pattern matched no current or historic name at all.
+func (m *ValidatorNameMatches) IsEmpty() bool {
+	return !m.Truncated && len(m.Indexes) == 0 && len(m.Ranges) == 0
+}
+
+// AppendValidatorNameCandidatePredicate appends the candidate restriction derived from a
+// resolved (non-truncated, non-empty) match set and returns the predicate SQL plus the
+// extended args. The predicate is a superset of the precise history-aware name predicate
+// built by AppendValidatorNameHistoryFilter (non-inverted): rows matching via a history
+// range fall in that range's index/window bounds, rows matching via the legacy current
+// name fall in the index list. History windows are bounded by slotExpr or timeExpr
+// (exactly one must be non-empty), matching the bound used by the precise predicate.
+func AppendValidatorNameCandidatePredicate(args []any, matches *ValidatorNameMatches, indexExpr string, slotExpr string, timeExpr string) (string, []any) {
+	conds := make([]string, 0, 1+len(matches.Ranges))
+
+	if len(matches.Indexes) > 0 {
+		var cond strings.Builder
+		fmt.Fprintf(&cond, `%v IN (`, indexExpr)
+		appendDollarPlaceholders(&cond, len(args)+1, len(matches.Indexes), ", ")
+		fmt.Fprint(&cond, `)`)
+		for _, index := range matches.Indexes {
+			args = append(args, index)
+		}
+		conds = append(conds, cond.String())
+	}
+
+	for _, nameRange := range matches.Ranges {
+		var windowExpr string
+		var windowStart, windowEnd uint64
+		if slotExpr != "" {
+			windowExpr = slotExpr
+			windowStart, windowEnd = nameRange.StartSlot, nameRange.EndSlot
+		} else {
+			windowExpr = timeExpr
+			windowStart, windowEnd = nameRange.StartTime, nameRange.EndTime
+		}
+		conds = append(conds, fmt.Sprintf(
+			`(%[1]v >= $%[2]v AND %[1]v <= $%[3]v AND %[4]v >= $%[5]v AND %[4]v < $%[6]v)`,
+			indexExpr, len(args)+1, len(args)+2, windowExpr, len(args)+3, len(args)+4))
+		args = append(args, nameRange.StartIndex, nameRange.EndIndex, windowStart, windowEnd)
+	}
+
+	return "(" + strings.Join(conds, " OR ") + ")", args
+}
+
 // validatorNameHistoryProbeSql builds the correlated top-1 probe subquery selecting the
 // single history range that can cover the row's validator index within the snapshot
 // active at the row's slot/time. The snapshot is resolved via a scalar subquery so the
