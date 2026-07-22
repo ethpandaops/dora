@@ -291,6 +291,27 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		}
 	}
 
+	// The tab templates dereference their filter and pager models unconditionally, but the
+	// tab loaders that populate them are skipped for addresses unknown to the execution
+	// indexer (account.ID == 0) - backfill empty models so those pages render.
+	if pageData.TxFilter == nil {
+		pageData.TxFilter = &models.TransactionsFilter{}
+	}
+	if pageData.ERC20Filter == nil {
+		pageData.ERC20Filter = &models.TransfersFilter{}
+	}
+	if pageData.NFTFilter == nil {
+		pageData.NFTFilter = &models.TransfersFilter{}
+	}
+	for _, pager := range []**models.PagerData{
+		&pageData.TxPager, &pageData.ERC20Pager, &pageData.NFTPager,
+		&pageData.InternalTxPager, &pageData.WdPager, &pageData.BfPager,
+	} {
+		if *pager == nil {
+			*pager = &models.PagerData{}
+		}
+	}
+
 	// Collect execution addresses shown on the page for ENS name resolution.
 	ensAddrs := make([][]byte, 0, len(pageData.Transactions)*2+len(pageData.TokenBalances)+2)
 	ensAddrs = append(ensAddrs, pageData.Address, pageData.FundedBy)

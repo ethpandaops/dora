@@ -315,7 +315,50 @@ func parseAssignedSlots(rows *sql.Rows, fields []string, fieldsOffset int) []*db
 	return blockAssignments
 }
 
+// maxNameCandidateSlotRows is the largest pre-counted candidate row set for which the
+// proposer-name filter restricts the slots scan to the matching validators. Above it the
+// matches are dense enough that the plain slot-ordered scan fills the page quickly.
+const maxNameCandidateSlotRows = 100000
+
+// countNameCandidateSlots counts the slot rows covered by a resolved name match set,
+// capped at maxNameCandidateSlotRows+1 so the probe's index scan work stays bounded.
+func countNameCandidateSlots(ctx context.Context, matches *ValidatorNameMatches) uint64 {
+	cond, args := AppendValidatorNameCandidatePredicate(nil, matches, `"proposer"`, `"slot"`, "")
+
+	var count uint64
+	err := ReaderDb.GetContext(ctx, &count, fmt.Sprintf(
+		`SELECT COUNT(*) FROM (SELECT 1 AS c FROM slots WHERE %v LIMIT %v) candidates`,
+		cond, maxNameCandidateSlotRows+1), args...)
+	if err != nil {
+		logger.WithError(err).Errorf("Error while counting proposer name filter candidates")
+		return maxNameCandidateSlotRows + 1
+	}
+	return count
+}
+
 func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedSlot {
+	argIdx := 0
+	args := make([]any, 0)
+
+	// For non-inverted proposer name filters, pre-resolve the matching validator
+	// identities. A rare name would otherwise degrade the slot-ordered LIMIT scan into a
+	// full walk of the slots table (the per-row name predicate is not indexable), so when
+	// the candidate row set is small the scan is restricted to it via an optimization-
+	// fenced subquery, and a pattern matching no name at all returns without any scan.
+	var nameCandidateCond string
+	if filter.ProposerName != "" && !filter.InvertProposer {
+		matches, err := GetValidatorNameMatches(ctx, "%"+filter.ProposerName+"%")
+		switch {
+		case err != nil:
+			logger.WithError(err).Warnf("Error while resolving proposer name filter candidates")
+		case matches.IsEmpty():
+			return []*dbtypes.AssignedSlot{}
+		case !matches.Truncated && countNameCandidateSlots(ctx, matches) <= maxNameCandidateSlotRows:
+			nameCandidateCond, args = AppendValidatorNameCandidatePredicate(args, matches, `"proposer"`, `"slot"`, "")
+			argIdx = len(args)
+		}
+	}
+
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
 	blockFields := []string{
@@ -330,13 +373,21 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
 	}
-	fmt.Fprintf(&sql, ` FROM slots `)
+	if nameCandidateCond != "" {
+		// The fence (OFFSET 0; sqlite needs an explicit LIMIT before it) keeps the planner
+		// from flattening the subquery, so the scan is driven by the candidate restriction
+		// instead of walking the slot index and testing the name predicate per row.
+		fmt.Fprintf(&sql, ` FROM (SELECT * FROM slots WHERE %v %v) slots `, nameCandidateCond,
+			EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql:  `OFFSET 0`,
+				dbtypes.DBEngineSqlite: `LIMIT -1 OFFSET 0`,
+			}))
+	} else {
+		fmt.Fprintf(&sql, ` FROM slots `)
+	}
 	if filter.ProposerName != "" {
 		fmt.Fprintf(&sql, ` LEFT JOIN validator_names ON validator_names."index" = slots.proposer `)
 	}
-
-	argIdx := 0
-	args := make([]any, 0)
 
 	argIdx++
 	fmt.Fprintf(&sql, ` WHERE slots.slot < $%v `, argIdx)
