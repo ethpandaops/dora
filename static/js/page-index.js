@@ -88,6 +88,7 @@
     formatEth: function(x) { return formatFloat(x / 1000000000, 4); },
     formatFloat: function(x) { return formatFloat(x, 2); },
     formatValidator: function(idx, name) { return formatValidator(idx, name); },
+    formatProposerWithBuildSource: function(status, idx, name, hasBuilder, builderIdx, builderUrl) { return formatProposerWithBuildSource(status, idx, name, hasBuilder, builderIdx, builderUrl); },
     hexstr: function(x) { return "0x" + base64ToHex(x); },
     slotStatusTooltip: function(status, payloadStatus) {
       var bs = ["Missed", "Canonical", "Orphaned"][status] || "Unknown";
@@ -210,6 +211,8 @@
 
   function formatValidator(idx, name) {
     var icon = "fa-male mr-2";
+    // MaxInt64 = "unknown proposer" sentinel. It exceeds 2^53, so JSON.parse rounds it;
+    // >= against the exact BigInt matches the rounded value (== would never match).
     if(idx >= 9223372036854775807n) {
       return `<span class="validator-label validator-index"><i class="fas ` + icon + `"></i> unknown</span>`;
     }
@@ -217,6 +220,44 @@
       return `<span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="` + idx + `"><i class="fas ` + icon + `"></i> <a href="/validator/` + idx + `">` + escapeHtml(name) + `</a></span>`;
     }
     return `<span class="validator-label validator-index"><i class="fas ` + icon + `"></i> <a href="/validator/` + idx + `">` + idx + `</a></span>`
+  }
+
+  // mirrors utils.FormatProposerWithBuildSource: house = self-built payload,
+  // hard-hat (linking to the builder) = builder-built payload
+  function formatProposerWithBuildSource(status, idx, name, hasBuilder, builderIdx, builderUrl) {
+    if(status == 0 || idx >= 9223372036854775807n) {
+      if(idx >= 9223372036854775807n) {
+        return `<span class="validator-label validator-index">unknown</span>`;
+      }
+      if(name != "") {
+        return `<span class="validator-label validator-name"><a href="/validator/` + idx + `">` + escapeHtml(name) + `</a></span>`;
+      }
+      return `<span class="validator-label validator-index"><a href="/validator/` + idx + `">` + idx + `</a></span>`;
+    }
+
+    if(!hasBuilder) {
+      return formatValidator(idx, name);
+    }
+
+    var iconHtml;
+    // MaxUint64 = "self-built payload" sentinel (db builder_index -1); rounded by JSON.parse
+    // above 2^53 like the proposer sentinel, hence >= against the exact BigInt.
+    if(builderIdx >= 18446744073709551615n) {
+      iconHtml = `<i class="fas fa-house mr-2" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Self-built payload"></i>`;
+    } else {
+      var builderLink = "/builder/" + builderIdx;
+      var external = "";
+      if(builderUrl) {
+        builderLink = escapeHtml(builderUrl);
+        external = ` target="_blank" rel="noopener noreferrer"`;
+      }
+      iconHtml = `<a href="` + builderLink + `"` + external + ` class="builder-source-link" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload (builder ` + builderIdx + `)"><i class="fas fa-hard-hat mr-2"></i></a>`;
+    }
+
+    if(name != "") {
+      return `<span class="validator-label validator-name">` + iconHtml + ` <a href="/validator/` + idx + `">` + escapeHtml(name) + `</a></span>`;
+    }
+    return `<span class="validator-label validator-index">` + iconHtml + ` <a href="/validator/` + idx + `">` + idx + `</a></span>`;
   }
 
   function base64ToHex(str) {

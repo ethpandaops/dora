@@ -324,7 +324,7 @@ type PebbleBlockDBConfig struct {
 	ExecDataRetention BlockDbRetentionConfig `yaml:"execDataRetention"`
 	DutiesRetention   BlockDbRetentionConfig `yaml:"dutiesRetention"`
 
-	// Cleanup configuration
+	// Interval between retention cleanup runs (default 12h, negative = disabled).
 	CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"BLOCKDB_PEBBLE_CLEANUP_INTERVAL"`
 }
 

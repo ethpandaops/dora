@@ -81,8 +81,11 @@ type IndexPageDataBlocks struct {
 	Ts            time.Time `json:"ts"`
 	Proposer      uint64    `json:"proposer"`
 	ProposerName  string    `json:"proposer_name"`
-	Status        uint64    `json:"status"`
+	Status        uint8     `json:"status"`
 	PayloadStatus uint8     `json:"payload_status"`
+	HasBuilder    bool      `json:"has_builder"`
+	BuilderIndex  uint64    `json:"builder_index"`
+	BuilderURL    string    `json:"builder_url"`
 	BlockRoot     []byte    `json:"block_root" ssz-size:"32"`
 }
 
@@ -93,8 +96,11 @@ type IndexPageDataSlots struct {
 	Ts            time.Time                 `json:"ts"`
 	Proposer      uint64                    `json:"proposer"`
 	ProposerName  string                    `json:"proposer_name"`
-	Status        uint64                    `json:"status"`
+	Status        uint8                     `json:"status"`
 	PayloadStatus uint8                     `json:"payload_status"`
+	HasBuilder    bool                      `json:"has_builder"`
+	BuilderIndex  uint64                    `json:"builder_index"`
+	BuilderURL    string                    `json:"builder_url"`
 	Safe          bool                      `json:"safe"`
 	BlockRoot     []byte                    `json:"block_root" ssz-size:"32"`
 	ParentRoot    []byte                    `json:"parent_root" ssz-size:"32"`
