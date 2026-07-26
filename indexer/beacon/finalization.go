@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethpandaops/dora/blockdb"
@@ -575,6 +576,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	t1 = time.Now()
 
 	// save block bodies to blockdb
+	var blockDbWriteFailed atomic.Bool
 	if blockdb.GlobalBlockDb != nil && !indexer.disableBlockDbWrite {
 		var wg sync.WaitGroup
 		for _, block := range canonicalBlocks {
@@ -583,6 +585,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				defer wg.Done()
 				if err := b.writeToBlockDb(indexer.ctx); err != nil {
 					indexer.logger.Errorf("error writing block %v to blockdb: %v", b.Root.String(), err)
+					blockDbWriteFailed.Store(true)
 				}
 			}(block)
 		}
@@ -611,6 +614,14 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 	}
 	t3dur := time.Since(t1)
+
+	// The unfinalized_blocks rows were deleted in the committed transaction above and
+	// the block bodies are about to be freed from the cache, so a failed blockdb write
+	// would leave those bodies unrecoverable. Trigger a resync of the epoch instead of
+	// advancing; the cached bodies stay in place for it to rewrite.
+	if blockDbWriteFailed.Load() {
+		return false, fmt.Errorf("failed writing epoch %v blocks to blockdb", epoch)
+	}
 
 	indexer.lastFinalizedEpoch = epoch + 1
 
