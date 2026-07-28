@@ -286,32 +286,34 @@ func APIConsolidationRequestsV1(w http.ResponseWriter, r *http.Request) {
 // getConsolidationResultMessage returns a human-readable message for the consolidation result
 func getConsolidationResultMessage(result uint8) string {
 	switch result {
-	case 0:
+	case dbtypes.ConsolidationRequestResultUnknown:
+		return "Unknown result"
+	case dbtypes.ConsolidationRequestResultSuccess:
 		return "Success"
-	case 1:
-		return "Invalid source validator public key"
-	case 2:
-		return "Invalid target validator public key"
-	case 3:
-		return "Source validator not found"
-	case 4:
-		return "Target validator not found"
-	case 5:
-		return "Source validator already exiting"
-	case 6:
-		return "Source validator already exited"
-	case 7:
-		return "Target validator already exiting"
-	case 8:
-		return "Target validator already exited"
-	case 9:
-		return "Source and target validators must be different"
-	case 10:
-		return "Invalid withdrawal credentials"
-	case 11:
-		return "Insufficient balance"
-	case 12:
-		return "Consolidation already pending"
+	case dbtypes.ConsolidationRequestResultTotalBalanceTooLow:
+		return "Error: Total active balance too low"
+	case dbtypes.ConsolidationRequestResultQueueFull:
+		return "Error: Consolidation queue is full"
+	case dbtypes.ConsolidationRequestResultSrcNotFound:
+		return "Error: Source validator not found"
+	case dbtypes.ConsolidationRequestResultSrcInvalidCredentials:
+		return "Error: Source validator has invalid credentials"
+	case dbtypes.ConsolidationRequestResultSrcInvalidSender:
+		return "Error: Source validator withdrawal address does not match tx sender"
+	case dbtypes.ConsolidationRequestResultSrcNotActive:
+		return "Error: Source validator is not active"
+	case dbtypes.ConsolidationRequestResultSrcNotOldEnough:
+		return "Error: Source validator is not old enough"
+	case dbtypes.ConsolidationRequestResultSrcHasPendingWithdrawal:
+		return "Error: Source validator has pending partial withdrawal"
+	case dbtypes.ConsolidationRequestResultTgtNotFound:
+		return "Error: Target validator not found"
+	case dbtypes.ConsolidationRequestResultTgtInvalidCredentials:
+		return "Error: Target validator has invalid credentials"
+	case dbtypes.ConsolidationRequestResultTgtNotCompounding:
+		return "Error: Target validator is not compounding"
+	case dbtypes.ConsolidationRequestResultTgtNotActive:
+		return "Error: Target validator is not active"
 	default:
 		return fmt.Sprintf("Unknown result: %d", result)
 	}

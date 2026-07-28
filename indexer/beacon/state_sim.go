@@ -8,6 +8,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -756,20 +757,39 @@ func (sim *stateSimulator) applyBlock(block *Block, applyPayload bool) [][]uint8
 
 	body := blockBody.Message.Body
 
-	// process builder pending withdrawals (come first in the spec)
 	chainState := sim.indexer.consensusPool.GetChainState()
 	chainSpec := chainState.GetSpecs()
+	isEip7732 := chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot))
+
+	var results [][]uint8
+
+	// resolve the payload block this block's bid builds on; needed for the payload-gated
+	// withdrawal processing and (post-EIP7732) for the parent-full gate of the parent
+	// execution requests.
+	var parentEntry *trackedBuilderWithdrawal
+	var parentRef *parentPayloadRef
+	if applyPayload || isEip7732 {
+		parentEntry, parentRef = sim.resolveParentDirectEntry(block)
+	}
+
+	if isEip7732 {
+		// Post-EIP7732 the block carries the requests emitted by its parent's payload.
+		// process_parent_execution_payload applies them before the withdrawal queue drain
+		// and before process_operations, but only when the parent block's payload was
+		// delivered (parent block FULL, i.e. the bid builds directly on the parent's payload).
+		parentRoot := block.GetParentRoot()
+		parentFull := parentRef != nil && parentRoot != nil && bytes.Equal(parentRef.root[:], parentRoot[:])
+		results = sim.applyExecutionRequests(body.ParentExecutionRequests, parentFull)
+	}
 
 	if applyPayload {
-		// resolve parent direct payment
 		// When the settle target lies before the dependent block, the gated
 		// process_withdrawals ran at a block in a previous epoch - its settle, drain and
 		// partial sweep are already reflected in the epoch state and the spec
 		// early-returns at this block (empty parent), so skip all withdrawal processing.
-		entry, parentRef := sim.resolveParentDirectEntry(block)
 		if !sim.isPreEpochSettle(parentRef) {
-			if entry != nil {
-				sim.prevState.builderPendingWithdrawals = append(sim.prevState.builderPendingWithdrawals, *entry)
+			if parentEntry != nil {
+				sim.prevState.builderPendingWithdrawals = append(sim.prevState.builderPendingWithdrawals, *parentEntry)
 			}
 
 			// process_withdrawals drains the builder withdrawal queue (up to MAX_WITHDRAWALS_PER_PAYLOAD-1 per spec).
@@ -865,30 +885,42 @@ func (sim *stateSimulator) applyBlock(block *Block, applyPayload bool) [][]uint8
 		validator.ExitEpoch = FarFutureEpoch - 1 // dummy value to indicate the validator is exiting, but we don't know when exactly
 	}
 
-	// get execution requests
-	requests := body.ExecutionRequests
+	if !isEip7732 {
+		// Pre-EIP7732 the requests are part of the block's own payload and are processed
+		// at the end of process_operations.
+		results = sim.applyExecutionRequests(body.ExecutionRequests, applyPayload)
+	}
+
+	sim.prevState.block = block
+	sim.prevState.blockPayloadApplied = applyPayload
+
+	return results
+}
+
+// applyExecutionRequests simulates the withdrawal and consolidation requests of a block and
+// returns the per-request results ([0] = withdrawal requests, [1] = consolidation requests).
+// When process is false the requests are not applied to the simulated state (their results
+// stay unknown), but the result slices are still sized so callers can index them per request.
+func (sim *stateSimulator) applyExecutionRequests(requests *all.ExecutionRequests, process bool) [][]uint8 {
 	if requests == nil {
 		return nil
 	}
 
 	results := make([][]uint8, 2)
+	results[0] = make([]uint8, len(requests.Withdrawals))
+	results[1] = make([]uint8, len(requests.Consolidations))
 
-	if applyPayload {
-		// apply withdrawal requests
-		results[0] = make([]uint8, len(requests.Withdrawals))
-		for i, withdrawal := range requests.Withdrawals {
-			results[0][i] = sim.applyWithdrawal(withdrawal)
-		}
-
-		// apply consolidation requests
-		results[1] = make([]uint8, len(requests.Consolidations))
-		for i, consolidation := range requests.Consolidations {
-			results[1][i] = sim.applyConsolidation(consolidation)
-		}
+	if !process {
+		return results
 	}
 
-	sim.prevState.block = block
-	sim.prevState.blockPayloadApplied = applyPayload
+	for i, withdrawal := range requests.Withdrawals {
+		results[0][i] = sim.applyWithdrawal(withdrawal)
+	}
+
+	for i, consolidation := range requests.Consolidations {
+		results[1][i] = sim.applyConsolidation(consolidation)
+	}
 
 	return results
 }
