@@ -276,26 +276,28 @@ func APIWithdrawalRequestsV1(w http.ResponseWriter, r *http.Request) {
 // getWithdrawalResultMessage returns a human-readable message for the withdrawal result
 func getWithdrawalResultMessage(result uint8, specs *consensus.ChainSpec) string {
 	switch result {
-	case 0:
+	case dbtypes.WithdrawalRequestResultUnknown:
+		return "Unknown result"
+	case dbtypes.WithdrawalRequestResultSuccess:
 		return "Success"
-	case 1:
-		return "Partial withdrawal"
-	case 2:
-		return "Invalid validator public key"
-	case 3:
-		return "Invalid withdrawal amount"
-	case 4:
-		return "Validator not found"
-	case 5:
-		return "Invalid withdrawal credentials"
-	case 6:
-		return "Validator already exiting"
-	case 7:
-		return "Validator already exited"
-	case 8:
-		return "Validator balance too low"
-	case 9:
-		return "Excess balance withdrawal"
+	case dbtypes.WithdrawalRequestResultQueueFull:
+		return "Error: Withdrawal queue is full"
+	case dbtypes.WithdrawalRequestResultValidatorNotFound:
+		return "Error: Validator not found"
+	case dbtypes.WithdrawalRequestResultValidatorInvalidCredentials:
+		return "Error: Validator has invalid credentials"
+	case dbtypes.WithdrawalRequestResultValidatorInvalidSender:
+		return "Error: Validator withdrawal address does not match tx sender"
+	case dbtypes.WithdrawalRequestResultValidatorNotActive:
+		return "Error: Validator is not active"
+	case dbtypes.WithdrawalRequestResultValidatorNotOldEnough:
+		return fmt.Sprintf("Error: Validator is not old enough (min. %v epochs)", specs.ShardCommitteePeriod)
+	case dbtypes.WithdrawalRequestResultValidatorNotCompounding:
+		return "Error: Validator is not compounding"
+	case dbtypes.WithdrawalRequestResultValidatorHasPendingWithdrawal:
+		return "Error: Validator has pending partial withdrawal"
+	case dbtypes.WithdrawalRequestResultValidatorBalanceTooLow:
+		return "Error: Validator balance too low"
 	default:
 		return fmt.Sprintf("Unknown result: %d", result)
 	}
