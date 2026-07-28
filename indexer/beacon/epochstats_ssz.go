@@ -260,10 +260,10 @@ func (t *EpochStatsPacked) UnmarshalSSZ(buf []byte) (err error) {
 			val2 := val1[idx1]
 			buf := buf[8*idx1 : 8*(idx1+1)]
 			buflen := len(buf)
-			if buflen < 8 {
-				return sszutils.ErrorWithPathf(sszutils.ErrFixedFieldsEOFFn(buflen, 8), "ActiveValidators[%d]", idx1)
-			}
-			if buflen > 8 {
+			if 8 != buflen {
+				if 8 > buflen {
+					return sszutils.ErrorWithPathf(sszutils.ErrFixedFieldsEOFFn(buflen, 8), "ActiveValidators[%d]", idx1)
+				}
 				return sszutils.ErrorWithPathf(sszutils.ErrTrailingDataFn(buflen-8), "ActiveValidators[%d]", idx1)
 			}
 			{ // Field #0 'ValidatorIndexOffset' (static)

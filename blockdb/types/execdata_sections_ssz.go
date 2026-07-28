@@ -73,10 +73,10 @@ func (t *ReceiptMetaData) MarshalSSZTo(buf []byte) (dst []byte, err error) {
 // UnmarshalSSZ unmarshals the *ReceiptMetaData from SSZ-encoded bytes.
 func (t *ReceiptMetaData) UnmarshalSSZ(buf []byte) (err error) {
 	buflen := len(buf)
-	if buflen < 377 {
-		return sszutils.ErrFixedFieldsEOFFn(buflen, 377)
-	}
-	if buflen > 377 {
+	if 377 != buflen {
+		if 377 > buflen {
+			return sszutils.ErrFixedFieldsEOFFn(buflen, 377)
+		}
 		return sszutils.ErrTrailingDataFn(buflen - 377)
 	}
 	{ // Field #0 'Version' (static)
@@ -226,10 +226,10 @@ func (t *BlockReceiptMeta) MarshalSSZTo(buf []byte) (dst []byte, err error) {
 // UnmarshalSSZ unmarshals the *BlockReceiptMeta from SSZ-encoded bytes.
 func (t *BlockReceiptMeta) UnmarshalSSZ(buf []byte) (err error) {
 	buflen := len(buf)
-	if buflen < 10 {
-		return sszutils.ErrFixedFieldsEOFFn(buflen, 10)
-	}
-	if buflen > 10 {
+	if 10 != buflen {
+		if 10 > buflen {
+			return sszutils.ErrFixedFieldsEOFFn(buflen, 10)
+		}
 		return sszutils.ErrTrailingDataFn(buflen - 10)
 	}
 	{ // Field #0 'Version' (static)
@@ -412,10 +412,10 @@ func (t *StateChangeAccount) UnmarshalSSZ(buf []byte) (err error) {
 			val4 := val3[idx1]
 			buf := buf[96*idx1 : 96*(idx1+1)]
 			buflen := len(buf)
-			if buflen < 96 {
-				return sszutils.ErrorWithPathf(sszutils.ErrFixedFieldsEOFFn(buflen, 96), "Slots[%d]", idx1)
-			}
-			if buflen > 96 {
+			if 96 != buflen {
+				if 96 > buflen {
+					return sszutils.ErrorWithPathf(sszutils.ErrFixedFieldsEOFFn(buflen, 96), "Slots[%d]", idx1)
+				}
 				return sszutils.ErrorWithPathf(sszutils.ErrTrailingDataFn(buflen-96), "Slots[%d]", idx1)
 			}
 			{ // Field #0 'Slot' (static)
@@ -922,7 +922,7 @@ func (t *EventData) HashTreeRootWith(hh sszutils.HashWalker) error {
 			if vlen > 32 {
 				return sszutils.ErrorWithPathf(sszutils.ErrVectorLengthFn(vlen, 32), "Topics[%d]", idx1)
 			}
-			val := t[idx1][:]
+			val := t[idx1][:vlen:vlen]
 			if vlen < 32 {
 				val = sszutils.AppendZeroPadding(val, (32-vlen)*1)
 			}
