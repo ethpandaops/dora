@@ -994,6 +994,14 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	}
 
 	if specs.DenebForkEpoch != nil && uint64(epoch) >= *specs.DenebForkEpoch {
+		// Post-Gloas the blob commitments come from the bid, but the blobs themselves only
+		// propagate alongside the payload - a missed-payload block carries no blobs.
+		// Orphaned payloads were revealed, so their blobs are still shown.
+		if blockData.Block.Version >= spec.DataVersionGloas &&
+			(pageData.PayloadHeader == nil || pageData.PayloadHeader.PayloadStatus == uint16(dbtypes.PayloadStatusMissing)) {
+			blobKzgCommitments = nil
+		}
+
 		pageData.BlobsCount = uint64(len(blobKzgCommitments))
 		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
 		for i := range blobKzgCommitments {
