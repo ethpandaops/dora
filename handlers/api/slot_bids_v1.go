@@ -93,7 +93,12 @@ func APISlotBidsV1(w http.ResponseWriter, r *http.Request) {
 
 	apiBids := make([]*APISlotBid, 0, len(bids))
 	for _, bid := range bids {
-		isWinning := len(dbSlot.EthBlockHash) > 0 && bytes.Equal(bid.BlockHash, dbSlot.EthBlockHash)
+		// The winner is the exact bid committed in the block: several builders may bid the
+		// same block hash, so the builder index and parent root must match too.
+		isWinning := len(dbSlot.EthBlockHash) > 0 &&
+			bytes.Equal(bid.BlockHash, dbSlot.EthBlockHash) &&
+			bid.BuilderIndex == dbSlot.BuilderIndex &&
+			bytes.Equal(bid.ParentRoot, dbSlot.ParentRoot)
 
 		// Dora's bid indexer casts the on-chain uint64 BuilderIndex to int64 and
 		// uses -1 (== MaxUint64 reinterpreted) as a "self-built" sentinel. Surface

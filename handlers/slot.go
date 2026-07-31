@@ -1516,13 +1516,17 @@ func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, bl
 
 	pageData.Bids = make([]*models.SlotPageBid, 0, len(bids))
 
-	// Get the winning block hash for comparison. For blocks with a missed payload there is
-	// no execution data, but the committed bid (payload header) still identifies the winner.
-	var winningBlockHash []byte
-	if pageData.ExecutionData != nil {
-		winningBlockHash = pageData.ExecutionData.BlockHash
-	} else if pageData.PayloadHeader != nil {
-		winningBlockHash = pageData.PayloadHeader.BlockHash
+	// The winner is the exact bid committed in the block (payload header): several builders
+	// may bid the same block hash, so the builder index and parent tuple must match too.
+	winningBid := pageData.PayloadHeader
+	isWinningBid := func(bid *services.ClassifiedBlockBid) bool {
+		if winningBid == nil {
+			return false
+		}
+		return uint64(bid.BuilderIndex) == winningBid.BuilderIndex &&
+			bytes.Equal(bid.BlockHash, winningBid.BlockHash) &&
+			bytes.Equal(bid.ParentRoot, winningBid.ParentBlockRoot) &&
+			bytes.Equal(bid.ParentHash, winningBid.ParentBlockHash)
 	}
 
 	for _, bid := range bids {
@@ -1540,7 +1544,7 @@ func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, bl
 			Value:        bid.Value,
 			ElPayment:    bid.ElPayment,
 			TotalValue:   bid.Value + bid.ElPayment,
-			IsWinning:    winningBlockHash != nil && bytes.Equal(bid.BlockHash, winningBlockHash),
+			IsWinning:    isWinningBid(bid),
 			ParentSlot:   bid.ParentSlot,
 			ParentKnown:  bid.ParentKnown,
 			IsParentBid:  bid.ParentClass == services.BidParentClassParent,
