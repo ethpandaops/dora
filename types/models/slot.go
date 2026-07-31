@@ -391,6 +391,15 @@ type SlotPageBid struct {
 	ElPayment    uint64 `json:"el_payment"`
 	TotalValue   uint64 `json:"total_value"`
 	IsWinning    bool   `json:"is_winning"`
+
+	// Bid target classification: which parent tuple (parent_block_root, parent_block_hash)
+	// the bid builds on, relative to the displayed block's parent chain.
+	ClassLabel  string `json:"class_label"`   // badge text, e.g. "parent (full)", "grandparent (empty)"
+	ClassColor  string `json:"class_color"`   // badge color key: success|warning|purple|secondary|dark|danger
+	ClassTitle  string `json:"class_title"`   // tooltip with target block / EL head details
+	ParentSlot  uint64 `json:"parent_slot"`   // slot of the targeted beacon parent block
+	ParentKnown bool   `json:"parent_known"`  // targeted beacon parent block was resolved (enables linking)
+	IsParentBid bool   `json:"is_parent_bid"` // targets the displayed block's actual parent root (others are listed last, grayed out)
 }
 
 // SlotPageBuilderPayment holds the Gloas builder-payment vote quorum for a slot: the same-slot

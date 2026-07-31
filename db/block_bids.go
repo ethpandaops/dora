@@ -64,24 +64,25 @@ func InsertBids(bids []*dbtypes.BlockBid, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetBidsForBlockRoot(ctx context.Context, blockRoot []byte, slot uint64) []*dbtypes.BlockBid {
+// GetBidsForSlot returns all bids for a slot regardless of their parent root,
+// so bids targeting other forks or deeper ancestors (reorg bids) are included.
+func GetBidsForSlot(ctx context.Context, slot uint64) []*dbtypes.BlockBid {
 	var sql strings.Builder
 	args := []any{
-		blockRoot,
 		slot,
 	}
 	fmt.Fprint(&sql, `
 	SELECT
 		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
 	FROM block_bids
-	WHERE parent_root = $1 AND slot = $2
+	WHERE slot = $1
 	ORDER BY value DESC
 	`)
 
 	bids := []*dbtypes.BlockBid{}
 	err := ReaderDb.SelectContext(ctx, &bids, sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching bids for block root: %v", err)
+		logger.Errorf("Error while fetching bids for slot: %v", err)
 		return nil
 	}
 	return bids

@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1123,7 +1124,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	// Load execution payload bids for ePBS (gloas+) blocks
 	if blockData.Block.Version >= spec.DataVersionGloas {
-		getSlotPageBids(pageData, blockData.Header.Message.Slot)
+		getSlotPageBids(ctx, pageData, blockData.Header.Message.Slot)
 		getSlotPagePtcVotes(pageData, blockData, blockData.Header.Message.Slot)
 	}
 
@@ -1510,16 +1511,18 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 	pageData.ExecutionProofsCount = uint64(len(pageData.ExecutionProofs))
 }
 
-func getSlotPageBids(pageData *models.SlotPageBlockData, blockSlot phase0.Slot) {
-	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
-	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot), blockSlot)
+func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, blockSlot phase0.Slot) {
+	bids := services.GlobalBeaconService.GetSlotBidsClassified(ctx, blockSlot, phase0.Root(pageData.ParentRoot))
 
 	pageData.Bids = make([]*models.SlotPageBid, 0, len(bids))
 
-	// Get the winning block hash for comparison
+	// Get the winning block hash for comparison. For blocks with a missed payload there is
+	// no execution data, but the committed bid (payload header) still identifies the winner.
 	var winningBlockHash []byte
 	if pageData.ExecutionData != nil {
 		winningBlockHash = pageData.ExecutionData.BlockHash
+	} else if pageData.PayloadHeader != nil {
+		winningBlockHash = pageData.PayloadHeader.BlockHash
 	}
 
 	for _, bid := range bids {
@@ -1537,33 +1540,79 @@ func getSlotPageBids(pageData *models.SlotPageBlockData, blockSlot phase0.Slot) 
 			Value:        bid.Value,
 			ElPayment:    bid.ElPayment,
 			TotalValue:   bid.Value + bid.ElPayment,
+			IsWinning:    winningBlockHash != nil && bytes.Equal(bid.BlockHash, winningBlockHash),
+			ParentSlot:   bid.ParentSlot,
+			ParentKnown:  bid.ParentKnown,
+			IsParentBid:  bid.ParentClass == services.BidParentClassParent,
 		}
-
-		// Check if this is the winning bid
-		if winningBlockHash != nil && len(bid.BlockHash) == len(winningBlockHash) {
-			isWinning := true
-			for i := range bid.BlockHash {
-				if bid.BlockHash[i] != winningBlockHash[i] {
-					isWinning = false
-					break
-				}
-			}
-			bidData.IsWinning = isWinning
-		}
+		bidData.ClassLabel, bidData.ClassColor, bidData.ClassTitle = describeBidClass(bid)
 
 		pageData.Bids = append(pageData.Bids, bidData)
 	}
 
-	// Sort by total value (value + el_payment) descending
-	for i := 0; i < len(pageData.Bids)-1; i++ {
-		for j := i + 1; j < len(pageData.Bids); j++ {
-			if pageData.Bids[j].TotalValue > pageData.Bids[i].TotalValue {
-				pageData.Bids[i], pageData.Bids[j] = pageData.Bids[j], pageData.Bids[i]
+	// Bids for the block's actual parent root first, then bids targeting other parents
+	// (reorg/fork bids); within each group sorted by total value (value + el_payment) descending.
+	sort.SliceStable(pageData.Bids, func(i, j int) bool {
+		if pageData.Bids[i].IsParentBid != pageData.Bids[j].IsParentBid {
+			return pageData.Bids[i].IsParentBid
+		}
+		return pageData.Bids[i].TotalValue > pageData.Bids[j].TotalValue
+	})
+
+	pageData.BidsCount = uint64(len(pageData.Bids))
+}
+
+// describeBidClass derives the display label, badge color and tooltip for a classified bid.
+func describeBidClass(bid *services.ClassifiedBlockBid) (label, color, title string) {
+	fullness := "empty"
+	if bid.ParentFull {
+		fullness = "full"
+	}
+
+	switch bid.ParentClass {
+	case services.BidParentClassParent:
+		label = fmt.Sprintf("parent (%s)", fullness)
+		if bid.ParentFull {
+			color = "success"
+			title = fmt.Sprintf("Builds on the block's actual parent (slot %v) and its payload", bid.ParentSlot)
+		} else {
+			color = "warning"
+			title = fmt.Sprintf("Builds on the block's actual parent (slot %v), treating its payload as withheld", bid.ParentSlot)
+		}
+	case services.BidParentClassReorg:
+		if bid.ReorgDepth == 1 {
+			label = fmt.Sprintf("grandparent (%s)", fullness)
+		} else {
+			label = fmt.Sprintf("reorg -%v (%s)", bid.ReorgDepth+1, fullness)
+		}
+		if bid.ParentFull {
+			color = "purple"
+		} else {
+			color = "secondary"
+		}
+		title = fmt.Sprintf("Reorg bid: builds on the ancestor at slot %v, orphaning %v block(s)", bid.ParentSlot, bid.ReorgDepth)
+	case services.BidParentClassOrphaned:
+		label = fmt.Sprintf("orphaned fork (%s)", fullness)
+		color = "dark"
+		title = fmt.Sprintf("Builds on a block at slot %v that is not part of this block's chain", bid.ParentSlot)
+	default:
+		label = "unknown parent"
+		color = "danger"
+		title = "The bid's parent block root does not match any known block in the preceding slots"
+	}
+
+	if !bid.ParentFull && bid.ParentClass != services.BidParentClassUnknown {
+		if bid.ElParentKnown {
+			title += fmt.Sprintf("; EL head: payload of slot %v", bid.ElParentSlot)
+			if bid.ElParentUnrevealed {
+				title += " (never revealed - invalid parent hash)"
 			}
+		} else {
+			title += "; EL head: unknown payload"
 		}
 	}
 
-	pageData.BidsCount = uint64(len(pageData.Bids))
+	return label, color, title
 }
 
 // getSlotPagePtcVotes extracts PTC (Payload Timeliness Committee) votes from a Gloas block.
