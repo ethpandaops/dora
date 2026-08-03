@@ -117,16 +117,15 @@ func (cache *blockBidCache) AddBid(bid *dbtypes.BlockBid) bool {
 	return true
 }
 
-// GetBidsForBlockRoot returns all bids for a given parent block root and slot.
-// Filtering by slot is required because orphaned/skipped predecessor slots share
-// the same parent root as the canonical block that ends up replacing them.
-func (cache *blockBidCache) GetBidsForBlockRoot(blockRoot phase0.Root, slot phase0.Slot) []*dbtypes.BlockBid {
+// GetBidsForSlot returns all cached bids for a slot regardless of their parent root,
+// so bids targeting other forks or deeper ancestors (reorg bids) are included.
+func (cache *blockBidCache) GetBidsForSlot(slot phase0.Slot) []*dbtypes.BlockBid {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
 	result := make([]*dbtypes.BlockBid, 0)
-	for key, bid := range cache.bids {
-		if key.ParentRoot == blockRoot && phase0.Slot(bid.Slot) == slot {
+	for _, bid := range cache.bids {
+		if phase0.Slot(bid.Slot) == slot {
 			result = append(result, bid)
 		}
 	}
