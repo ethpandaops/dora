@@ -4,7 +4,10 @@
       <thead>
         <tr>
           <th class="border-0">Builder</th>
+          <th class="border-0">Bid Target</th>
           <th class="border-0">Block Hash</th>
+          <th class="border-0">Parent Hash</th>
+          <th class="border-0">Parent Root</th>
           <th class="border-0">Fee Recipient</th>
           <th class="border-0">Gas Limit</th>
           <th class="border-0">Value</th>
@@ -14,7 +17,7 @@
       </thead>
       <tbody>
         {{ range $i, $bid := .Block.Bids }}
-          <tr{{ if $bid.IsWinning }} style="border-left: 3px solid var(--bs-success);"{{ end }}>
+          <tr{{ if or $bid.IsWinning (not $bid.IsParentBid) }} style="{{ if $bid.IsWinning }}border-left: 3px solid var(--bs-success);{{ end }}{{ if not $bid.IsParentBid }}opacity: 0.6;{{ end }}"{{ end }}>
             <td>
               {{ if $bid.IsSelfBuilt }}
                 <span class="builder-label builder-index"><i class="fas fa-hard-hat mr-2"></i> Self-built</span>
@@ -24,9 +27,32 @@
               {{ if $bid.IsWinning }}<span class="badge bg-success ms-1">Winner</span>{{ end }}
             </td>
             <td>
+              {{ if eq $bid.ClassColor "purple" }}
+                <span class="badge text-white" style="background-color: #6f42c1;" data-bs-toggle="tooltip" title="{{ $bid.ClassTitle }}">{{ $bid.ClassLabel }}</span>
+              {{ else }}
+                <span class="badge bg-{{ $bid.ClassColor }}{{ if eq $bid.ClassColor "warning" }} text-dark{{ end }}" data-bs-toggle="tooltip" title="{{ $bid.ClassTitle }}">{{ $bid.ClassLabel }}</span>
+              {{ end }}
+            </td>
+            <td>
               <div class="d-flex align-items-center">
                 <span class="text-monospace text-truncate">0x{{ printf "%x" $bid.BlockHash }}</span>
                 <i class="fa fa-copy text-muted p-1 flex-shrink-0" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.BlockHash }}"></i>
+              </div>
+            </td>
+            <td>
+              <div class="d-flex align-items-center">
+                <span class="text-monospace text-truncate">0x{{ printf "%x" $bid.ParentHash }}</span>
+                <i class="fa fa-copy text-muted p-1 flex-shrink-0" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.ParentHash }}"></i>
+              </div>
+            </td>
+            <td>
+              <div class="d-flex align-items-center">
+                {{ if $bid.ParentKnown }}
+                  <a class="text-monospace text-truncate" href="/slot/{{ printf "%x" $bid.ParentRoot }}" data-bs-toggle="tooltip" title="Slot {{ $bid.ParentSlot }}">0x{{ printf "%x" $bid.ParentRoot }}</a>
+                {{ else }}
+                  <span class="text-monospace text-truncate">0x{{ printf "%x" $bid.ParentRoot }}</span>
+                {{ end }}
+                <i class="fa fa-copy text-muted p-1 flex-shrink-0" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.ParentRoot }}"></i>
               </div>
             </td>
             <td>{{ ethAddressLink $bid.FeeRecipient }}</td>
