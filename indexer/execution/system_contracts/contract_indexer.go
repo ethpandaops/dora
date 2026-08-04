@@ -89,14 +89,22 @@ func (ci *contractIndexer[_]) loadState() {
 // persistState saves the current contract indexer state to the database
 func (ci *contractIndexer[_]) persistState(tx *sqlx.Tx) error {
 	finalizedBlockNumber := ci.getFinalizedBlockNumber()
+
+	// Removed here but only committed to ci.state once the write below is confirmed -
+	// on failure these are put back so ci.state matches what's actually durable.
+	removedForkStates := map[beacon.ForkKey]*contractIndexerForkState{}
 	for forkId, forkState := range ci.state.ForkStates {
 		if forkState.Block < finalizedBlockNumber {
+			removedForkStates[forkId] = forkState
 			delete(ci.state.ForkStates, forkId)
 		}
 	}
 
 	err := db.SetExplorerState(ci.indexer.Ctx, tx, ci.options.stateKey, ci.state)
 	if err != nil {
+		for forkId, forkState := range removedForkStates {
+			ci.state.ForkStates[forkId] = forkState
+		}
 		return fmt.Errorf("error while updating contract indexer state: %v", err)
 	}
 
@@ -588,7 +596,10 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 
 // persistFinalizedRequestTxs persists processed finalized transactions and the indexer state to the database
 func (ci *contractIndexer[TxType]) persistFinalizedRequestTxs(finalBlockNumber, finalQueueLen uint64, requests []*TxType) error {
-	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+	prevFinalBlock := ci.state.FinalBlock
+	prevFinalQueueLen := ci.state.FinalQueueLen
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		if len(requests) > 0 {
 			err := ci.options.persistTxs(tx, requests)
 			if err != nil {
@@ -601,11 +612,23 @@ func (ci *contractIndexer[TxType]) persistFinalizedRequestTxs(finalBlockNumber, 
 
 		return ci.persistState(tx)
 	})
+	if err != nil {
+		// The transaction didn't commit, so undo the state advance made inside the
+		// closure above - otherwise the next call starts past this range without it
+		// ever having been durably persisted.
+		ci.state.FinalBlock = prevFinalBlock
+		ci.state.FinalQueueLen = prevFinalQueueLen
+		return err
+	}
+
+	return nil
 }
 
 // persistRecentRequestTxs persists processed recent transactions and the indexer state to the database
 func (ci *contractIndexer[TxType]) persistRecentRequestTxs(forkId beacon.ForkKey, finalBlockNumber, finalQueueLen uint64, requests []*TxType) error {
-	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+	prevForkState, hadForkState := ci.state.ForkStates[forkId]
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		if len(requests) > 0 {
 			err := ci.options.persistTxs(tx, requests)
 			if err != nil {
@@ -620,4 +643,17 @@ func (ci *contractIndexer[TxType]) persistRecentRequestTxs(forkId beacon.ForkKey
 
 		return ci.persistState(tx)
 	})
+	if err != nil {
+		// The transaction didn't commit, so undo the state advance made inside the
+		// closure above - otherwise the next call starts past this range without it
+		// ever having been durably persisted.
+		if hadForkState {
+			ci.state.ForkStates[forkId] = prevForkState
+		} else {
+			delete(ci.state.ForkStates, forkId)
+		}
+		return err
+	}
+
+	return nil
 }
