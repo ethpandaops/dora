@@ -1253,7 +1253,7 @@
         },
         "/v1/slot/{slotOrHash}/bids": {
             "get": {
-                "description": "Returns the execution payload bids submitted for a slot's parent root (ePBS, gloas+).",
+                "description": "Returns all execution payload bids submitted for a slot (ePBS, gloas+), including bids targeting other forks or deeper ancestors (reorg bids). Each bid is classified against the slot's actual block parent chain.",
                 "produces": [
                     "application/json"
                 ],
@@ -4222,6 +4222,18 @@
                 "builder_name": {
                     "type": "string"
                 },
+                "candidate_key": {
+                    "description": "CandidateKey is the buildoor-style candidate identifier (parent_full, parent_empty,\ngrandparent_full, grandparent_empty, ancestor-N_full/-empty); empty for orphaned-fork\nand unknown-parent bids.",
+                    "type": "string"
+                },
+                "el_parent_slot": {
+                    "description": "ElParentSlot is the slot whose payload block hash matches the bid's parent hash,\ni.e. the EL head the bid builds on (omitted if not resolvable).",
+                    "type": "integer"
+                },
+                "el_parent_unrevealed": {
+                    "description": "ElParentUnrevealed: the bid's parent hash matches a committed payload hash that was\nnever revealed - such a bid can never become valid.",
+                    "type": "boolean"
+                },
                 "el_payment": {
                     "type": "integer"
                 },
@@ -4237,11 +4249,26 @@
                 "is_winning": {
                     "type": "boolean"
                 },
+                "parent_class": {
+                    "description": "Bid target classification relative to the slot's actual block parent chain.\nParentClass: \"parent\" (targets the block's actual beacon parent), \"reorg\" (targets a\ndeeper ancestor, orphaning ReorgDepth blocks), \"orphaned\" (targets a block outside\nthe block's chain), \"unknown\" (parent root not resolvable).",
+                    "type": "string"
+                },
+                "parent_full": {
+                    "description": "ParentFull: the bid builds on the targeted block's own payload (full) rather than an\nearlier payload (empty).",
+                    "type": "boolean"
+                },
                 "parent_hash": {
                     "type": "string"
                 },
                 "parent_root": {
                     "type": "string"
+                },
+                "parent_slot": {
+                    "description": "ParentSlot is the slot of the targeted beacon parent block (0 if unknown).",
+                    "type": "integer"
+                },
+                "reorg_depth": {
+                    "type": "integer"
                 },
                 "slot": {
                     "type": "integer"

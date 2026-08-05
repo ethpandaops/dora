@@ -13,6 +13,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
@@ -431,7 +432,14 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 
 	bbody := body.Message.Body
 	blockIndex.Graffiti = bbody.Graffiti
-	blockIndex.BlobCount = uint64(len(utils.BlockBodyBlobCommitments(bbody)))
+
+	// Post-Gloas the blob commitments come from the bid, but the blobs themselves only
+	// propagate alongside the payload - without a revealed payload the block carries no blobs.
+	if bbody.Version >= spec.DataVersionGloas && payload == nil {
+		blockIndex.BlobCount = 0
+	} else {
+		blockIndex.BlobCount = uint64(len(utils.BlockBodyBlobCommitments(bbody)))
+	}
 
 	if extra, err := getBlockExecutionExtraData(body); err == nil {
 		blockIndex.ExecutionExtraData = extra

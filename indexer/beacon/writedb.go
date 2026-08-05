@@ -435,6 +435,14 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		dbw.indexer.blockBidCache.AddBid(blockBid)
 	}
 
+	// Post-Gloas the blob commitments come from the bid, but the blobs themselves only
+	// propagate alongside the payload - a missed-payload block carries no blobs.
+	// Orphaned payloads were revealed, so their blobs remain counted.
+	blobCount := uint64(len(blobKzgCommitments))
+	if payloadStatus == dbtypes.PayloadStatusMissing {
+		blobCount = 0
+	}
+
 	dbBlock := dbtypes.Slot{
 		Slot:                  uint64(block.header.Message.Slot),
 		Proposer:              uint64(block.header.Message.ProposerIndex),
@@ -451,7 +459,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
-		BlobCount:             uint64(len(blobKzgCommitments)),
+		BlobCount:             blobCount,
 		RecvDelay:             block.recvDelay,
 		PayloadStatus:         payloadStatus,
 		BlockUid:              block.BlockUID,
@@ -654,12 +662,17 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			var executionWithdrawals []*capella.Withdrawal
 			var depositRequests []*electra.DepositRequest
 
+			blobCount := uint64(len(blobKzgCommitments))
+
 			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 				if blockPayload != nil {
 					dbEpoch.PayloadCount++
 					executionTransactions = blockPayload.Message.Payload.Transactions
 					executionWithdrawals = blockPayload.Message.Payload.Withdrawals
+				} else {
+					// bid-committed blobs are discarded when the payload is never revealed
+					blobCount = 0
 				}
 			} else {
 				if body.ExecutionPayload != nil {
@@ -702,7 +715,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			}
 
 			dbEpoch.EthTransactionCount += uint64(len(executionTransactions))
-			dbEpoch.BlobCount += uint64(len(blobKzgCommitments))
+			dbEpoch.BlobCount += blobCount
 			dbEpoch.WithdrawCount += uint64(len(executionWithdrawals))
 
 			withdrawalAmountOverflow := false

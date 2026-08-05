@@ -537,19 +537,35 @@ func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedIn
 	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
 }
 
-// GetBlockBids returns the execution payload bids for a given parent block root and slot.
-// It first checks the in-memory cache, then falls back to the database.
-// Filtering by slot is required because orphaned/skipped predecessor slots share
-// the same parent root as the canonical block that ends up replacing them.
-func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root, slot phase0.Slot) []*dbtypes.BlockBid {
-	// First check the in-memory cache
-	bids := indexer.blockBidCache.GetBidsForBlockRoot(parentBlockRoot, slot)
-	if len(bids) > 0 {
-		return bids
+// GetBlockBidsForSlot returns all execution payload bids for a slot regardless of their
+// parent root, so bids targeting other forks or deeper ancestors (reorg bids) are included.
+// Cache and DB results are merged since a slot's bids can be spread across both around a flush.
+func (indexer *Indexer) GetBlockBidsForSlot(slot phase0.Slot) []*dbtypes.BlockBid {
+	bids := indexer.blockBidCache.GetBidsForSlot(slot)
+
+	seenBids := make(map[bidCacheKey]bool, len(bids))
+	for _, bid := range bids {
+		seenBids[bidCacheKey{
+			ParentRoot:   phase0.Root(bid.ParentRoot),
+			ParentHash:   phase0.Hash32(bid.ParentHash),
+			BlockHash:    phase0.Hash32(bid.BlockHash),
+			BuilderIndex: bid.BuilderIndex,
+		}] = true
 	}
 
-	// Fall back to database
-	return db.GetBidsForBlockRoot(indexer.ctx, parentBlockRoot[:], uint64(slot))
+	for _, bid := range db.GetBidsForSlot(indexer.ctx, uint64(slot)) {
+		key := bidCacheKey{
+			ParentRoot:   phase0.Root(bid.ParentRoot),
+			ParentHash:   phase0.Hash32(bid.ParentHash),
+			BlockHash:    phase0.Hash32(bid.BlockHash),
+			BuilderIndex: bid.BuilderIndex,
+		}
+		if !seenBids[key] {
+			bids = append(bids, bid)
+		}
+	}
+
+	return bids
 }
 
 // GetCachedBidsByBuilderIndex returns the not-yet-flushed (recent) bids for a builder index within
