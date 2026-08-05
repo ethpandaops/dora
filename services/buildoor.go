@@ -44,8 +44,34 @@ type buildoorHostsResponse struct {
 }
 
 type buildoorInstanceOverview struct {
-	BuilderIndex uint64 `json:"builder_index"`
-	IsRegistered bool   `json:"is_registered"`
+	// BuilderIndex/IsRegistered describe the instance's primary key only. They
+	// are all a pre-multi-key buildoor reports, so they stay the fallback.
+	BuilderIndex uint64             `json:"builder_index"`
+	IsRegistered bool               `json:"is_registered"`
+	Builders     *buildoorFleetInfo `json:"builders"`
+}
+
+// buildoorFleetInfo is the managed key set a newer buildoor reports. Absent on
+// older instances, which is why every use is guarded.
+type buildoorFleetInfo struct {
+	Count   uint64   `json:"count"`
+	Active  uint64   `json:"active"`
+	Indexes []uint64 `json:"indexes"`
+}
+
+// builderIndexes returns every on-chain builder index the instance owns. A
+// newer buildoor lists its whole fleet; an older one only reports its primary
+// key, and only once that key is registered.
+func (o *buildoorInstanceOverview) builderIndexes() []uint64 {
+	if o.Builders != nil && len(o.Builders.Indexes) > 0 {
+		return o.Builders.Indexes
+	}
+
+	if o.IsRegistered {
+		return []uint64{o.BuilderIndex}
+	}
+
+	return nil
 }
 
 func NewBuildoorInventory(ctx context.Context) *BuildoorInventory {
@@ -118,6 +144,7 @@ func (b *BuildoorInventory) refresh() error {
 	newEntries := map[uint64]*buildoorEntry{}
 	resolvedCount := 0
 	unresolvedCount := 0
+	indexCount := 0
 
 	for _, instance := range instances {
 		overview, err := b.fetchInstance(ctx, client, instance.URL)
@@ -126,7 +153,8 @@ func (b *BuildoorInventory) refresh() error {
 			continue
 		}
 
-		if !overview.IsRegistered {
+		indexes := overview.builderIndexes()
+		if len(indexes) == 0 {
 			unresolvedCount++
 			continue
 		}
@@ -138,18 +166,24 @@ func (b *BuildoorInventory) refresh() error {
 			name = deriveBuilderName(instance.URL)
 		}
 
-		newEntries[overview.BuilderIndex] = &buildoorEntry{
-			name: name,
-			url:  instance.URL,
+		// One instance owns a whole fleet of builder indexes, so every one of
+		// them maps back to it.
+		for _, builderIndex := range indexes {
+			newEntries[builderIndex] = &buildoorEntry{
+				name: name,
+				url:  instance.URL,
+			}
 		}
+
 		resolvedCount++
+		indexCount += len(indexes)
 	}
 
 	b.entriesMutex.Lock()
 	b.entries = newEntries
 	b.entriesMutex.Unlock()
 
-	logger_buildoor.Infof("buildoor inventory refreshed: %d resolved, %d unresolved", resolvedCount, unresolvedCount)
+	logger_buildoor.Infof("buildoor inventory refreshed: %d instances resolved (%d builder indexes), %d unresolved", resolvedCount, indexCount, unresolvedCount)
 	return nil
 }
 
