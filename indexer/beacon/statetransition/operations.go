@@ -17,10 +17,12 @@ import (
 
 // processOperations implements process_operations.
 // Processes all block body operations: slashings, attestations, deposits, exits, etc.
+// parentSlot is the slot of the parent block (Gloas+), passed to processAttestation
+// for the payload availability lookup; unused pre-Gloas.
 //
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#operations
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_operations
-func processOperations(s *stateAccessor, block *all.SignedBeaconBlock) {
+func processOperations(s *stateAccessor, block *all.SignedBeaconBlock, parentSlot phase0.Slot) {
 	if block == nil || block.Message == nil || block.Message.Body == nil {
 		return
 	}
@@ -35,7 +37,7 @@ func processOperations(s *stateAccessor, block *all.SignedBeaconBlock) {
 		processAttesterSlashing(s, slashing)
 	}
 
-	processAttestations(s, block)
+	processAttestations(s, block, parentSlot)
 
 	for _, exit := range body.VoluntaryExits {
 		processVoluntaryExit(s, exit)
@@ -332,19 +334,22 @@ func processAttesterSlashing(s *stateAccessor, slashing *all.AttesterSlashing) {
 
 // processAttestations processes all attestations in the block.
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-process_attestation
-func processAttestations(s *stateAccessor, block *all.SignedBeaconBlock) {
+func processAttestations(s *stateAccessor, block *all.SignedBeaconBlock, parentSlot phase0.Slot) {
 	if block == nil || block.Message == nil || block.Message.Body == nil {
 		return
 	}
 
 	for _, att := range block.Message.Body.Attestations {
-		processAttestation(s, att, s.caches.committeeCache)
+		processAttestation(s, att, s.caches.committeeCache, parentSlot)
 	}
 }
 
 // processAttestation processes a single Electra+ attestation, updating participation flags.
+// parentSlot is the slot of the parent block (Gloas+), where the payload
+// availability of the attested block is looked up.
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-process_attestation
-func processAttestation(s *stateAccessor, att *all.Attestation, cc *committeeCache) {
+// Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_attestation
+func processAttestation(s *stateAccessor, att *all.Attestation, cc *committeeCache, parentSlot phase0.Slot) {
 	if att == nil || att.Data == nil {
 		return
 	}
@@ -377,15 +382,17 @@ func processAttestation(s *stateAccessor, att *all.Attestation, cc *committeeCac
 	isMatchingTarget := isMatchingSource && data.Target.Root == getBlockRoot(s, data.Target.Epoch)
 	isMatchingHead := isMatchingTarget && data.BeaconBlockRoot == getBlockRootAtSlot(s, data.Slot)
 
-	// Gloas: payload_matches check for head attestation.
-	// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_attestation
+	// Gloas: payload_matches check for head attestation. The availability of
+	// the attested block's payload is tracked at the parent block's slot, even
+	// when data.slot is a skipped slot.
+	// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-get_attestation_participation_flag_indices
 	payloadMatches := true
 	if s.Version >= spec.DataVersionGloas {
 		if isAttestationSameSlot(s, data) {
 			payloadMatches = true
 		} else {
 			var payloadIndex uint64
-			if s.getAvailabilityBit(data.Slot) {
+			if s.getAvailabilityBit(parentSlot) {
 				payloadIndex = 1
 			}
 			payloadMatches = uint64(data.Index) == payloadIndex
@@ -710,22 +717,31 @@ func processConsolidationRequest(s *stateAccessor, request *electra.Consolidatio
 }
 
 // processExecutionPayloadBid records the builder's bid in builder_pending_payments.
+// Returns the parent block's slot, read from the previous bid in the state before
+// it is overwritten. It is later passed to processAttestation to look up the
+// payload availability of the attested block.
 // New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-process_execution_payload_bid
-func processExecutionPayloadBid(s *stateAccessor, block *all.SignedBeaconBlock) {
+func processExecutionPayloadBid(s *stateAccessor, block *all.SignedBeaconBlock) phase0.Slot {
 	if s.Version < spec.DataVersionGloas {
-		return
+		return 0
 	}
 
 	if block == nil || block.Message == nil || block.Message.Body == nil {
-		return
+		return 0
 	}
 
 	signedBid := block.Message.Body.SignedExecutionPayloadBid
 	if signedBid == nil || signedBid.Message == nil {
-		return
+		return 0
 	}
 
 	bid := signedBid.Message
+
+	// Cache the parent block's slot before overwriting the bid
+	var parentSlot phase0.Slot
+	if s.LatestExecutionPayloadBid != nil {
+		parentSlot = s.LatestExecutionPayloadBid.Slot
+	}
 
 	// Cache the signed execution payload bid (always, regardless of amount)
 	s.LatestExecutionPayloadBid = bid
@@ -746,6 +762,8 @@ func processExecutionPayloadBid(s *stateAccessor, block *all.SignedBeaconBlock) 
 			}
 		}
 	}
+
+	return parentSlot
 }
 
 // processSyncAggregate processes the sync committee aggregate.
