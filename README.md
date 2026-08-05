@@ -1,5 +1,9 @@
 # Dora the Beaconchain Explorer
 
+<!-- hy-mt2-i18n:start -->
+**English** · [中文](./README_zh-CN.md) · [日本語](./README_ja.md) · [Español](./README_es.md)
+<!-- hy-mt2-i18n:end -->
+
 [![Badge](https://github.com/ethpandaops/dora/actions/workflows/build-master.yml/badge.svg)](https://github.com/ethpandaops/dora/actions?query=workflow%3A%22Build+master%22)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ethpandaops/dora)](https://goreportcard.com/report/github.com/ethpandaops/dora)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/ethpandaops/dora?label=Latest%20Release)](https://github.com/ethpandaops/dora/releases/latest)
@@ -49,4 +53,3 @@ This explorer is heavily based on the code from [gobitfly/eth2-beaconchain-explo
 # License
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-
