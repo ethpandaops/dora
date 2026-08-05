@@ -103,9 +103,11 @@ func (st *StateTransition) applyBlock(state *all.BeaconState, block *all.SignedB
 		processFuluExecutionPayload(s, block)
 	}
 
-	// process_execution_payload_bid (Gloas) — records the builder's bid
+	// process_execution_payload_bid (Gloas) — records the builder's bid and
+	// returns the parent block's slot for the attestation payload availability lookup
+	var parentSlot phase0.Slot
 	if state.Version >= spec.DataVersionGloas {
-		processExecutionPayloadBid(s, block)
+		parentSlot = processExecutionPayloadBid(s, block)
 	}
 
 	// process_randao
@@ -115,7 +117,7 @@ func (st *StateTransition) applyBlock(state *all.BeaconState, block *all.SignedB
 	processEth1Data(s, block)
 
 	// process_operations
-	processOperations(s, block)
+	processOperations(s, block, parentSlot)
 
 	// process_sync_aggregate
 	processSyncAggregate(s, block)
