@@ -60,6 +60,7 @@ type SlotPageBlockData struct {
 	Signature                   []byte                  `json:"signature" ssz-size:"96"`
 	RandaoReveal                []byte                  `json:"randaoreveal" ssz-size:"96"`
 	Graffiti                    []byte                  `json:"graffiti"`
+	ClientData                  *SlotPageClientData     `json:"client_data"`
 	Eth1dataDepositroot         []byte                  `json:"eth1data_depositroot" ssz-size:"32"`
 	Eth1dataDepositcount        uint64                  `json:"eth1data_depositcount"`
 	Eth1dataBlockhash           []byte                  `json:"eth1data_blockhash" ssz-size:"32"`
@@ -116,6 +117,33 @@ type SlotPageBlockData struct {
 	BuilderPayment         *SlotPageBuilderPayment          `json:"builder_payment"`          // Gloas builder-payment vote quorum for this slot
 	InclusionLists         []*SlotPageInclusionList         `json:"inclusion_lists"`          // Inclusion lists for this slot (EIP-7805)
 	InclusionListsCount    uint64                           `json:"inclusion_lists_count"`
+}
+
+type SlotPageClientData struct {
+	Raw              []byte                    `json:"raw" ssz-size:"32"`
+	RawBinary        string                    `json:"raw_binary"`
+	Version          uint8                     `json:"version"`
+	SetupCode        uint8                     `json:"setup_code"`
+	Setup            string                    `json:"setup"`
+	Threshold        uint8                     `json:"threshold"`
+	ThresholdLabel   string                    `json:"threshold_label"`
+	PairCount        uint8                     `json:"pair_count"`
+	HasReportedPairs bool                      `json:"has_reported_pairs"`
+	IsEmpty          bool                      `json:"is_empty"`
+	Pairs            []*SlotPageClientDataPair `json:"pairs"`
+}
+
+type SlotPageClientDataPair struct {
+	Index         uint8  `json:"index"`
+	CLCode        uint8  `json:"cl_code"`
+	ELCode        uint8  `json:"el_code"`
+	CLShort       string `json:"cl_short"`
+	ELShort       string `json:"el_short"`
+	CLName        string `json:"cl_name"`
+	ELName        string `json:"el_name"`
+	CLBadgeClass  string `json:"cl_badge_class"`
+	ELBadgeClass  string `json:"el_badge_class"`
+	IsPlaceholder bool   `json:"is_placeholder"`
 }
 
 type SlotPageExecutionData struct {

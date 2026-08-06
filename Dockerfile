@@ -9,6 +9,7 @@ RUN npm run build
 # go build env
 FROM golang:1.26.4 AS go-env
 COPY go.mod go.sum /src/
+COPY third_party /src/third_party
 WORKDIR /src
 RUN go mod download
 COPY . .

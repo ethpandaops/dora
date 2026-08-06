@@ -162,6 +162,51 @@
             
           </div>
         </div>
+        {{ if .Block.ClientData }}
+          {{ with .Block.ClientData }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The clients used by the proposer for attesting to the chain and verifying the chain's correctness. These are not necessarily the clients used to propose the block.">Client Data:</span></div>
+              <div class="col-md-10">
+                <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                  <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Validator setup type">{{ .Setup }}</span>
+                  <span class="badge rounded-pill text-bg-light" data-bs-toggle="tooltip" data-bs-placement="top" title="Attestation agreement threshold">{{ .ThresholdLabel }}</span>
+                  {{ if .IsEmpty }}
+                    <span class="badge rounded-pill text-bg-warning">No report</span>
+                  {{ else if not .HasReportedPairs }}
+                    <span class="badge rounded-pill text-bg-warning">No client pairs</span>
+                  {{ end }}
+                </div>
+
+                {{ if .HasReportedPairs }}
+                  <div class="d-flex flex-wrap gap-2 mb-2">
+                    {{ range .Pairs }}
+                      {{ if not .IsPlaceholder }}
+                        <span class="d-inline-flex align-items-center border rounded px-2 py-1 bg-body-tertiary">
+                          <span class="badge rounded-pill {{ .CLBadgeClass }} me-1">{{ .CLName }}</span>
+                          <i class="fas fa-plus text-muted mx-1" style="font-size: 0.65rem;"></i>
+                          <span class="badge rounded-pill {{ .ELBadgeClass }}">{{ .ELName }}</span>
+                        </span>
+                      {{ end }}
+                    {{ end }}
+                  </div>
+                {{ end }}
+
+                <div class="mt-2">
+                  <div class="small text-muted mb-1">Raw hex</div>
+                  <div class="small text-monospace text-break">
+                    0x{{ printf "%x" .Raw }}
+                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Raw }}"></i>
+                  </div>
+                  <div class="small text-muted mt-2 mb-1">Raw binary</div>
+                  <div class="small text-monospace text-break" style="white-space: pre-wrap; overflow-wrap: anywhere;">
+                    {{ .RawBinary }}
+                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .RawBinary }}"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {{ end }}
+        {{ end }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Received Eth Block headers and Deposit data">Eth Data:</span></div>
           <div class="col-md-10">

@@ -249,4 +249,8 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
+replace github.com/ethpandaops/go-eth2-client => github.com/eth2353/go-eth2-client v0.0.0-20260705112911-7e492b9fe9bb
+
+replace github.com/ethpandaops/eth-das-guardian => ./third_party/eth-das-guardian
+
 tool github.com/pk910/dynamic-ssz/dynssz-gen

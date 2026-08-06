@@ -512,6 +512,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		Signature:              blockData.Header.Signature[:],
 		RandaoReveal:           randaoReveal[:],
 		Graffiti:               graffiti[:],
+		ClientData:             decodeSlotPageClientData(body.ClientData, blockData.Block.Version),
 		Eth1dataDepositroot:    eth1Data.DepositRoot[:],
 		Eth1dataDepositcount:   eth1Data.DepositCount,
 		Eth1dataBlockhash:      eth1Data.BlockHash,
@@ -1142,6 +1143,212 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	}
 
 	return pageData
+}
+
+func decodeSlotPageClientData(raw [32]byte, version spec.DataVersion) *models.SlotPageClientData {
+	if version < spec.DataVersionFulu {
+		return nil
+	}
+
+	data := &models.SlotPageClientData{
+		Raw:       raw[:],
+		RawBinary: clientDataBinaryString(raw[:]),
+		Version:   raw[0],
+		SetupCode: raw[1] >> 3,
+		Threshold: raw[1] & 0x07,
+		Pairs:     make([]*models.SlotPageClientDataPair, 0, 14),
+	}
+	data.Setup = clientDataSetupName(data.SetupCode)
+	data.IsEmpty = bytes.Equal(raw[:], make([]byte, 32))
+
+	for i := 2; i < 16; i++ {
+		clCode := raw[i] >> 4
+		elCode := raw[i] & 0x0f
+		clName := clientDataCLName(clCode)
+		elName := clientDataELName(elCode)
+		pair := &models.SlotPageClientDataPair{
+			Index:         uint8(i - 1),
+			CLCode:        clCode,
+			ELCode:        elCode,
+			CLShort:       clientDataCLShort(clCode),
+			ELShort:       clientDataELShort(elCode),
+			CLName:        clName,
+			ELName:        elName,
+			CLBadgeClass:  clientDataBadgeClass(clName),
+			ELBadgeClass:  clientDataBadgeClass(elName),
+			IsPlaceholder: clCode == 0 && elCode == 0,
+		}
+		if !pair.IsPlaceholder {
+			data.HasReportedPairs = true
+			data.PairCount++
+		}
+		data.Pairs = append(data.Pairs, pair)
+	}
+	data.ThresholdLabel = fmt.Sprintf("%d-of-%d", data.Threshold, data.PairCount)
+
+	return data
+}
+
+func clientDataBinaryString(raw []byte) string {
+	var builder strings.Builder
+	builder.Grow(len(raw)*9 - 1)
+	for i, b := range raw {
+		if i > 0 {
+			builder.WriteByte(' ')
+		}
+		builder.WriteString(fmt.Sprintf("%08b", b))
+	}
+	return builder.String()
+}
+
+func clientDataSetupName(code uint8) string {
+	switch code {
+	case 0:
+		return "Undefined"
+	case 1:
+		return "Unknown"
+	case 2:
+		return "Other"
+	case 3:
+		return "Simple"
+	case 4:
+		return "Obol"
+	case 5:
+		return "SSV"
+	case 6:
+		return "Vero"
+	case 7:
+		return "Vouch"
+	default:
+		return fmt.Sprintf("Unknown (%d)", code)
+	}
+}
+
+func clientDataCLShort(code uint8) string {
+	switch code {
+	case 0:
+		return "UNDEFINED"
+	case 1:
+		return "UNKNOWN"
+	case 2:
+		return "OTHER"
+	case 3:
+		return "CN"
+	case 4:
+		return "GR"
+	case 5:
+		return "LH"
+	case 6:
+		return "LS"
+	case 7:
+		return "NB"
+	case 8:
+		return "TK"
+	case 9:
+		return "PM"
+	default:
+		return fmt.Sprintf("%d", code)
+	}
+}
+
+func clientDataCLName(code uint8) string {
+	switch code {
+	case 0:
+		return "Undefined"
+	case 1:
+		return "Unknown"
+    case 2:
+		return "Other"
+	case 3:
+		return "Caplin"
+	case 4:
+		return "Grandine"
+	case 5:
+		return "Lighthouse"
+	case 6:
+		return "Lodestar"
+	case 7:
+		return "Nimbus"
+	case 8:
+		return "Teku"
+	case 9:
+		return "Prysm"
+	default:
+		return fmt.Sprintf("Unknown (%d)", code)
+	}
+}
+
+func clientDataELShort(code uint8) string {
+	switch code {
+	case 0:
+		return "UNDEFINED"
+	case 1:
+		return "UNKNOWN"
+	case 2:
+		return "OTHER"
+	case 3:
+		return "BU"
+	case 4:
+		return "EG"
+	case 5:
+		return "EX"
+	case 6:
+		return "GE"
+	case 7:
+		return "NM"
+	case 8:
+		return "NB"
+	case 9:
+		return "RH"
+	default:
+		return fmt.Sprintf("%d", code)
+	}
+}
+
+func clientDataELName(code uint8) string {
+	switch code {
+	case 0:
+		return "Undefined"
+	case 1:
+		return "Unknown"
+	case 2:
+		return "Other"
+	case 3:
+		return "Besu"
+	case 4:
+		return "Erigon"
+	case 5:
+		return "Ethrex"
+	case 6:
+		return "Geth"
+	case 7:
+		return "Nethermind"
+	case 8:
+		return "Nimbus"
+	case 9:
+		return "Reth"
+	default:
+		return fmt.Sprintf("Unknown (%d)", code)
+	}
+}
+
+func clientDataBadgeClass(name string) string {
+	switch strings.ToLower(name) {
+	case "lighthouse", "geth":
+		return "text-bg-primary"
+	case "prysm", "nethermind":
+		return "text-bg-success"
+	case "teku", "besu":
+		return "text-bg-info"
+	case "nimbus", "erigon":
+		return "text-bg-warning"
+	case "lodestar", "reth":
+		return "text-bg-danger"
+	case "grandine", "ethereumjs":
+		return "text-bg-secondary"
+	default:
+		return "text-bg-light"
+	}
 }
 
 // Transaction type names for display
