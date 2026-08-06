@@ -540,33 +540,39 @@ func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedIn
 
 // GetBlockBidsForSlot returns all execution payload bids for a slot regardless of their
 // parent root, so bids targeting other forks or deeper ancestors (reorg bids) are included.
-// Cache and DB results are merged since a slot's bids can be spread across both around a flush.
+// Cache and DB results are merged since a slot's bids can be spread across both around a
+// flush. A bid present in both may carry a fresh (empty) observation state in the cache
+// (re-added after its slot was flushed), so the seen counters are merged by maximum.
 func (indexer *Indexer) GetBlockBidsForSlot(slot phase0.Slot) []*dbtypes.BlockBid {
 	bids := indexer.blockBidCache.GetBidsForSlot(slot)
 
-	seenBids := make(map[bidCacheKey]bool, len(bids))
+	cachedBids := make(map[bidCacheKey]*dbtypes.BlockBid, len(bids))
 	for _, bid := range bids {
-		seenBids[bidCacheKey{
-			ParentRoot:   phase0.Root(bid.ParentRoot),
-			ParentHash:   phase0.Hash32(bid.ParentHash),
-			BlockHash:    phase0.Hash32(bid.BlockHash),
-			BuilderIndex: bid.BuilderIndex,
-		}] = true
+		cachedBids[makeBidCacheKey(bid)] = bid
 	}
 
 	for _, bid := range db.GetBidsForSlot(indexer.ctx, uint64(slot)) {
-		key := bidCacheKey{
-			ParentRoot:   phase0.Root(bid.ParentRoot),
-			ParentHash:   phase0.Hash32(bid.ParentHash),
-			BlockHash:    phase0.Hash32(bid.BlockHash),
-			BuilderIndex: bid.BuilderIndex,
+		if cached := cachedBids[makeBidCacheKey(bid)]; cached != nil {
+			mergeBidSeenCounters(cached, bid)
+			continue
 		}
-		if !seenBids[key] {
-			bids = append(bids, bid)
-		}
+		bids = append(bids, bid)
 	}
 
 	return bids
+}
+
+// mergeBidSeenCounters raises dst's seen counters to at least src's values.
+func mergeBidSeenCounters(dst *dbtypes.BlockBid, src *dbtypes.BlockBid) {
+	if src.SeenCount > dst.SeenCount {
+		dst.SeenCount = src.SeenCount
+	}
+	if src.SeenTotal > dst.SeenTotal {
+		dst.SeenTotal = src.SeenTotal
+	}
+	if dst.SeenCount > dst.SeenTotal {
+		dst.SeenTotal = dst.SeenCount
+	}
 }
 
 // GetCachedBidsByBuilderIndex returns the not-yet-flushed (recent) bids for a builder index within

@@ -342,15 +342,23 @@ func (bs *ChainService) GetBuilderBids(ctx context.Context, builderIndex uint64,
 		parentHash string
 		blockHash  string
 	}
-	seen := make(map[bidKey]bool, len(cacheBids)+len(dbBids))
+	seen := make(map[bidKey]*dbtypes.BlockBid, len(cacheBids)+len(dbBids))
 	merged := make([]*dbtypes.BlockBid, 0, len(cacheBids)+len(dbBids))
 	appendUnique := func(bids []*dbtypes.BlockBid) {
 		for _, bid := range bids {
 			key := bidKey{string(bid.ParentRoot), string(bid.ParentHash), string(bid.BlockHash)}
-			if seen[key] {
+			if existing := seen[key]; existing != nil {
+				// A bid re-added to the cache after its slot was flushed carries a
+				// fresh (empty) observation state; keep the higher seen counters.
+				if bid.SeenCount > existing.SeenCount {
+					existing.SeenCount = bid.SeenCount
+				}
+				if bid.SeenTotal > existing.SeenTotal {
+					existing.SeenTotal = bid.SeenTotal
+				}
 				continue
 			}
-			seen[key] = true
+			seen[key] = bid
 			merged = append(merged, bid)
 		}
 	}
