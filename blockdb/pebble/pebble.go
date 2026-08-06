@@ -20,6 +20,7 @@ const (
 	KeyNamespaceTxHash      uint16 = 4 // tx-hash index lookup: [ns4][prefix10][tx_uid8]
 	KeyNamespaceTxHashPrune uint16 = 5 // tx-hash index prune-order: [ns5][tx_uid8]
 	KeyNamespaceAccessTrack uint16 = 6 // exec/duties access records: [ns6][entityNs][slot][tail]
+	KeyNamespaceBids        uint16 = 7 // per-slot bids objects: [ns7][slot]
 )
 
 type PebbleEngine struct {

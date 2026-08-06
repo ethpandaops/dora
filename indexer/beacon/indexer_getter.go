@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 
+	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -572,6 +573,13 @@ func (indexer *Indexer) GetBlockBidsForSlot(slot phase0.Slot) []*dbtypes.BlockBi
 // the given slot window. Callers merge these with the DB results (see ChainService.GetBuilderBids).
 func (indexer *Indexer) GetCachedBidsByBuilderIndex(builderIndex int64, minSlot uint64, maxSlot *uint64) []*dbtypes.BlockBid {
 	return indexer.blockBidCache.GetBidsByBuilderIndex(builderIndex, minSlot, maxSlot)
+}
+
+// GetSlotBidsWithSeen returns the slot's bids with their per-client gossip
+// observations from the bid cache. Returns nil if the cache holds no bids for
+// the slot (flushed or never seen).
+func (indexer *Indexer) GetSlotBidsWithSeen(slot phase0.Slot) *btypes.SlotBids {
+	return indexer.blockBidCache.GetSlotBids(slot)
 }
 
 // StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.

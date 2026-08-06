@@ -430,9 +430,11 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	// Extract execution payload bid from Gloas/Heze blocks and add to bid cache.
 	// This ensures bids are persisted even when syncing from blocks (not just SSE events).
+	// A bid extracted from a block body is not a gossip observation, so no
+	// observer client is recorded.
 	blockBid := getBlockBid(blockBody)
 	if blockBid != nil {
-		dbw.indexer.blockBidCache.AddBid(blockBid)
+		dbw.indexer.blockBidCache.AddBid(blockBid, "", 0)
 	}
 
 	// Post-Gloas the blob commitments come from the bid, but the blobs themselves only

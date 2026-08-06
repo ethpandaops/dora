@@ -4575,6 +4575,13 @@ const docTemplate = `{
                 "reorg_depth": {
                     "type": "integer"
                 },
+                "seen_count": {
+                    "description": "Gossip visibility: SeenCount of SeenTotal connected clients observed the bid\non gossip. SeenTotal 0 = no observation data available for this bid.\nPer-client details are served by the /slot/{slotOrHash}/bidseen page endpoint.",
+                    "type": "integer"
+                },
+                "seen_total": {
+                    "type": "integer"
+                },
                 "slot": {
                     "type": "integer"
                 },
