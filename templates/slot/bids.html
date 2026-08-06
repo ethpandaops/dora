@@ -71,12 +71,14 @@
           </tr>
           {{ if gt $bid.SeenTotal 0 }}
             <tr class="collapse" id="bid-seen-{{ $i }}">
-              <td colspan="11" class="bid-seen-details border-top-0 pt-0"
+              <td colspan="11" class="bid-seen-details border-top-0 py-0"
                   data-block-hash="0x{{ printf "%x" $bid.BlockHash }}"
                   data-builder-index="{{ if $bid.IsSelfBuilt }}-1{{ else }}{{ $bid.BuilderIndex }}{{ end }}"
                   data-parent-root="0x{{ printf "%x" $bid.ParentRoot }}"
                   data-parent-hash="0x{{ printf "%x" $bid.ParentHash }}">
-                <span class="text-muted">Loading...</span>
+                <div class="bid-seen-callout my-2">
+                  <span class="text-muted">Loading...</span>
+                </div>
               </td>
             </tr>
           {{ end }}
@@ -84,6 +86,47 @@
       </tbody>
     </table>
   </div>
+  <style>
+    /* the .table-ellipsis wrapper clamps every descendant td to 200px with
+       hidden overflow; lift that for the seen-details cell and its inner table */
+    #block_bids td.bid-seen-details {
+      max-width: none;
+      overflow: visible;
+      white-space: normal;
+    }
+    #block_bids .bid-seen-callout {
+      max-width: 34rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--bs-border-color);
+      border-left: 3px solid var(--bs-primary);
+      border-radius: var(--bs-border-radius);
+      background-color: var(--bs-tertiary-bg);
+    }
+    #block_bids .bid-seen-scroll {
+      max-height: 16rem;
+      overflow-y: auto;
+    }
+    #block_bids .bid-seen-callout .table {
+      --bs-table-bg: transparent;
+    }
+    #block_bids .bid-seen-callout .table th,
+    #block_bids .bid-seen-callout .table td {
+      max-width: none;
+      overflow: visible;
+      white-space: nowrap;
+    }
+    #block_bids .bid-seen-callout .table td:nth-child(2) {
+      max-width: 22rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #block_bids .bid-seen-scroll thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background-color: var(--bs-tertiary-bg);
+    }
+  </style>
   {{ if .Block.Bids }}
     <script type="text/javascript">
       (function() {
@@ -107,37 +150,51 @@
           if (abs >= 1000) return sign + (abs / 1000).toFixed(2) + 's';
           return sign + abs + 'ms';
         }
-        function render(el, clients, bid) {
-          var seen = bid && bid.seen ? bid.seen.slice() : [];
-          seen.sort(function(a, b) { return a.time - b.time; });
-          var seenIdx = {};
-          var html = '<div class="pt-1">';
-          html += '<div><strong>Seen by ' + seen.length + ' client' + (seen.length === 1 ? '' : 's') + ':</strong> ';
-          if (seen.length) {
-            seen.forEach(function(o) {
-              seenIdx[o.client] = true;
-              var name = clients[o.client] !== undefined ? clients[o.client] : ('client-' + o.client);
-              html += '<span class="badge bg-success me-1 mb-1">' + escapeHtml(name) +
-                ' <span class="opacity-75">' + formatOffset(o.time) + '</span></span>';
-            });
-          } else {
-            html += '<span class="text-muted">none (bid known from block body only)</span>';
-          }
-          html += '</div>';
+        function render(target, clients, bid) {
+          var obs = bid && bid.seen ? bid.seen.slice() : [];
+          obs.sort(function(a, b) { return a.time - b.time; });
+
+          var seenClients = {};
+          var rows = [];
+          obs.forEach(function(o) {
+            seenClients[o.client] = true;
+            var name = clients[o.client] !== undefined ? clients[o.client] : ('client-' + o.client);
+            rows.push({ name: name, time: o.time, seen: true });
+          });
           var notSeen = [];
-          clients.forEach(function(name, idx) { if (!seenIdx[idx]) notSeen.push(name); });
-          if (notSeen.length) {
-            html += '<div><strong>Not seen by ' + notSeen.length + ':</strong> ';
-            notSeen.forEach(function(name) {
-              html += '<span class="badge bg-secondary me-1 mb-1">' + escapeHtml(name) + '</span>';
-            });
-            html += '</div>';
+          clients.forEach(function(name, idx) {
+            if (!seenClients[idx]) notSeen.push({ name: name, seen: false });
+          });
+          notSeen.sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+          rows = rows.concat(notSeen);
+
+          var html = '<div class="fw-bold">Seen by ' + obs.length + ' of ' + clients.length + ' clients</div>';
+          if (!obs.length) {
+            html += '<div class="text-muted">This bid was not observed on gossip (known from the block body only).</div>';
           }
-          html += '</div>';
-          el.innerHTML = html;
+          if (rows.length) {
+            html += '<div class="bid-seen-scroll mt-1">' +
+              '<table class="table table-sm mb-0"><thead><tr>' +
+              '<th style="width: 1.5rem;"></th><th>Client</th><th class="text-end">First seen</th>' +
+              '</tr></thead><tbody>';
+            rows.forEach(function(row) {
+              if (row.seen) {
+                html += '<tr><td><i class="fas fa-check text-success"></i></td>' +
+                  '<td>' + escapeHtml(row.name) + '</td>' +
+                  '<td class="text-end text-monospace">' + formatOffset(row.time) + '</td></tr>';
+              } else {
+                html += '<tr class="text-muted"><td><i class="fas fa-times text-danger"></i></td>' +
+                  '<td>' + escapeHtml(row.name) + '</td>' +
+                  '<td class="text-end">not seen</td></tr>';
+              }
+            });
+            html += '</tbody></table></div>';
+          }
+          target.innerHTML = html;
         }
 
         document.querySelectorAll('.bid-seen-details').forEach(function(el) {
+          var target = el.querySelector('.bid-seen-callout');
           el.closest('tr').addEventListener('shown.bs.collapse', function() {
             if (el.dataset.loaded) return;
             loadBidSeen().then(function(data) {
@@ -147,10 +204,10 @@
                   b.parent_root === el.dataset.parentRoot &&
                   b.parent_hash === el.dataset.parentHash;
               });
-              render(el, data.clients || [], bid);
+              render(target, data.clients || [], bid);
               el.dataset.loaded = '1';
             }).catch(function() {
-              el.innerHTML = '<span class="text-danger">Failed to load bid observations</span>';
+              target.innerHTML = '<span class="text-danger">Failed to load bid observations</span>';
             });
           });
         });
