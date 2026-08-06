@@ -444,26 +444,35 @@ func (bs *BeaconStream) processExecutionPayloadAvailableEvent(evt eventstream.St
 	}
 }
 
-func (bs *BeaconStream) processExecutionPayloadBidEvent(evt eventstream.StreamEvent) {
-	// the event is wrapped in a versioned envelope: {"version":"gloas","data":{...}}
+// parseExecutionPayloadBidEvent decodes an execution_payload_bid stream event.
+// Most clients wrap the event in a versioned envelope ({"version":"gloas","data":{...}}),
+// but Nimbus sends the bare SignedExecutionPayloadBid container. The envelope is
+// unwrapped when present, otherwise the raw payload is decoded directly.
+func parseExecutionPayloadBidEvent(data []byte) (*gloas.SignedExecutionPayloadBid, error) {
 	var envelope struct {
 		Data json.RawMessage `json:"data"`
 	}
-
-	if err := json.Unmarshal([]byte(evt.Data()), &envelope); err != nil {
-		bs.logger.Warnf("beacon block stream failed to decode execution_payload_bid event: %v", err)
-		return
+	if err := json.Unmarshal(data, &envelope); err == nil && len(envelope.Data) > 0 && string(envelope.Data) != "null" {
+		data = envelope.Data
 	}
 
-	var parsed gloas.SignedExecutionPayloadBid
-	if err := json.Unmarshal(envelope.Data, &parsed); err != nil {
+	parsed := &gloas.SignedExecutionPayloadBid{}
+	if err := json.Unmarshal(data, parsed); err != nil {
+		return nil, err
+	}
+	return parsed, nil
+}
+
+func (bs *BeaconStream) processExecutionPayloadBidEvent(evt eventstream.StreamEvent) {
+	parsed, err := parseExecutionPayloadBidEvent([]byte(evt.Data()))
+	if err != nil {
 		bs.logger.Warnf("beacon block stream failed to decode execution_payload_bid event: %v", err)
 		return
 	}
 
 	bs.EventChan <- &BeaconStreamEvent{
 		Event: StreamExecutionPayloadBidEvent,
-		Data:  &parsed,
+		Data:  parsed,
 	}
 }
 
