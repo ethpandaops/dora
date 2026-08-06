@@ -111,6 +111,10 @@
       .bid-seen-popover .table tr.bid-seen-proposer td {
         background-color: rgba(var(--bs-primary-rgb), 0.15);
       }
+      .bid-seen-popover .bid-seen-stats {
+        border-bottom: 1px solid var(--bs-border-color);
+        padding-bottom: 4px;
+      }
     </style>
     <script type="text/javascript">
       (function() {
@@ -162,6 +166,26 @@
           var html = '';
           if (!obs.length) {
             html += '<div class="text-muted mb-1">This bid was not observed on gossip (known from the block body only).</div>';
+          } else {
+            // obs is sorted by time, so min/max/median come straight from the ends/middle
+            var times = obs.map(function(o) { return o.time; });
+            var sum = times.reduce(function(a, b) { return a + b; }, 0);
+            var mid = Math.floor(times.length / 2);
+            var median = times.length % 2 ? times[mid] : Math.round((times[mid - 1] + times[mid]) / 2);
+            var stats = [
+              { label: 'min', value: times[0] },
+              { label: 'avg', value: Math.round(sum / times.length) },
+              { label: 'med', value: median },
+              { label: 'max', value: times[times.length - 1] }
+            ];
+            html += '<div class="d-flex bid-seen-stats mb-1">';
+            stats.forEach(function(stat) {
+              html += '<div class="text-center flex-fill">' +
+                '<div class="text-muted small">' + stat.label + '</div>' +
+                '<div class="text-monospace">' + formatOffset(stat.value) + '</div>' +
+                '</div>';
+            });
+            html += '</div>';
           }
           if (rows.length) {
             html += '<div class="bid-seen-scroll">' +
