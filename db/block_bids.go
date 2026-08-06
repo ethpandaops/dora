@@ -16,11 +16,11 @@ func InsertBids(bids []*dbtypes.BlockBid, tx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO block_bids ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO block_bids ",
 		}),
-		"(parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment)",
+		"(parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 9
+	fieldCount := 11
 
 	args := make([]any, len(bids)*fieldCount)
 	for i, bid := range bids {
@@ -45,6 +45,8 @@ func InsertBids(bids []*dbtypes.BlockBid, tx *sqlx.Tx) error {
 		args[argIdx+6] = bid.Slot
 		args[argIdx+7] = bid.Value
 		args[argIdx+8] = bid.ElPayment
+		args[argIdx+9] = bid.SeenCount
+		args[argIdx+10] = bid.SeenTotal
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -53,7 +55,9 @@ func InsertBids(bids []*dbtypes.BlockBid, tx *sqlx.Tx) error {
 			"gas_limit = excluded.gas_limit, " +
 			"slot = excluded.slot, " +
 			"value = excluded.value, " +
-			"el_payment = excluded.el_payment",
+			"el_payment = excluded.el_payment, " +
+			"seen_count = excluded.seen_count, " +
+			"seen_total = excluded.seen_total",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -73,7 +77,7 @@ func GetBidsForSlot(ctx context.Context, slot uint64) []*dbtypes.BlockBid {
 	}
 	fmt.Fprint(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	WHERE slot = $1
 	ORDER BY value DESC
@@ -95,7 +99,7 @@ func GetBidsForSlotRange(ctx context.Context, minSlot uint64) []*dbtypes.BlockBi
 	}
 	fmt.Fprint(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	WHERE slot >= $1
 	ORDER BY slot DESC, value DESC
@@ -128,7 +132,7 @@ func GetBidsByBlockHashes(ctx context.Context, blockHashes [][]byte, builderInde
 
 	fmt.Fprint(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	WHERE builder_index = $1 AND block_hash IN (`)
 
@@ -170,7 +174,7 @@ func GetBidsBySlots(ctx context.Context, slots []uint64, builderIndex int64) map
 
 	fmt.Fprint(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	WHERE builder_index = $1 AND slot IN (`)
 
@@ -222,7 +226,7 @@ func GetBidsByBuilderIndex(ctx context.Context, builderIndex uint64, minSlot *ui
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	%s
 	ORDER BY slot DESC, value DESC

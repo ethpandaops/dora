@@ -741,6 +741,11 @@ type BlockBid struct {
 	Slot         uint64 `db:"slot"`
 	Value        uint64 `db:"value"`
 	ElPayment    uint64 `db:"el_payment"`
+	// SeenCount is the number of clients that observed the bid on gossip.
+	// SeenTotal is the number of connected clients that could have seen it
+	// (0/0 = unknown, e.g. rows from before seen tracking existed).
+	SeenCount uint32 `db:"seen_count"`
+	SeenTotal uint32 `db:"seen_total"`
 }
 
 type Builder struct {
