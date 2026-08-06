@@ -534,6 +534,37 @@ definitions:
       status:
         type: string
     type: object
+  api.APIEpochDutiesData:
+    properties:
+      committees_per_slot:
+        type: integer
+      dependent_root:
+        type: string
+      epoch:
+        type: integer
+      slots:
+        items:
+          $ref: '#/definitions/api.APIEpochDutiesSlotInfo'
+        type: array
+    type: object
+  api.APIEpochDutiesResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APIEpochDutiesData'
+      status:
+        type: string
+    type: object
+  api.APIEpochDutiesSlotInfo:
+    properties:
+      committees:
+        items:
+          items:
+            type: integer
+          type: array
+        type: array
+      slot:
+        type: integer
+    type: object
   api.APIEpochHealthResponseV1:
     properties:
       eligible_ether:
@@ -1306,6 +1337,33 @@ definitions:
       slot:
         type: string
     type: object
+  api.APISlotCommitteeInfo:
+    properties:
+      index:
+        type: integer
+      validators:
+        items:
+          type: integer
+        type: array
+    type: object
+  api.APISlotCommitteesData:
+    properties:
+      committees:
+        items:
+          $ref: '#/definitions/api.APISlotCommitteeInfo'
+        type: array
+      epoch:
+        type: integer
+      slot:
+        type: integer
+    type: object
+  api.APISlotCommitteesResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotCommitteesData'
+      status:
+        type: string
+    type: object
   api.APISlotData:
     properties:
       attestationscount:
@@ -1665,11 +1723,15 @@ definitions:
         type: string
       public_key:
         type: string
+      slashed:
+        type: boolean
       status:
         type: string
       validator_liveness:
         type: integer
       validator_liveness_max:
+        type: integer
+      withdrawable_epoch:
         type: integer
       withdrawal_address:
         type: string
@@ -1725,6 +1787,23 @@ definitions:
       total_balance:
         type: integer
       total_eligible_ether:
+        type: integer
+    type: object
+  api.APIValidatorStatusInfo:
+    properties:
+      activation_epoch:
+        type: integer
+      effective_balance:
+        type: integer
+      exit_epoch:
+        type: integer
+      index:
+        type: integer
+      slashed:
+        type: boolean
+      status:
+        type: string
+      withdrawable_epoch:
         type: integer
     type: object
   api.APIValidatorsActivityData:
@@ -1791,6 +1870,29 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/api.APIValidatorsData'
+      status:
+        type: string
+    type: object
+  api.APIValidatorsStatusData:
+    properties:
+      count:
+        type: integer
+      validators:
+        items:
+          $ref: '#/definitions/api.APIValidatorStatusInfo'
+        type: array
+    type: object
+  api.APIValidatorsStatusRequest:
+    properties:
+      indices:
+        items:
+          type: integer
+        type: array
+    type: object
+  api.APIValidatorsStatusResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APIValidatorsStatusData'
       status:
         type: string
     type: object
@@ -2510,6 +2612,47 @@ paths:
       summary: Get epoch by number, latest, finalized
       tags:
       - Epoch
+  /v1/epoch/{epoch}/duties:
+    get:
+      description: Returns the attester committees for every slot in the specified
+        epoch. Committee members are global validator indices in committee order.
+      operationId: getEpochDuties
+      parameters:
+      - description: Epoch number
+        in: path
+        name: epoch
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIEpochDutiesResponse'
+        "400":
+          description: Invalid parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Duties not available
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get epoch attester duties
+      tags:
+      - Epoch
   /v1/epoch/{epoch}/health:
     get:
       description: Returns the vote, proposal and payload participation rates for
@@ -2840,6 +2983,51 @@ paths:
       summary: Get slashings list
       tags:
       - slashings
+  /v1/slot/{slot}/committees:
+    get:
+      description: Returns the attester committees for the specified slot. Committee
+        members are global validator indices in committee order.
+      operationId: getSlotCommittees
+      parameters:
+      - description: Slot number
+        in: path
+        name: slot
+        required: true
+        type: integer
+      - description: Comma-separated list of committee indices to filter by
+        in: query
+        name: committee
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotCommitteesResponse'
+        "400":
+          description: Invalid parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Committees not available
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get slot attester committees
+      tags:
+      - Slot
   /v1/slot/{slotOrHash}:
     get:
       description: Returns detailed information about a specific slot from the database.
@@ -3573,6 +3761,89 @@ paths:
               type: string
             type: object
       summary: Get validators activity statistics
+      tags:
+      - validators
+  /v1/validators/status:
+    get:
+      consumes:
+      - application/json
+      description: Returns status, slashed flag and lifecycle epochs for up to 10000
+        validators by index. Supports GET with query params or POST with JSON body
+        for large lists. Unknown indices are omitted from the response.
+      operationId: getValidatorsStatus
+      parameters:
+      - description: Comma-separated list of validator indices (GET only)
+        in: query
+        name: indices
+        type: string
+      - description: Request body for POST requests with indices array
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/api.APIValidatorsStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIValidatorsStatusResponse'
+        "400":
+          description: Invalid parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get validator status in bulk
+      tags:
+      - validators
+    post:
+      consumes:
+      - application/json
+      description: Returns status, slashed flag and lifecycle epochs for up to 10000
+        validators by index. Supports GET with query params or POST with JSON body
+        for large lists. Unknown indices are omitted from the response.
+      operationId: getValidatorsStatus
+      parameters:
+      - description: Comma-separated list of validator indices (GET only)
+        in: query
+        name: indices
+        type: string
+      - description: Request body for POST requests with indices array
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/api.APIValidatorsStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIValidatorsStatusResponse'
+        "400":
+          description: Invalid parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get validator status in bulk
       tags:
       - validators
   /v1/voluntary_exits:
