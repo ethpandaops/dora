@@ -320,12 +320,15 @@ func startApi(router *mux.Router) {
 		{"/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/validators", api.APIValidatorsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/validators/activity", api.APIValidatorsActivityV1, []string{"GET", "OPTIONS"}, 2},
+		{"/v1/validators/status", api.APIValidatorsStatusV1, []string{"GET", "POST", "OPTIONS"}, 2},
 		{"/v1/validator_names", api.APIValidatorNamesV1, []string{"GET", "POST", "OPTIONS"}, 1},
 
 		// Epoch and slot APIs
 		{"/v1/epochs", api.APIEpochsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/epoch/{epoch}", api.ApiEpochV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/epoch/{epoch}/health", api.ApiEpochHealthV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/epoch/{epoch}/duties", api.APIEpochDutiesV1, []string{"GET", "OPTIONS"}, 2},
+		{"/v1/slot/{slot}/committees", api.APISlotCommitteesV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slot/{slotOrHash}", api.APISlotV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slot/{slotOrHash}/bids", api.APISlotBidsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/slot/{slotOrHash}/block_access_list", api.APISlotBlockAccessListV1, []string{"GET", "OPTIONS"}, 2},
