@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -687,6 +688,17 @@ func (c *Client) processExecutionPayloadBidEvent(executionPayloadBidEvent *gloas
 		Value:        uint64(executionPayloadBidEvent.Message.Value),
 		ElPayment:    uint64(executionPayloadBidEvent.Message.ExecutionPayment),
 	}
-	c.indexer.blockBidCache.AddBid(bid)
+
+	// Track this client's observation with the receive time as offset from
+	// the bid's slot start (may be negative for bids gossiped ahead of slot).
+	chainState := c.client.GetPool().GetChainState()
+	seenOffset := time.Since(chainState.SlotToTime(executionPayloadBidEvent.Message.Slot)).Milliseconds()
+	if seenOffset > math.MaxInt32 {
+		seenOffset = math.MaxInt32
+	} else if seenOffset < math.MinInt32 {
+		seenOffset = math.MinInt32
+	}
+
+	c.indexer.blockBidCache.AddBid(bid, c.client.GetName(), int32(seenOffset))
 	return nil
 }
