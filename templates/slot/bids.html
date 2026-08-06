@@ -214,13 +214,16 @@
                   b.parent_hash === btn.dataset.parentHash;
               });
               var content = renderContent(data.clients || [], bid);
-              var header = document.querySelector('.bid-seen-popover .popover-header');
-              var body = document.querySelector('.bid-seen-popover .popover-body');
+              // target this popover's own tip: a previously opened popover may
+              // still be fading out in the DOM, so a global selector can hit it
+              var header = popover.tip ? popover.tip.querySelector('.popover-header') : null;
+              var body = popover.tip ? popover.tip.querySelector('.popover-body') : null;
               if (header) header.textContent = content.title;
               if (body) body.innerHTML = content.html;
               popover.update();
             }).catch(function() {
-              var body = document.querySelector('.bid-seen-popover .popover-body');
+              if (lastPopover !== popover) return;
+              var body = popover.tip ? popover.tip.querySelector('.popover-body') : null;
               if (body) body.innerHTML = '<span class="text-danger">Failed to load bid observations</span>';
             });
             return;
