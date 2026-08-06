@@ -1556,8 +1556,11 @@ func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, bl
 			ParentSlot:   bid.ParentSlot,
 			ParentKnown:  bid.ParentKnown,
 			IsParentBid:  bid.ParentClass == services.BidParentClassParent,
+			SeenCount:    bid.SeenCount,
+			SeenTotal:    bid.SeenTotal,
 		}
 		bidData.ClassLabel, bidData.ClassColor, bidData.ClassTitle = describeBidClass(bid)
+		bidData.SeenColor = seenBadgeColor(bid.SeenCount, bid.SeenTotal)
 
 		pageData.Bids = append(pageData.Bids, bidData)
 	}
@@ -1572,6 +1575,21 @@ func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, bl
 	})
 
 	pageData.BidsCount = uint64(len(pageData.Bids))
+}
+
+// seenBadgeColor derives the badge color for a bid's gossip visibility:
+// green = all connected clients saw it, yellow = majority, red = minority.
+func seenBadgeColor(seenCount, seenTotal uint32) string {
+	switch {
+	case seenTotal == 0:
+		return "secondary"
+	case seenCount >= seenTotal:
+		return "success"
+	case seenCount*2 >= seenTotal:
+		return "warning"
+	default:
+		return "danger"
+	}
 }
 
 // describeBidClass derives the display label, badge color and tooltip for a classified bid.

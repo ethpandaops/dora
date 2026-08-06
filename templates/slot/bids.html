@@ -13,6 +13,7 @@
           <th class="border-0">Value</th>
           <th class="border-0">EL Payment</th>
           <th class="border-0">Total</th>
+          <th class="border-0">Seen by</th>
         </tr>
       </thead>
       <tbody>
@@ -60,9 +61,100 @@
             <td>{{ formatEthFromGwei $bid.Value }}</td>
             <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
             <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+            <td>
+              {{ if gt $bid.SeenTotal 0 }}
+                <a class="badge bg-{{ $bid.SeenColor }}{{ if eq $bid.SeenColor "warning" }} text-dark{{ end }} text-decoration-none" data-bs-toggle="collapse" href="#bid-seen-{{ $i }}" role="button" title="{{ $bid.SeenCount }} of {{ $bid.SeenTotal }} connected clients saw this bid on gossip - click for details">{{ $bid.SeenCount }}/{{ $bid.SeenTotal }} <i class="fas fa-caret-down"></i></a>
+              {{ else }}
+                <span class="text-muted" data-bs-toggle="tooltip" title="No gossip observation data for this bid">-</span>
+              {{ end }}
+            </td>
           </tr>
+          {{ if gt $bid.SeenTotal 0 }}
+            <tr class="collapse" id="bid-seen-{{ $i }}">
+              <td colspan="11" class="bid-seen-details border-top-0 pt-0"
+                  data-block-hash="0x{{ printf "%x" $bid.BlockHash }}"
+                  data-builder-index="{{ if $bid.IsSelfBuilt }}-1{{ else }}{{ $bid.BuilderIndex }}{{ end }}"
+                  data-parent-root="0x{{ printf "%x" $bid.ParentRoot }}"
+                  data-parent-hash="0x{{ printf "%x" $bid.ParentHash }}">
+                <span class="text-muted">Loading...</span>
+              </td>
+            </tr>
+          {{ end }}
         {{ end }}
       </tbody>
     </table>
   </div>
+  {{ if .Block.Bids }}
+    <script type="text/javascript">
+      (function() {
+        var bidSeenSlot = {{ .Slot }};
+        var bidSeenPromise = null;
+
+        function loadBidSeen() {
+          if (bidSeenPromise) return bidSeenPromise;
+          bidSeenPromise = fetch('/slot/' + bidSeenSlot + '/bidseen')
+            .then(function(r) { return r.json(); });
+          return bidSeenPromise;
+        }
+        function escapeHtml(s) {
+          return String(s).replace(/[&<>"']/g, function(c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+          });
+        }
+        function formatOffset(ms) {
+          var sign = ms < 0 ? '-' : '+';
+          var abs = Math.abs(ms);
+          if (abs >= 1000) return sign + (abs / 1000).toFixed(2) + 's';
+          return sign + abs + 'ms';
+        }
+        function render(el, clients, bid) {
+          var seen = bid && bid.seen ? bid.seen.slice() : [];
+          seen.sort(function(a, b) { return a.time - b.time; });
+          var seenIdx = {};
+          var html = '<div class="pt-1">';
+          html += '<div><strong>Seen by ' + seen.length + ' client' + (seen.length === 1 ? '' : 's') + ':</strong> ';
+          if (seen.length) {
+            seen.forEach(function(o) {
+              seenIdx[o.client] = true;
+              var name = clients[o.client] !== undefined ? clients[o.client] : ('client-' + o.client);
+              html += '<span class="badge bg-success me-1 mb-1">' + escapeHtml(name) +
+                ' <span class="opacity-75">' + formatOffset(o.time) + '</span></span>';
+            });
+          } else {
+            html += '<span class="text-muted">none (bid known from block body only)</span>';
+          }
+          html += '</div>';
+          var notSeen = [];
+          clients.forEach(function(name, idx) { if (!seenIdx[idx]) notSeen.push(name); });
+          if (notSeen.length) {
+            html += '<div><strong>Not seen by ' + notSeen.length + ':</strong> ';
+            notSeen.forEach(function(name) {
+              html += '<span class="badge bg-secondary me-1 mb-1">' + escapeHtml(name) + '</span>';
+            });
+            html += '</div>';
+          }
+          html += '</div>';
+          el.innerHTML = html;
+        }
+
+        document.querySelectorAll('.bid-seen-details').forEach(function(el) {
+          el.closest('tr').addEventListener('shown.bs.collapse', function() {
+            if (el.dataset.loaded) return;
+            loadBidSeen().then(function(data) {
+              var bid = (data.bids || []).find(function(b) {
+                return b.block_hash === el.dataset.blockHash &&
+                  String(b.builder_index) === el.dataset.builderIndex &&
+                  b.parent_root === el.dataset.parentRoot &&
+                  b.parent_hash === el.dataset.parentHash;
+              });
+              render(el, data.clients || [], bid);
+              el.dataset.loaded = '1';
+            }).catch(function() {
+              el.innerHTML = '<span class="text-danger">Failed to load bid observations</span>';
+            });
+          });
+        });
+      })();
+    </script>
+  {{ end }}
 {{ end }}

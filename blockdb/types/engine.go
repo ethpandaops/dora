@@ -128,3 +128,19 @@ type DutiesEngine interface {
 	// before maxFirstSlot. Returns the number of epochs deleted.
 	PruneEpochDutiesBefore(ctx context.Context, maxFirstSlot uint64) (int64, error)
 }
+
+// SlotBidsEngine stores per-slot bids objects: all execution payload bids of
+// a slot with their gossip observations, keyed by slot.
+type SlotBidsEngine interface {
+	// AddSlotBids stores the bids object for a slot, replacing any existing
+	// object. Returns the stored size in bytes.
+	AddSlotBids(ctx context.Context, bids *SlotBids) (int64, error)
+
+	// GetSlotBids retrieves the bids object for a slot.
+	// Returns nil, nil if not found.
+	GetSlotBids(ctx context.Context, slot uint64) (*SlotBids, error)
+
+	// PruneSlotBidsBefore deletes bids objects for all slots before maxSlot.
+	// Returns the number of objects deleted.
+	PruneSlotBidsBefore(ctx context.Context, maxSlot uint64) (int64, error)
+}

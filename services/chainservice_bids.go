@@ -6,6 +6,8 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
+	"github.com/ethpandaops/dora/blockdb"
+	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
@@ -67,6 +69,25 @@ type ClassifiedBlockBid struct {
 	// ElParentUnrevealed indicates the bid's parent hash matches a committed payload hash
 	// that was never revealed on the reference chain - such a bid can never become valid.
 	ElParentUnrevealed bool
+}
+
+// GetSlotBidSeen returns which clients observed each execution payload bid of
+// the given slot on gossip, merging live cache observations with the persisted
+// blockdb bids object (recent slots live in the cache; flushed slots only in
+// the blockdb). Returns nil if no observation data is available.
+func (bs *ChainService) GetSlotBidSeen(ctx context.Context, slot phase0.Slot) *btypes.SlotBids {
+	cached := bs.beaconIndexer.GetSlotBidsWithSeen(slot)
+
+	var stored *btypes.SlotBids
+	if blockdb.GlobalBlockDb.SupportsSlotBids() {
+		var err error
+		stored, err = blockdb.GlobalBlockDb.GetSlotBids(ctx, uint64(slot))
+		if err != nil {
+			bs.logger.Warnf("error loading bids object for slot %d: %v", slot, err)
+		}
+	}
+
+	return btypes.MergeSlotBids(stored, cached)
 }
 
 // GetSlotBidsClassified returns all execution payload bids for the given slot (regardless

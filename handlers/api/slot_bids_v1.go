@@ -64,6 +64,12 @@ type APISlotBid struct {
 	// grandparent_full, grandparent_empty, ancestor-N_full/-empty); empty for orphaned-fork
 	// and unknown-parent bids.
 	CandidateKey string `json:"candidate_key,omitempty"`
+
+	// Gossip visibility: SeenCount of SeenTotal connected clients observed the bid
+	// on gossip. SeenTotal 0 = no observation data available for this bid.
+	// Per-client details are served by the /slot/{slotOrHash}/bidseen page endpoint.
+	SeenCount uint32 `json:"seen_count"`
+	SeenTotal uint32 `json:"seen_total"`
 }
 
 // APISlotBidsV1 returns all execution payload bids submitted for a slot (ePBS, EIP-7732)
@@ -130,6 +136,8 @@ func APISlotBidsV1(w http.ResponseWriter, r *http.Request) {
 			ParentSlot:         bid.ParentSlot,
 			ElParentUnrevealed: bid.ElParentUnrevealed,
 			CandidateKey:       bidCandidateKey(bid),
+			SeenCount:          bid.SeenCount,
+			SeenTotal:          bid.SeenTotal,
 		}
 		if bid.ElParentKnown {
 			elParentSlot := bid.ElParentSlot

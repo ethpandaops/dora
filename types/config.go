@@ -323,6 +323,9 @@ type PebbleBlockDBConfig struct {
 	BlockRetention    BlockDbRetentionConfig `yaml:"blockRetention"`
 	ExecDataRetention BlockDbRetentionConfig `yaml:"execDataRetention"`
 	DutiesRetention   BlockDbRetentionConfig `yaml:"dutiesRetention"`
+	// BidsRetention governs per-slot bids objects (bids + gossip observations).
+	// Only applies in pebble mode - in tiered mode bids objects live in S3 only.
+	BidsRetention BlockDbRetentionConfig `yaml:"bidsRetention"`
 
 	// Interval between retention cleanup runs (default 12h, negative = disabled).
 	CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"BLOCKDB_PEBBLE_CLEANUP_INTERVAL"`

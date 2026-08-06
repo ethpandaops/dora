@@ -184,6 +184,32 @@ type SlotDutiesResponse struct {
 	Names      map[uint64]string `json:"names"`
 }
 
+// SlotBidSeenResponse is the JSON payload returned by the lazy bid observation
+// endpoint (/slot/{slot}/bidseen). Clients holds the observer client names;
+// per-bid observations reference them by index.
+type SlotBidSeenResponse struct {
+	Clients []string          `json:"clients"`
+	Bids    []*SlotBidSeenBid `json:"bids"`
+}
+
+// SlotBidSeenBid holds the observations for a single bid, identified by its
+// dedup key tuple (parent root, parent hash, block hash, builder index).
+type SlotBidSeenBid struct {
+	ParentRoot   string                    `json:"parent_root"`
+	ParentHash   string                    `json:"parent_hash"`
+	BlockHash    string                    `json:"block_hash"`
+	BuilderIndex int64                     `json:"builder_index"`
+	Seen         []*SlotBidSeenObservation `json:"seen"`
+}
+
+// SlotBidSeenObservation is one client's first sighting of a bid.
+type SlotBidSeenObservation struct {
+	// Client is an index into SlotBidSeenResponse.Clients.
+	Client int `json:"client"`
+	// Time is the first-seen offset in ms from the bid's slot start.
+	Time int32 `json:"time"`
+}
+
 type SlotPageAttestation struct {
 	Slot           uint64   `json:"slot"`
 	CommitteeIndex []uint64 `json:"committeeindex"`
@@ -400,6 +426,12 @@ type SlotPageBid struct {
 	ParentSlot  uint64 `json:"parent_slot"`   // slot of the targeted beacon parent block
 	ParentKnown bool   `json:"parent_known"`  // targeted beacon parent block was resolved (enables linking)
 	IsParentBid bool   `json:"is_parent_bid"` // targets the displayed block's actual parent root (others are listed last, grayed out)
+
+	// Gossip visibility: how many of the connected clients observed the bid.
+	// SeenTotal 0 = no observation data (rows from before seen tracking).
+	SeenCount uint32 `json:"seen_count"`
+	SeenTotal uint32 `json:"seen_total"`
+	SeenColor string `json:"seen_color"` // badge color key: success|warning|danger
 }
 
 // SlotPageBuilderPayment holds the Gloas builder-payment vote quorum for a slot: the same-slot
