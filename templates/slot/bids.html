@@ -63,75 +63,57 @@
             <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
             <td>
               {{ if gt $bid.SeenTotal 0 }}
-                <a class="badge bg-{{ $bid.SeenColor }}{{ if eq $bid.SeenColor "warning" }} text-dark{{ end }} text-decoration-none" data-bs-toggle="collapse" href="#bid-seen-{{ $i }}" role="button" title="{{ $bid.SeenCount }} of {{ $bid.SeenTotal }} connected clients saw this bid on gossip - click for details">{{ $bid.SeenCount }}/{{ $bid.SeenTotal }} <i class="fas fa-caret-down"></i></a>
+                <a class="badge bg-{{ $bid.SeenColor }}{{ if eq $bid.SeenColor "warning" }} text-dark{{ end }} text-decoration-none bid-seen-btn" role="button"
+                   data-block-hash="0x{{ printf "%x" $bid.BlockHash }}"
+                   data-builder-index="{{ if $bid.IsSelfBuilt }}-1{{ else }}{{ $bid.BuilderIndex }}{{ end }}"
+                   data-parent-root="0x{{ printf "%x" $bid.ParentRoot }}"
+                   data-parent-hash="0x{{ printf "%x" $bid.ParentHash }}">{{ $bid.SeenCount }}/{{ $bid.SeenTotal }} <i class="fas fa-caret-down"></i></a>
               {{ else }}
                 <span class="text-muted" data-bs-toggle="tooltip" title="No gossip observation data for this bid">-</span>
               {{ end }}
             </td>
           </tr>
-          {{ if gt $bid.SeenTotal 0 }}
-            <tr class="collapse" id="bid-seen-{{ $i }}">
-              <td colspan="11" class="bid-seen-details border-top-0 py-0"
-                  data-block-hash="0x{{ printf "%x" $bid.BlockHash }}"
-                  data-builder-index="{{ if $bid.IsSelfBuilt }}-1{{ else }}{{ $bid.BuilderIndex }}{{ end }}"
-                  data-parent-root="0x{{ printf "%x" $bid.ParentRoot }}"
-                  data-parent-hash="0x{{ printf "%x" $bid.ParentHash }}">
-                <div class="bid-seen-callout my-2">
-                  <span class="text-muted">Loading...</span>
-                </div>
-              </td>
-            </tr>
-          {{ end }}
         {{ end }}
       </tbody>
     </table>
   </div>
-  <style>
-    /* the .table-ellipsis wrapper clamps every descendant td to 200px with
-       hidden overflow; lift that for the seen-details cell and its inner table */
-    #block_bids td.bid-seen-details {
-      max-width: none;
-      overflow: visible;
-      white-space: normal;
-    }
-    #block_bids .bid-seen-callout {
-      max-width: 34rem;
-      padding: 0.5rem 0.75rem;
-      border: 1px solid var(--bs-border-color);
-      border-left: 3px solid var(--bs-primary);
-      border-radius: var(--bs-border-radius);
-      background-color: var(--bs-tertiary-bg);
-    }
-    #block_bids .bid-seen-scroll {
-      max-height: 16rem;
-      overflow-y: auto;
-    }
-    #block_bids .bid-seen-callout .table {
-      --bs-table-bg: transparent;
-    }
-    #block_bids .bid-seen-callout .table th,
-    #block_bids .bid-seen-callout .table td {
-      max-width: none;
-      overflow: visible;
-      white-space: nowrap;
-    }
-    #block_bids .bid-seen-callout .table td:nth-child(2) {
-      max-width: 22rem;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    #block_bids .bid-seen-scroll thead th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      background-color: var(--bs-tertiary-bg);
-    }
-  </style>
   {{ if .Block.Bids }}
+    <style>
+      .bid-seen-popover {
+        max-width: 470px;
+      }
+      .bid-seen-popover .popover-body {
+        padding: 8px;
+      }
+      .bid-seen-popover .bid-seen-scroll {
+        max-height: 16rem;
+        overflow-y: auto;
+      }
+      .bid-seen-popover .table {
+        --bs-table-bg: transparent;
+        margin-bottom: 0;
+      }
+      .bid-seen-popover .table th,
+      .bid-seen-popover .table td {
+        white-space: nowrap;
+      }
+      .bid-seen-popover .table td:nth-child(2) {
+        max-width: 18rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bid-seen-popover .bid-seen-scroll thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background-color: var(--bs-popover-bg);
+      }
+    </style>
     <script type="text/javascript">
       (function() {
         var bidSeenSlot = {{ .Slot }};
         var bidSeenPromise = null;
+        var lastPopover = null;
 
         function loadBidSeen() {
           if (bidSeenPromise) return bidSeenPromise;
@@ -150,7 +132,9 @@
           if (abs >= 1000) return sign + (abs / 1000).toFixed(2) + 's';
           return sign + abs + 'ms';
         }
-        function render(target, clients, bid) {
+
+        // renderContent builds the popover title and body for one bid's observations.
+        function renderContent(clients, bid) {
           var obs = bid && bid.seen ? bid.seen.slice() : [];
           obs.sort(function(a, b) { return a.time - b.time; });
 
@@ -168,13 +152,13 @@
           notSeen.sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
           rows = rows.concat(notSeen);
 
-          var html = '<div class="fw-bold">Seen by ' + obs.length + ' of ' + clients.length + ' clients</div>';
+          var html = '';
           if (!obs.length) {
-            html += '<div class="text-muted">This bid was not observed on gossip (known from the block body only).</div>';
+            html += '<div class="text-muted mb-1">This bid was not observed on gossip (known from the block body only).</div>';
           }
           if (rows.length) {
-            html += '<div class="bid-seen-scroll mt-1">' +
-              '<table class="table table-sm mb-0"><thead><tr>' +
+            html += '<div class="bid-seen-scroll">' +
+              '<table class="table table-sm"><thead><tr>' +
               '<th style="width: 1.5rem;"></th><th>Client</th><th class="text-end">First seen</th>' +
               '</tr></thead><tbody>';
             rows.forEach(function(row) {
@@ -190,26 +174,65 @@
             });
             html += '</tbody></table></div>';
           }
-          target.innerHTML = html;
+
+          return {
+            title: 'Seen by ' + obs.length + ' of ' + clients.length + ' clients',
+            html: html
+          };
         }
 
-        document.querySelectorAll('.bid-seen-details').forEach(function(el) {
-          var target = el.querySelector('.bid-seen-callout');
-          el.closest('tr').addEventListener('shown.bs.collapse', function() {
-            if (el.dataset.loaded) return;
-            loadBidSeen().then(function(data) {
-              var bid = (data.bids || []).find(function(b) {
-                return b.block_hash === el.dataset.blockHash &&
-                  String(b.builder_index) === el.dataset.builderIndex &&
-                  b.parent_root === el.dataset.parentRoot &&
-                  b.parent_hash === el.dataset.parentHash;
-              });
-              render(target, data.clients || [], bid);
-              el.dataset.loaded = '1';
-            }).catch(function() {
-              target.innerHTML = '<span class="text-danger">Failed to load bid observations</span>';
+        document.addEventListener('click', function(evt) {
+          var btn = evt.target.closest('.bid-seen-btn');
+          if (btn) {
+            evt.preventDefault();
+
+            var popover = bootstrap.Popover.getOrCreateInstance(btn, {
+              html: true,
+              title: 'Bid visibility',
+              content: '<span class="text-muted">Loading...</span>',
+              trigger: 'manual',
+              placement: 'left',
+              container: 'body',
+              customClass: 'bid-seen-popover'
             });
-          });
+
+            if (lastPopover === popover) {
+              return;
+            }
+            if (lastPopover) {
+              lastPopover.hide();
+            }
+            lastPopover = popover;
+            popover.show();
+
+            loadBidSeen().then(function(data) {
+              if (lastPopover !== popover) return;
+              var bid = (data.bids || []).find(function(b) {
+                return b.block_hash === btn.dataset.blockHash &&
+                  String(b.builder_index) === btn.dataset.builderIndex &&
+                  b.parent_root === btn.dataset.parentRoot &&
+                  b.parent_hash === btn.dataset.parentHash;
+              });
+              var content = renderContent(data.clients || [], bid);
+              var header = document.querySelector('.bid-seen-popover .popover-header');
+              var body = document.querySelector('.bid-seen-popover .popover-body');
+              if (header) header.textContent = content.title;
+              if (body) body.innerHTML = content.html;
+              popover.update();
+            }).catch(function() {
+              var body = document.querySelector('.bid-seen-popover .popover-body');
+              if (body) body.innerHTML = '<span class="text-danger">Failed to load bid observations</span>';
+            });
+            return;
+          }
+
+          if (evt.target.closest('.bid-seen-popover')) {
+            return;
+          }
+          if (lastPopover) {
+            lastPopover.hide();
+            lastPopover = null;
+          }
         });
       })();
     </script>
