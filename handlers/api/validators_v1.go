@@ -46,6 +46,8 @@ type APIValidatorInfo struct {
 	ActivationTime       int64  `json:"activation_time,omitempty"`
 	ExitEpoch            uint64 `json:"exit_epoch,omitempty"`
 	ExitTime             int64  `json:"exit_time,omitempty"`
+	Slashed              bool   `json:"slashed"`
+	WithdrawableEpoch    uint64 `json:"withdrawable_epoch"`
 	WithdrawalAddress    string `json:"withdrawal_address,omitempty"`
 	WithdrawalCreds      string `json:"withdrawal_credentials"`
 	ValidatorLiveness    uint8  `json:"validator_liveness,omitempty"`
@@ -207,12 +209,14 @@ func APIValidatorsV1(w http.ResponseWriter, r *http.Request) {
 		}
 
 		validatorInfo := &APIValidatorInfo{
-			Index:            uint64(validator.Index),
-			Name:             services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
-			PublicKey:        fmt.Sprintf("0x%x", validator.Validator.PublicKey[:]),
-			Balance:          uint64(validator.Balance),
-			EffectiveBalance: uint64(validator.Validator.EffectiveBalance),
-			WithdrawalCreds:  fmt.Sprintf("0x%x", validator.Validator.WithdrawalCredentials),
+			Index:             uint64(validator.Index),
+			Name:              services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
+			PublicKey:         fmt.Sprintf("0x%x", validator.Validator.PublicKey[:]),
+			Balance:           uint64(validator.Balance),
+			EffectiveBalance:  uint64(validator.Validator.EffectiveBalance),
+			WithdrawalCreds:   fmt.Sprintf("0x%x", validator.Validator.WithdrawalCredentials),
+			Slashed:           validator.Validator.Slashed,
+			WithdrawableEpoch: uint64(validator.Validator.WithdrawableEpoch),
 		}
 
 		// Set validator status and liveness
