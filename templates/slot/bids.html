@@ -108,10 +108,17 @@
         z-index: 1;
         background-color: var(--bs-popover-bg);
       }
+      .bid-seen-popover .table tr.bid-seen-proposer td {
+        background-color: rgba(var(--bs-primary-rgb), 0.15);
+      }
     </style>
     <script type="text/javascript">
       (function() {
         var bidSeenSlot = {{ .Slot }};
+        // In devnets the validator names usually equal the client names, so the
+        // proposer's own client can be highlighted in the seen list. On networks
+        // where the names differ nothing matches and nothing is highlighted.
+        var proposerName = {{ .ProposerName }};
         var bidSeenPromise = null;
         var lastPopover = null;
 
@@ -162,13 +169,17 @@
               '<th style="width: 1.5rem;"></th><th>Client</th><th class="text-end">First seen</th>' +
               '</tr></thead><tbody>';
             rows.forEach(function(row) {
+              var isProposer = proposerName && row.name === proposerName;
+              var rowClass = isProposer ? ' class="bid-seen-proposer"' : '';
+              var nameHtml = escapeHtml(row.name) +
+                (isProposer ? ' <span class="badge bg-primary">proposer</span>' : '');
               if (row.seen) {
-                html += '<tr><td><i class="fas fa-check text-success"></i></td>' +
-                  '<td>' + escapeHtml(row.name) + '</td>' +
+                html += '<tr' + rowClass + '><td><i class="fas fa-check text-success"></i></td>' +
+                  '<td>' + nameHtml + '</td>' +
                   '<td class="text-end text-monospace">' + formatOffset(row.time) + '</td></tr>';
               } else {
-                html += '<tr class="text-muted"><td><i class="fas fa-times text-danger"></i></td>' +
-                  '<td>' + escapeHtml(row.name) + '</td>' +
+                html += '<tr class="text-muted' + (isProposer ? ' bid-seen-proposer' : '') + '"><td><i class="fas fa-times text-danger"></i></td>' +
+                  '<td>' + nameHtml + '</td>' +
                   '<td class="text-end">not seen</td></tr>';
               }
             });
