@@ -19,7 +19,7 @@ type DasGuardian struct {
 	guardian *dasguardian.DasGuardian
 }
 
-func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardian, error) {
+func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger, options ...DasGuardianOption) (*DasGuardian, error) {
 	guardianApi := &dasGuardianAPI{}
 
 	// Convert FieldLogger to *logrus.Logger
@@ -39,6 +39,9 @@ func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardia
 		ConnectionTimeout: 10 * time.Second,
 		InitTimeout:       1 * time.Second,
 	}
+	for _, opt := range options {
+		opt(opts)
+	}
 
 	guardian, err := dasguardian.NewDASGuardian(ctx, opts)
 	if err != nil {
@@ -48,6 +51,20 @@ func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardia
 	return &DasGuardian{
 		guardian: guardian,
 	}, nil
+}
+
+// DasGuardianOption customises the DasGuardianConfig used to construct the
+// underlying guardian. Used to enable Gloas-only paths like the proposer
+// preferences gossip wait without affecting the default scan.
+type DasGuardianOption func(*dasguardian.DasGuardianConfig)
+
+// WithProposerPreferencesWait configures the underlying scan to keep the
+// `proposer_preferences` gossip subscription open for the given duration so
+// the gossip mesh has time to deliver messages.
+func WithProposerPreferencesWait(d time.Duration) DasGuardianOption {
+	return func(cfg *dasguardian.DasGuardianConfig) {
+		cfg.ProposerPreferencesWaitDuration = d
+	}
 }
 
 func (d *DasGuardian) Close() error {
