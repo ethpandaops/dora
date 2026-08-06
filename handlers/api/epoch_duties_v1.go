@@ -71,20 +71,26 @@ func APIEpochDutiesV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	specs := chainState.GetSpecs()
-	slotsPerEpoch := specs.SlotsPerEpoch
 	firstSlot := chainState.EpochStartSlot(phase0.Epoch(epoch))
 
-	slots := make([]*APIEpochDutiesSlotInfo, 0, slotsPerEpoch)
-	committeesPerSlot := uint64(0)
-	haveDuties := false
+	// Load the whole epoch's committees in a single read (one blockdb/S3 fetch),
+	// rather than a per-slot lookup that would reload the same duties object for
+	// every slot in the epoch.
+	epochCommittees := services.GlobalBeaconService.GetEpochCommittees(r.Context(), phase0.Epoch(epoch))
+	if epochCommittees == nil {
+		http.Error(
+			w,
+			fmt.Sprintf(`{"status": "ERROR: duties not available for epoch %v"}`, epoch),
+			http.StatusNotFound,
+		)
+		return
+	}
 
-	for slotIdx := uint64(0); slotIdx < slotsPerEpoch; slotIdx++ {
+	slots := make([]*APIEpochDutiesSlotInfo, 0, len(epochCommittees))
+	committeesPerSlot := uint64(0)
+
+	for slotIdx, committees := range epochCommittees {
 		slot := firstSlot + phase0.Slot(slotIdx)
-		committees := services.GlobalBeaconService.GetSlotCommittees(r.Context(), slot)
-		if committees != nil {
-			haveDuties = true
-		}
 
 		slotCommittees := make([][]uint64, len(committees))
 		for committeeIdx, committee := range committees {
@@ -103,15 +109,6 @@ func APIEpochDutiesV1(w http.ResponseWriter, r *http.Request) {
 			Slot:       uint64(slot),
 			Committees: slotCommittees,
 		})
-	}
-
-	if !haveDuties {
-		http.Error(
-			w,
-			fmt.Sprintf(`{"status": "ERROR: duties not available for epoch %v"}`, epoch),
-			http.StatusNotFound,
-		)
-		return
 	}
 
 	data := &APIEpochDutiesData{
