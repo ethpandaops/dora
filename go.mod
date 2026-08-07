@@ -8,7 +8,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/ethereum/go-ethereum v1.17.5
 	github.com/ethpandaops/eth-das-guardian v0.1.1
-	github.com/ethpandaops/ethcore v0.0.0-20260604021418-f61e8ea2d4ab
+	github.com/ethpandaops/ethcore v0.0.0-20260807103219-0fb0622e156b
 	github.com/ethpandaops/ethwallclock v0.4.0
 	github.com/ethpandaops/go-eth2-client v0.1.6
 	github.com/go-redis/redis/v8 v8.11.5
@@ -166,7 +166,6 @@ require (
 	go.uber.org/fx v1.24.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260708182218-49f421fb7959 // indirect
@@ -221,9 +220,9 @@ require (
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.23.2 // indirect
+	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.66.1 // indirect
+	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/r3labs/sse/v2 v2.10.0 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
