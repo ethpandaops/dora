@@ -242,8 +242,6 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 	chainConfig := cache.config.Config
 	blobConfig := chainConfig.BlobScheduleConfig
 
-	// Named forks (Osaka/Amsterdam/UBT) no longer carry their own blob schedule
-	// since geth 1.17.5 and inherit from the BPO chain below them.
 	forks := []struct {
 		time      *uint64
 		schedule  *params.BlobConfig
