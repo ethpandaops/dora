@@ -234,25 +234,22 @@ func (e *S3Engine) GetSlotPtcForRoot(ctx context.Context, firstSlot uint64, slot
 	return types.DecodeIndexList(data, header.IndexWidth), nil
 }
 
-// readDutiesHeader reads and decodes the fixed-size header of a duties object.
+// readDutiesHeader reads and decodes the header of a duties object. It reads the
+// full v2 header size (72 bytes) so both v1 and v2 objects decode correctly: a
+// v1 object's decoder only consumes the first 40 bytes and ignores the rest.
 // Returns nil, nil if the object does not exist.
 func (e *S3Engine) readDutiesHeader(ctx context.Context, key string) (*types.DutiesHeader, error) {
-	data, err := e.rangeRead(ctx, key, 0, int64(types.DutiesHeaderSize))
+	data, err := e.rangeRead(ctx, key, 0, int64(types.DutiesHeaderSizeV2))
 	if err != nil || data == nil {
 		return nil, err
 	}
 	return types.DecodeDutiesHeader(data)
 }
 
-// readDivergingDutiesHeader reads the v2 (72-byte) header of a diverging duties
-// object. Diverging objects always carry a dependent root, so the full v2 header
-// must be read. Returns nil, nil if the object does not exist.
+// readDivergingDutiesHeader reads the header of a diverging duties object (always
+// v2). Returns nil, nil if the object does not exist.
 func (e *S3Engine) readDivergingDutiesHeader(ctx context.Context, key string) (*types.DutiesHeader, error) {
-	data, err := e.rangeRead(ctx, key, 0, int64(types.DutiesHeaderSizeV2))
-	if err != nil || data == nil {
-		return nil, err
-	}
-	return types.DecodeDutiesHeader(data)
+	return e.readDutiesHeader(ctx, key)
 }
 
 // HasEpochDuties checks if a duties object exists for an epoch.

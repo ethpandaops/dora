@@ -31,6 +31,7 @@ type APIEpochDutiesData struct {
 // global validator indices in committee order.
 type APIEpochDutiesSlotInfo struct {
 	Slot       uint64     `json:"slot"`
+	Proposer   uint64     `json:"proposer"`
 	Committees [][]uint64 `json:"committees"`
 }
 
@@ -98,6 +99,14 @@ func APIEpochDutiesV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Proposer duties (per slot) resolved on the same fork as the committees.
+	var proposers []uint64
+	if hasFork {
+		proposers = services.GlobalBeaconService.GetEpochProposersForRoot(r.Context(), phase0.Epoch(epoch), depRoot)
+	} else {
+		proposers = services.GlobalBeaconService.GetEpochProposers(r.Context(), phase0.Epoch(epoch))
+	}
+
 	slots := make([]*APIEpochDutiesSlotInfo, 0, len(epochCommittees))
 	committeesPerSlot := uint64(0)
 
@@ -117,8 +126,14 @@ func APIEpochDutiesV1(w http.ResponseWriter, r *http.Request) {
 			committeesPerSlot = uint64(len(slotCommittees))
 		}
 
+		var proposer uint64
+		if slotIdx < len(proposers) {
+			proposer = proposers[slotIdx]
+		}
+
 		slots = append(slots, &APIEpochDutiesSlotInfo{
 			Slot:       uint64(slot),
+			Proposer:   proposer,
 			Committees: slotCommittees,
 		})
 	}

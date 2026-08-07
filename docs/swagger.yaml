@@ -562,6 +562,8 @@ definitions:
             type: integer
           type: array
         type: array
+      proposer:
+        type: integer
       slot:
         type: integer
     type: object

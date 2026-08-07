@@ -132,6 +132,7 @@ func TestDutiesHeaderVersioning(t *testing.T) {
 	}
 	diverging := buildTestEpochDuties(2048, 32, 4, 0)
 	diverging.DependentRoot = depRoot
+	diverging.Diverging = true
 
 	v2Header := EncodeDutiesHeader(diverging)
 	if len(v2Header) != DutiesHeaderSizeV2 {
@@ -190,6 +191,58 @@ func TestEpochDutiesRoundTripDiverging(t *testing.T) {
 		if !reflect.DeepEqual(committees, src.Committees[slotIndex]) {
 			t.Fatalf("slot %d committees mismatch via ranged access", slotIndex)
 		}
+	}
+}
+
+func TestEpochDutiesProposerRoundTrip(t *testing.T) {
+	depRoot := [32]byte{}
+	for i := range depRoot {
+		depRoot[i] = byte(0x30 + i)
+	}
+	src := buildTestEpochDuties(500000, 32, 64, 512)
+	src.DependentRoot = depRoot
+	src.ProposerDuties = make([]uint64, src.SlotsPerEpoch)
+	for i := range src.ProposerDuties {
+		src.ProposerDuties[i] = uint64(1000 + i)
+	}
+	// An out-of-range proposer must be stored as the 0 sentinel.
+	src.ProposerDuties[3] = uint64(1) << 60
+
+	encoded, err := EncodeEpochDuties(src)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	header, err := DecodeDutiesHeader(encoded)
+	if err != nil {
+		t.Fatalf("header decode failed: %v", err)
+	}
+	if header.Flags&DutiesFlagProposers == 0 {
+		t.Fatalf("proposer flag must be set when proposer duties are present")
+	}
+
+	got, err := DecodeEpochDuties(src.FirstSlot, encoded)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if uint64(len(got.ProposerDuties)) != src.SlotsPerEpoch {
+		t.Fatalf("proposer duties length = %d, want %d", len(got.ProposerDuties), src.SlotsPerEpoch)
+	}
+	for i := range got.ProposerDuties {
+		want := src.ProposerDuties[i]
+		if i == 3 {
+			want = 0
+		}
+		if got.ProposerDuties[i] != want {
+			t.Fatalf("proposer[%d] = %d, want %d", i, got.ProposerDuties[i], want)
+		}
+	}
+	// Committees and PTC must still round-trip alongside the proposer section.
+	if !reflect.DeepEqual(got.Committees, src.Committees) {
+		t.Fatalf("committees mismatch after proposer round-trip")
+	}
+	if !reflect.DeepEqual(got.Ptc, src.Ptc) {
+		t.Fatalf("ptc mismatch after proposer round-trip")
 	}
 }
 

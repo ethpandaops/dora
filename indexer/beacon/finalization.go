@@ -614,7 +614,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		wg.Add(1)
 		go func(values *EpochStatsValues) {
 			defer wg.Done()
-			size, err := indexer.writeEpochDutiesToBlockDb(indexer.ctx, epoch, values)
+			size, err := indexer.writeEpochDutiesToBlockDb(indexer.ctx, epoch, dependentRoot, values)
 			if err != nil {
 				indexer.logger.Errorf("error writing epoch %v duties to blockdb: %v", epoch, err)
 				return

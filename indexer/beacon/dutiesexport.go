@@ -32,6 +32,19 @@ func BuildEpochDuties(specs *consensus.ChainSpec, epoch phase0.Epoch, values *Ep
 		return 0
 	}
 
+	// Proposer duties: one global validator index per slot. Values already hold
+	// global indices (math.MaxInt64 for unknown); the encoder stores any
+	// out-of-range value as the 0 sentinel.
+	var proposerDuties []uint64
+	if len(values.ProposerDuties) > 0 {
+		proposerDuties = make([]uint64, slotsPerEpoch)
+		for slotIndex := range slotsPerEpoch {
+			if int(slotIndex) < len(values.ProposerDuties) {
+				proposerDuties[slotIndex] = uint64(values.ProposerDuties[slotIndex])
+			}
+		}
+	}
+
 	committees := make([][][]uint64, slotsPerEpoch)
 	for slotIndex := range slotsPerEpoch {
 		if int(slotIndex) >= len(values.AttesterDuties) {
@@ -86,6 +99,7 @@ func BuildEpochDuties(specs *consensus.ChainSpec, epoch phase0.Epoch, values *Ep
 		CommitteesPerSlot: committeesPerSlot,
 		PtcSize:           ptcSize,
 		Committees:        committees,
+		ProposerDuties:    proposerDuties,
 		Ptc:               ptc,
 	}
 }
@@ -93,7 +107,7 @@ func BuildEpochDuties(specs *consensus.ChainSpec, epoch phase0.Epoch, values *Ep
 // writeEpochDutiesToBlockDb serializes and stores the per-epoch duties object,
 // returning the stored size. It is best-effort and must never block finalization
 // or synchronization.
-func (indexer *Indexer) writeEpochDutiesToBlockDb(ctx context.Context, epoch phase0.Epoch, values *EpochStatsValues) (int64, error) {
+func (indexer *Indexer) writeEpochDutiesToBlockDb(ctx context.Context, epoch phase0.Epoch, canonicalDepRoot phase0.Root, values *EpochStatsValues) (int64, error) {
 	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsDuties() {
 		return 0, nil
 	}
@@ -110,6 +124,9 @@ func (indexer *Indexer) writeEpochDutiesToBlockDb(ctx context.Context, epoch pha
 	if epochDuties == nil {
 		return 0, nil
 	}
+	// Carry the canonical dependent root so the object is written as v2 (with the
+	// proposer section). Keying is unchanged (canonical is keyed by firstSlot).
+	epochDuties.DependentRoot = canonicalDepRoot
 
 	size, err := blockdb.GlobalBlockDb.AddEpochDuties(ctx, epochDuties)
 	if err != nil {

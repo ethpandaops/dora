@@ -3637,6 +3637,9 @@ const docTemplate = `{
                         }
                     }
                 },
+                "proposer": {
+                    "type": "integer"
+                },
                 "slot": {
                     "type": "integer"
                 }

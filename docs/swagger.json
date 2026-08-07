@@ -3634,6 +3634,9 @@
                         }
                     }
                 },
+                "proposer": {
+                    "type": "integer"
+                },
                 "slot": {
                     "type": "integer"
                 }

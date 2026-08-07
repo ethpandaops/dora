@@ -10,8 +10,8 @@
 //
 //	HEADER (v1: 40 bytes, v2: 72 bytes)
 //	├── Magic:             [4]byte = "DUTY"
-//	├── Version:           uint16  (1 = canonical, 2 = adds DependentRoot)
-//	├── Flags:             uint8   (bit 0 = DutiesFlagDiverging)
+//	├── Version:           uint16  (1 = legacy, 2 = adds DependentRoot + proposers)
+//	├── Flags:             uint8   (bit 0 = DutiesFlagDiverging, bit 1 = DutiesFlagProposers)
 //	├── IndexWidth:        uint8   (bytes per validator index, = 6)
 //	├── Epoch:             uint64
 //	├── ValidatorCount:    uint64  (active validator count; drives attester offsets)
@@ -21,6 +21,7 @@
 //	└── DependentRoot:     [32]byte (v2 only; committee-shuffling dependent root)
 //	ATTESTER SECTION: ValidatorCount * IndexWidth bytes
 //	│   flat list of global validator indices in (slotIndex, committeeIndex, position) order
+//	PROPOSER SECTION: SlotsPerEpoch * IndexWidth bytes (v2 only; one proposer index per slot)
 //	PTC SECTION: SlotsPerEpoch * PtcSize * IndexWidth bytes (omitted if PtcSize == 0)
 package types
 
@@ -50,6 +51,10 @@ const (
 	// DutiesFlagDiverging marks a duties object that belongs to a non-canonical
 	// (diverging) fork, keyed by its dependent root.
 	DutiesFlagDiverging uint8 = 1
+
+	// DutiesFlagProposers marks a v2 object whose proposer section holds resolved
+	// proposer indices (as opposed to an all-zero placeholder section).
+	DutiesFlagProposers uint8 = 2
 )
 
 // dutiesHeaderSize returns the header byte size for a given format version.
@@ -61,12 +66,23 @@ func dutiesHeaderSize(version uint16) int64 {
 }
 
 // dutiesVersion returns the format version to encode the given duties with.
-// A non-zero dependent root selects v2 (diverging), otherwise v1 (canonical).
+// v2 (dependent root + proposer section) is selected when a dependent root is
+// set, proposer duties are present, or the object is explicitly diverging;
+// otherwise v1 (the legacy attester+PTC layout) is used.
 func dutiesVersion(d *EpochDuties) uint16 {
-	if d.DependentRoot != ([32]byte{}) {
+	if d.DependentRoot != ([32]byte{}) || len(d.ProposerDuties) > 0 || d.Diverging {
 		return 2
 	}
 	return 1
+}
+
+// proposerSectionLen returns the byte length of the proposer section for the
+// given version (one index per slot in v2, absent in v1).
+func proposerSectionLen(version uint16, slotsPerEpoch uint64) int64 {
+	if version < 2 {
+		return 0
+	}
+	return int64(slotsPerEpoch) * int64(DutiesIndexWidth)
 }
 
 // DutiesHeader is the decoded header of a duties object. Section offsets are
@@ -96,13 +112,22 @@ type EpochDuties struct {
 	PtcSize           uint64
 
 	// DependentRoot is the committee-shuffling dependent root of the fork these
-	// duties belong to. Zero for canonical duties (encoded as v1), non-zero for
-	// diverging-fork duties (encoded as v2).
+	// duties belong to. Set for v2 objects (both canonical and diverging); zero
+	// for legacy v1 objects.
 	DependentRoot [32]byte
+
+	// Diverging marks the object as belonging to a non-canonical fork (sets the
+	// DutiesFlagDiverging header flag). Purely informational: keying already
+	// distinguishes canonical (firstSlot) from diverging (firstSlot, depRoot).
+	Diverging bool
 
 	// Committees[slotIndex][committeeIndex] holds the global validator indices
 	// of that committee in attestation-bit order.
 	Committees [][][]uint64
+	// ProposerDuties[slotIndex] holds the global validator index of the slot's
+	// proposer. Length SlotsPerEpoch in v2; nil for v1. Unknown/out-of-range
+	// proposers are stored as 0.
+	ProposerDuties []uint64
 	// Ptc[slotIndex] holds the PTC members (global validator indices), each
 	// slice exactly PtcSize long. Nil if PtcSize == 0.
 	Ptc [][]uint64
@@ -124,11 +149,13 @@ func EncodeEpochDuties(d *EpochDuties) ([]byte, error) {
 	}
 
 	w := int(DutiesIndexWidth)
+	version := dutiesVersion(d)
 	attesterLen := int(d.ValidatorCount) * w
+	proposerLen := int(proposerSectionLen(version, d.SlotsPerEpoch))
 	ptcLen := int(d.SlotsPerEpoch) * int(d.PtcSize) * w
 
-	headerSize := int(dutiesHeaderSize(dutiesVersion(d)))
-	buf := make([]byte, headerSize+attesterLen+ptcLen)
+	headerSize := int(dutiesHeaderSize(version))
+	buf := make([]byte, headerSize+attesterLen+proposerLen+ptcLen)
 	writeDutiesHeader(buf, d)
 
 	// Attester section: flat shuffled list in (slot, committee, position) order.
@@ -148,6 +175,21 @@ func EncodeEpochDuties(d *EpochDuties) ([]byte, error) {
 	}
 	if written != d.ValidatorCount {
 		return nil, fmt.Errorf("attester duties hold %d indices, expected %d", written, d.ValidatorCount)
+	}
+
+	// Proposer section (v2 only): one index per slot. Missing or out-of-range
+	// proposers are stored as 0.
+	if version >= 2 {
+		for slotIndex := 0; slotIndex < int(d.SlotsPerEpoch); slotIndex++ {
+			var idx uint64
+			if slotIndex < len(d.ProposerDuties) {
+				if v := d.ProposerDuties[slotIndex]; v <= maxIndexValue {
+					idx = v
+				}
+			}
+			putUint48(buf[pos:], idx)
+			pos += w
+		}
 	}
 
 	// PTC section: SlotsPerEpoch * PtcSize entries.
@@ -184,6 +226,7 @@ func DecodeEpochDuties(firstSlot uint64, data []byte) (*EpochDuties, error) {
 		CommitteesPerSlot: h.CommitteesPerSlot,
 		PtcSize:           h.PtcSize,
 		DependentRoot:     h.DependentRoot,
+		Diverging:         h.Flags&DutiesFlagDiverging != 0,
 	}
 
 	d.Committees = make([][][]uint64, h.SlotsPerEpoch)
@@ -197,6 +240,15 @@ func DecodeEpochDuties(firstSlot uint64, data []byte) (*EpochDuties, error) {
 			return nil, err
 		}
 		d.Committees[slotIndex] = committees
+	}
+
+	// Proposer section (v2 only): one index per slot.
+	if h.Version >= 2 {
+		off, length := h.ProposerSectionRange()
+		if int64(len(data)) < off+length {
+			return nil, fmt.Errorf("data too short for proposer section")
+		}
+		d.ProposerDuties = DecodeIndexList(data[off:off+length], h.IndexWidth)
 	}
 
 	if h.PtcSize > 0 {
@@ -279,8 +331,8 @@ func EncodeIndexList(indices []uint64) ([]byte, error) {
 }
 
 // EncodeDutiesHeader returns the fixed-size DUTY header bytes for the epoch.
-// The size depends on the format version: 40 bytes for v1 (canonical), 72 bytes
-// for v2 (diverging, carries the dependent root).
+// The size depends on the format version: 40 bytes for v1, 72 bytes for v2
+// (which carries the dependent root and precedes a proposer section).
 func EncodeDutiesHeader(d *EpochDuties) []byte {
 	buf := make([]byte, dutiesHeaderSize(dutiesVersion(d)))
 	writeDutiesHeader(buf, d)
@@ -288,15 +340,18 @@ func EncodeDutiesHeader(d *EpochDuties) []byte {
 }
 
 // writeDutiesHeader writes the DUTY header into the start of buf. It selects v1
-// or v2 based on whether the duties carry a dependent root; buf must be sized
-// accordingly (see dutiesHeaderSize).
+// or v2 based on the duties content; buf must be sized accordingly (see
+// dutiesHeaderSize).
 func writeDutiesHeader(buf []byte, d *EpochDuties) {
 	version := dutiesVersion(d)
 	copy(buf[0:4], DutiesMagic[:])
 	binary.BigEndian.PutUint16(buf[4:6], version)
 	var flags uint8
-	if version >= 2 {
+	if d.Diverging {
 		flags |= DutiesFlagDiverging
+	}
+	if len(d.ProposerDuties) > 0 {
+		flags |= DutiesFlagProposers
 	}
 	buf[6] = flags
 	buf[7] = DutiesIndexWidth
@@ -347,9 +402,21 @@ func (h *DutiesHeader) attesterOffset() int64 {
 	return dutiesHeaderSize(h.Version)
 }
 
-// ptcOffset returns the byte offset of the PTC section.
-func (h *DutiesHeader) ptcOffset() int64 {
+// proposerOffset returns the byte offset of the proposer section (v2 only).
+func (h *DutiesHeader) proposerOffset() int64 {
 	return h.attesterOffset() + int64(h.ValidatorCount)*int64(h.IndexWidth)
+}
+
+// ProposerSectionRange returns the byte (offset, length) of the whole proposer
+// section (one index per slot). Length is zero for v1 objects.
+func (h *DutiesHeader) ProposerSectionRange() (offset int64, length int64) {
+	return h.proposerOffset(), proposerSectionLen(h.Version, h.SlotsPerEpoch)
+}
+
+// ptcOffset returns the byte offset of the PTC section, which follows the
+// attester and (v2) proposer sections.
+func (h *DutiesHeader) ptcOffset() int64 {
+	return h.proposerOffset() + proposerSectionLen(h.Version, h.SlotsPerEpoch)
 }
 
 // splitOffset mirrors duties.SplitOffset: the start index of chunk `index`

@@ -397,6 +397,7 @@ func (db *BlockDb) AddDivergingEpochDuties(ctx context.Context, duties *types.Ep
 	if duties.DependentRoot == ([32]byte{}) {
 		return 0, fmt.Errorf("diverging duties require a non-zero dependent root")
 	}
+	duties.Diverging = true
 	return db.dutiesEngine.AddDivergingEpochDuties(ctx, duties)
 }
 

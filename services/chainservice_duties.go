@@ -255,6 +255,71 @@ func (bs *ChainService) GetEpochCommitteesForRoot(ctx context.Context, epoch pha
 	return bs.GetEpochCommittees(ctx, epoch)
 }
 
+// proposersFromValues copies a values' per-slot proposer indices, mapping the
+// unknown sentinel (math.MaxInt64) to 0 to match the stored 0 sentinel.
+func proposersFromValues(values *beacon.EpochStatsValues) []uint64 {
+	out := make([]uint64, len(values.ProposerDuties))
+	for i, idx := range values.ProposerDuties {
+		if uint64(idx) > proposerMaxIndex {
+			out[i] = 0
+		} else {
+			out[i] = uint64(idx)
+		}
+	}
+	return out
+}
+
+// proposerMaxIndex is the largest validator index storable in the duties format
+// (6-byte width); larger values are treated as "unknown" (0 sentinel).
+const proposerMaxIndex = uint64(1)<<48 - 1
+
+// GetEpochProposers returns the per-slot canonical proposers for an epoch (global
+// validator indices; 0 where unknown). Returns nil if unavailable.
+func (bs *ChainService) GetEpochProposers(ctx context.Context, epoch phase0.Epoch) []uint64 {
+	chainState := bs.consensusPool.GetChainState()
+
+	if epochStats := bs.beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
+		if values := epochStats.GetOrLoadValues(ctx, bs.beaconIndexer, true, false); values != nil && len(values.ProposerDuties) > 0 {
+			return proposersFromValues(values)
+		}
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsDuties() {
+		return nil
+	}
+	firstSlot := uint64(chainState.EpochStartSlot(epoch))
+	duties, err := blockdb.GlobalBlockDb.GetEpochDuties(ctx, firstSlot)
+	if err != nil || duties == nil {
+		return nil
+	}
+	return duties.ProposerDuties
+}
+
+// GetEpochProposersForRoot returns the per-slot proposers for an epoch resolved
+// on the fork identified by depRoot. Falls back to canonical when no diverging
+// duties exist for depRoot.
+func (bs *ChainService) GetEpochProposersForRoot(ctx context.Context, epoch phase0.Epoch, depRoot phase0.Root) []uint64 {
+	chainState := bs.consensusPool.GetChainState()
+
+	if handle := bs.findEpochStatsByDependentRoot(epoch, depRoot); handle != nil {
+		if values := handle.GetOrLoadValues(ctx, bs.beaconIndexer, true, false); values != nil && len(values.ProposerDuties) > 0 {
+			return proposersFromValues(values)
+		}
+	}
+
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsDuties() && depRoot != (phase0.Root{}) {
+		firstSlot := uint64(chainState.EpochStartSlot(epoch))
+		duties, err := blockdb.GlobalBlockDb.GetEpochDutiesForRoot(ctx, firstSlot, depRoot)
+		if err != nil {
+			bs.logger.Debugf("failed to load proposers for epoch %d (root %v) from blockdb: %v", epoch, depRoot.String(), err)
+		} else if duties != nil {
+			return duties.ProposerDuties
+		}
+	}
+
+	return bs.GetEpochProposers(ctx, epoch)
+}
+
 // GetSlotPtcForRoot returns the PTC members for a slot, resolved on the fork
 // identified by depRoot. Falls back to the canonical PTC when no diverging
 // duties exist for depRoot.
