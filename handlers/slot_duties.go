@@ -15,7 +15,6 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
-	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types/models"
 )
@@ -35,38 +34,30 @@ func SlotDuties(w http.ResponseWriter, r *http.Request) {
 	isPtc := r.URL.Query().Get("ptc") == "1"
 	committeesParam := r.URL.Query().Get("committees")
 
-	// The path may be a plain slot number (canonical duties) or a block root
-	// (fork-aware duties for an orphaned block). When it is a root, resolve the
-	// block's slot and the fork's committee-shuffling dependent root so the
-	// duties are resolved on the correct fork.
-	var slot phase0.Slot
+	slotNum, err := strconv.ParseUint(slotOrHash, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid slot", http.StatusBadRequest)
+		return
+	}
+	slot := phase0.Slot(slotNum)
+
+	// Optional fork context. The committee for an attestation is resolved at the
+	// attestation's own slot (the path), but on the fork of the page block that
+	// includes it — an orphaned block may sit on a fork whose committee shuffling
+	// differs from canonical. The caller passes that page block's root; we
+	// resolve the fork's dependent root for the requested slot's epoch. Without
+	// the param (or if the block resolves to canonical), canonical committees are
+	// returned.
 	var depRoot phase0.Root
 	var hasFork bool
-
-	if strings.HasPrefix(slotOrHash, "0x") && len(slotOrHash) == 66 {
-		blockRoot, err := parseSlotDutiesRoot(slotOrHash)
+	if brParam := r.URL.Query().Get("block_root"); brParam != "" {
+		blockRoot, err := parseSlotDutiesRoot(brParam)
 		if err != nil {
-			http.Error(w, "Invalid block root", http.StatusBadRequest)
+			http.Error(w, "Invalid block_root", http.StatusBadRequest)
 			return
 		}
-
-		dbBlock := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), &dbtypes.BlockFilter{BlockRoot: blockRoot[:], WithOrphaned: 1}, 0, 1, 0)
-		if len(dbBlock) == 0 || dbBlock[0].Block == nil {
-			http.Error(w, "Block not found", http.StatusNotFound)
-			return
-		}
-
-		slot = phase0.Slot(dbBlock[0].Block.Slot)
 		epoch := services.GlobalBeaconService.GetChainState().EpochOfSlot(slot)
-		depRoot, _ = services.GlobalBeaconService.ResolveDependentRoot(r.Context(), epoch, blockRoot)
-		hasFork = true
-	} else {
-		slotNum, err := strconv.ParseUint(slotOrHash, 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid slot", http.StatusBadRequest)
-			return
-		}
-		slot = phase0.Slot(slotNum)
+		depRoot, hasFork = services.GlobalBeaconService.ResolveDependentRoot(r.Context(), epoch, blockRoot)
 	}
 
 	cacheKey := fmt.Sprintf("slotduties:%d:ptc", slot)

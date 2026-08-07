@@ -53,10 +53,6 @@ const (
 )
 
 type SlotPageBlockData struct {
-	// DutiesBlockRoot is the 0x-prefixed block root used to build fork-aware
-	// duties lazy-load URLs. Set only for orphaned blocks (whose committees may
-	// differ from canonical); empty for canonical blocks (which use the slot).
-	DutiesBlockRoot             string                  `json:"duties_block_root"`
 	BlockRoot                   []byte                  `json:"blockroot" ssz-size:"32"`
 	ParentRoot                  []byte                  `json:"parentroot" ssz-size:"32"`
 	StateRoot                   []byte                  `json:"stateroot" ssz-size:"32"`
