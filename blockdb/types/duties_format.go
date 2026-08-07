@@ -11,7 +11,7 @@
 //	HEADER (v1: 40 bytes, v2: 72 bytes)
 //	├── Magic:             [4]byte = "DUTY"
 //	├── Version:           uint16  (1 = legacy, 2 = adds DependentRoot + proposers)
-//	├── Flags:             uint8   (bit 0 = DutiesFlagDiverging, bit 1 = DutiesFlagProposers)
+//	├── Flags:             uint8   (bit 0 = DutiesFlagDiverging)
 //	├── IndexWidth:        uint8   (bytes per validator index, = 6)
 //	├── Epoch:             uint64
 //	├── ValidatorCount:    uint64  (active validator count; drives attester offsets)
@@ -51,10 +51,6 @@ const (
 	// DutiesFlagDiverging marks a duties object that belongs to a non-canonical
 	// (diverging) fork, keyed by its dependent root.
 	DutiesFlagDiverging uint8 = 1
-
-	// DutiesFlagProposers marks a v2 object whose proposer section holds resolved
-	// proposer indices (as opposed to an all-zero placeholder section).
-	DutiesFlagProposers uint8 = 2
 )
 
 // dutiesHeaderSize returns the header byte size for a given format version.
@@ -349,9 +345,6 @@ func writeDutiesHeader(buf []byte, d *EpochDuties) {
 	var flags uint8
 	if d.Diverging {
 		flags |= DutiesFlagDiverging
-	}
-	if len(d.ProposerDuties) > 0 {
-		flags |= DutiesFlagProposers
 	}
 	buf[6] = flags
 	buf[7] = DutiesIndexWidth

@@ -217,8 +217,8 @@ func TestEpochDutiesProposerRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("header decode failed: %v", err)
 	}
-	if header.Flags&DutiesFlagProposers == 0 {
-		t.Fatalf("proposer flag must be set when proposer duties are present")
+	if header.Version < 2 {
+		t.Fatalf("object with proposer duties must be v2, got v%d", header.Version)
 	}
 
 	got, err := DecodeEpochDuties(src.FirstSlot, encoded)
