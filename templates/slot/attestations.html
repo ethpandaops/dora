@@ -150,6 +150,8 @@
     validatorNames[name.k] = name.v;
   });
   var attestationsData = JSON.parse({{ includeJSON .Block.Attestations false }});
+  // Orphaned page blocks resolve attester duties by block root (fork context).
+  var dutiesBlockRoot = "{{ .Block.DutiesBlockRoot }}";
 
   function base64ToBytes(base64) {
     const binString = atob(base64);
@@ -221,7 +223,7 @@
         return;
       }
       self.loading(true);
-      fetch('/slot/' + self.slot + '/duties?committees=' + self.committee_index.join(','))
+      fetch('/slot/' + (dutiesBlockRoot || self.slot) + '/duties?committees=' + self.committee_index.join(','))
         .then(function(resp) { return resp.json(); })
         .then(function(data) {
           if (data.names) {

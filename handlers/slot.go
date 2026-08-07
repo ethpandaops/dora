@@ -505,8 +505,16 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	}
 
 	pageData := &models.SlotPageBlockData{
-		BlockRoot:              blockData.Root[:],
-		ParentRoot:             blockData.Header.Message.ParentRoot[:],
+		BlockRoot:  blockData.Root[:],
+		ParentRoot: blockData.Header.Message.ParentRoot[:],
+		// Orphaned blocks sit on a fork whose committee shuffling may differ from
+		// canonical, so their duties must be resolved by block root, not slot.
+		DutiesBlockRoot: func() string {
+			if blockData.Orphaned {
+				return fmt.Sprintf("0x%x", blockData.Root[:])
+			}
+			return ""
+		}(),
 		StateRoot:              blockData.Header.Message.StateRoot[:],
 		BodyRoot:               blockData.Header.Message.BodyRoot[:],
 		Signature:              blockData.Header.Signature[:],
