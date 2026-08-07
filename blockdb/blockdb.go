@@ -444,6 +444,15 @@ func (db *BlockDb) PruneEpochDutiesBefore(ctx context.Context, maxFirstSlot uint
 	return db.dutiesEngine.PruneEpochDutiesBefore(ctx, maxFirstSlot)
 }
 
+// GetObjectStats returns engine-level per-namespace object counts if the engine
+// supports a cheap scan (Pebble / tiered hot tier); otherwise nil.
+func (db *BlockDb) GetObjectStats(ctx context.Context) (*types.BlockDbObjectStats, error) {
+	if e, ok := db.engine.(types.ObjectStatsEngine); ok {
+		return e.GetObjectStats(ctx)
+	}
+	return nil, nil
+}
+
 // SupportsSlotBids returns true if the underlying engine supports per-slot bids storage.
 func (db *BlockDb) SupportsSlotBids() bool {
 	return db != nil && db.slotBidsEngine != nil

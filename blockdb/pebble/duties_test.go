@@ -84,6 +84,18 @@ func TestDivergingDutiesStoreAndPrune(t *testing.T) {
 		t.Fatalf("dependent root mismatch: %x", full.DependentRoot)
 	}
 
+	// Object stats must count the canonical and diverging duties separately.
+	stats, err := e.GetObjectStats(ctx)
+	if err != nil {
+		t.Fatalf("get object stats: %v", err)
+	}
+	if stats.CanonicalDutiesCount != 1 {
+		t.Fatalf("canonical duties count = %d, want 1", stats.CanonicalDutiesCount)
+	}
+	if stats.DivergingDutiesCount != 1 {
+		t.Fatalf("diverging duties count = %d, want 1", stats.DivergingDutiesCount)
+	}
+
 	// Prune removes both canonical and diverging objects for the epoch.
 	if _, err := e.PruneEpochDutiesBefore(ctx, firstSlot+1); err != nil {
 		t.Fatalf("prune: %v", err)

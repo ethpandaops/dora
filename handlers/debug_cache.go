@@ -114,6 +114,16 @@ type BlockDbStoredData struct {
 	DutiesSize       int64
 	TotalCount       int64
 	TotalSize        int64
+
+	// Engine-scanned object counts (populated for Pebble / tiered hot tier only).
+	// These reflect what is physically stored, including orphaned blocks and
+	// diverging-fork duties, unlike the SQL-derived counts above.
+	HasEngineStats       bool
+	EngineBlockCount     uint64
+	CanonicalDutiesCount uint64
+	DivergingDutiesCount uint64
+	BidsCount            uint64
+	BidsSize             uint64
 }
 
 // PebbleDebugData holds pebble-specific metrics.
@@ -428,7 +438,7 @@ func buildBlockDbStoredData() *BlockDbStoredData {
 	if err != nil {
 		return nil
 	}
-	return &BlockDbStoredData{
+	data := &BlockDbStoredData{
 		BeaconBlockCount: dbStats.BeaconBlockCount,
 		BeaconBlockSize:  dbStats.BeaconBlockSize,
 		ExecDataCount:    dbStats.ExecDataCount,
@@ -438,6 +448,23 @@ func buildBlockDbStoredData() *BlockDbStoredData {
 		TotalCount:       dbStats.BeaconBlockCount + dbStats.ExecDataCount + dbStats.DutiesCount,
 		TotalSize:        dbStats.BeaconBlockSize + dbStats.ExecDataSize + dbStats.DutiesSize,
 	}
+
+	// Overlay engine-scanned object counts when available (Pebble / tiered hot
+	// tier). These include orphaned blocks, diverging duties and bids objects.
+	if blockdb.GlobalBlockDb != nil {
+		if objStats, serr := blockdb.GlobalBlockDb.GetObjectStats(context.Background()); serr == nil && objStats != nil {
+			data.HasEngineStats = true
+			data.EngineBlockCount = objStats.BlockCount
+			data.CanonicalDutiesCount = objStats.CanonicalDutiesCount
+			data.DivergingDutiesCount = objStats.DivergingDutiesCount
+			data.BidsCount = objStats.BidsCount
+			data.BidsSize = objStats.BidsBytes
+			data.TotalCount += int64(objStats.BidsCount)
+			data.TotalSize += int64(objStats.BidsBytes)
+		}
+	}
+
+	return data
 }
 
 func buildExecIndexerDebugData() *ExecIndexerDebugData {
