@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 
+	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -537,25 +538,54 @@ func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedIn
 	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
 }
 
-// GetBlockBids returns the execution payload bids for a given parent block root and slot.
-// It first checks the in-memory cache, then falls back to the database.
-// Filtering by slot is required because orphaned/skipped predecessor slots share
-// the same parent root as the canonical block that ends up replacing them.
-func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root, slot phase0.Slot) []*dbtypes.BlockBid {
-	// First check the in-memory cache
-	bids := indexer.blockBidCache.GetBidsForBlockRoot(parentBlockRoot, slot)
-	if len(bids) > 0 {
-		return bids
+// GetBlockBidsForSlot returns all execution payload bids for a slot regardless of their
+// parent root, so bids targeting other forks or deeper ancestors (reorg bids) are included.
+// Cache and DB results are merged since a slot's bids can be spread across both around a
+// flush. A bid present in both may carry a fresh (empty) observation state in the cache
+// (re-added after its slot was flushed), so the seen counters are merged by maximum.
+func (indexer *Indexer) GetBlockBidsForSlot(slot phase0.Slot) []*dbtypes.BlockBid {
+	bids := indexer.blockBidCache.GetBidsForSlot(slot)
+
+	cachedBids := make(map[bidCacheKey]*dbtypes.BlockBid, len(bids))
+	for _, bid := range bids {
+		cachedBids[makeBidCacheKey(bid)] = bid
 	}
 
-	// Fall back to database
-	return db.GetBidsForBlockRoot(indexer.ctx, parentBlockRoot[:], uint64(slot))
+	for _, bid := range db.GetBidsForSlot(indexer.ctx, uint64(slot)) {
+		if cached := cachedBids[makeBidCacheKey(bid)]; cached != nil {
+			mergeBidSeenCounters(cached, bid)
+			continue
+		}
+		bids = append(bids, bid)
+	}
+
+	return bids
+}
+
+// mergeBidSeenCounters raises dst's seen counters to at least src's values.
+func mergeBidSeenCounters(dst *dbtypes.BlockBid, src *dbtypes.BlockBid) {
+	if src.SeenCount > dst.SeenCount {
+		dst.SeenCount = src.SeenCount
+	}
+	if src.SeenTotal > dst.SeenTotal {
+		dst.SeenTotal = src.SeenTotal
+	}
+	if dst.SeenCount > dst.SeenTotal {
+		dst.SeenTotal = dst.SeenCount
+	}
 }
 
 // GetCachedBidsByBuilderIndex returns the not-yet-flushed (recent) bids for a builder index within
 // the given slot window. Callers merge these with the DB results (see ChainService.GetBuilderBids).
 func (indexer *Indexer) GetCachedBidsByBuilderIndex(builderIndex int64, minSlot uint64, maxSlot *uint64) []*dbtypes.BlockBid {
 	return indexer.blockBidCache.GetBidsByBuilderIndex(builderIndex, minSlot, maxSlot)
+}
+
+// GetSlotBidsWithSeen returns the slot's bids with their per-client gossip
+// observations from the bid cache. Returns nil if the cache holds no bids for
+// the slot (flushed or never seen).
+func (indexer *Indexer) GetSlotBidsWithSeen(slot phase0.Slot) *btypes.SlotBids {
+	return indexer.blockBidCache.GetSlotBids(slot)
 }
 
 // StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.

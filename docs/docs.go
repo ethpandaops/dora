@@ -721,6 +721,68 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/epoch/{epoch}/duties": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the attester committees for every slot in the specified epoch. Committee members are global validator indices in committee order.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Epoch"
+                ],
+                "summary": "Get epoch attester duties",
+                "operationId": "getEpochDuties",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Epoch number",
+                        "name": "epoch",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIEpochDutiesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Duties not available",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/epoch/{epoch}/health": {
             "get": {
                 "description": "Returns the vote, proposal and payload participation rates for an epoch. The chain is only fully healthy when all three reach 100%. Post-ePBS (EIP-7732) payloads are revealed separately from beacon blocks and may be missing.",
@@ -1256,7 +1318,7 @@ const docTemplate = `{
         },
         "/v1/slot/{slotOrHash}/bids": {
             "get": {
-                "description": "Returns the execution payload bids submitted for a slot's parent root (ePBS, gloas+).",
+                "description": "Returns all execution payload bids submitted for a slot (ePBS, gloas+), including bids targeting other forks or deeper ancestors (reorg bids). Each bid is classified against the slot's actual block parent chain.",
                 "produces": [
                     "application/json"
                 ],
@@ -1520,6 +1582,74 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Slot not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/slot/{slot}/committees": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the attester committees for the specified slot. Committee members are global validator indices in committee order.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Slot"
+                ],
+                "summary": "Get slot attester committees",
+                "operationId": "getSlotCommittees",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Slot number",
+                        "name": "slot",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of committee indices to filter by",
+                        "name": "committee",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APISlotCommitteesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Committees not available",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2262,6 +2392,130 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/api.APIValidatorsActivityResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/validators/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns status, slashed flag and lifecycle epochs for up to 10000 validators by index. Supports GET with query params or POST with JSON body for large lists. Unknown indices are omitted from the response.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Get validator status in bulk",
+                "operationId": "getValidatorsStatus",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of validator indices (GET only)",
+                        "name": "indices",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Request body for POST requests with indices array",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorsStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorsStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns status, slashed flag and lifecycle epochs for up to 10000 validators by index. Supports GET with query params or POST with JSON body for large lists. Unknown indices are omitted from the response.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Get validator status in bulk",
+                "operationId": "getValidatorsStatus",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of validator indices (GET only)",
+                        "name": "indices",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Request body for POST requests with indices array",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorsStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorsStatusResponse"
                         }
                     },
                     "400": {
@@ -3304,6 +3558,54 @@ const docTemplate = `{
                 }
             }
         },
+        "api.APIEpochDutiesData": {
+            "type": "object",
+            "properties": {
+                "committees_per_slot": {
+                    "type": "integer"
+                },
+                "dependent_root": {
+                    "type": "string"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "slots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIEpochDutiesSlotInfo"
+                    }
+                }
+            }
+        },
+        "api.APIEpochDutiesResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIEpochDutiesData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIEpochDutiesSlotInfo": {
+            "type": "object",
+            "properties": {
+                "committees": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "slot": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.APIEpochHealthResponseV1": {
             "type": "object",
             "properties": {
@@ -4225,6 +4527,18 @@ const docTemplate = `{
                 "builder_name": {
                     "type": "string"
                 },
+                "candidate_key": {
+                    "description": "CandidateKey is the buildoor-style candidate identifier (parent_full, parent_empty,\ngrandparent_full, grandparent_empty, ancestor-N_full/-empty); empty for orphaned-fork\nand unknown-parent bids.",
+                    "type": "string"
+                },
+                "el_parent_slot": {
+                    "description": "ElParentSlot is the slot whose payload block hash matches the bid's parent hash,\ni.e. the EL head the bid builds on (omitted if not resolvable).",
+                    "type": "integer"
+                },
+                "el_parent_unrevealed": {
+                    "description": "ElParentUnrevealed: the bid's parent hash matches a committed payload hash that was\nnever revealed - such a bid can never become valid.",
+                    "type": "boolean"
+                },
                 "el_payment": {
                     "type": "integer"
                 },
@@ -4240,11 +4554,33 @@ const docTemplate = `{
                 "is_winning": {
                     "type": "boolean"
                 },
+                "parent_class": {
+                    "description": "Bid target classification relative to the slot's actual block parent chain.\nParentClass: \"parent\" (targets the block's actual beacon parent), \"reorg\" (targets a\ndeeper ancestor, orphaning ReorgDepth blocks), \"orphaned\" (targets a block outside\nthe block's chain), \"unknown\" (parent root not resolvable).",
+                    "type": "string"
+                },
+                "parent_full": {
+                    "description": "ParentFull: the bid builds on the targeted block's own payload (full) rather than an\nearlier payload (empty).",
+                    "type": "boolean"
+                },
                 "parent_hash": {
                     "type": "string"
                 },
                 "parent_root": {
                     "type": "string"
+                },
+                "parent_slot": {
+                    "description": "ParentSlot is the slot of the targeted beacon parent block (0 if unknown).",
+                    "type": "integer"
+                },
+                "reorg_depth": {
+                    "type": "integer"
+                },
+                "seen_count": {
+                    "description": "Gossip visibility: SeenCount of SeenTotal connected clients observed the bid\non gossip. SeenTotal 0 = no observation data available for this bid.\nPer-client details are served by the /slot/{slotOrHash}/bidseen page endpoint.",
+                    "type": "integer"
+                },
+                "seen_total": {
+                    "type": "integer"
                 },
                 "slot": {
                     "type": "integer"
@@ -4411,6 +4747,48 @@ const docTemplate = `{
                     }
                 },
                 "slot": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APISlotCommitteeInfo": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer"
+                },
+                "validators": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "api.APISlotCommitteesData": {
+            "type": "object",
+            "properties": {
+                "committees": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APISlotCommitteeInfo"
+                    }
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "slot": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APISlotCommitteesResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APISlotCommitteesData"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -4961,6 +5339,9 @@ const docTemplate = `{
                 "public_key": {
                     "type": "string"
                 },
+                "slashed": {
+                    "type": "boolean"
+                },
                 "status": {
                     "type": "string"
                 },
@@ -4968,6 +5349,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "validator_liveness_max": {
+                    "type": "integer"
+                },
+                "withdrawable_epoch": {
                     "type": "integer"
                 },
                 "withdrawal_address": {
@@ -5053,6 +5437,32 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "total_eligible_ether": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIValidatorStatusInfo": {
+            "type": "object",
+            "properties": {
+                "activation_epoch": {
+                    "type": "integer"
+                },
+                "effective_balance": {
+                    "type": "integer"
+                },
+                "exit_epoch": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "slashed": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "withdrawable_epoch": {
                     "type": "integer"
                 }
             }
@@ -5153,6 +5563,42 @@ const docTemplate = `{
             "properties": {
                 "data": {
                     "$ref": "#/definitions/api.APIValidatorsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIValidatorsStatusData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "validators": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIValidatorStatusInfo"
+                    }
+                }
+            }
+        },
+        "api.APIValidatorsStatusRequest": {
+            "type": "object",
+            "properties": {
+                "indices": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "api.APIValidatorsStatusResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIValidatorsStatusData"
                 },
                 "status": {
                     "type": "string"

@@ -59,6 +59,60 @@ func (bs *ChainService) GetSlotCommittees(ctx context.Context, slot phase0.Slot)
 	return committees
 }
 
+// GetEpochCommittees returns the attester committees for every slot of an epoch,
+// indexed [slotIndex][committeeIndex] -> global validator indices in committee
+// order. Unlike calling GetSlotCommittees per slot, it loads the epoch's duties
+// exactly once (from the in-memory epoch cache, or a single blockdb read),
+// avoiding a redundant blockdb/S3 fetch of the same duties object per slot.
+// Returns nil if the duties are unavailable for the epoch.
+func (bs *ChainService) GetEpochCommittees(ctx context.Context, epoch phase0.Epoch) [][][]phase0.ValidatorIndex {
+	chainState := bs.consensusPool.GetChainState()
+
+	if epochStats := bs.beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
+		if values := epochStats.GetOrLoadValues(ctx, bs.beaconIndexer, true, false); values != nil && values.AttesterDuties != nil {
+			out := make([][][]phase0.ValidatorIndex, len(values.AttesterDuties))
+			for slotIndex, slotDuties := range values.AttesterDuties {
+				committees := make([][]phase0.ValidatorIndex, len(slotDuties))
+				for committeeIndex, committee := range slotDuties {
+					members := make([]phase0.ValidatorIndex, len(committee))
+					for k, activeIdx := range committee {
+						if int(activeIdx) < len(values.ActiveIndices) {
+							members[k] = values.ActiveIndices[activeIdx]
+						}
+					}
+					committees[committeeIndex] = members
+				}
+				out[slotIndex] = committees
+			}
+			return out
+		}
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsDuties() {
+		return nil
+	}
+
+	firstSlot := uint64(chainState.EpochStartSlot(epoch))
+	duties, err := blockdb.GlobalBlockDb.GetEpochDuties(ctx, firstSlot)
+	if err != nil {
+		bs.logger.Debugf("failed to load duties for epoch %d from blockdb: %v", epoch, err)
+		return nil
+	}
+	if duties == nil {
+		return nil
+	}
+
+	out := make([][][]phase0.ValidatorIndex, len(duties.Committees))
+	for slotIndex, slotCommittees := range duties.Committees {
+		committees := make([][]phase0.ValidatorIndex, len(slotCommittees))
+		for committeeIndex, committee := range slotCommittees {
+			committees[committeeIndex] = toValidatorIndices(committee)
+		}
+		out[slotIndex] = committees
+	}
+	return out
+}
+
 // GetSlotPtc returns the PTC members for a slot (global validator indices),
 // from the in-memory epoch cache or the blockdb duties store. Returns nil if unavailable.
 func (bs *ChainService) GetSlotPtc(ctx context.Context, slot phase0.Slot) []phase0.ValidatorIndex {

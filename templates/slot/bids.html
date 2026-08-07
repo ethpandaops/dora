@@ -4,17 +4,21 @@
       <thead>
         <tr>
           <th class="border-0">Builder</th>
+          <th class="border-0">Bid Target</th>
           <th class="border-0">Block Hash</th>
+          <th class="border-0">Parent Hash</th>
+          <th class="border-0">Parent Root</th>
           <th class="border-0">Fee Recipient</th>
           <th class="border-0">Gas Limit</th>
           <th class="border-0">Value</th>
           <th class="border-0">EL Payment</th>
           <th class="border-0">Total</th>
+          <th class="border-0">Seen by</th>
         </tr>
       </thead>
       <tbody>
         {{ range $i, $bid := .Block.Bids }}
-          <tr{{ if $bid.IsWinning }} style="border-left: 3px solid var(--bs-success);"{{ end }}>
+          <tr{{ if or $bid.IsWinning (not $bid.IsParentBid) }} style="{{ if $bid.IsWinning }}border-left: 3px solid var(--bs-success);{{ end }}{{ if not $bid.IsParentBid }}opacity: 0.6;{{ end }}"{{ end }}>
             <td>
               {{ if $bid.IsSelfBuilt }}
                 <span class="builder-label builder-index"><i class="fas fa-hard-hat mr-2"></i> Self-built</span>
@@ -24,9 +28,32 @@
               {{ if $bid.IsWinning }}<span class="badge bg-success ms-1">Winner</span>{{ end }}
             </td>
             <td>
+              {{ if eq $bid.ClassColor "purple" }}
+                <span class="badge text-white" style="background-color: #6f42c1;" data-bs-toggle="tooltip" title="{{ $bid.ClassTitle }}">{{ $bid.ClassLabel }}</span>
+              {{ else }}
+                <span class="badge bg-{{ $bid.ClassColor }}{{ if eq $bid.ClassColor "warning" }} text-dark{{ end }}" data-bs-toggle="tooltip" title="{{ $bid.ClassTitle }}">{{ $bid.ClassLabel }}</span>
+              {{ end }}
+            </td>
+            <td>
               <div class="d-flex align-items-center">
                 <span class="text-monospace text-truncate">0x{{ printf "%x" $bid.BlockHash }}</span>
                 <i class="fa fa-copy text-muted p-1 flex-shrink-0" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.BlockHash }}"></i>
+              </div>
+            </td>
+            <td>
+              <div class="d-flex align-items-center">
+                <span class="text-monospace text-truncate">0x{{ printf "%x" $bid.ParentHash }}</span>
+                <i class="fa fa-copy text-muted p-1 flex-shrink-0" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.ParentHash }}"></i>
+              </div>
+            </td>
+            <td>
+              <div class="d-flex align-items-center">
+                {{ if $bid.ParentKnown }}
+                  <a class="text-monospace text-truncate" href="/slot/{{ printf "%x" $bid.ParentRoot }}" data-bs-toggle="tooltip" title="Slot {{ $bid.ParentSlot }}">0x{{ printf "%x" $bid.ParentRoot }}</a>
+                {{ else }}
+                  <span class="text-monospace text-truncate">0x{{ printf "%x" $bid.ParentRoot }}</span>
+                {{ end }}
+                <i class="fa fa-copy text-muted p-1 flex-shrink-0" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.ParentRoot }}"></i>
               </div>
             </td>
             <td>{{ ethAddressLink $bid.FeeRecipient }}</td>
@@ -34,9 +61,218 @@
             <td>{{ formatEthFromGwei $bid.Value }}</td>
             <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
             <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+            <td>
+              {{ if gt $bid.SeenTotal 0 }}
+                <a class="badge bg-{{ $bid.SeenColor }}{{ if eq $bid.SeenColor "warning" }} text-dark{{ end }} text-decoration-none bid-seen-btn" role="button"
+                   data-block-hash="0x{{ printf "%x" $bid.BlockHash }}"
+                   data-builder-index="{{ if $bid.IsSelfBuilt }}-1{{ else }}{{ $bid.BuilderIndex }}{{ end }}"
+                   data-parent-root="0x{{ printf "%x" $bid.ParentRoot }}"
+                   data-parent-hash="0x{{ printf "%x" $bid.ParentHash }}">{{ $bid.SeenCount }}/{{ $bid.SeenTotal }} <i class="fas fa-caret-down"></i></a>
+              {{ else }}
+                <span class="text-muted" data-bs-toggle="tooltip" title="No gossip observation data for this bid">-</span>
+              {{ end }}
+            </td>
           </tr>
         {{ end }}
       </tbody>
     </table>
   </div>
+  {{ if .Block.Bids }}
+    <style>
+      .bid-seen-popover {
+        max-width: 470px;
+      }
+      .bid-seen-popover .popover-body {
+        padding: 8px;
+      }
+      .bid-seen-popover .bid-seen-scroll {
+        max-height: 16rem;
+        overflow-y: auto;
+      }
+      .bid-seen-popover .table {
+        --bs-table-bg: transparent;
+        margin-bottom: 0;
+      }
+      .bid-seen-popover .table th,
+      .bid-seen-popover .table td {
+        white-space: nowrap;
+      }
+      .bid-seen-popover .table td:nth-child(2) {
+        max-width: 18rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bid-seen-popover .bid-seen-scroll thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background-color: var(--bs-popover-bg);
+      }
+      .bid-seen-popover .table tr.bid-seen-proposer td {
+        background-color: rgba(var(--bs-primary-rgb), 0.15);
+      }
+      .bid-seen-popover .bid-seen-stats {
+        border-bottom: 1px solid var(--bs-border-color);
+        padding-bottom: 4px;
+      }
+    </style>
+    <script type="text/javascript">
+      (function() {
+        var bidSeenSlot = {{ .Slot }};
+        // In devnets the validator names usually equal the client names, so the
+        // proposer's own client can be highlighted in the seen list. On networks
+        // where the names differ nothing matches and nothing is highlighted.
+        var proposerName = {{ .ProposerName }};
+        var bidSeenPromise = null;
+        var lastPopover = null;
+
+        function loadBidSeen() {
+          if (bidSeenPromise) return bidSeenPromise;
+          bidSeenPromise = fetch('/slot/' + bidSeenSlot + '/bidseen')
+            .then(function(r) { return r.json(); });
+          return bidSeenPromise;
+        }
+        function escapeHtml(s) {
+          return String(s).replace(/[&<>"']/g, function(c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+          });
+        }
+        function formatOffset(ms) {
+          var sign = ms < 0 ? '-' : '+';
+          var abs = Math.abs(ms);
+          if (abs >= 1000) return sign + (abs / 1000).toFixed(2) + 's';
+          return sign + abs + 'ms';
+        }
+
+        // renderContent builds the popover title and body for one bid's observations.
+        function renderContent(clients, bid) {
+          var obs = bid && bid.seen ? bid.seen.slice() : [];
+          obs.sort(function(a, b) { return a.time - b.time; });
+
+          var seenClients = {};
+          var rows = [];
+          obs.forEach(function(o) {
+            seenClients[o.client] = true;
+            var name = clients[o.client] !== undefined ? clients[o.client] : ('client-' + o.client);
+            rows.push({ name: name, time: o.time, seen: true });
+          });
+          var notSeen = [];
+          clients.forEach(function(name, idx) {
+            if (!seenClients[idx]) notSeen.push({ name: name, seen: false });
+          });
+          notSeen.sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+          rows = rows.concat(notSeen);
+
+          var html = '';
+          if (!obs.length) {
+            html += '<div class="text-muted mb-1">This bid was not observed on gossip (known from the block body only).</div>';
+          } else {
+            // obs is sorted by time, so min/max/median come straight from the ends/middle
+            var times = obs.map(function(o) { return o.time; });
+            var sum = times.reduce(function(a, b) { return a + b; }, 0);
+            var mid = Math.floor(times.length / 2);
+            var median = times.length % 2 ? times[mid] : Math.round((times[mid - 1] + times[mid]) / 2);
+            var stats = [
+              { label: 'min', value: times[0] },
+              { label: 'avg', value: Math.round(sum / times.length) },
+              { label: 'med', value: median },
+              { label: 'max', value: times[times.length - 1] }
+            ];
+            html += '<div class="d-flex bid-seen-stats mb-1">';
+            stats.forEach(function(stat) {
+              html += '<div class="text-center flex-fill">' +
+                '<div class="text-muted small">' + stat.label + '</div>' +
+                '<div class="text-monospace">' + formatOffset(stat.value) + '</div>' +
+                '</div>';
+            });
+            html += '</div>';
+          }
+          if (rows.length) {
+            html += '<div class="bid-seen-scroll">' +
+              '<table class="table table-sm"><thead><tr>' +
+              '<th style="width: 1.5rem;"></th><th>Client</th><th class="text-end">First seen</th>' +
+              '</tr></thead><tbody>';
+            rows.forEach(function(row) {
+              var isProposer = proposerName && row.name === proposerName;
+              var rowClass = isProposer ? ' class="bid-seen-proposer"' : '';
+              var nameHtml = escapeHtml(row.name) +
+                (isProposer ? ' <span class="badge bg-primary">proposer</span>' : '');
+              if (row.seen) {
+                html += '<tr' + rowClass + '><td><i class="fas fa-check text-success"></i></td>' +
+                  '<td>' + nameHtml + '</td>' +
+                  '<td class="text-end text-monospace">' + formatOffset(row.time) + '</td></tr>';
+              } else {
+                html += '<tr class="text-muted' + (isProposer ? ' bid-seen-proposer' : '') + '"><td><i class="fas fa-times text-danger"></i></td>' +
+                  '<td>' + nameHtml + '</td>' +
+                  '<td class="text-end">not seen</td></tr>';
+              }
+            });
+            html += '</tbody></table></div>';
+          }
+
+          return {
+            title: 'Seen by ' + obs.length + ' of ' + clients.length + ' clients',
+            html: html
+          };
+        }
+
+        document.addEventListener('click', function(evt) {
+          var btn = evt.target.closest('.bid-seen-btn');
+          if (btn) {
+            evt.preventDefault();
+
+            var popover = bootstrap.Popover.getOrCreateInstance(btn, {
+              html: true,
+              title: 'Bid visibility',
+              content: '<span class="text-muted">Loading...</span>',
+              trigger: 'manual',
+              placement: 'left',
+              container: 'body',
+              customClass: 'bid-seen-popover'
+            });
+
+            if (lastPopover === popover) {
+              return;
+            }
+            if (lastPopover) {
+              lastPopover.hide();
+            }
+            lastPopover = popover;
+            popover.show();
+
+            loadBidSeen().then(function(data) {
+              if (lastPopover !== popover) return;
+              var bid = (data.bids || []).find(function(b) {
+                return b.block_hash === btn.dataset.blockHash &&
+                  String(b.builder_index) === btn.dataset.builderIndex &&
+                  b.parent_root === btn.dataset.parentRoot &&
+                  b.parent_hash === btn.dataset.parentHash;
+              });
+              var content = renderContent(data.clients || [], bid);
+              // target this popover's own tip: a previously opened popover may
+              // still be fading out in the DOM, so a global selector can hit it
+              var header = popover.tip ? popover.tip.querySelector('.popover-header') : null;
+              var body = popover.tip ? popover.tip.querySelector('.popover-body') : null;
+              if (header) header.textContent = content.title;
+              if (body) body.innerHTML = content.html;
+              popover.update();
+            }).catch(function() {
+              if (lastPopover !== popover) return;
+              var body = popover.tip ? popover.tip.querySelector('.popover-body') : null;
+              if (body) body.innerHTML = '<span class="text-danger">Failed to load bid observations</span>';
+            });
+            return;
+          }
+
+          if (evt.target.closest('.bid-seen-popover')) {
+            return;
+          }
+          if (lastPopover) {
+            lastPopover.hide();
+            lastPopover = null;
+          }
+        });
+      })();
+    </script>
+  {{ end }}
 {{ end }}

@@ -12,15 +12,12 @@ import (
 func InsertBids(bids []*dbtypes.BlockBid, tx *sqlx.Tx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
-		EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  "INSERT INTO block_bids ",
-			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO block_bids ",
-		}),
-		"(parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment)",
+		"INSERT INTO block_bids ",
+		"(parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 9
+	fieldCount := 11
 
 	args := make([]any, len(bids)*fieldCount)
 	for i, bid := range bids {
@@ -45,16 +42,30 @@ func InsertBids(bids []*dbtypes.BlockBid, tx *sqlx.Tx) error {
 		args[argIdx+6] = bid.Slot
 		args[argIdx+7] = bid.Value
 		args[argIdx+8] = bid.ElPayment
+		args[argIdx+9] = bid.SeenCount
+		args[argIdx+10] = bid.SeenTotal
 		argIdx += fieldCount
 	}
+	// Bids can be re-added to the cache with a fresh (empty) observation state
+	// after their slot was already flushed (e.g. re-extracted from a block body),
+	// so a later flush must never shrink the seen counters of an existing row.
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: " ON CONFLICT (parent_root, parent_hash, block_hash, builder_index) DO UPDATE SET " +
 			"fee_recipient = excluded.fee_recipient, " +
 			"gas_limit = excluded.gas_limit, " +
 			"slot = excluded.slot, " +
 			"value = excluded.value, " +
-			"el_payment = excluded.el_payment",
-		dbtypes.DBEngineSqlite: "",
+			"el_payment = excluded.el_payment, " +
+			"seen_count = GREATEST(block_bids.seen_count, excluded.seen_count), " +
+			"seen_total = GREATEST(block_bids.seen_total, excluded.seen_total)",
+		dbtypes.DBEngineSqlite: " ON CONFLICT (parent_root, parent_hash, block_hash, builder_index) DO UPDATE SET " +
+			"fee_recipient = excluded.fee_recipient, " +
+			"gas_limit = excluded.gas_limit, " +
+			"slot = excluded.slot, " +
+			"value = excluded.value, " +
+			"el_payment = excluded.el_payment, " +
+			"seen_count = MAX(block_bids.seen_count, excluded.seen_count), " +
+			"seen_total = MAX(block_bids.seen_total, excluded.seen_total)",
 	}))
 
 	_, err := tx.Exec(sql.String(), args...)
@@ -64,24 +75,25 @@ func InsertBids(bids []*dbtypes.BlockBid, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetBidsForBlockRoot(ctx context.Context, blockRoot []byte, slot uint64) []*dbtypes.BlockBid {
+// GetBidsForSlot returns all bids for a slot regardless of their parent root,
+// so bids targeting other forks or deeper ancestors (reorg bids) are included.
+func GetBidsForSlot(ctx context.Context, slot uint64) []*dbtypes.BlockBid {
 	var sql strings.Builder
 	args := []any{
-		blockRoot,
 		slot,
 	}
 	fmt.Fprint(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
-	WHERE parent_root = $1 AND slot = $2
+	WHERE slot = $1
 	ORDER BY value DESC
 	`)
 
 	bids := []*dbtypes.BlockBid{}
 	err := ReaderDb.SelectContext(ctx, &bids, sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching bids for block root: %v", err)
+		logger.Errorf("Error while fetching bids for slot: %v", err)
 		return nil
 	}
 	return bids
@@ -94,7 +106,7 @@ func GetBidsForSlotRange(ctx context.Context, minSlot uint64) []*dbtypes.BlockBi
 	}
 	fmt.Fprint(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	WHERE slot >= $1
 	ORDER BY slot DESC, value DESC
@@ -127,7 +139,7 @@ func GetBidsByBlockHashes(ctx context.Context, blockHashes [][]byte, builderInde
 
 	fmt.Fprint(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	WHERE builder_index = $1 AND block_hash IN (`)
 
@@ -169,7 +181,7 @@ func GetBidsBySlots(ctx context.Context, slots []uint64, builderIndex int64) map
 
 	fmt.Fprint(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	WHERE builder_index = $1 AND slot IN (`)
 
@@ -221,7 +233,7 @@ func GetBidsByBuilderIndex(ctx context.Context, builderIndex uint64, minSlot *ui
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `
 	SELECT
-		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	%s
 	ORDER BY slot DESC, value DESC

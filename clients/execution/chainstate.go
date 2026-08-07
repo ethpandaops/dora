@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethpandaops/dora/clients/execution/rpc"
 )
 
@@ -228,109 +229,55 @@ type BlobScheduleEntry struct {
 	Timestamp time.Time
 	Schedule  rpc.EthConfigBlobSchedule
 	IsBpo     bool
+	BpoNumber int // 1-based BPO fork number from the genesis config (0 for non-BPO forks)
 }
 
 func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 	forkSchedules := []BlobScheduleEntry{}
 
-	if cache.config == nil {
+	if cache.config == nil || cache.config.Config == nil || cache.config.Config.BlobScheduleConfig == nil {
 		return forkSchedules
 	}
 
-	if cache.config.Config.CancunTime != nil && cache.config.Config.BlobScheduleConfig.Cancun != nil {
+	chainConfig := cache.config.Config
+	blobConfig := chainConfig.BlobScheduleConfig
+
+	forks := []struct {
+		time      *uint64
+		schedule  *params.BlobConfig
+		bpoNumber int
+	}{
+		{chainConfig.CancunTime, blobConfig.Cancun, 0},
+		{chainConfig.PragueTime, blobConfig.Prague, 0},
+		{chainConfig.OsakaTime, blobConfig.Osaka, 0},
+		{chainConfig.BPO1Time, blobConfig.BPO1, 1},
+		{chainConfig.BPO2Time, blobConfig.BPO2, 2},
+		{chainConfig.BPO3Time, blobConfig.BPO3, 3},
+		{chainConfig.BPO4Time, blobConfig.BPO4, 4},
+		{chainConfig.BPO5Time, blobConfig.BPO5, 5},
+		{chainConfig.AmsterdamTime, blobConfig.Amsterdam, 0},
+		{chainConfig.UBTTime, blobConfig.UBT, 0},
+	}
+
+	for _, fork := range forks {
+		if fork.time == nil || fork.schedule == nil {
+			continue
+		}
+
 		forkSchedules = append(forkSchedules, BlobScheduleEntry{
-			Timestamp: time.Unix(int64(*cache.config.Config.CancunTime), 0),
+			Timestamp: time.Unix(int64(*fork.time), 0),
 			Schedule: rpc.EthConfigBlobSchedule{
-				Max:                   uint64(cache.config.Config.BlobScheduleConfig.Cancun.Max),
-				Target:                uint64(cache.config.Config.BlobScheduleConfig.Cancun.Target),
-				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.Cancun.UpdateFraction),
+				Max:                   uint64(fork.schedule.Max),
+				Target:                uint64(fork.schedule.Target),
+				BaseFeeUpdateFraction: fork.schedule.UpdateFraction,
 			},
+			IsBpo:     fork.bpoNumber > 0,
+			BpoNumber: fork.bpoNumber,
 		})
 	}
 
-	if cache.config.Config.PragueTime != nil && cache.config.Config.BlobScheduleConfig.Prague != nil {
-		forkSchedules = append(forkSchedules, BlobScheduleEntry{
-			Timestamp: time.Unix(int64(*cache.config.Config.PragueTime), 0),
-			Schedule: rpc.EthConfigBlobSchedule{
-				Max:                   uint64(cache.config.Config.BlobScheduleConfig.Prague.Max),
-				Target:                uint64(cache.config.Config.BlobScheduleConfig.Prague.Target),
-				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.Prague.UpdateFraction),
-			},
-		})
-	}
-
-	if cache.config.Config.OsakaTime != nil && cache.config.Config.BlobScheduleConfig.Osaka != nil {
-		forkSchedules = append(forkSchedules, BlobScheduleEntry{
-			Timestamp: time.Unix(int64(*cache.config.Config.OsakaTime), 0),
-			Schedule: rpc.EthConfigBlobSchedule{
-				Max:                   uint64(cache.config.Config.BlobScheduleConfig.Osaka.Max),
-				Target:                uint64(cache.config.Config.BlobScheduleConfig.Osaka.Target),
-				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.Osaka.UpdateFraction),
-			},
-		})
-	}
-
-	if cache.config.Config.BPO1Time != nil && cache.config.Config.BlobScheduleConfig.BPO1 != nil {
-		forkSchedules = append(forkSchedules, BlobScheduleEntry{
-			Timestamp: time.Unix(int64(*cache.config.Config.BPO1Time), 0),
-			Schedule: rpc.EthConfigBlobSchedule{
-				Max:                   uint64(cache.config.Config.BlobScheduleConfig.BPO1.Max),
-				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO1.Target),
-				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO1.UpdateFraction),
-			},
-			IsBpo: true,
-		})
-	}
-
-	if cache.config.Config.BPO2Time != nil && cache.config.Config.BlobScheduleConfig.BPO2 != nil {
-		forkSchedules = append(forkSchedules, BlobScheduleEntry{
-			Timestamp: time.Unix(int64(*cache.config.Config.BPO2Time), 0),
-			Schedule: rpc.EthConfigBlobSchedule{
-				Max:                   uint64(cache.config.Config.BlobScheduleConfig.BPO2.Max),
-				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO2.Target),
-				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO2.UpdateFraction),
-			},
-			IsBpo: true,
-		})
-	}
-
-	if cache.config.Config.BPO3Time != nil && cache.config.Config.BlobScheduleConfig.BPO3 != nil {
-		forkSchedules = append(forkSchedules, BlobScheduleEntry{
-			Timestamp: time.Unix(int64(*cache.config.Config.BPO3Time), 0),
-			Schedule: rpc.EthConfigBlobSchedule{
-				Max:                   uint64(cache.config.Config.BlobScheduleConfig.BPO3.Max),
-				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO3.Target),
-				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO3.UpdateFraction),
-			},
-			IsBpo: true,
-		})
-	}
-
-	if cache.config.Config.BPO4Time != nil && cache.config.Config.BlobScheduleConfig.BPO4 != nil {
-		forkSchedules = append(forkSchedules, BlobScheduleEntry{
-			Timestamp: time.Unix(int64(*cache.config.Config.BPO4Time), 0),
-			Schedule: rpc.EthConfigBlobSchedule{
-				Max:                   uint64(cache.config.Config.BlobScheduleConfig.BPO4.Max),
-				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO4.Target),
-				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO4.UpdateFraction),
-			},
-			IsBpo: true,
-		})
-	}
-
-	if cache.config.Config.BPO5Time != nil && cache.config.Config.BlobScheduleConfig.BPO5 != nil {
-		forkSchedules = append(forkSchedules, BlobScheduleEntry{
-			Timestamp: time.Unix(int64(*cache.config.Config.BPO5Time), 0),
-			Schedule: rpc.EthConfigBlobSchedule{
-				Max:                   uint64(cache.config.Config.BlobScheduleConfig.BPO5.Max),
-				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO5.Target),
-				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO5.UpdateFraction),
-			},
-			IsBpo: true,
-		})
-	}
-
-	sort.Slice(forkSchedules, func(i, j int) bool {
+	// stable sort to keep the enumeration order for forks with identical activation times
+	sort.SliceStable(forkSchedules, func(i, j int) bool {
 		return forkSchedules[i].Timestamp.Before(forkSchedules[j].Timestamp)
 	})
 
