@@ -249,14 +249,11 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 	}{
 		{chainConfig.CancunTime, blobConfig.Cancun, 0},
 		{chainConfig.PragueTime, blobConfig.Prague, 0},
-		{chainConfig.OsakaTime, blobConfig.Osaka, 0},
 		{chainConfig.BPO1Time, blobConfig.BPO1, 1},
 		{chainConfig.BPO2Time, blobConfig.BPO2, 2},
 		{chainConfig.BPO3Time, blobConfig.BPO3, 3},
 		{chainConfig.BPO4Time, blobConfig.BPO4, 4},
 		{chainConfig.BPO5Time, blobConfig.BPO5, 5},
-		{chainConfig.AmsterdamTime, blobConfig.Amsterdam, 0},
-		{chainConfig.UBTTime, blobConfig.UBT, 0},
 	}
 
 	for _, fork := range forks {
