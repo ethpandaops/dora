@@ -597,6 +597,18 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			}(block)
 		}
 
+		// also persist orphaned block bodies (keyed by root, so they coexist with
+		// canonical blocks). The SQL orphaned_blocks dual-write above is kept.
+		for _, block := range orphanedBlocks {
+			wg.Add(1)
+			go func(b *Block) {
+				defer wg.Done()
+				if err := b.writeToBlockDb(indexer.ctx); err != nil {
+					indexer.logger.Errorf("error writing orphaned block %v to blockdb: %v", b.Root.String(), err)
+				}
+			}(block)
+		}
+
 		// store the epoch's resolved duties alongside the block writes
 		var dutiesSize int64
 		wg.Add(1)
