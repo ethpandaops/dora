@@ -388,6 +388,45 @@ func (db *BlockDb) GetSlotPtc(ctx context.Context, firstSlot uint64, slot uint64
 	return db.dutiesEngine.GetSlotPtc(ctx, firstSlot, slot)
 }
 
+// AddDivergingEpochDuties stores the resolved duties of a diverging fork, keyed
+// by its (non-zero) dependent root. Returns stored size.
+func (db *BlockDb) AddDivergingEpochDuties(ctx context.Context, duties *types.EpochDuties) (int64, error) {
+	if db.dutiesEngine == nil {
+		return 0, fmt.Errorf("duties storage not supported by engine")
+	}
+	if duties.DependentRoot == ([32]byte{}) {
+		return 0, fmt.Errorf("diverging duties require a non-zero dependent root")
+	}
+	return db.dutiesEngine.AddDivergingEpochDuties(ctx, duties)
+}
+
+// GetEpochDutiesForRoot retrieves the full diverging-fork duties for an epoch
+// under the given dependent root (nil if not found).
+func (db *BlockDb) GetEpochDutiesForRoot(ctx context.Context, firstSlot uint64, depRoot [32]byte) (*types.EpochDuties, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetEpochDutiesForRoot(ctx, firstSlot, depRoot)
+}
+
+// GetSlotCommitteesForRoot retrieves the attester committees for a single slot
+// of the diverging fork identified by depRoot (nil if not found).
+func (db *BlockDb) GetSlotCommitteesForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([][]uint64, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetSlotCommitteesForRoot(ctx, firstSlot, slot, depRoot)
+}
+
+// GetSlotPtcForRoot retrieves the PTC members for a single slot of the diverging
+// fork identified by depRoot (nil if not found).
+func (db *BlockDb) GetSlotPtcForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([]uint64, error) {
+	if db.dutiesEngine == nil {
+		return nil, nil
+	}
+	return db.dutiesEngine.GetSlotPtcForRoot(ctx, firstSlot, slot, depRoot)
+}
+
 // HasEpochDuties checks if duties exist for an epoch.
 func (db *BlockDb) HasEpochDuties(ctx context.Context, firstSlot uint64) (bool, error) {
 	if db.dutiesEngine == nil {

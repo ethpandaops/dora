@@ -112,6 +112,23 @@ type DutiesEngine interface {
 	// Returns nil, nil if not found. Used for whole-epoch copies.
 	GetEpochDuties(ctx context.Context, firstSlot uint64) (*EpochDuties, error)
 
+	// AddDivergingEpochDuties stores the resolved duties of a diverging fork,
+	// keyed additionally by duties.DependentRoot (which must be non-zero).
+	// Returns the stored size in bytes.
+	AddDivergingEpochDuties(ctx context.Context, duties *EpochDuties) (int64, error)
+
+	// GetEpochDutiesForRoot retrieves the full diverging-fork duties for an epoch
+	// under the given dependent root. Returns nil, nil if not found.
+	GetEpochDutiesForRoot(ctx context.Context, firstSlot uint64, depRoot [32]byte) (*EpochDuties, error)
+
+	// GetSlotCommitteesForRoot returns the attester committees for a single slot
+	// of the diverging fork identified by depRoot. Returns nil, nil if not found.
+	GetSlotCommitteesForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([][]uint64, error)
+
+	// GetSlotPtcForRoot returns the PTC members for a single slot of the
+	// diverging fork identified by depRoot. Returns nil, nil if not found.
+	GetSlotPtcForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([]uint64, error)
+
 	// GetSlotCommittees returns the attester committees for a single slot
 	// (global validator indices, in committee order). firstSlot identifies the
 	// epoch object. Returns nil, nil if not found.

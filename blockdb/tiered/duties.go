@@ -22,6 +22,80 @@ func (e *TieredEngine) AddEpochDuties(ctx context.Context, duties *types.EpochDu
 	return size, nil
 }
 
+// AddDivergingEpochDuties stores diverging-fork duties write-through to S3
+// (primary) and the Pebble cache.
+func (e *TieredEngine) AddDivergingEpochDuties(ctx context.Context, duties *types.EpochDuties) (int64, error) {
+	size, err := e.primary.AddDivergingEpochDuties(ctx, duties)
+	if err != nil {
+		return 0, err
+	}
+
+	if _, cerr := e.cache.AddDivergingEpochDuties(ctx, duties); cerr != nil {
+		e.logger.Debugf("failed to cache diverging duties: %v", cerr)
+	} else {
+		e.cleanup.RecordDutiesAccess(duties.FirstSlot)
+	}
+
+	return size, nil
+}
+
+// GetEpochDutiesForRoot retrieves diverging-fork duties, checking the cache first.
+func (e *TieredEngine) GetEpochDutiesForRoot(ctx context.Context, firstSlot uint64, depRoot [32]byte) (*types.EpochDuties, error) {
+	if d, err := e.cache.GetEpochDutiesForRoot(ctx, firstSlot, depRoot); err == nil && d != nil {
+		e.recordTierRead(true)
+		return d, nil
+	}
+	e.recordTierRead(false)
+
+	d, err := e.primary.GetEpochDutiesForRoot(ctx, firstSlot, depRoot)
+	if err != nil {
+		return nil, err
+	}
+	if d != nil {
+		if _, cerr := e.cache.AddDivergingEpochDuties(ctx, d); cerr != nil {
+			e.logger.Debugf("failed to cache diverging duties: %v", cerr)
+		}
+	}
+	return d, nil
+}
+
+// GetSlotCommitteesForRoot reads a diverging fork's slot committees, checking
+// the cache first and populating it from S3 on a miss.
+func (e *TieredEngine) GetSlotCommitteesForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([][]uint64, error) {
+	if c, err := e.cache.GetSlotCommitteesForRoot(ctx, firstSlot, slot, depRoot); err == nil && c != nil {
+		return c, nil
+	}
+
+	c, err := e.primary.GetSlotCommitteesForRoot(ctx, firstSlot, slot, depRoot)
+	if err != nil {
+		return nil, err
+	}
+	if c != nil {
+		e.populateDivergingCache(ctx, firstSlot, depRoot)
+	}
+	return c, nil
+}
+
+// GetSlotPtcForRoot reads a diverging fork's slot PTC, checking the cache first.
+func (e *TieredEngine) GetSlotPtcForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([]uint64, error) {
+	if p, err := e.cache.GetSlotPtcForRoot(ctx, firstSlot, slot, depRoot); err == nil && p != nil {
+		return p, nil
+	}
+	return e.primary.GetSlotPtcForRoot(ctx, firstSlot, slot, depRoot)
+}
+
+// populateDivergingCache fetches the full diverging duties from S3 and stores
+// them in the cache so subsequent per-slot reads are served locally.
+func (e *TieredEngine) populateDivergingCache(ctx context.Context, firstSlot uint64, depRoot [32]byte) {
+	d, err := e.primary.GetEpochDutiesForRoot(ctx, firstSlot, depRoot)
+	if err != nil || d == nil {
+		return
+	}
+	if _, cerr := e.cache.AddDivergingEpochDuties(ctx, d); cerr != nil {
+		e.logger.Debugf("failed to cache diverging duties: %v", cerr)
+	}
+}
+
 // GetEpochDuties retrieves the full duties, checking the cache first.
 func (e *TieredEngine) GetEpochDuties(ctx context.Context, firstSlot uint64) (*types.EpochDuties, error) {
 	if d, err := e.cache.GetEpochDuties(ctx, firstSlot); err == nil && d != nil {
