@@ -31,6 +31,7 @@ type APIEpochDutiesData struct {
 // global validator indices in committee order.
 type APIEpochDutiesSlotInfo struct {
 	Slot       uint64     `json:"slot"`
+	Proposer   uint64     `json:"proposer"`
 	Committees [][]uint64 `json:"committees"`
 }
 
@@ -40,6 +41,8 @@ type APIEpochDutiesSlotInfo struct {
 // @Tags Epoch
 // @Produce json
 // @Param epoch path int true "Epoch number"
+// @Param dependent_root query string false "Resolve duties on the fork with this committee-shuffling dependent root (0x-prefixed hex)"
+// @Param block_root query string false "Resolve duties on the fork that this block root sits on (0x-prefixed hex)"
 // @Success 200 {object} APIEpochDutiesResponse
 // @Failure 400 {object} map[string]string "Invalid parameters"
 // @Failure 404 {object} map[string]string "Duties not available"
@@ -73,10 +76,20 @@ func APIEpochDutiesV1(w http.ResponseWriter, r *http.Request) {
 
 	firstSlot := chainState.EpochStartSlot(phase0.Epoch(epoch))
 
+	depRoot, hasFork, ok := parseDutiesFork(r.Context(), w, r, phase0.Epoch(epoch))
+	if !ok {
+		return
+	}
+
 	// Load the whole epoch's committees in a single read (one blockdb/S3 fetch),
 	// rather than a per-slot lookup that would reload the same duties object for
 	// every slot in the epoch.
-	epochCommittees := services.GlobalBeaconService.GetEpochCommittees(r.Context(), phase0.Epoch(epoch))
+	var epochCommittees [][][]phase0.ValidatorIndex
+	if hasFork {
+		epochCommittees = services.GlobalBeaconService.GetEpochCommitteesForRoot(r.Context(), phase0.Epoch(epoch), depRoot)
+	} else {
+		epochCommittees = services.GlobalBeaconService.GetEpochCommittees(r.Context(), phase0.Epoch(epoch))
+	}
 	if epochCommittees == nil {
 		http.Error(
 			w,
@@ -84,6 +97,14 @@ func APIEpochDutiesV1(w http.ResponseWriter, r *http.Request) {
 			http.StatusNotFound,
 		)
 		return
+	}
+
+	// Proposer duties (per slot) resolved on the same fork as the committees.
+	var proposers []uint64
+	if hasFork {
+		proposers = services.GlobalBeaconService.GetEpochProposersForRoot(r.Context(), phase0.Epoch(epoch), depRoot)
+	} else {
+		proposers = services.GlobalBeaconService.GetEpochProposers(r.Context(), phase0.Epoch(epoch))
 	}
 
 	slots := make([]*APIEpochDutiesSlotInfo, 0, len(epochCommittees))
@@ -105,8 +126,14 @@ func APIEpochDutiesV1(w http.ResponseWriter, r *http.Request) {
 			committeesPerSlot = uint64(len(slotCommittees))
 		}
 
+		var proposer uint64
+		if slotIdx < len(proposers) {
+			proposer = proposers[slotIdx]
+		}
+
 		slots = append(slots, &APIEpochDutiesSlotInfo{
 			Slot:       uint64(slot),
+			Proposer:   proposer,
 			Committees: slotCommittees,
 		})
 	}
@@ -117,8 +144,12 @@ func APIEpochDutiesV1(w http.ResponseWriter, r *http.Request) {
 		Slots:             slots,
 	}
 
-	// The dependent root is only known while the epoch stats are held in memory.
-	if epochStats := services.GlobalBeaconService.GetBeaconIndexer().GetEpochStats(phase0.Epoch(epoch), nil); epochStats != nil {
+	// Report the fork's dependent root when one was requested, otherwise fall
+	// back to the canonical dependent root (only known while the epoch stats are
+	// held in memory).
+	if hasFork && depRoot != (phase0.Root{}) {
+		data.DependentRoot = fmt.Sprintf("0x%x", depRoot[:])
+	} else if epochStats := services.GlobalBeaconService.GetBeaconIndexer().GetEpochStats(phase0.Epoch(epoch), nil); epochStats != nil {
 		dependentRoot := epochStats.GetDependentRoot()
 		data.DependentRoot = fmt.Sprintf("0x%x", dependentRoot[:])
 	}

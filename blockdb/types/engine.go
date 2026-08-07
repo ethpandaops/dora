@@ -112,6 +112,23 @@ type DutiesEngine interface {
 	// Returns nil, nil if not found. Used for whole-epoch copies.
 	GetEpochDuties(ctx context.Context, firstSlot uint64) (*EpochDuties, error)
 
+	// AddDivergingEpochDuties stores the resolved duties of a diverging fork,
+	// keyed additionally by duties.DependentRoot (which must be non-zero).
+	// Returns the stored size in bytes.
+	AddDivergingEpochDuties(ctx context.Context, duties *EpochDuties) (int64, error)
+
+	// GetEpochDutiesForRoot retrieves the full diverging-fork duties for an epoch
+	// under the given dependent root. Returns nil, nil if not found.
+	GetEpochDutiesForRoot(ctx context.Context, firstSlot uint64, depRoot [32]byte) (*EpochDuties, error)
+
+	// GetSlotCommitteesForRoot returns the attester committees for a single slot
+	// of the diverging fork identified by depRoot. Returns nil, nil if not found.
+	GetSlotCommitteesForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([][]uint64, error)
+
+	// GetSlotPtcForRoot returns the PTC members for a single slot of the
+	// diverging fork identified by depRoot. Returns nil, nil if not found.
+	GetSlotPtcForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([]uint64, error)
+
 	// GetSlotCommittees returns the attester committees for a single slot
 	// (global validator indices, in committee order). firstSlot identifies the
 	// epoch object. Returns nil, nil if not found.
@@ -127,6 +144,30 @@ type DutiesEngine interface {
 	// PruneEpochDutiesBefore deletes duties for all epochs whose first slot is
 	// before maxFirstSlot. Returns the number of epochs deleted.
 	PruneEpochDutiesBefore(ctx context.Context, maxFirstSlot uint64) (int64, error)
+}
+
+// BlockDbObjectStats holds engine-level object counts obtained by scanning the
+// key namespaces. Only cheap-to-scan local (Pebble) engines populate it.
+type BlockDbObjectStats struct {
+	// BlockCount is the number of block header records (namespace ns1), which
+	// includes both canonical and orphaned blocks (they share the namespace).
+	BlockCount uint64
+	// CanonicalDutiesCount is the number of canonical per-epoch duties objects.
+	CanonicalDutiesCount uint64
+	// DivergingDutiesCount is the number of diverging-fork duties objects.
+	DivergingDutiesCount uint64
+	// BidsCount is the number of per-slot bids objects (namespace ns7).
+	BidsCount uint64
+	// BidsBytes is the total encoded size of the bids objects, if available.
+	BidsBytes uint64
+}
+
+// ObjectStatsEngine is an optional interface implemented by engines that can
+// cheaply count stored objects per namespace (e.g. the Pebble engine via range
+// scans). Engines without a cheap scan (e.g. S3) do not implement it.
+type ObjectStatsEngine interface {
+	// GetObjectStats returns per-namespace object counts.
+	GetObjectStats(ctx context.Context) (*BlockDbObjectStats, error)
 }
 
 // SlotBidsEngine stores per-slot bids objects: all execution payload bids of
