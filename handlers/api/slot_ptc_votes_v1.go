@@ -57,6 +57,8 @@ type APISlotPtcValidator struct {
 // @Tags Slot
 // @Produce json
 // @Param slotOrHash path string true "Slot number or block root (0x-prefixed hex)"
+// @Param dependent_root query string false "Resolve the PTC on the fork with this committee-shuffling dependent root (0x-prefixed hex)"
+// @Param block_root query string false "Resolve the PTC on the fork that this block root sits on (0x-prefixed hex)"
 // @Success 200 {object} APISlotPtcVotesResponse
 // @Failure 400 {object} map[string]string "Invalid slot number or root format"
 // @Failure 404 {object} map[string]string "Slot not found"
@@ -119,25 +121,36 @@ func APISlotPtcVotesV1(w http.ResponseWriter, r *http.Request) {
 	data.VotedSlot = uint64(votedSlot)
 	data.TotalPtcSize = specs.PtcSize
 
+	depRoot, hasFork, ok := parseDutiesFork(r.Context(), w, r, votedEpoch)
+	if !ok {
+		return
+	}
+
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
-	epochStats := beaconIndexer.GetEpochStatsByEpoch(votedEpoch)
 	var ptcDuties []phase0.ValidatorIndex
-	for _, es := range epochStats {
-		values := es.GetValues(true)
-		if values == nil || values.PtcDuties == nil {
-			continue
-		}
-		slotInEpoch := uint64(votedSlot) % specs.SlotsPerEpoch
-		if slotInEpoch >= uint64(len(values.PtcDuties)) || values.PtcDuties[slotInEpoch] == nil {
-			continue
-		}
-		ptcDuties = make([]phase0.ValidatorIndex, len(values.PtcDuties[slotInEpoch]))
-		for i, activeIdx := range values.PtcDuties[slotInEpoch] {
-			if int(activeIdx) < len(values.ActiveIndices) {
-				ptcDuties[i] = values.ActiveIndices[activeIdx]
+	if hasFork {
+		// Resolve the PTC on the requested fork (in-memory epoch stats matching
+		// the dependent root, or the diverging-fork blockdb object).
+		ptcDuties = services.GlobalBeaconService.GetSlotPtcForRoot(r.Context(), votedSlot, depRoot)
+	} else {
+		epochStats := beaconIndexer.GetEpochStatsByEpoch(votedEpoch)
+		for _, es := range epochStats {
+			values := es.GetValues(true)
+			if values == nil || values.PtcDuties == nil {
+				continue
 			}
+			slotInEpoch := uint64(votedSlot) % specs.SlotsPerEpoch
+			if slotInEpoch >= uint64(len(values.PtcDuties)) || values.PtcDuties[slotInEpoch] == nil {
+				continue
+			}
+			ptcDuties = make([]phase0.ValidatorIndex, len(values.PtcDuties[slotInEpoch]))
+			for i, activeIdx := range values.PtcDuties[slotInEpoch] {
+				if int(activeIdx) < len(values.ActiveIndices) {
+					ptcDuties[i] = values.ActiveIndices[activeIdx]
+				}
+			}
+			break
 		}
-		break
 	}
 
 	votedPositions := make(map[uint64]bool, specs.PtcSize)

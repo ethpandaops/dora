@@ -2623,6 +2623,16 @@ paths:
         name: epoch
         required: true
         type: integer
+      - description: Resolve duties on the fork with this committee-shuffling dependent
+          root (0x-prefixed hex)
+        in: query
+        name: dependent_root
+        type: string
+      - description: Resolve duties on the fork that this block root sits on (0x-prefixed
+          hex)
+        in: query
+        name: block_root
+        type: string
       produces:
       - application/json
       responses:
@@ -2998,6 +3008,16 @@ paths:
         in: query
         name: committee
         type: string
+      - description: Resolve committees on the fork with this committee-shuffling
+          dependent root (0x-prefixed hex)
+        in: query
+        name: dependent_root
+        type: string
+      - description: Resolve committees on the fork that this block root sits on (0x-prefixed
+          hex)
+        in: query
+        name: block_root
+        type: string
       produces:
       - application/json
       responses:
@@ -3238,6 +3258,16 @@ paths:
         in: path
         name: slotOrHash
         required: true
+        type: string
+      - description: Resolve the PTC on the fork with this committee-shuffling dependent
+          root (0x-prefixed hex)
+        in: query
+        name: dependent_root
+        type: string
+      - description: Resolve the PTC on the fork that this block root sits on (0x-prefixed
+          hex)
+        in: query
+        name: block_root
         type: string
       produces:
       - application/json

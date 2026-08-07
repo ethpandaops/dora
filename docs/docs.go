@@ -744,6 +744,18 @@ const docTemplate = `{
                         "name": "epoch",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resolve duties on the fork with this committee-shuffling dependent root (0x-prefixed hex)",
+                        "name": "dependent_root",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resolve duties on the fork that this block root sits on (0x-prefixed hex)",
+                        "name": "block_root",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1562,6 +1574,18 @@ const docTemplate = `{
                         "name": "slotOrHash",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resolve the PTC on the fork with this committee-shuffling dependent root (0x-prefixed hex)",
+                        "name": "dependent_root",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resolve the PTC on the fork that this block root sits on (0x-prefixed hex)",
+                        "name": "block_root",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1629,6 +1653,18 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Comma-separated list of committee indices to filter by",
                         "name": "committee",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resolve committees on the fork with this committee-shuffling dependent root (0x-prefixed hex)",
+                        "name": "dependent_root",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resolve committees on the fork that this block root sits on (0x-prefixed hex)",
+                        "name": "block_root",
                         "in": "query"
                     }
                 ],
