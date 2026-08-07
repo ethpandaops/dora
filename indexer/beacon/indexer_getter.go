@@ -175,6 +175,12 @@ func (indexer *Indexer) GetBlockByParentRoot(blockRoot phase0.Root) []*Block {
 	return indexer.blockCache.getBlocksByParentRoot(blockRoot)
 }
 
+// GetBlocksBySlotRange returns all in-memory (unfinalized) blocks whose slot is
+// within [minSlot, maxSlot] (inclusive), scanning the cache once.
+func (indexer *Indexer) GetBlocksBySlotRange(minSlot, maxSlot phase0.Slot) []*Block {
+	return indexer.blockCache.getBlocksBySlotRange(minSlot, maxSlot)
+}
+
 // GetBlockByStateRoot returns the block with the given state root.
 func (indexer *Indexer) GetBlockByStateRoot(stateRoot phase0.Root) *Block {
 	return indexer.blockCache.getBlockByStateRoot(stateRoot)

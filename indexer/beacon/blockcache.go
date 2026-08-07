@@ -136,6 +136,23 @@ func (cache *blockCache) getBlocksBySlot(slot phase0.Slot) []*Block {
 	return blocks
 }
 
+// getBlocksBySlotRange returns all cached blocks whose slot is within
+// [minSlot, maxSlot] (inclusive). It scans the root map once so the caller can
+// build a fork graph in bulk instead of fetching parents one-by-one.
+func (cache *blockCache) getBlocksBySlotRange(minSlot, maxSlot phase0.Slot) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	blocks := make([]*Block, 0)
+	for _, block := range cache.rootMap {
+		if block.Slot >= minSlot && block.Slot <= maxSlot {
+			blocks = append(blocks, block)
+		}
+	}
+
+	return blocks
+}
+
 // getBlocksByParentRoot returns a slice of blocks that have the given parent root.
 func (cache *blockCache) getBlocksByParentRoot(parentRoot phase0.Root) []*Block {
 	cache.cacheMutex.RLock()
