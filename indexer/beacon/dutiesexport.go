@@ -118,3 +118,70 @@ func (indexer *Indexer) writeEpochDutiesToBlockDb(ctx context.Context, epoch pha
 
 	return size, nil
 }
+
+// buildDivergingEpochDuties resolves the diverging-fork duties for an epoch. It
+// walks the orphaned blocks, groups them by their fork's committee-shuffling
+// dependent root, and builds one fully-materialized EpochDuties object per
+// distinct diverging root (skipping the canonical root and the zero root).
+//
+// It MUST be called before the finalization persist-tx deletes the
+// unfinalized_duties rows: GetOrLoadValues may restore a fork's values from that
+// table. The returned objects are engine-agnostic and independent of the SQL
+// rows, so they can be written later (in the blockdb WaitGroup) safely.
+func (indexer *Indexer) buildDivergingEpochDuties(ctx context.Context, epoch phase0.Epoch, canonicalDepRoot phase0.Root, orphanedBlocks []*Block) []*btypes.EpochDuties {
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsDuties() {
+		return nil
+	}
+	if utils.Config != nil && utils.Config.Indexer.DisableBlockDBDuties {
+		return nil
+	}
+
+	specs := indexer.consensusPool.GetChainState().GetSpecs()
+	if specs == nil {
+		return nil
+	}
+
+	seen := make(map[phase0.Root]bool, len(orphanedBlocks))
+	result := make([]*btypes.EpochDuties, 0, len(orphanedBlocks))
+	for _, block := range orphanedBlocks {
+		es := indexer.GetEpochStatsByBlockRoot(epoch, block.Root)
+		if es == nil {
+			continue
+		}
+
+		depRoot := es.GetDependentRoot()
+		if depRoot == canonicalDepRoot || depRoot == (phase0.Root{}) {
+			continue
+		}
+		if seen[depRoot] {
+			continue
+		}
+		seen[depRoot] = true
+
+		values := es.GetOrLoadValues(ctx, indexer, false, false)
+		if values == nil {
+			indexer.logger.Warnf("could not load epoch stats values for diverging fork %v (epoch %v)", depRoot.String(), epoch)
+			continue
+		}
+
+		d := BuildEpochDuties(specs, epoch, values)
+		if d == nil {
+			continue
+		}
+		d.DependentRoot = depRoot
+		result = append(result, d)
+	}
+
+	return result
+}
+
+// writeDivergingEpochDutiesToBlockDb stores the pre-built diverging-fork duties
+// objects. It is best-effort: a per-fork failure is logged and skipped, and it
+// must never block finalization.
+func (indexer *Indexer) writeDivergingEpochDutiesToBlockDb(ctx context.Context, divergingDuties []*btypes.EpochDuties) {
+	for _, d := range divergingDuties {
+		if _, err := blockdb.GlobalBlockDb.AddDivergingEpochDuties(ctx, d); err != nil {
+			indexer.logger.Errorf("error writing diverging duties for epoch %v (%x) to blockdb: %v", d.Epoch, d.DependentRoot, err)
+		}
+	}
+}
