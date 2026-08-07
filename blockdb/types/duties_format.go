@@ -8,16 +8,17 @@
 //
 // Object layout:
 //
-//	HEADER (40 bytes)
+//	HEADER (v1: 40 bytes, v2: 72 bytes)
 //	├── Magic:             [4]byte = "DUTY"
-//	├── Version:           uint16
-//	├── Flags:             uint8   (reserved, 0)
+//	├── Version:           uint16  (1 = canonical, 2 = adds DependentRoot)
+//	├── Flags:             uint8   (bit 0 = DutiesFlagDiverging)
 //	├── IndexWidth:        uint8   (bytes per validator index, = 6)
 //	├── Epoch:             uint64
 //	├── ValidatorCount:    uint64  (active validator count; drives attester offsets)
 //	├── SlotsPerEpoch:     uint32
 //	├── CommitteesPerSlot: uint32  (stored so the object reads without spec constants)
-//	└── PtcSize:           uint32  (0 if pre-Gloas)
+//	├── PtcSize:           uint32  (0 if pre-Gloas)
+//	└── DependentRoot:     [32]byte (v2 only; committee-shuffling dependent root)
 //	ATTESTER SECTION: ValidatorCount * IndexWidth bytes
 //	│   flat list of global validator indices in (slotIndex, committeeIndex, position) order
 //	PTC SECTION: SlotsPerEpoch * PtcSize * IndexWidth bytes (omitted if PtcSize == 0)
@@ -33,14 +34,40 @@ var DutiesMagic = [4]byte{'D', 'U', 'T', 'Y'}
 
 const (
 	// DutiesFormatVersion is the current duties object format version.
-	DutiesFormatVersion uint16 = 1
+	DutiesFormatVersion uint16 = 2
 
-	// DutiesHeaderSize is the fixed header size for version 1.
+	// DutiesHeaderSize is the fixed header size for version 1 (also the base
+	// layout shared by v2). v2 appends a 32-byte dependent root.
 	DutiesHeaderSize = 40
+
+	// DutiesHeaderSizeV2 is the fixed header size for version 2 (v1 + 32-byte
+	// dependent root).
+	DutiesHeaderSizeV2 = 72
 
 	// DutiesIndexWidth is the number of bytes used to encode a validator index.
 	DutiesIndexWidth uint8 = 6
+
+	// DutiesFlagDiverging marks a duties object that belongs to a non-canonical
+	// (diverging) fork, keyed by its dependent root.
+	DutiesFlagDiverging uint8 = 1
 )
+
+// dutiesHeaderSize returns the header byte size for a given format version.
+func dutiesHeaderSize(version uint16) int64 {
+	if version >= 2 {
+		return DutiesHeaderSizeV2
+	}
+	return DutiesHeaderSize
+}
+
+// dutiesVersion returns the format version to encode the given duties with.
+// A non-zero dependent root selects v2 (diverging), otherwise v1 (canonical).
+func dutiesVersion(d *EpochDuties) uint16 {
+	if d.DependentRoot != ([32]byte{}) {
+		return 2
+	}
+	return 1
+}
 
 // DutiesHeader is the decoded header of a duties object. Section offsets are
 // derived, not stored.
@@ -53,6 +80,9 @@ type DutiesHeader struct {
 	SlotsPerEpoch     uint64
 	CommitteesPerSlot uint64
 	PtcSize           uint64
+	// DependentRoot is the committee-shuffling dependent root. Non-zero only in
+	// v2 (diverging-fork) objects; zero for v1 (canonical) objects.
+	DependentRoot [32]byte
 }
 
 // EpochDuties holds the resolved duty mappings for one epoch. It is the input
@@ -64,6 +94,11 @@ type EpochDuties struct {
 	SlotsPerEpoch     uint64
 	CommitteesPerSlot uint64
 	PtcSize           uint64
+
+	// DependentRoot is the committee-shuffling dependent root of the fork these
+	// duties belong to. Zero for canonical duties (encoded as v1), non-zero for
+	// diverging-fork duties (encoded as v2).
+	DependentRoot [32]byte
 
 	// Committees[slotIndex][committeeIndex] holds the global validator indices
 	// of that committee in attestation-bit order.
@@ -92,11 +127,12 @@ func EncodeEpochDuties(d *EpochDuties) ([]byte, error) {
 	attesterLen := int(d.ValidatorCount) * w
 	ptcLen := int(d.SlotsPerEpoch) * int(d.PtcSize) * w
 
-	buf := make([]byte, DutiesHeaderSize+attesterLen+ptcLen)
+	headerSize := int(dutiesHeaderSize(dutiesVersion(d)))
+	buf := make([]byte, headerSize+attesterLen+ptcLen)
 	writeDutiesHeader(buf, d)
 
 	// Attester section: flat shuffled list in (slot, committee, position) order.
-	pos := DutiesHeaderSize
+	pos := headerSize
 	written := uint64(0)
 	for _, committees := range d.Committees {
 		for _, committee := range committees {
@@ -147,6 +183,7 @@ func DecodeEpochDuties(firstSlot uint64, data []byte) (*EpochDuties, error) {
 		SlotsPerEpoch:     h.SlotsPerEpoch,
 		CommitteesPerSlot: h.CommitteesPerSlot,
 		PtcSize:           h.PtcSize,
+		DependentRoot:     h.DependentRoot,
 	}
 
 	d.Committees = make([][][]uint64, h.SlotsPerEpoch)
@@ -242,17 +279,26 @@ func EncodeIndexList(indices []uint64) ([]byte, error) {
 }
 
 // EncodeDutiesHeader returns the fixed-size DUTY header bytes for the epoch.
+// The size depends on the format version: 40 bytes for v1 (canonical), 72 bytes
+// for v2 (diverging, carries the dependent root).
 func EncodeDutiesHeader(d *EpochDuties) []byte {
-	buf := make([]byte, DutiesHeaderSize)
+	buf := make([]byte, dutiesHeaderSize(dutiesVersion(d)))
 	writeDutiesHeader(buf, d)
 	return buf
 }
 
-// writeDutiesHeader writes the fixed 40-byte header into the start of buf.
+// writeDutiesHeader writes the DUTY header into the start of buf. It selects v1
+// or v2 based on whether the duties carry a dependent root; buf must be sized
+// accordingly (see dutiesHeaderSize).
 func writeDutiesHeader(buf []byte, d *EpochDuties) {
+	version := dutiesVersion(d)
 	copy(buf[0:4], DutiesMagic[:])
-	binary.BigEndian.PutUint16(buf[4:6], DutiesFormatVersion)
-	buf[6] = 0 // flags
+	binary.BigEndian.PutUint16(buf[4:6], version)
+	var flags uint8
+	if version >= 2 {
+		flags |= DutiesFlagDiverging
+	}
+	buf[6] = flags
 	buf[7] = DutiesIndexWidth
 	binary.BigEndian.PutUint64(buf[8:16], d.Epoch)
 	binary.BigEndian.PutUint64(buf[16:24], d.ValidatorCount)
@@ -260,6 +306,9 @@ func writeDutiesHeader(buf []byte, d *EpochDuties) {
 	binary.BigEndian.PutUint32(buf[28:32], uint32(d.CommitteesPerSlot))
 	binary.BigEndian.PutUint32(buf[32:36], uint32(d.PtcSize))
 	// buf[36:40] reserved
+	if version >= 2 {
+		copy(buf[40:72], d.DependentRoot[:])
+	}
 }
 
 // DecodeDutiesHeader parses and validates a duties object header.
@@ -284,17 +333,23 @@ func DecodeDutiesHeader(b []byte) (*DutiesHeader, error) {
 	if h.IndexWidth == 0 || h.IndexWidth > 8 {
 		return nil, fmt.Errorf("invalid duties index width: %d", h.IndexWidth)
 	}
+	if h.Version >= 2 {
+		if len(b) < DutiesHeaderSizeV2 {
+			return nil, fmt.Errorf("data too short for v2 duties header: %d < %d", len(b), DutiesHeaderSizeV2)
+		}
+		copy(h.DependentRoot[:], b[40:72])
+	}
 	return h, nil
 }
 
 // attesterOffset returns the byte offset of the attester section.
 func (h *DutiesHeader) attesterOffset() int64 {
-	return DutiesHeaderSize
+	return dutiesHeaderSize(h.Version)
 }
 
 // ptcOffset returns the byte offset of the PTC section.
 func (h *DutiesHeader) ptcOffset() int64 {
-	return DutiesHeaderSize + int64(h.ValidatorCount)*int64(h.IndexWidth)
+	return h.attesterOffset() + int64(h.ValidatorCount)*int64(h.IndexWidth)
 }
 
 // splitOffset mirrors duties.SplitOffset: the start index of chunk `index`
