@@ -81,10 +81,14 @@ func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorInde
 	return validatorActivity
 }
 
-// ValidatorProposalStat tracks the number of expected vs actually proposed canonical blocks for a validator.
+// ValidatorProposalStat tracks the number of expected vs actually proposed canonical blocks for a
+// validator, plus (Gloas+) how many of the canonical proposals had their execution payload envelope
+// delivered on the canonical chain.
 type ValidatorProposalStat struct {
-	Expected uint64
-	Proposed uint64
+	Expected         uint64
+	Proposed         uint64
+	PayloadExpected  uint64
+	PayloadDelivered uint64
 }
 
 // ValidatorPtcStat tracks the number of expected vs actually included PTC votes for a validator.
@@ -95,10 +99,13 @@ type ValidatorPtcStat struct {
 
 // GetValidatorProposalStats returns expected vs canonical proposals per validator over the
 // last lookbackEpochs epochs. A duty counts as "proposed" only if the canonical block for the
-// duty slot was authored by the assigned proposer.
+// duty slot was authored by the assigned proposer. Slots below the in-memory block cache
+// boundary are skipped entirely (no expected, no proposed), as their blocks might already be
+// pruned from memory and would falsely count as missed.
 func (bs *ChainService) GetValidatorProposalStats(ctx context.Context, lookbackEpochs phase0.Epoch) map[phase0.ValidatorIndex]*ValidatorProposalStat {
 	chainState := bs.consensusPool.GetChainState()
-	if chainState.GetSpecs() == nil {
+	specs := chainState.GetSpecs()
+	if specs == nil {
 		return nil
 	}
 
@@ -110,6 +117,7 @@ func (bs *ChainService) GetValidatorProposalStats(ctx context.Context, lookbackE
 	}
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
+	minInMemorySlot := bs.beaconIndexer.GetMinInMemorySlot()
 	result := make(map[phase0.ValidatorIndex]*ValidatorProposalStat)
 
 	for epoch := startEpoch; epoch <= currentEpoch; epoch++ {
@@ -124,9 +132,18 @@ func (bs *ChainService) GetValidatorProposalStats(ctx context.Context, lookbackE
 
 		startSlot := chainState.EpochToSlot(epoch)
 		for slotIdx, proposer := range values.ProposerDuties {
+			// ProposerDuties might contain more than one epoch of duties if it was derived
+			// from the proposer lookahead of a pre-fix epoch state, so cap at epoch length
+			if uint64(slotIdx) >= specs.SlotsPerEpoch {
+				break
+			}
+
 			slot := startSlot + phase0.Slot(slotIdx)
 			if slot > currentSlot {
 				break
+			}
+			if slot < minInMemorySlot {
+				continue
 			}
 
 			stat := result[proposer]
@@ -146,6 +163,16 @@ func (bs *ChainService) GetValidatorProposalStats(ctx context.Context, lookbackE
 				}
 				if header.Message.ProposerIndex == proposer {
 					stat.Proposed++
+
+					// track payload delivery separately (Gloas+): the beacon block being canonical
+					// does not imply the execution payload envelope was revealed. Skip the current
+					// slot as its payload might still be in flight.
+					if slot < currentSlot && chainState.IsEip7732Enabled(epoch) {
+						stat.PayloadExpected++
+						if bs.getPayloadStatus(ctx, block, canonicalHead, true) == dbtypes.PayloadStatusCanonical {
+							stat.PayloadDelivered++
+						}
+					}
 					break
 				}
 			}
