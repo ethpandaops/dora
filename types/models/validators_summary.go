@@ -15,6 +15,10 @@ type ValidatorsSummaryPageData struct {
 	ProposalsExpected  uint64                          `json:"proposals_expected"`
 	ProposalsProposed  uint64                          `json:"proposals_proposed"`
 	HasProposalData    bool                            `json:"has_proposal_data"`
+	PayloadRate        float64                         `json:"payload_rate"`
+	PayloadsExpected   uint64                          `json:"payloads_expected"`
+	PayloadsDelivered  uint64                          `json:"payloads_delivered"`
+	HasPayloadData     bool                            `json:"has_payload_data"`
 	PtcInclusionRate   float64                         `json:"ptc_inclusion_rate"`
 	PtcVotesExpected   uint64                          `json:"ptc_votes_expected"`
 	PtcVotesIncluded   uint64                          `json:"ptc_votes_included"`
@@ -38,6 +42,10 @@ type ValidatorsSummaryMatrixCell struct {
 	ProposalsProposed       uint64  `json:"proposals_proposed"`
 	ProposalRate            float64 `json:"proposal_rate"`
 	HasProposalData         bool    `json:"has_proposal_data"`
+	PayloadsExpected        uint64  `json:"payloads_expected"`
+	PayloadsDelivered       uint64  `json:"payloads_delivered"`
+	PayloadRate             float64 `json:"payload_rate"`
+	HasPayloadData          bool    `json:"has_payload_data"`
 	PtcVotesExpected        uint64  `json:"ptc_votes_expected"`
 	PtcVotesIncluded        uint64  `json:"ptc_votes_included"`
 	PtcInclusionRate        float64 `json:"ptc_inclusion_rate"`
@@ -62,6 +70,10 @@ type ValidatorsSummaryClientBreak struct {
 	ProposalsProposed       uint64  `json:"proposals_proposed"`
 	ProposalRate            float64 `json:"proposal_rate"`
 	HasProposalData         bool    `json:"has_proposal_data"`
+	PayloadsExpected        uint64  `json:"payloads_expected"`
+	PayloadsDelivered       uint64  `json:"payloads_delivered"`
+	PayloadRate             float64 `json:"payload_rate"`
+	HasPayloadData          bool    `json:"has_payload_data"`
 	PtcVotesExpected        uint64  `json:"ptc_votes_expected"`
 	PtcVotesIncluded        uint64  `json:"ptc_votes_included"`
 	PtcInclusionRate        float64 `json:"ptc_inclusion_rate"`
