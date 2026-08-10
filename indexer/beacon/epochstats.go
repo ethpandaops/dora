@@ -511,7 +511,12 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			offset = slotsPerEpoch
 		}
 
-		values.ProposerDuties = dependentState.proposerLookahead[offset:]
+		proposerDuties := dependentState.proposerLookahead[offset:]
+		if uint64(len(proposerDuties)) > slotsPerEpoch {
+			proposerDuties = proposerDuties[:slotsPerEpoch]
+		}
+
+		values.ProposerDuties = proposerDuties
 	} else {
 		proposerDuties := []phase0.ValidatorIndex{}
 		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {

@@ -146,6 +146,12 @@ func (indexer *Indexer) GetBlockCacheState() (finalizedEpoch phase0.Epoch, prune
 	return indexer.lastFinalizedEpoch, indexer.lastPrunedEpoch
 }
 
+// GetMinInMemorySlot returns the lowest slot that is still guaranteed to be covered by the in-memory block cache.
+// blocks below this slot might already be pruned from memory and are only available via database lookups.
+func (indexer *Indexer) GetMinInMemorySlot() phase0.Slot {
+	return indexer.getMinInMemorySlot()
+}
+
 // GetSynchronizerState returns the state of the synchronizer, including whether it is running and the current epoch.
 func (indexer *Indexer) GetSynchronizerState() (running bool, syncHead phase0.Epoch) {
 	if indexer.synchronizer == nil {
