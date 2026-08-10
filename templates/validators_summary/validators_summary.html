@@ -13,7 +13,7 @@
 
     <!-- Network Overview Cards -->
     <div class="row mt-3 g-3">
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Validators</h5>
@@ -21,7 +21,7 @@
           </div>
         </div>
       </div>
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Total Effective Balance</h5>
@@ -29,15 +29,16 @@
           </div>
         </div>
       </div>
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
-            <h5 class="card-title">Online Stake</h5>
+            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Effective balance of validators that {{ .OnlineWindowLabel }}.">Online Stake</h5>
             <h3 class="text-success">{{ formatAddCommas .OverallHealthy }} ETH</h3>
+            <div class="text-muted small">{{ .OnlineWindowLabel }}</div>
           </div>
         </div>
       </div>
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Network Health</h5>
@@ -48,39 +49,53 @@
         </div>
       </div>
       {{ if .HasInclusionData }}
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
-            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Average attestation inclusion distance based on cached blocks only.">Avg. Inclusion Distance</h5>
+            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Average attestation inclusion distance over {{ .AttestationWindowLabel }}, based on cached blocks only.">Avg. Inclusion Distance</h5>
             <h3 class="{{ if le .AvgInclusionDelay 1.01 }}text-success{{ else if le .AvgInclusionDelay 1.3 }}text-warning{{ else }}text-danger{{ end }}">
               {{ printf "%.2f" .AvgInclusionDelay }}
             </h3>
+            <div class="text-muted small">{{ .AttestationWindowLabel }}</div>
           </div>
         </div>
       </div>
       {{ end }}
       {{ if .HasProposalData }}
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
-            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Canonical block proposal accuracy over the last 2 epochs (proposed / expected).">Proposal Accuracy</h5>
+            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Canonical beacon block proposal accuracy over {{ .ProposalWindowLabel }} (proposed / expected). Payload delivery is tracked separately.">Proposal Accuracy</h5>
             <h3 class="{{ if eq .ProposalRate 100.0 }}text-success{{ else if ge .ProposalRate 95.0 }}text-warning{{ else }}text-danger{{ end }}">
               {{ printf "%.1f" .ProposalRate }}%
             </h3>
-            <div class="text-muted small">{{ formatAddCommas .ProposalsProposed }} / {{ formatAddCommas .ProposalsExpected }}</div>
+            <div class="text-muted small">{{ formatAddCommas .ProposalsProposed }} / {{ formatAddCommas .ProposalsExpected }} &middot; {{ .ProposalWindowLabel }}</div>
+          </div>
+        </div>
+      </div>
+      {{ end }}
+      {{ if .HasPayloadData }}
+      <div class="col-6 col-lg-3">
+        <div class="card h-100">
+          <div class="card-body text-center">
+            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Execution payload envelopes delivered on the canonical chain for canonical block proposals over {{ .ProposalWindowLabel }} (delivered / proposed).">Payload Delivery</h5>
+            <h3 class="{{ if eq .PayloadRate 100.0 }}text-success{{ else if ge .PayloadRate 95.0 }}text-warning{{ else }}text-danger{{ end }}">
+              {{ printf "%.1f" .PayloadRate }}%
+            </h3>
+            <div class="text-muted small">{{ formatAddCommas .PayloadsDelivered }} / {{ formatAddCommas .PayloadsExpected }} &middot; {{ .ProposalWindowLabel }}</div>
           </div>
         </div>
       </div>
       {{ end }}
       {{ if .HasPtcData }}
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
-            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Payload Timeliness Committee vote inclusion accuracy over the last 2 epochs (included / expected).">PTC Inclusion</h5>
+            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Payload Timeliness Committee vote inclusion accuracy over {{ .PtcWindowLabel }} (included / expected).">PTC Inclusion</h5>
             <h3 class="{{ if eq .PtcInclusionRate 100.0 }}text-success{{ else if ge .PtcInclusionRate 95.0 }}text-warning{{ else }}text-danger{{ end }}">
               {{ printf "%.1f" .PtcInclusionRate }}%
             </h3>
-            <div class="text-muted small">{{ formatAddCommas .PtcVotesIncluded }} / {{ formatAddCommas .PtcVotesExpected }}</div>
+            <div class="text-muted small">{{ formatAddCommas .PtcVotesIncluded }} / {{ formatAddCommas .PtcVotesExpected }} &middot; {{ .PtcWindowLabel }}</div>
           </div>
         </div>
       </div>
@@ -124,7 +139,7 @@
                         style="cursor: pointer; border: 1px solid #dee2e6;"
                         data-bs-toggle="tooltip"
                         data-bs-placement="top"
-                        title="{{ $cell.ConsensusClient }}-{{ $cell.ExecutionClient }}: {{ $cell.ValidatorCount }} validators, {{ printf "%.2f" $cell.BalancePercentage }}% stake, {{ printf "%.1f" $cell.OnlinePercentage }}% online{{ if gt $cell.AvgInclusionDelay 0.0 }}, avg incl. dist. {{ printf "%.2f" $cell.AvgInclusionDelay }}{{ end }}{{ if $cell.HasProposalData }}, proposals {{ $cell.ProposalsProposed }}/{{ $cell.ProposalsExpected }} ({{ printf "%.1f" $cell.ProposalRate }}%){{ end }}{{ if $cell.HasPtcData }}, PTC {{ $cell.PtcVotesIncluded }}/{{ $cell.PtcVotesExpected }} ({{ printf "%.1f" $cell.PtcInclusionRate }}%){{ end }}">
+                        title="{{ $cell.ConsensusClient }}-{{ $cell.ExecutionClient }}: {{ $cell.ValidatorCount }} validators, {{ printf "%.2f" $cell.BalancePercentage }}% stake, {{ printf "%.1f" $cell.OnlinePercentage }}% online{{ if gt $cell.AvgInclusionDelay 0.0 }}, avg incl. dist. {{ printf "%.2f" $cell.AvgInclusionDelay }}{{ end }}{{ if $cell.HasProposalData }}, proposals {{ $cell.ProposalsProposed }}/{{ $cell.ProposalsExpected }} ({{ printf "%.1f" $cell.ProposalRate }}%){{ end }}{{ if $cell.HasPayloadData }}, payloads {{ $cell.PayloadsDelivered }}/{{ $cell.PayloadsExpected }} ({{ printf "%.1f" $cell.PayloadRate }}%){{ end }}{{ if $cell.HasPtcData }}, PTC {{ $cell.PtcVotesIncluded }}/{{ $cell.PtcVotesExpected }} ({{ printf "%.1f" $cell.PtcInclusionRate }}%){{ end }}">
                       {{ if gt $cell.ValidatorCount 0 }}
                         <div class="fw-bold">{{ formatAddCommas $cell.ValidatorCount }}</div>
                         <div style="font-size: 0.7rem; color: #6c757d;">{{ printf "%.1f" $cell.BalancePercentage }}%</div>
@@ -134,6 +149,11 @@
                         {{ if $cell.HasProposalData }}
                         <div style="font-size: 0.7rem; {{ if eq $cell.ProposalRate 100.0 }}color: #28a745;{{ else if ge $cell.ProposalRate 95.0 }}color: #ffc107;{{ else }}color: #dc3545;{{ end }}">
                           {{ printf "%.0f" $cell.ProposalRate }}% prop ({{ $cell.ProposalsProposed }}/{{ $cell.ProposalsExpected }})
+                        </div>
+                        {{ end }}
+                        {{ if $cell.HasPayloadData }}
+                        <div style="font-size: 0.7rem; {{ if eq $cell.PayloadRate 100.0 }}color: #28a745;{{ else if ge $cell.PayloadRate 95.0 }}color: #ffc107;{{ else }}color: #dc3545;{{ end }}">
+                          {{ printf "%.0f" $cell.PayloadRate }}% payload ({{ $cell.PayloadsDelivered }}/{{ $cell.PayloadsExpected }})
                         </div>
                         {{ end }}
                         {{ if $cell.HasPtcData }}
@@ -172,10 +192,11 @@
                 <th class="text-end">Online/Offline</th>
                 <th class="text-end">Effective Balance (ETH)</th>
                 <th class="text-end">Network Share</th>
-                <th class="text-end">Online Rate</th>
-                {{ if $.HasInclusionData }}<th class="text-end" data-bs-toggle="tooltip" title="Average attestation inclusion distance">Avg. Inclusion Dist.</th>{{ end }}
-                {{ if $.HasProposalData }}<th class="text-end" data-bs-toggle="tooltip" title="Canonical block proposals (proposed / expected) over the last 2 epochs.">Proposal Accuracy</th>{{ end }}
-                {{ if $.HasPtcData }}<th class="text-end" data-bs-toggle="tooltip" title="PTC votes included / expected over the last 2 epochs.">PTC Inclusion</th>{{ end }}
+                <th class="text-end" data-bs-toggle="tooltip" title="Share of validators that {{ $.OnlineWindowLabel }}.">Online Rate</th>
+                {{ if $.HasInclusionData }}<th class="text-end" data-bs-toggle="tooltip" title="Average attestation inclusion distance over {{ $.AttestationWindowLabel }}.">Avg. Inclusion Dist.</th>{{ end }}
+                {{ if $.HasProposalData }}<th class="text-end" data-bs-toggle="tooltip" title="Canonical beacon block proposals (proposed / expected) over {{ $.ProposalWindowLabel }}.">Proposal Accuracy</th>{{ end }}
+                {{ if $.HasPayloadData }}<th class="text-end" data-bs-toggle="tooltip" title="Execution payload envelopes delivered on the canonical chain (delivered / proposed) over {{ $.ProposalWindowLabel }}.">Payload Delivery</th>{{ end }}
+                {{ if $.HasPtcData }}<th class="text-end" data-bs-toggle="tooltip" title="PTC votes included / expected over {{ $.PtcWindowLabel }}.">PTC Inclusion</th>{{ end }}
                 <th class="text-center">Status</th>
               </tr>
             </thead>
@@ -206,6 +227,11 @@
                   {{ if $.HasProposalData }}
                   <td class="text-end {{ if .HasProposalData }}{{ if eq .ProposalRate 100.0 }}text-success{{ else if ge .ProposalRate 95.0 }}text-warning{{ else }}text-danger{{ end }}{{ else }}text-muted{{ end }}">
                     {{ if .HasProposalData }}{{ printf "%.1f" .ProposalRate }}% <span class="text-muted small">({{ .ProposalsProposed }}/{{ .ProposalsExpected }})</span>{{ else }}-{{ end }}
+                  </td>
+                  {{ end }}
+                  {{ if $.HasPayloadData }}
+                  <td class="text-end {{ if .HasPayloadData }}{{ if eq .PayloadRate 100.0 }}text-success{{ else if ge .PayloadRate 95.0 }}text-warning{{ else }}text-danger{{ end }}{{ else }}text-muted{{ end }}">
+                    {{ if .HasPayloadData }}{{ printf "%.1f" .PayloadRate }}% <span class="text-muted small">({{ .PayloadsDelivered }}/{{ .PayloadsExpected }})</span>{{ else }}-{{ end }}
                   </td>
                   {{ end }}
                   {{ if $.HasPtcData }}
@@ -247,10 +273,11 @@
                 <th class="text-end">Online/Offline</th>
                 <th class="text-end">Effective Balance (ETH)</th>
                 <th class="text-end">Network Share</th>
-                <th class="text-end">Online Rate</th>
-                {{ if $.HasInclusionData }}<th class="text-end" data-bs-toggle="tooltip" title="Average attestation inclusion distance">Avg. Inclusion Dist.</th>{{ end }}
-                {{ if $.HasProposalData }}<th class="text-end" data-bs-toggle="tooltip" title="Canonical block proposals (proposed / expected) over the last 2 epochs.">Proposal Accuracy</th>{{ end }}
-                {{ if $.HasPtcData }}<th class="text-end" data-bs-toggle="tooltip" title="PTC votes included / expected over the last 2 epochs.">PTC Inclusion</th>{{ end }}
+                <th class="text-end" data-bs-toggle="tooltip" title="Share of validators that {{ $.OnlineWindowLabel }}.">Online Rate</th>
+                {{ if $.HasInclusionData }}<th class="text-end" data-bs-toggle="tooltip" title="Average attestation inclusion distance over {{ $.AttestationWindowLabel }}.">Avg. Inclusion Dist.</th>{{ end }}
+                {{ if $.HasProposalData }}<th class="text-end" data-bs-toggle="tooltip" title="Canonical beacon block proposals (proposed / expected) over {{ $.ProposalWindowLabel }}.">Proposal Accuracy</th>{{ end }}
+                {{ if $.HasPayloadData }}<th class="text-end" data-bs-toggle="tooltip" title="Execution payload envelopes delivered on the canonical chain (delivered / proposed) over {{ $.ProposalWindowLabel }}.">Payload Delivery</th>{{ end }}
+                {{ if $.HasPtcData }}<th class="text-end" data-bs-toggle="tooltip" title="PTC votes included / expected over {{ $.PtcWindowLabel }}.">PTC Inclusion</th>{{ end }}
                 <th class="text-center">Status</th>
               </tr>
             </thead>
@@ -281,6 +308,11 @@
                   {{ if $.HasProposalData }}
                   <td class="text-end {{ if .HasProposalData }}{{ if eq .ProposalRate 100.0 }}text-success{{ else if ge .ProposalRate 95.0 }}text-warning{{ else }}text-danger{{ end }}{{ else }}text-muted{{ end }}">
                     {{ if .HasProposalData }}{{ printf "%.1f" .ProposalRate }}% <span class="text-muted small">({{ .ProposalsProposed }}/{{ .ProposalsExpected }})</span>{{ else }}-{{ end }}
+                  </td>
+                  {{ end }}
+                  {{ if $.HasPayloadData }}
+                  <td class="text-end {{ if .HasPayloadData }}{{ if eq .PayloadRate 100.0 }}text-success{{ else if ge .PayloadRate 95.0 }}text-warning{{ else }}text-danger{{ end }}{{ else }}text-muted{{ end }}">
+                    {{ if .HasPayloadData }}{{ printf "%.1f" .PayloadRate }}% <span class="text-muted small">({{ .PayloadsDelivered }}/{{ .PayloadsExpected }})</span>{{ else }}-{{ end }}
                   </td>
                   {{ end }}
                   {{ if $.HasPtcData }}
