@@ -511,6 +511,9 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			offset = slotsPerEpoch
 		}
 
+		// keep the full remaining lookahead here: it may span into the next epoch, which
+		// getCanonicalProposer in the chain service relies on for scheduled slots whose own
+		// epoch stats are not available yet (extended proposer lookahead in fulu)
 		values.ProposerDuties = dependentState.proposerLookahead[offset:]
 	} else {
 		proposerDuties := []phase0.ValidatorIndex{}
