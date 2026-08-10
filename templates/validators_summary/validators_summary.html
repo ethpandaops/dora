@@ -13,7 +13,7 @@
 
     <!-- Network Overview Cards -->
     <div class="row mt-3 g-3">
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Validators</h5>
@@ -21,7 +21,7 @@
           </div>
         </div>
       </div>
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Total Effective Balance</h5>
@@ -29,7 +29,7 @@
           </div>
         </div>
       </div>
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Effective balance of validators that {{ .OnlineWindowLabel }}.">Online Stake</h5>
@@ -38,7 +38,7 @@
           </div>
         </div>
       </div>
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Network Health</h5>
@@ -49,7 +49,7 @@
         </div>
       </div>
       {{ if .HasInclusionData }}
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Average attestation inclusion distance over {{ .AttestationWindowLabel }}, based on cached blocks only.">Avg. Inclusion Distance</h5>
@@ -62,7 +62,7 @@
       </div>
       {{ end }}
       {{ if .HasProposalData }}
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Canonical beacon block proposal accuracy over {{ .ProposalWindowLabel }} (proposed / expected). Payload delivery is tracked separately.">Proposal Accuracy</h5>
@@ -75,7 +75,7 @@
       </div>
       {{ end }}
       {{ if .HasPayloadData }}
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Execution payload envelopes delivered on the canonical chain for canonical block proposals over {{ .ProposalWindowLabel }} (delivered / proposed).">Payload Delivery</h5>
@@ -88,7 +88,7 @@
       </div>
       {{ end }}
       {{ if .HasPtcData }}
-      <div class="col-6 col-md-4 col-xl-2">
+      <div class="col-6 col-lg-3">
         <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Payload Timeliness Committee vote inclusion accuracy over {{ .PtcWindowLabel }} (included / expected).">PTC Inclusion</h5>
