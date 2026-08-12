@@ -40,6 +40,13 @@ func (e *TieredEngine) TierStats() (hits, misses int64) {
 	return e.cacheHits.Load(), e.cacheMisses.Load()
 }
 
+// GetObjectStats returns object counts from the hot (Pebble cache) tier. The S3
+// cold tier is not scanned (listing would be too expensive), so the counts
+// reflect locally-cached objects only.
+func (e *TieredEngine) GetObjectStats(ctx context.Context) (*types.BlockDbObjectStats, error) {
+	return e.cache.GetObjectStats(ctx)
+}
+
 func (e *TieredEngine) recordTierRead(hit bool) {
 	if hit {
 		e.cacheHits.Add(1)

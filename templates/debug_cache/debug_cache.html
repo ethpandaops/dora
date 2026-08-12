@@ -700,6 +700,18 @@
       </tbody>
     </table>
     {{ end }}
+
+    {{ if .HasEngineStats }}
+    <h6 class="card-title mt-3 mb-2"><i class="fa fa-database me-1"></i> Engine Objects (local tier scan)</h6>
+    <table class="table table-sm table-borderless" style="max-width: 400px;">
+      <tbody>
+        <tr><td class="text-muted" style="width:200px;">Blocks (incl. orphaned)</td><td>{{ formatNumber .EngineBlockCount }}</td></tr>
+        <tr><td class="text-muted">Canonical Duties</td><td>{{ formatNumber .CanonicalDutiesCount }}</td></tr>
+        <tr><td class="text-muted">Diverging Duties</td><td>{{ formatNumber .DivergingDutiesCount }}</td></tr>
+        <tr><td class="text-muted">Bids Objects</td><td>{{ formatNumber .BidsCount }}{{ if gt .BidsSize 0 }} ({{ formatByteSize (float64 .BidsSize) }}){{ end }}</td></tr>
+      </tbody>
+    </table>
+    {{ end }}
     {{ end }}
     {{ end }}
 

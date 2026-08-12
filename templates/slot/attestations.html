@@ -150,6 +150,9 @@
     validatorNames[name.k] = name.v;
   });
   var attestationsData = JSON.parse({{ includeJSON .Block.Attestations false }});
+  // Duties are resolved on this page block's fork (canonical or orphaned) by
+  // passing its root as fork context; the committee slot stays the attestation's.
+  var pageBlockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
 
   function base64ToBytes(base64) {
     const binString = atob(base64);
@@ -221,7 +224,7 @@
         return;
       }
       self.loading(true);
-      fetch('/slot/' + self.slot + '/duties?committees=' + self.committee_index.join(','))
+      fetch('/slot/' + self.slot + '/duties?committees=' + self.committee_index.join(',') + '&block_root=' + pageBlockRoot)
         .then(function(resp) { return resp.json(); })
         .then(function(data) {
           if (data.names) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethpandaops/dora/blockdb"
+	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
@@ -468,6 +469,15 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 	}
 
+	// Build diverging-fork duties BEFORE the persist tx below deletes the
+	// unfinalized_duties rows. GetOrLoadValues (called inside) may need to
+	// restore a fork's values from that table, so the objects must be
+	// materialized here; they are written later in the blockdb WaitGroup.
+	var divergingDuties []*btypes.EpochDuties
+	if blockdb.GlobalBlockDb != nil && !indexer.disableBlockDbWrite {
+		divergingDuties = indexer.buildDivergingEpochDuties(indexer.ctx, epoch, dependentRoot, orphanedBlocks)
+	}
+
 	t1dur := time.Since(t1) - t1loading
 	t1 = time.Now()
 
@@ -587,18 +597,39 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			}(block)
 		}
 
+		// also persist orphaned block bodies (keyed by root, so they coexist with
+		// canonical blocks). The SQL orphaned_blocks dual-write above is kept.
+		for _, block := range orphanedBlocks {
+			wg.Add(1)
+			go func(b *Block) {
+				defer wg.Done()
+				if err := b.writeToBlockDb(indexer.ctx); err != nil {
+					indexer.logger.Errorf("error writing orphaned block %v to blockdb: %v", b.Root.String(), err)
+				}
+			}(block)
+		}
+
 		// store the epoch's resolved duties alongside the block writes
 		var dutiesSize int64
 		wg.Add(1)
 		go func(values *EpochStatsValues) {
 			defer wg.Done()
-			size, err := indexer.writeEpochDutiesToBlockDb(indexer.ctx, epoch, values)
+			size, err := indexer.writeEpochDutiesToBlockDb(indexer.ctx, epoch, dependentRoot, values)
 			if err != nil {
 				indexer.logger.Errorf("error writing epoch %v duties to blockdb: %v", epoch, err)
 				return
 			}
 			dutiesSize = size
 		}(epochStatsValues)
+
+		// store the diverging-fork duties (pre-built above, before the persist tx)
+		if len(divergingDuties) > 0 {
+			wg.Add(1)
+			go func(duties []*btypes.EpochDuties) {
+				defer wg.Done()
+				indexer.writeDivergingEpochDutiesToBlockDb(indexer.ctx, duties)
+			}(divergingDuties)
+		}
 
 		wg.Wait()
 

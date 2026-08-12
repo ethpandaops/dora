@@ -516,7 +516,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		wg.Add(1)
 		go func(values *EpochStatsValues) {
 			defer wg.Done()
-			size, err := s.indexer.writeEpochDutiesToBlockDb(s.indexer.ctx, syncEpoch, values)
+			size, err := s.indexer.writeEpochDutiesToBlockDb(s.indexer.ctx, syncEpoch, dependentRoot, values)
 			if err != nil {
 				s.logger.Errorf("error writing epoch %v duties to blockdb: %v", syncEpoch, err)
 				return
