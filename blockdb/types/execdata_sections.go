@@ -27,7 +27,7 @@ type EventData struct {
 	EventIndex uint32
 	Source     [20]byte
 	Topics     [][]byte `ssz-size:"?,32" ssz-max:"5"`
-	Data       []byte
+	Data       []byte   `ssz-max:"1048576"`
 }
 
 // EventDataList is a list of EventData.
@@ -42,10 +42,10 @@ type FlatCallFrame struct {
 	Value   uint256.Int // nil or zero means no value
 	Gas     uint64
 	GasUsed uint64
-	Status  uint8 // CallStatus* constants
-	Input   []byte
-	Output  []byte
-	Error   string
+	Status  uint8  // CallStatus* constants
+	Input   []byte `ssz-max:"1048576"`
+	Output  []byte `ssz-max:"1048576"`
+	Error   string `ssz-max:"1048576"`
 }
 
 // State change section version.
@@ -85,11 +85,11 @@ type StateChangeAccount struct {
 	PostNonce uint64
 
 	// Code
-	PreCode  []byte
-	PostCode []byte
+	PreCode  []byte `ssz-max:"1048576"`
+	PostCode []byte `ssz-max:"1048576"`
 
 	// Storage
-	Slots []StateChangeSlot
+	Slots []StateChangeSlot `ssz-max:"1048576"`
 }
 
 // Block receipt metadata version. Bump when adding new block-wide fields.
