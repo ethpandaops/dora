@@ -40,6 +40,8 @@ type APISlotCommitteeInfo struct {
 // @Produce json
 // @Param slot path int true "Slot number"
 // @Param committee query string false "Comma-separated list of committee indices to filter by"
+// @Param dependent_root query string false "Resolve committees on the fork with this committee-shuffling dependent root (0x-prefixed hex)"
+// @Param block_root query string false "Resolve committees on the fork that this block root sits on (0x-prefixed hex)"
 // @Success 200 {object} APISlotCommitteesResponse
 // @Failure 400 {object} map[string]string "Invalid parameters"
 // @Failure 404 {object} map[string]string "Committees not available"
@@ -90,7 +92,17 @@ func APISlotCommitteesV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	slotCommittees := services.GlobalBeaconService.GetSlotCommittees(r.Context(), phase0.Slot(slot))
+	depRoot, hasFork, ok := parseDutiesFork(r.Context(), w, r, epoch)
+	if !ok {
+		return
+	}
+
+	var slotCommittees [][]phase0.ValidatorIndex
+	if hasFork {
+		slotCommittees = services.GlobalBeaconService.GetSlotCommitteesForRoot(r.Context(), phase0.Slot(slot), depRoot)
+	} else {
+		slotCommittees = services.GlobalBeaconService.GetSlotCommittees(r.Context(), phase0.Slot(slot))
+	}
 	if slotCommittees == nil {
 		http.Error(
 			w,

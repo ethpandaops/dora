@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,22 +29,47 @@ func SlotDuties(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
-	slot, err := strconv.ParseUint(vars["slotOrHash"], 10, 64)
+	slotOrHash := vars["slotOrHash"]
+
+	isPtc := r.URL.Query().Get("ptc") == "1"
+	committeesParam := r.URL.Query().Get("committees")
+
+	slotNum, err := strconv.ParseUint(slotOrHash, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid slot", http.StatusBadRequest)
 		return
 	}
+	slot := phase0.Slot(slotNum)
 
-	isPtc := r.URL.Query().Get("ptc") == "1"
-	committeesParam := r.URL.Query().Get("committees")
+	// Optional fork context. The committee for an attestation is resolved at the
+	// attestation's own slot (the path), but on the fork of the page block that
+	// includes it — an orphaned block may sit on a fork whose committee shuffling
+	// differs from canonical. The caller passes that page block's root; we
+	// resolve the fork's dependent root for the requested slot's epoch. Without
+	// the param (or if the block resolves to canonical), canonical committees are
+	// returned.
+	var depRoot phase0.Root
+	var hasFork bool
+	if brParam := r.URL.Query().Get("block_root"); brParam != "" {
+		blockRoot, err := parseSlotDutiesRoot(brParam)
+		if err != nil {
+			http.Error(w, "Invalid block_root", http.StatusBadRequest)
+			return
+		}
+		epoch := services.GlobalBeaconService.GetChainState().EpochOfSlot(slot)
+		depRoot, hasFork = services.GlobalBeaconService.ResolveDependentRoot(r.Context(), epoch, blockRoot)
+	}
 
 	cacheKey := fmt.Sprintf("slotduties:%d:ptc", slot)
 	if !isPtc {
 		cacheKey = fmt.Sprintf("slotduties:%d:c:%s", slot, committeesParam)
 	}
+	if hasFork {
+		cacheKey = fmt.Sprintf("%s:dr:%x", cacheKey, depRoot[:])
+	}
 
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotDutiesResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
-		data, cacheTimeout := buildSlotDutiesData(pageCall.CallCtx, phase0.Slot(slot), isPtc, committeesParam)
+		data, cacheTimeout := buildSlotDutiesData(pageCall.CallCtx, slot, isPtc, committeesParam, depRoot, hasFork)
 		pageCall.CacheTimeout = cacheTimeout
 		return data
 	})
@@ -65,9 +91,24 @@ func SlotDuties(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// parseSlotDutiesRoot parses a 0x-prefixed 32-byte hex block root.
+func parseSlotDutiesRoot(s string) (phase0.Root, error) {
+	var root phase0.Root
+	b, err := hex.DecodeString(strings.TrimPrefix(s, "0x"))
+	if err != nil {
+		return root, err
+	}
+	if len(b) != 32 {
+		return root, fmt.Errorf("invalid root length")
+	}
+	copy(root[:], b)
+	return root, nil
+}
+
 // buildSlotDutiesData resolves the requested duties and returns the response and
-// the cache timeout (long for finalized/immutable slots, short otherwise).
-func buildSlotDutiesData(ctx context.Context, slot phase0.Slot, isPtc bool, committeesParam string) (*models.SlotDutiesResponse, time.Duration) {
+// the cache timeout (long for finalized/immutable slots, short otherwise). When
+// hasFork is set, duties are resolved on the fork identified by depRoot.
+func buildSlotDutiesData(ctx context.Context, slot phase0.Slot, isPtc bool, committeesParam string, depRoot phase0.Root, hasFork bool) (*models.SlotDutiesResponse, time.Duration) {
 	cs := services.GlobalBeaconService
 	chainState := cs.GetChainState()
 
@@ -79,12 +120,23 @@ func buildSlotDutiesData(ctx context.Context, slot phase0.Slot, isPtc bool, comm
 	}
 
 	if isPtc {
-		for _, v := range cs.GetSlotPtc(ctx, slot) {
+		var ptc []phase0.ValidatorIndex
+		if hasFork {
+			ptc = cs.GetSlotPtcForRoot(ctx, slot, depRoot)
+		} else {
+			ptc = cs.GetSlotPtc(ctx, slot)
+		}
+		for _, v := range ptc {
 			result.Validators = append(result.Validators, uint64(v))
 			addName(uint64(v))
 		}
 	} else {
-		committees := cs.GetSlotCommittees(ctx, slot)
+		var committees [][]phase0.ValidatorIndex
+		if hasFork {
+			committees = cs.GetSlotCommitteesForRoot(ctx, slot, depRoot)
+		} else {
+			committees = cs.GetSlotCommittees(ctx, slot)
+		}
 		for _, committeeStr := range strings.Split(committeesParam, ",") {
 			committeeStr = strings.TrimSpace(committeeStr)
 			if committeeStr == "" {

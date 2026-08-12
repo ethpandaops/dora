@@ -99,6 +99,9 @@
       <script type="text/javascript">
         (function() {
           var votedSlot = {{ .Block.PtcVotes.VotedSlot }};
+          // PTC duties are resolved on this page block's fork by passing its root
+          // as fork context; the duties slot stays the voted slot.
+          var pageBlockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
           var aggBits = JSON.parse({{ includeJSON .Block.PtcVotes.Aggregates false }}).map(function(a) { return a.aggregation_bits; });
           var ptcNames = {};
           var ptcPromise = null;
@@ -117,7 +120,7 @@
           }
           function loadPtc() {
             if (ptcPromise) return ptcPromise;
-            ptcPromise = fetch('/slot/' + votedSlot + '/duties?ptc=1')
+            ptcPromise = fetch('/slot/' + votedSlot + '/duties?ptc=1&block_root=' + pageBlockRoot)
               .then(function(r) { return r.json(); })
               .then(function(data) {
                 if (data.names) { ptcNames = data.names; }

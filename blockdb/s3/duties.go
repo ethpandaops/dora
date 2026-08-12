@@ -25,14 +25,35 @@ func (e *S3Engine) getDutiesKey(firstSlot uint64) string {
 	)
 }
 
+// getDivergingDutiesKey builds the S3 object key for a diverging-fork duties
+// object, keyed additionally by the fork's dependent root.
+// Format: {pathPrefix}/{firstSlot/10000}/{firstSlot_padded}_{depRootHex}_duties
+func (e *S3Engine) getDivergingDutiesKey(firstSlot uint64, depRoot [32]byte) string {
+	return path.Join(
+		e.pathPrefix,
+		fmt.Sprintf("%06d", firstSlot/10000),
+		fmt.Sprintf("%010d_%x_duties", firstSlot, depRoot),
+	)
+}
+
 // AddEpochDuties packs the resolved duties into a single DUTY object and stores it.
 func (e *S3Engine) AddEpochDuties(ctx context.Context, duties *types.EpochDuties) (int64, error) {
+	return e.addDuties(ctx, e.getDutiesKey(duties.FirstSlot), duties)
+}
+
+// AddDivergingEpochDuties stores a diverging fork's duties object keyed by its
+// dependent root.
+func (e *S3Engine) AddDivergingEpochDuties(ctx context.Context, duties *types.EpochDuties) (int64, error) {
+	return e.addDuties(ctx, e.getDivergingDutiesKey(duties.FirstSlot, duties.DependentRoot), duties)
+}
+
+// addDuties encodes and uploads a duties object under the given key.
+func (e *S3Engine) addDuties(ctx context.Context, key string, duties *types.EpochDuties) (int64, error) {
 	data, err := types.EncodeEpochDuties(duties)
 	if err != nil {
 		return 0, fmt.Errorf("failed to encode duties: %w", err)
 	}
 
-	key := e.getDutiesKey(duties.FirstSlot)
 	e.putCount.Add(1)
 
 	_, err = e.client.PutObject(
@@ -131,14 +152,104 @@ func (e *S3Engine) GetSlotPtc(ctx context.Context, firstSlot uint64, slot uint64
 	return types.DecodeIndexList(data, header.IndexWidth), nil
 }
 
-// readDutiesHeader reads and decodes the fixed-size header of a duties object.
+// GetEpochDutiesForRoot retrieves and decodes the diverging-fork duties object
+// for an epoch under the given dependent root. Returns nil, nil if not found.
+func (e *S3Engine) GetEpochDutiesForRoot(ctx context.Context, firstSlot uint64, depRoot [32]byte) (*types.EpochDuties, error) {
+	key := e.getDivergingDutiesKey(firstSlot, depRoot)
+	e.getCount.Add(1)
+
+	obj, err := e.client.GetObject(ctx, e.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get diverging duties: %w", err)
+	}
+	defer func() { _ = obj.Close() }()
+
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read diverging duties: %w", err)
+	}
+
+	e.getBytes.Add(int64(len(data)))
+	return types.DecodeEpochDuties(firstSlot, data)
+}
+
+// GetSlotCommitteesForRoot reads a single slot's attester committees from a
+// diverging-fork duties object.
+func (e *S3Engine) GetSlotCommitteesForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([][]uint64, error) {
+	key := e.getDivergingDutiesKey(firstSlot, depRoot)
+
+	header, err := e.readDivergingDutiesHeader(ctx, key)
+	if err != nil || header == nil {
+		return nil, err
+	}
+
+	slotIndex := slot - firstSlot
+	if slotIndex >= header.SlotsPerEpoch {
+		return nil, fmt.Errorf("slot %d out of range for epoch at %d", slot, firstSlot)
+	}
+
+	off, length := header.AttesterSlotRange(slotIndex)
+	if length == 0 {
+		return nil, nil
+	}
+
+	data, err := e.rangeRead(ctx, key, off, length)
+	if err != nil || data == nil {
+		return nil, err
+	}
+
+	return header.SplitSlotCommittees(slotIndex, data)
+}
+
+// GetSlotPtcForRoot reads a single slot's PTC members from a diverging-fork
+// duties object.
+func (e *S3Engine) GetSlotPtcForRoot(ctx context.Context, firstSlot uint64, slot uint64, depRoot [32]byte) ([]uint64, error) {
+	key := e.getDivergingDutiesKey(firstSlot, depRoot)
+
+	header, err := e.readDivergingDutiesHeader(ctx, key)
+	if err != nil || header == nil {
+		return nil, err
+	}
+	if header.PtcSize == 0 {
+		return nil, nil
+	}
+
+	slotIndex := slot - firstSlot
+	if slotIndex >= header.SlotsPerEpoch {
+		return nil, fmt.Errorf("slot %d out of range for epoch at %d", slot, firstSlot)
+	}
+
+	off, length := header.PtcSlotRange(slotIndex)
+	data, err := e.rangeRead(ctx, key, off, length)
+	if err != nil || data == nil {
+		return nil, err
+	}
+
+	return types.DecodeIndexList(data, header.IndexWidth), nil
+}
+
+// readDutiesHeader reads and decodes the header of a duties object. It reads the
+// full v2 header size (72 bytes) so both v1 and v2 objects decode correctly: a
+// v1 object's decoder only consumes the first 40 bytes and ignores the rest.
 // Returns nil, nil if the object does not exist.
 func (e *S3Engine) readDutiesHeader(ctx context.Context, key string) (*types.DutiesHeader, error) {
-	data, err := e.rangeRead(ctx, key, 0, int64(types.DutiesHeaderSize))
+	data, err := e.rangeRead(ctx, key, 0, int64(types.DutiesHeaderSizeV2))
 	if err != nil || data == nil {
 		return nil, err
 	}
 	return types.DecodeDutiesHeader(data)
+}
+
+// readDivergingDutiesHeader reads the header of a diverging duties object (always
+// v2). Returns nil, nil if the object does not exist.
+func (e *S3Engine) readDivergingDutiesHeader(ctx context.Context, key string) (*types.DutiesHeader, error) {
+	return e.readDutiesHeader(ctx, key)
 }
 
 // HasEpochDuties checks if a duties object exists for an epoch.
@@ -158,7 +269,9 @@ func (e *S3Engine) HasEpochDuties(ctx context.Context, firstSlot uint64) (bool, 
 }
 
 // PruneEpochDutiesBefore deletes duties objects for all epochs whose first slot
-// is before maxFirstSlot, filtering on the _duties suffix.
+// is before maxFirstSlot, filtering on the _duties suffix. Diverging-fork
+// objects ({firstSlot}_{depRoot}_duties) also end in _duties and expose their
+// firstSlot before the first underscore, so they are pruned by the same pass.
 func (e *S3Engine) PruneEpochDutiesBefore(ctx context.Context, maxFirstSlot uint64) (int64, error) {
 	var totalDeleted int64
 

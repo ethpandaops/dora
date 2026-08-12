@@ -103,6 +103,149 @@ func TestEpochDutiesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDutiesHeaderVersioning(t *testing.T) {
+	base := buildTestEpochDuties(2048, 32, 4, 0)
+
+	// v1: zero dependent root encodes a 40-byte header with version 1.
+	v1Header := EncodeDutiesHeader(base)
+	if len(v1Header) != DutiesHeaderSize {
+		t.Fatalf("v1 header size = %d, want %d", len(v1Header), DutiesHeaderSize)
+	}
+	h1, err := DecodeDutiesHeader(v1Header)
+	if err != nil {
+		t.Fatalf("v1 header decode failed: %v", err)
+	}
+	if h1.Version != 1 {
+		t.Fatalf("v1 header version = %d, want 1", h1.Version)
+	}
+	if h1.Flags&DutiesFlagDiverging != 0 {
+		t.Fatalf("v1 header must not set diverging flag")
+	}
+	if h1.DependentRoot != ([32]byte{}) {
+		t.Fatalf("v1 header dependent root = %x, want zero", h1.DependentRoot)
+	}
+
+	// v2: non-zero dependent root encodes a 72-byte header carrying the root.
+	depRoot := [32]byte{}
+	for i := range depRoot {
+		depRoot[i] = byte(i + 1)
+	}
+	diverging := buildTestEpochDuties(2048, 32, 4, 0)
+	diverging.DependentRoot = depRoot
+	diverging.Diverging = true
+
+	v2Header := EncodeDutiesHeader(diverging)
+	if len(v2Header) != DutiesHeaderSizeV2 {
+		t.Fatalf("v2 header size = %d, want %d", len(v2Header), DutiesHeaderSizeV2)
+	}
+	h2, err := DecodeDutiesHeader(v2Header)
+	if err != nil {
+		t.Fatalf("v2 header decode failed: %v", err)
+	}
+	if h2.Version != 2 {
+		t.Fatalf("v2 header version = %d, want 2", h2.Version)
+	}
+	if h2.Flags&DutiesFlagDiverging == 0 {
+		t.Fatalf("v2 header must set diverging flag")
+	}
+	if h2.DependentRoot != depRoot {
+		t.Fatalf("v2 header dependent root = %x, want %x", h2.DependentRoot, depRoot)
+	}
+}
+
+func TestEpochDutiesRoundTripDiverging(t *testing.T) {
+	depRoot := [32]byte{}
+	for i := range depRoot {
+		depRoot[i] = byte(0xa0 + i)
+	}
+	src := buildTestEpochDuties(1000003, 32, 64, 0)
+	src.DependentRoot = depRoot
+
+	encoded, err := EncodeEpochDuties(src)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	got, err := DecodeEpochDuties(src.FirstSlot, encoded)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if got.DependentRoot != depRoot {
+		t.Fatalf("dependent root mismatch: got %x want %x", got.DependentRoot, depRoot)
+	}
+	if !reflect.DeepEqual(got.Committees, src.Committees) {
+		t.Fatalf("committees mismatch after v2 round-trip")
+	}
+
+	// Ranged access must respect the larger v2 header offset.
+	header, err := DecodeDutiesHeader(encoded)
+	if err != nil {
+		t.Fatalf("header decode failed: %v", err)
+	}
+	for slotIndex := range src.SlotsPerEpoch {
+		off, length := header.AttesterSlotRange(slotIndex)
+		committees, err := header.SplitSlotCommittees(slotIndex, encoded[off:off+length])
+		if err != nil {
+			t.Fatalf("slot %d split failed: %v", slotIndex, err)
+		}
+		if !reflect.DeepEqual(committees, src.Committees[slotIndex]) {
+			t.Fatalf("slot %d committees mismatch via ranged access", slotIndex)
+		}
+	}
+}
+
+func TestEpochDutiesProposerRoundTrip(t *testing.T) {
+	depRoot := [32]byte{}
+	for i := range depRoot {
+		depRoot[i] = byte(0x30 + i)
+	}
+	src := buildTestEpochDuties(500000, 32, 64, 512)
+	src.DependentRoot = depRoot
+	src.ProposerDuties = make([]uint64, src.SlotsPerEpoch)
+	for i := range src.ProposerDuties {
+		src.ProposerDuties[i] = uint64(1000 + i)
+	}
+	// An out-of-range proposer must be stored as the 0 sentinel.
+	src.ProposerDuties[3] = uint64(1) << 60
+
+	encoded, err := EncodeEpochDuties(src)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	header, err := DecodeDutiesHeader(encoded)
+	if err != nil {
+		t.Fatalf("header decode failed: %v", err)
+	}
+	if header.Version < 2 {
+		t.Fatalf("object with proposer duties must be v2, got v%d", header.Version)
+	}
+
+	got, err := DecodeEpochDuties(src.FirstSlot, encoded)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if uint64(len(got.ProposerDuties)) != src.SlotsPerEpoch {
+		t.Fatalf("proposer duties length = %d, want %d", len(got.ProposerDuties), src.SlotsPerEpoch)
+	}
+	for i := range got.ProposerDuties {
+		want := src.ProposerDuties[i]
+		if i == 3 {
+			want = 0
+		}
+		if got.ProposerDuties[i] != want {
+			t.Fatalf("proposer[%d] = %d, want %d", i, got.ProposerDuties[i], want)
+		}
+	}
+	// Committees and PTC must still round-trip alongside the proposer section.
+	if !reflect.DeepEqual(got.Committees, src.Committees) {
+		t.Fatalf("committees mismatch after proposer round-trip")
+	}
+	if !reflect.DeepEqual(got.Ptc, src.Ptc) {
+		t.Fatalf("ptc mismatch after proposer round-trip")
+	}
+}
+
 func TestSlotCommitteesRoundTrip(t *testing.T) {
 	committees := [][]uint64{
 		{1, 2, 3},
