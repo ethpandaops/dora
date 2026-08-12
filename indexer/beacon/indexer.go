@@ -118,7 +118,6 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 		blockDispatcher: &utils.Dispatcher[*Block]{},
 	}
 
-	indexer.stateCache = statecache.New(utils.Config, indexer.dynSsz)
 	indexer.blockCache = newBlockCache(indexer)
 	indexer.epochCache = newEpochCache(indexer)
 	indexer.forkCache = newForkCache(indexer)
@@ -252,7 +251,8 @@ func (indexer *Indexer) StartIndexer() {
 	// EPOCHS_PER_HISTORICAL_VECTOR, …) against the active chain rather than the
 	// mainnet defaults baked into the generated code.
 	dynssz.SetGlobalSpecs(staticSpec)
-	indexer.dynSsz = dynssz.NewDynSsz(staticSpec)
+	indexer.dynSsz = dynssz.NewDynSsz(staticSpec, dynssz.WithAsyncHashing(4))
+	indexer.stateCache = statecache.New(utils.Config, indexer.dynSsz)
 
 	// initialize synchronizer & restore state
 	indexer.synchronizer = newSynchronizer(indexer, indexer.logger.WithField("service", "synchronizer"))

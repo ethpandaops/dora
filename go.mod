@@ -10,7 +10,7 @@ require (
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260807103219-0fb0622e156b
 	github.com/ethpandaops/ethwallclock v0.4.0
-	github.com/ethpandaops/go-eth2-client v0.1.6
+	github.com/ethpandaops/go-eth2-client v0.1.7-0.20260812120339-e742ab5a2de1
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
@@ -24,7 +24,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.49
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.3.3-0.20260728120530-b89780afb393
+	github.com/pk910/dynamic-ssz v1.3.3-0.20260812091520-ef568569f9c1
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
