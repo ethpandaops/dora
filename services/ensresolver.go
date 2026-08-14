@@ -15,24 +15,29 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ethpandaops/dora/clients/execution"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/clients/sshtunnel"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/utils"
 )
 
 // EnsResolver resolves execution addresses to their primary ENS name. Resolution is
 // batched, asynchronous and persisted to the ens_names table. Handlers call
 // ResolveNames once per page to warm the in-memory cache and feed the resolve queue.
+//
+// ENS lookups always run against Ethereum mainnet (via the configured endpoints or a
+// public mainnet RPC default), independent of the chain this explorer indexes.
 type EnsResolver struct {
-	ctx      context.Context
-	logger   logrus.FieldLogger
-	execPool *execution.Pool
+	ctx    context.Context
+	logger logrus.FieldLogger
 
 	started atomic.Bool
 	cache   *lru.Cache[common.Address, *ensCacheEntry]
+
+	// forward resolution cache (name -> address), used by the search bar
+	forwardCache *lru.Cache[string, *ensForwardCacheEntry]
 
 	queue   chan common.Address
 	pending sync.Map // common.Address -> struct{}
@@ -41,7 +46,7 @@ type EnsResolver struct {
 	dedicatedInit    sync.Once
 	dedicatedClients []*ensEndpointClient
 
-	// probe results (worker-goroutine only, guarded by probeMutex until probed)
+	// probe results (immutable once probed; guarded by probeMutex until then)
 	probeMutex       sync.Mutex
 	probed           bool
 	registries       []common.Address
@@ -55,17 +60,23 @@ type ensCacheEntry struct {
 	resolvedTime int64
 }
 
+// ensForwardCacheEntry is a cached forward-resolution result (name -> address).
+// A zero address is a negative result.
+type ensForwardCacheEntry struct {
+	address      common.Address
+	resolvedTime int64
+}
+
 // ensEndpointClient is a dedicated ENS RPC client with its configured name (for logs).
 type ensEndpointClient struct {
 	name   string
 	client *exerpc.ExecutionClient
 }
 
-func NewEnsResolver(ctx context.Context, logger logrus.FieldLogger, execPool *execution.Pool) *EnsResolver {
+func NewEnsResolver(ctx context.Context, logger logrus.FieldLogger) *EnsResolver {
 	return &EnsResolver{
-		ctx:      ctx,
-		logger:   logger.WithField("service", "ens-resolver"),
-		execPool: execPool,
+		ctx:    ctx,
+		logger: logger.WithField("service", "ens-resolver"),
 	}
 }
 
@@ -147,6 +158,12 @@ func (e *EnsResolver) StartUpdater() {
 	if len(cfg.RegistryAddresses) == 0 {
 		cfg.RegistryAddresses = []string{"0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"}
 	}
+	if len(cfg.Endpoints) == 0 {
+		// ENS lives on Ethereum mainnet, so resolution always runs against a mainnet
+		// RPC - never against the local chain (devnets/testnets have no ENS registry).
+		// Default to a public mainnet endpoint when no dedicated endpoint is configured.
+		cfg.Endpoints = []types.EndpointConfig{{Name: "mainnet-public", Url: "https://ethereum-rpc.publicnode.com"}}
+	}
 	if cfg.MulticallAddress == "" {
 		cfg.MulticallAddress = "0xcA11bde05977b3631167028862bE2a173976CA11"
 	}
@@ -157,7 +174,14 @@ func (e *EnsResolver) StartUpdater() {
 		return
 	}
 
+	forwardCache, err := lru.New[string, *ensForwardCacheEntry](cfg.CacheSize)
+	if err != nil {
+		e.logger.Errorf("failed to create ens forward cache: %v", err)
+		return
+	}
+
 	e.cache = cache
+	e.forwardCache = forwardCache
 	e.queue = make(chan common.Address, cfg.QueueSize)
 	e.started.Store(true)
 
@@ -239,6 +263,57 @@ func (e *EnsResolver) ResolveNames(ctx context.Context, addrs [][]byte) map[stri
 func (e *EnsResolver) isStale(entry *ensCacheEntry, now int64) bool {
 	refresh := utils.Config.EnsResolver.RefreshPositive
 	if entry.name == "" {
+		refresh = utils.Config.EnsResolver.RefreshNegative
+	}
+	if refresh <= 0 {
+		return false
+	}
+	return now-entry.resolvedTime > int64(refresh/time.Second)
+}
+
+// ResolveEnsName forward-resolves an ENS name to its address (EIP-137), using a
+// synchronous eth_call on cache miss. The bool result reports whether the name
+// resolved to a non-zero address.
+//
+// It is called from the search handlers — results are cached here (LRU) and again
+// at the page-cache layer, so on-chain lookups stay bounded.
+func (e *EnsResolver) ResolveEnsName(ctx context.Context, name string) (common.Address, bool) {
+	if e == nil || !e.started.Load() {
+		return common.Address{}, false
+	}
+
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" || !strings.Contains(name, ".") {
+		return common.Address{}, false
+	}
+
+	if entry, ok := e.forwardCache.Get(name); ok && !e.isForwardStale(entry, time.Now().Unix()) {
+		return entry.address, entry.address != (common.Address{})
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	ethClient, err := e.getEthClient(ctx)
+	if err != nil {
+		e.logger.Warnf("ens forward resolve %q: %v", name, err)
+		return common.Address{}, false
+	}
+	if err := e.ensureProbed(ctx, ethClient); err != nil {
+		e.logger.Warnf("ens forward resolve %q: %v", name, err)
+		return common.Address{}, false
+	}
+
+	addr := e.resolveForward(ctx, ethClient, name)
+	e.forwardCache.Add(name, &ensForwardCacheEntry{address: addr, resolvedTime: time.Now().Unix()})
+	return addr, addr != (common.Address{})
+}
+
+// isForwardStale reports whether a forward cache entry is past its refresh interval
+// (positive and negative results use separate intervals).
+func (e *EnsResolver) isForwardStale(entry *ensForwardCacheEntry, now int64) bool {
+	refresh := utils.Config.EnsResolver.RefreshPositive
+	if entry.address == (common.Address{}) {
 		refresh = utils.Config.EnsResolver.RefreshNegative
 	}
 	if refresh <= 0 {
@@ -396,32 +471,22 @@ func (e *EnsResolver) ensureProbed(ctx context.Context, ethClient *ethclient.Cli
 	return nil
 }
 
-// getEthClient returns an eth client for ENS lookups, preferring dedicated endpoints
-// and falling back to a ready client from the main execution pool.
+// getEthClient returns an eth client for ENS lookups. ENS is always resolved against
+// mainnet: only the dedicated endpoints are used (defaulted to a public mainnet RPC in
+// StartUpdater), never the local execution pool, which on devnets/testnets serves a
+// chain without an ENS deployment.
 func (e *EnsResolver) getEthClient(ctx context.Context) (*ethclient.Client, error) {
-	if len(utils.Config.EnsResolver.Endpoints) > 0 {
-		e.dedicatedInit.Do(e.initDedicatedClients)
-		for _, ec := range e.dedicatedClients {
-			if err := ec.client.Initialize(ctx); err != nil {
-				e.logger.Warnf("ens endpoint %s init failed: %v", ec.name, err)
-				continue
-			}
-			if ethClient := ec.client.GetEthClient(); ethClient != nil {
-				return ethClient, nil
-			}
+	e.dedicatedInit.Do(e.initDedicatedClients)
+	for _, ec := range e.dedicatedClients {
+		if err := ec.client.Initialize(ctx); err != nil {
+			e.logger.Warnf("ens endpoint %s init failed: %v", ec.name, err)
+			continue
 		}
-		return nil, fmt.Errorf("no usable dedicated ens endpoint")
+		if ethClient := ec.client.GetEthClient(); ethClient != nil {
+			return ethClient, nil
+		}
 	}
-
-	client := e.execPool.GetReadyEndpoint(execution.AnyClient)
-	if client == nil {
-		return nil, fmt.Errorf("no ready execution client available for ens resolution")
-	}
-	ethClient := client.GetRPCClient().GetEthClient()
-	if ethClient == nil {
-		return nil, fmt.Errorf("execution client has no eth client")
-	}
-	return ethClient, nil
+	return nil, fmt.Errorf("no usable ens endpoint")
 }
 
 // initDedicatedClients builds RPC clients from the configured ENS endpoints.

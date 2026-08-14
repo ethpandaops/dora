@@ -59,6 +59,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		MainMenuItems:           createMenuItems(active),
 		ApiEnabled:              utils.Config.Api.Enabled && !utils.Config.Api.RequireAuth,
 		ExecutionIndexerEnabled: utils.Config.ExecutionIndexer.Enabled,
+		EnsSearchEnabled:        ensSearchEnabled(),
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()

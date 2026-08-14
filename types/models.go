@@ -33,6 +33,7 @@ type PageData struct {
 	MainMenuItems           []MainMenuItem
 	ApiEnabled              bool
 	ExecutionIndexerEnabled bool
+	EnsSearchEnabled        bool
 }
 
 type MainMenuItem struct {

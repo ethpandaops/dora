@@ -69,7 +69,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	buildoorInventory := NewBuildoorInventory(ctx)
 	mevRelayIndexer := mevrelay.NewMevIndexer(ctx, logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 	snooperManager := snooper.NewSnooperManager(ctx, logger.WithField("service", "snooper-manager"), beaconIndexer)
-	ensResolver := NewEnsResolver(ctx, logger.WithField("service", "ens-resolver"), executionPool)
+	ensResolver := NewEnsResolver(ctx, logger.WithField("service", "ens-resolver"))
 
 	// Set execution time provider
 	beaconIndexer.SetExecutionTimeProvider(snooper.NewExecutionTimeProvider(snooperManager.GetCache()))
