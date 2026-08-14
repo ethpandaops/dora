@@ -90,6 +90,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"includeHTML":  IncludeHTML,
 		"includeJSON":  IncludeJSON,
 		"ensNamesJson": EnsNamesJSON,
+		"assetVersion": GetAssetVersion,
 		"html":         func(x string) template.HTML { return template.HTML(x) },
 		"float64":      toFloat64,
 		"bigIntCmp":    func(i *big.Int, j int) int { return i.Cmp(big.NewInt(int64(j))) },

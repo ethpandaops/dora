@@ -948,13 +948,13 @@
 {{ end }}
 
 {{ define "js" }}
-<script src="/js/vendor/jdenticon-3.3.0.min.js"></script>
-<script src="/js/knockout.min.js"></script>
-<script src="/js/vendor/cytoscape.min.js"></script>
-<script src="/js/vendor/cytoscape-layout-base.js"></script>
-<script src="/js/vendor/cytoscape-cose-base.js"></script>
-<script src="/js/vendor/cytoscape-fcose.js"></script>
-<script src="/js/cytoscape-network-aux.js"></script>
+<script src="/js/vendor/jdenticon-3.3.0.min.js?v={{ assetVersion }}"></script>
+<script src="/js/knockout.min.js?v={{ assetVersion }}"></script>
+<script src="/js/vendor/cytoscape.min.js?v={{ assetVersion }}"></script>
+<script src="/js/vendor/cytoscape-layout-base.js?v={{ assetVersion }}"></script>
+<script src="/js/vendor/cytoscape-cose-base.js?v={{ assetVersion }}"></script>
+<script src="/js/vendor/cytoscape-fcose.js?v={{ assetVersion }}"></script>
+<script src="/js/cytoscape-network-aux.js?v={{ assetVersion }}"></script>
 <script type="text/javascript">
   var peerGraphData = {{ .PeerMap }};
   var peerGraph, peerGraphRendered = false;
@@ -2698,7 +2698,7 @@
 </script>
 {{ end }}
 {{ define "css" }}
-<link rel="stylesheet" href="/css/clients.css" />
+<link rel="stylesheet" href="/css/clients.css?v={{ assetVersion }}" />
 <style>
 #toggleAllPeers, #toggleNodeIds {
   min-width: 140px;

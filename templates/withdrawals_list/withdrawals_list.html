@@ -335,7 +335,7 @@
   </div>
 {{ end }}
 {{ define "js" }}
-<script src="/js/bootstrap-multiselect.js"></script>
+<script src="/js/bootstrap-multiselect.js?v={{ assetVersion }}"></script>
 <script>
   $(document).ready(function() {
     $('#pageJumpForm').on('submit', function(e) {
@@ -391,7 +391,7 @@
 </script>
 {{ end }}
 {{ define "css" }}
-<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css?v={{ assetVersion }}">
 <style>
 
 .filter-amount-separator {
