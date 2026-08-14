@@ -215,8 +215,9 @@ type Config struct {
 	} `yaml:"rpcProxy"`
 
 	// EnsResolver optionally resolves execution addresses to their primary ENS name.
-	// ENS lives on Ethereum mainnet, so Endpoints usually point at a mainnet RPC; when
-	// empty the resolver falls back to an available client from the main execution pool.
+	// ENS lives on Ethereum mainnet, so lookups always run against a mainnet RPC:
+	// the configured Endpoints, or a public mainnet RPC when empty. The local
+	// execution pool is never used (devnets/testnets have no ENS deployment).
 	EnsResolver struct {
 		Enabled           bool             `yaml:"enabled" envconfig:"ENSRESOLVER_ENABLED"`
 		Endpoints         []EndpointConfig `yaml:"endpoints"`

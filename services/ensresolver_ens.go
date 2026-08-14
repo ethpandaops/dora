@@ -81,6 +81,42 @@ func reverseNode(addr common.Address) [32]byte {
 	return namehash(strings.ToLower(addr.Hex()[2:]) + ".addr.reverse")
 }
 
+// resolveForward resolves a name to its address (forward resolution, EIP-137):
+// resolver = registry.resolver(namehash(name)); addr = resolver.addr(node).
+// Registries are tried in configured order; the first non-zero address wins.
+func (e *EnsResolver) resolveForward(ctx context.Context, ethClient *ethclient.Client, name string) common.Address {
+	node := namehash(name)
+
+	for _, registry := range e.registries {
+		res, err := e.callBatch(ctx, ethClient, []ensCall{{target: registry, data: appendNode(selectorResolver, node)}})
+		if err != nil {
+			e.logger.Warnf("ens forward stage1 (resolver) failed: %v", err)
+			continue
+		}
+		if !res[0].success {
+			continue
+		}
+		resolver := decodeAddress(res[0].data)
+		if resolver == (common.Address{}) {
+			continue
+		}
+
+		res, err = e.callBatch(ctx, ethClient, []ensCall{{target: resolver, data: appendNode(selectorEnsAddr, node)}})
+		if err != nil {
+			e.logger.Warnf("ens forward stage2 (addr) failed: %v", err)
+			continue
+		}
+		if !res[0].success {
+			continue
+		}
+		if addr := decodeAddress(res[0].data); addr != (common.Address{}) {
+			return addr
+		}
+	}
+
+	return common.Address{}
+}
+
 // resolveBatch resolves primary ENS names for the given addresses, trying the usable
 // registries in configured order and keeping the first verified name per address.
 func (e *EnsResolver) resolveBatch(ctx context.Context, ethClient *ethclient.Client, addrs []common.Address) map[common.Address]string {

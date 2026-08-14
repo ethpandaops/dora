@@ -61,6 +61,14 @@ type SearchAheadAddressResult struct {
 	HasData    bool   `json:"has_data,omitempty"`
 }
 
+// SearchAheadEnsResult is a struct to hold the search ahead ENS name results
+type SearchAheadEnsResult struct {
+	EnsName    string `json:"ens_name,omitempty"`
+	Address    string `json:"address,omitempty"`
+	IsContract bool   `json:"is_contract,omitempty"`
+	HasData    bool   `json:"has_data,omitempty"`
+}
+
 // SearchAheadTransactionResult is a struct to hold the search ahead transaction results
 type SearchAheadTransactionResult struct {
 	TxHash      string `json:"tx_hash,omitempty"`

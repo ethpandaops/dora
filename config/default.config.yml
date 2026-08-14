@@ -192,8 +192,9 @@ rpcProxy:
 # Optional ENS resolver: resolves execution addresses to their primary ENS name.
 ensResolver:
   enabled: false # enable ENS name resolution & display
-  # optional dedicated EL RPC endpoints (usually Ethereum mainnet). If empty, an
-  # available client from the main execution pool is used.
+  # EL RPC endpoints used for ENS lookups. ENS lives on Ethereum mainnet, so these
+  # should always point at a mainnet RPC regardless of the chain being explored.
+  # If empty, a public mainnet RPC (ethereum-rpc.publicnode.com) is used.
   endpoints: []
   #  - url: "https://ethereum-rpc.publicnode.com"
   #    name: "mainnet"

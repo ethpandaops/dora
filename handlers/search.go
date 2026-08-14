@@ -27,6 +27,16 @@ import (
 
 var searchLikeRE = regexp.MustCompile(`^[0-9a-fA-F]{0,96}$`)
 
+// ensNameRE loosely matches a complete ENS name: dot-separated non-empty labels
+// without whitespace, ending in a TLD-like label of at least 3 chars (e.g. "eth").
+var ensNameRE = regexp.MustCompile(`^[^\s.]+(\.[^\s.]+)*\.[^\s.]{3,}$`)
+
+// ensSearchEnabled reports whether ENS names can be searched: the resolver must be
+// active and the execution indexer enabled (resolved names redirect to /address).
+func ensSearchEnabled() bool {
+	return utils.Config.EnsResolver.Enabled && utils.Config.ExecutionIndexer.Enabled
+}
+
 // searchResolverResult is the cached outcome of resolving a search query (redirect URL or empty = not found).
 type searchResolverResult struct {
 	RedirectURL string `json:"redirect_url"`
@@ -150,6 +160,12 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 		}
 	}
 
+	if ensSearchEnabled() && ensNameRE.MatchString(searchQuery) {
+		if addr, ok := services.GlobalBeaconService.GetEnsResolver().ResolveEnsName(ctx, searchQuery); ok {
+			return searchResolverResult{RedirectURL: fmt.Sprintf("/address/0x%x", addr)}, cacheTimeout
+		}
+	}
+
 	if nameMatch, err := db.HasValidatorNameMatch(ctx, "%"+searchQuery+"%"); err == nil && nameMatch {
 		return searchResolverResult{RedirectURL: "/slots/filtered?f&f.missing=1&f.orphaned=1&f.pname=" + searchQuery}, cacheTimeout
 	}
@@ -188,8 +204,12 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 	searchType := vars["type"]
 	urlArgs := r.URL.Query()
 	search := strings.Trim(urlArgs.Get("q"), " \t")
-	search = strings.Replace(search, "0x", "", -1)
-	search = strings.Replace(search, "0X", "", -1)
+	if searchType != "ens" {
+		// hex-based types accept queries with or without 0x prefix; ENS labels may
+		// legitimately contain "0x", so the raw query is kept for them
+		search = strings.Replace(search, "0x", "", -1)
+		search = strings.Replace(search, "0X", "", -1)
+	}
 
 	// 404 before cache so we don't cache disabled/unknown types
 	allowedTypes := map[string]bool{
@@ -201,6 +221,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 		"validator":    true,
 		"addresses":    utils.Config.ExecutionIndexer.Enabled,
 		"transactions": utils.Config.ExecutionIndexer.Enabled,
+		"ens":          ensSearchEnabled(),
 	}
 	if !allowedTypes[searchType] {
 		http.Error(w, "Not found", 404)
@@ -569,6 +590,21 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 					}
 				}
 				result = model
+			}
+		}
+	case "ens":
+		if !ensNameRE.MatchString(search) {
+			break
+		}
+		if addr, ok := services.GlobalBeaconService.GetEnsResolver().ResolveEnsName(ctx, search); ok {
+			account, _ := db.GetElAccountByAddress(ctx, addr.Bytes())
+			result = &[]models.SearchAheadEnsResult{
+				{
+					EnsName:    utils.FormatGraffitiString(strings.ToLower(search)),
+					Address:    strings.ToLower(addr.Hex()),
+					IsContract: account != nil && account.IsContract,
+					HasData:    account != nil && account.ID > 0,
+				},
 			}
 		}
 	case "transactions":

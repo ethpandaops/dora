@@ -368,6 +368,7 @@
     var searchEl = jQuery("#explorer-search");
     let requestNum = 9
     var executionIndexerEnabled = searchEl.data("execution-indexer-enabled") === true || searchEl.attr("data-execution-indexer-enabled") === "true" || searchEl.data("executionIndexerEnabled") === true;
+    var ensSearchEnabled = searchEl.data("ens-search-enabled") === true || searchEl.attr("data-ens-search-enabled") === "true" || searchEl.data("ensSearchEnabled") === true;
 
     var prepareQueryFn = function(query, settings) {
       settings.url += encodeURIComponent(query);
@@ -469,6 +470,22 @@
         },
         remote: {
           url: "/search/transactions?q=",
+          prepare: prepareQueryFn,
+          maxPendingRequests: requestNum,
+        },
+      });
+    }
+
+    var bhEnsNames = null;
+    if (ensSearchEnabled) {
+      bhEnsNames = new Bloodhound({
+        datumTokenizer: Bloodhound.tokenizers.whitespace,
+        queryTokenizer: Bloodhound.tokenizers.whitespace,
+        identify: function (obj) {
+          return obj.ens_name
+        },
+        remote: {
+          url: "/search/ens?q=",
           prepare: prepareQueryFn,
           maxPendingRequests: requestNum,
         },
@@ -600,6 +617,26 @@
       });
     }
 
+    // Add ENS dataset conditionally
+    if (ensSearchEnabled && bhEnsNames) {
+      datasets.push({
+        limit: 5,
+        name: "ens",
+        source: bhEnsNames,
+        display: "ens_name",
+        templates: {
+          header: '<h3 class="h5">ENS Names:</h3>',
+          suggestion: function (data) {
+            var badges = "";
+            if (data.is_contract) {
+              badges += `<span class="search-cell"><span class="badge rounded-pill text-bg-warning">Contract</span></span>`;
+            }
+            return `<div class="text-monospace"><div class="search-table"><span class="search-cell">${data.ens_name}</span><span class="search-cell search-truncate text-muted">${data.address}</span>${badges}</div></div>`;
+          },
+        },
+      });
+    }
+
     // Initialize typeahead with all datasets
     searchEl.typeahead.apply(searchEl, [
       {
@@ -638,6 +675,8 @@
         window.location = "/slots/filtered?f&f.orphaned=1&f.graffiti=" + encodeURIComponent(el.value)
       } else if (sug.pubkey !== undefined) {
         window.location = "/validator/" + sug.index
+      } else if (sug.ens_name !== undefined) {
+        window.location = "/address/" + sug.address
       } else if (sug.name !== undefined) {
           // sug.name is html-escaped to prevent xss, we need to unescape it
           var el = document.createElement("textarea")
