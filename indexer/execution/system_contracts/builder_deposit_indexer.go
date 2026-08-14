@@ -11,6 +11,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -25,7 +26,7 @@ type BuilderDepositIndexer struct {
 	logger             logrus.FieldLogger
 	indexer            *contractIndexer[dbtypes.BuilderDepositTx]
 	matcher            *transactionMatcher[builderDepositMatch]
-	activationResolver *gloasActivationResolver
+	activationResolver *forkActivationResolver
 }
 
 type builderDepositMatch struct {
@@ -42,9 +43,11 @@ func NewBuilderDepositIndexer(indexer *execution.IndexerCtx) *BuilderDepositInde
 	}
 
 	bi := &BuilderDepositIndexer{
-		indexerCtx:         indexer,
-		logger:             indexer.Logger.WithField("indexer", "builder_deposits"),
-		activationResolver: newGloasActivationResolver(indexer),
+		indexerCtx: indexer,
+		logger:     indexer.Logger.WithField("indexer", "builder_deposits"),
+		activationResolver: newForkActivationResolver(indexer, func(specs *consensus.ChainSpec) *uint64 {
+			return specs.GloasForkEpoch
+		}),
 	}
 
 	specs := indexer.ChainState.GetSpecs()

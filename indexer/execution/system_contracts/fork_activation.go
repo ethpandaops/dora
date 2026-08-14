@@ -6,44 +6,57 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/indexer/execution"
 )
 
-// gloasActivationResolver resolves the first el block number processed under Gloas rules - the
-// block whose payload executes the first builder request dequeue system call. The builder
-// contract queues accept requests before the fork but stay locked until that block, and since
-// el block numbers are monotonic counters that shift with missed slots, the activation block
-// can only be observed from indexed post-fork blocks - never predicted from the fork schedule.
-type gloasActivationResolver struct {
+// forkActivationResolver resolves the first el block number processed under a fork's rules -
+// the block whose payload executes the contract's first request dequeue system call. Contract
+// queues that accept requests before their activation fork (e.g. the Gloas builder contracts)
+// stay locked until that block, and since el block numbers are monotonic counters that shift
+// with missed slots, the activation block can only be observed from indexed post-fork blocks -
+// never predicted from the fork schedule.
+type forkActivationResolver struct {
 	indexerCtx *execution.IndexerCtx
+
+	// forkEpochSpec extracts the activation fork epoch from the chain specs
+	// (nil / MaxUint64 = fork not scheduled)
+	forkEpochSpec func(specs *consensus.ChainSpec) *uint64
 
 	mutex     sync.Mutex
 	forkCache map[beacon.ForkKey]uint64
 }
 
-// newGloasActivationResolver creates a new gloas activation block resolver.
-func newGloasActivationResolver(indexerCtx *execution.IndexerCtx) *gloasActivationResolver {
-	return &gloasActivationResolver{
-		indexerCtx: indexerCtx,
-		forkCache:  make(map[beacon.ForkKey]uint64, 4),
+// newForkActivationResolver creates a new fork activation block resolver for the fork epoch
+// extracted by the given spec callback.
+func newForkActivationResolver(indexerCtx *execution.IndexerCtx, forkEpochSpec func(specs *consensus.ChainSpec) *uint64) *forkActivationResolver {
+	return &forkActivationResolver{
+		indexerCtx:    indexerCtx,
+		forkEpochSpec: forkEpochSpec,
+		forkCache:     make(map[beacon.ForkKey]uint64, 4),
 	}
 }
 
-// resolveActivationBlock returns the first el block number where builder request dequeuing is
-// active on the given fork (nil = finalized canonical view). The finalized view only reports
-// the block once the fork boundary is finalized, so its result is stable and safe to persist;
+// resolveActivationBlock returns the first el block number where request dequeuing is active
+// on the given fork (nil = finalized canonical view). The finalized view only reports the
+// block once the fork boundary is finalized, so its result is stable and safe to persist;
 // unfinalized forks may disagree on the block number until then.
-func (r *gloasActivationResolver) resolveActivationBlock(fork *execution.ForkWithClients) (uint64, bool) {
+func (r *forkActivationResolver) resolveActivationBlock(fork *execution.ForkWithClients) (uint64, bool) {
 	chainState := r.indexerCtx.ChainState
 
 	specs := chainState.GetSpecs()
-	if specs == nil || specs.GloasForkEpoch == nil || *specs.GloasForkEpoch == math.MaxUint64 {
+	if specs == nil {
 		return 0, false
 	}
 
-	forkEpoch := phase0.Epoch(*specs.GloasForkEpoch)
+	forkEpochSpec := r.forkEpochSpec(specs)
+	if forkEpochSpec == nil || *forkEpochSpec == math.MaxUint64 {
+		return 0, false
+	}
+
+	forkEpoch := phase0.Epoch(*forkEpochSpec)
 	if chainState.CurrentEpoch() < forkEpoch {
 		return 0, false
 	}
@@ -81,7 +94,7 @@ func (r *gloasActivationResolver) resolveActivationBlock(fork *execution.ForkWit
 // resolveUnfinalizedActivationBlock resolves the activation block along a specific unfinalized
 // fork from the block cache: the first block at or after the fork slot on that fork (or one of
 // its parents) that carries an execution payload.
-func (r *gloasActivationResolver) resolveUnfinalizedActivationBlock(forkSlot phase0.Slot, fork *execution.ForkWithClients) (uint64, bool) {
+func (r *forkActivationResolver) resolveUnfinalizedActivationBlock(forkSlot phase0.Slot, fork *execution.ForkWithClients) (uint64, bool) {
 	r.mutex.Lock()
 	cachedBlock, isCached := r.forkCache[fork.ForkId]
 	r.mutex.Unlock()
@@ -135,7 +148,7 @@ func (r *gloasActivationResolver) resolveUnfinalizedActivationBlock(forkSlot pha
 // that no longer have a head. Forks come and go for as long as the boundary is unfinalized (an
 // unbounded window on non-finalizing chains), so the eviction keeps the cache bounded by the
 // number of live forks.
-func (r *gloasActivationResolver) cacheActivationBlock(forkId beacon.ForkKey, blockNumber uint64) {
+func (r *forkActivationResolver) cacheActivationBlock(forkId beacon.ForkKey, blockNumber uint64) {
 	forkHeads := r.indexerCtx.BeaconIndexer.GetForkHeads()
 	aliveForkIds := make(map[beacon.ForkKey]bool, len(forkHeads))
 	for _, forkHead := range forkHeads {
