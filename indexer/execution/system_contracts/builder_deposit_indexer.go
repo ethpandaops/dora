@@ -21,10 +21,11 @@ import (
 
 // BuilderDepositIndexer indexes the EIP-8282 builder deposit system contract.
 type BuilderDepositIndexer struct {
-	indexerCtx *execution.IndexerCtx
-	logger     logrus.FieldLogger
-	indexer    *contractIndexer[dbtypes.BuilderDepositTx]
-	matcher    *transactionMatcher[builderDepositMatch]
+	indexerCtx         *execution.IndexerCtx
+	logger             logrus.FieldLogger
+	indexer            *contractIndexer[dbtypes.BuilderDepositTx]
+	matcher            *transactionMatcher[builderDepositMatch]
+	activationResolver *gloasActivationResolver
 }
 
 type builderDepositMatch struct {
@@ -41,8 +42,9 @@ func NewBuilderDepositIndexer(indexer *execution.IndexerCtx) *BuilderDepositInde
 	}
 
 	bi := &BuilderDepositIndexer{
-		indexerCtx: indexer,
-		logger:     indexer.Logger.WithField("indexer", "builder_deposits"),
+		indexerCtx:         indexer,
+		logger:             indexer.Logger.WithField("indexer", "builder_deposits"),
+		activationResolver: newGloasActivationResolver(indexer),
 	}
 
 	specs := indexer.ChainState.GetSpecs()
@@ -58,6 +60,10 @@ func NewBuilderDepositIndexer(indexer *execution.IndexerCtx) *BuilderDepositInde
 			},
 			deployBlock: uint64(utils.Config.ExecutionApi.GloasDeployBlock),
 			dequeueRate: specs.MaxBuilderDepositRequestsPerPayload,
+
+			queueActivationBlock: bi.activationResolver.resolveActivationBlock,
+			loadRebaseRows:       bi.loadRebaseRows,
+			persistRebaseRows:    bi.persistRebaseRows,
 
 			processFinalTx:  bi.processFinalTx,
 			processRecentTx: bi.processRecentTx,
@@ -178,6 +184,36 @@ func (bi *BuilderDepositIndexer) parseRequestLog(log *types.Log) *dbtypes.Builde
 	}
 
 	return requestTx
+}
+
+// loadRebaseRows loads persisted builder deposit request txs for the one-time dequeue rebase.
+func (bi *BuilderDepositIndexer) loadRebaseRows(maxBlockNumber uint64) []*dequeueRebaseRow {
+	depositTxs := db.GetBuilderDepositTxsUpToBlock(bi.indexerCtx.Ctx, maxBlockNumber)
+
+	rows := make([]*dequeueRebaseRow, len(depositTxs))
+	for idx, depositTx := range depositTxs {
+		rows[idx] = &dequeueRebaseRow{
+			blockRoot:    depositTx.BlockRoot,
+			blockNumber:  depositTx.BlockNumber,
+			blockIndex:   depositTx.BlockIndex,
+			forkId:       depositTx.ForkId,
+			dequeueBlock: depositTx.DequeueBlock,
+		}
+	}
+
+	return rows
+}
+
+// persistRebaseRows persists rebased dequeue blocks of builder deposit request txs.
+func (bi *BuilderDepositIndexer) persistRebaseRows(tx *sqlx.Tx, rows []*dequeueRebaseRow) error {
+	for _, row := range rows {
+		err := db.UpdateBuilderDepositTxDequeueBlock(bi.indexerCtx.Ctx, tx, row.blockRoot, row.blockIndex, row.dequeueBlock)
+		if err != nil {
+			return fmt.Errorf("error while updating builder deposit tx dequeue block: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // persistBuilderDepositTxs persists builder deposit request txs to the database.

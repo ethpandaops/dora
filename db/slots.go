@@ -700,6 +700,26 @@ func GetHighestRootBeforeSlot(ctx context.Context, slot uint64, withOrphaned boo
 	return result
 }
 
+// GetFirstCanonicalElBlockNumber returns the slot and el block number of the first canonical
+// block at or after the given slot that carries an execution payload.
+func GetFirstCanonicalElBlockNumber(ctx context.Context, minSlot uint64) (uint64, uint64, bool) {
+	result := struct {
+		Slot           uint64 `db:"slot"`
+		EthBlockNumber uint64 `db:"eth_block_number"`
+	}{}
+
+	err := ReaderDb.GetContext(ctx, &result, `
+	SELECT slot, eth_block_number FROM slots
+	WHERE slot >= $1 AND status = 1 AND eth_block_number IS NOT NULL
+	ORDER BY slot ASC LIMIT 1
+	`, minSlot)
+	if err != nil {
+		return 0, 0, false
+	}
+
+	return result.Slot, result.EthBlockNumber, true
+}
+
 func GetSlotAssignment(ctx context.Context, slot uint64) uint64 {
 	proposer := uint64(math.MaxInt64)
 	err := ReaderDb.GetContext(ctx, &proposer, `

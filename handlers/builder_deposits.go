@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -362,6 +363,49 @@ func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64,
 		pageData.NewDepositEstimateTime = projection.NewDepositEstimateTime
 	}
 
+	// Regular builder deposits already queued in the builder deposit contract: they can be
+	// submitted before the fork, but stay locked in the queue until dequeuing starts with the
+	// first Gloas payload, so no builder index is assigned yet (builders onboarded at the fork
+	// transition are registered first). Listed before the projected onboarding deposits, like
+	// pending request txs on the post-fork page.
+	pageOffset := (pageIdx - 1) * pageSize
+	queuedFilter := &dbtypes.BuilderDepositTxFilter{
+		PublicKey: common.FromHex(pubkey),
+	}
+	if minAmount != 0 {
+		queuedFilter.MinAmount = &minAmount
+	}
+	if maxAmount != 0 {
+		queuedFilter.MaxAmount = &maxAmount
+	}
+
+	queuedTxs, totalTxRows := services.GlobalBeaconService.GetQueuedBuilderDepositTxs(ctx, queuedFilter, pageOffset, uint32(pageSize))
+	pageData.QueuedRegularCount = totalTxRows
+
+	queuedRows := make([]*models.BuilderDepositsPageDataDeposit, 0, len(queuedTxs))
+	for _, queuedTx := range queuedTxs {
+		depositTx := queuedTx.Transaction
+		queuedRows = append(queuedRows, &models.BuilderDepositsPageDataDeposit{
+			IsQueuedRegular:       true,
+			Time:                  time.Unix(int64(depositTx.BlockTime), 0),
+			PublicKey:             depositTx.PublicKey,
+			WithdrawalCredentials: depositTx.WithdrawalCredentials,
+			Amount:                depositTx.Amount,
+			BlockNumber:           depositTx.BlockNumber,
+			HasTransaction:        true,
+			TransactionHash:       depositTx.TxHash,
+			TransactionOrphaned:   queuedTx.TransactionOrphaned,
+			TransactionDetails: &models.BuilderPageDataDepositTxDetails{
+				BlockNumber: depositTx.BlockNumber,
+				BlockHash:   fmt.Sprintf("%#x", depositTx.BlockRoot),
+				BlockTime:   depositTx.BlockTime,
+				TxOrigin:    common.Address(depositTx.TxSender).Hex(),
+				TxTarget:    common.Address(depositTx.TxTarget).Hex(),
+				TxHash:      fmt.Sprintf("%#x", depositTx.TxHash),
+			},
+		})
+	}
+
 	// Map and filter the projected deposits (slot / pubkey / amount; builder-index filter ignored).
 	pubkeyFilter := common.FromHex(pubkey)
 	matched := make([]*models.BuilderDepositsPageDataDeposit, 0)
@@ -441,16 +485,28 @@ func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64,
 		}
 	}
 
-	totalRows := uint64(len(matched))
-	start := (pageIdx - 1) * pageSize
-	end := start + pageSize
-	if start > totalRows {
-		start = totalRows
+	// combined pagination: queued request txs first, then the projected onboarding deposits
+	totalRows := totalTxRows + uint64(len(matched))
+
+	deposits := queuedRows
+	if uint64(len(deposits)) < pageSize {
+		matchedOffset := uint64(0)
+		if pageOffset > totalTxRows {
+			matchedOffset = pageOffset - totalTxRows
+		}
+		if matchedOffset > uint64(len(matched)) {
+			matchedOffset = uint64(len(matched))
+		}
+
+		matchedEnd := matchedOffset + pageSize - uint64(len(deposits))
+		if matchedEnd > uint64(len(matched)) {
+			matchedEnd = uint64(len(matched))
+		}
+
+		deposits = append(deposits, matched[matchedOffset:matchedEnd]...)
 	}
-	if end > totalRows {
-		end = totalRows
-	}
-	pageData.Deposits = matched[start:end]
+
+	pageData.Deposits = deposits
 	pageData.DepositCount = uint64(len(pageData.Deposits))
 
 	if pageData.DepositCount > 0 {
