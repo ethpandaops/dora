@@ -37,6 +37,20 @@ type contractIndexerOptions[TxType any] struct {
 	deployBlock     uint64                // block number from where to start crawling logs
 	dequeueRate     uint64                // number of logs to dequeue per block, 0 for no queue
 
+	// queueActivationBlock resolves the first el block number where request dequeuing is active
+	// on the given fork (nil = finalized canonical view). The queue is locked before that block,
+	// so requests logged earlier get dequeue block 0 (not determinable yet) until the activation
+	// block is observable. Block numbers shift with missed slots and can differ between forks, so
+	// the resolution must come from indexed post-fork blocks. nil = dequeuing active since deployment.
+	queueActivationBlock func(fork *exectx.ForkWithClients) (uint64, bool)
+
+	// loadRebaseRows loads all persisted request txs up to the given el block number in queue
+	// order for the one-time dequeue rebase (required when queueActivationBlock is set)
+	loadRebaseRows func(maxBlockNumber uint64) []*dequeueRebaseRow
+
+	// persistRebaseRows persists rebased dequeue blocks (required when queueActivationBlock is set)
+	persistRebaseRows func(tx *sqlx.Tx, rows []*dequeueRebaseRow) error
+
 	// processFinalTx processes a finalized transaction log
 	processFinalTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*TxType) (*TxType, error)
 
@@ -47,11 +61,25 @@ type contractIndexerOptions[TxType any] struct {
 	persistTxs func(tx *sqlx.Tx, txs []*TxType) error
 }
 
+// dequeueRebaseRow is a persisted request tx reference used by the one-time dequeue rebase.
+type dequeueRebaseRow struct {
+	blockRoot    []byte
+	blockNumber  uint64
+	blockIndex   uint64
+	forkId       uint64
+	dequeueBlock uint64
+}
+
 // contractIndexerState represents the current state of the contract indexer
 type contractIndexerState struct {
 	FinalBlock    uint64                                       `json:"final_block"`
 	FinalQueueLen uint64                                       `json:"final_queue"`
 	ForkStates    map[beacon.ForkKey]*contractIndexerForkState `json:"fork_states"`
+
+	// QueueActivationBlock is the finalized el block number where request dequeuing started
+	// (0 = not resolved yet). Set once by the dequeue rebase for contracts with a
+	// queueActivationBlock resolver.
+	QueueActivationBlock uint64 `json:"activation_block,omitempty"`
 }
 
 // contractIndexerForkState represents the state of the contract indexer for a specific unfinalized fork
@@ -110,6 +138,13 @@ func (ci *contractIndexer[_]) runContractIndexer() error {
 		ci.loadState()
 	}
 
+	// rebase pre-activation dequeue blocks first, so the transaction matcher never sees the
+	// activation block range with unassigned (0) dequeue blocks
+	err := ci.runDequeueRebase()
+	if err != nil {
+		return fmt.Errorf("error while rebasing dequeue blocks: %w", err)
+	}
+
 	finalizedEpoch, _ := ci.indexer.ChainState.GetFinalizedCheckpoint()
 	if finalizedEpoch > 0 {
 		finalizedBlockNumber := ci.getFinalizedBlockNumber()
@@ -154,6 +189,167 @@ func (ci *contractIndexer[_]) getFinalizedBlockNumber() uint64 {
 	}
 
 	return finalizedBlockNumber
+}
+
+// getQueueActivationBlock returns the first el block number where request dequeuing is active
+// for the given fork (nil = finalized canonical view). Contracts without an activation
+// resolver dequeue since deployment.
+func (ci *contractIndexer[_]) getQueueActivationBlock(fork *exectx.ForkWithClients) (uint64, bool) {
+	if ci.options.queueActivationBlock == nil {
+		return 0, true
+	}
+
+	if ci.state.QueueActivationBlock != 0 {
+		return ci.state.QueueActivationBlock, true
+	}
+
+	return ci.options.queueActivationBlock(fork)
+}
+
+// applyQueueDequeues applies the requests dequeued in blocks [fromBlock, toBlock] (inclusive)
+// to the queue length. Dequeuing only happens from the activation block onwards, so earlier
+// blocks in the range dequeue nothing; while the activation block is unknown the queue only grows.
+func (ci *contractIndexer[_]) applyQueueDequeues(queueLength, fromBlock, toBlock, activationBlock uint64, activationKnown bool) uint64 {
+	if ci.options.dequeueRate == 0 || !activationKnown {
+		return queueLength
+	}
+
+	if fromBlock < activationBlock {
+		fromBlock = activationBlock
+	}
+
+	if toBlock < fromBlock {
+		return queueLength
+	}
+
+	dequeuedRequests := (toBlock - fromBlock + 1) * ci.options.dequeueRate
+	if dequeuedRequests > queueLength {
+		return 0
+	}
+
+	return queueLength - dequeuedRequests
+}
+
+// calculateDequeueBlock returns the el block number where a request logged in logBlock leaves
+// the contract queue, given the queue length at the start of logBlock. While the activation
+// block is not known yet it returns 0 (not determinable - assigned by the dequeue rebase once
+// the first post-activation block is finalized).
+func (ci *contractIndexer[_]) calculateDequeueBlock(logBlock, queueLength, activationBlock uint64, activationKnown bool) uint64 {
+	if ci.options.dequeueRate == 0 {
+		return logBlock
+	}
+
+	if !activationKnown {
+		return 0
+	}
+
+	dequeueBase := logBlock
+	if dequeueBase < activationBlock {
+		dequeueBase = activationBlock
+	}
+
+	return dequeueBase + (queueLength / ci.options.dequeueRate)
+}
+
+// computeRebasedDequeueBlocks replays the given request tx rows (in queue order) through the
+// queue with dequeuing starting at the activation block. Finalized rows (fork id 0) get their
+// exact dequeue blocks; non-finalized rows with a stale pre-activation dequeue block are placed
+// behind the finalized backlog (matching prefers finalized txs, but they must leave the pending
+// window eventually). It returns the rows whose dequeue block changed and the queue length
+// remaining after the last finalized block.
+func (ci *contractIndexer[_]) computeRebasedDequeueBlocks(rows []*dequeueRebaseRow, activationBlock, finalBlock uint64) ([]*dequeueRebaseRow, uint64) {
+	updates := make([]*dequeueRebaseRow, 0, len(rows))
+	strandedRows := make([]*dequeueRebaseRow, 0)
+	queueLength := uint64(0)
+	queueBlock := uint64(0)
+	finalizedCount := uint64(0)
+
+	for _, row := range rows {
+		if row.forkId != 0 {
+			if row.dequeueBlock < activationBlock {
+				strandedRows = append(strandedRows, row)
+			}
+
+			continue
+		}
+
+		if row.blockNumber > queueBlock {
+			queueLength = ci.applyQueueDequeues(queueLength, queueBlock, row.blockNumber-1, activationBlock, true)
+			queueBlock = row.blockNumber
+		}
+
+		dequeueBlock := ci.calculateDequeueBlock(row.blockNumber, queueLength, activationBlock, true)
+		queueLength++
+		finalizedCount++
+
+		if dequeueBlock != row.dequeueBlock {
+			row.dequeueBlock = dequeueBlock
+			updates = append(updates, row)
+		}
+	}
+
+	for idx, row := range strandedRows {
+		row.dequeueBlock = activationBlock + ((finalizedCount + uint64(idx)) / ci.options.dequeueRate)
+		updates = append(updates, row)
+	}
+
+	// preserve the queue state up to and including the last finalized block
+	if finalBlock >= queueBlock {
+		queueLength = ci.applyQueueDequeues(queueLength, queueBlock, finalBlock, activationBlock, true)
+	}
+
+	return updates, queueLength
+}
+
+// runDequeueRebase reassigns the dequeue blocks of already-persisted request txs once the queue
+// activation block is final. Requests enqueued before the activation fork are stored with
+// dequeue block 0, as block numbers shift with missed slots and may differ between forks until
+// the boundary is finalized. Once the first post-activation block is finalized, the finalized
+// rows are replayed through the queue to assign their real dequeue blocks and to reseed the
+// tracked queue length. Runs once; the resolved activation block is kept in the indexer state.
+func (ci *contractIndexer[_]) runDequeueRebase() error {
+	if ci.options.queueActivationBlock == nil || ci.options.dequeueRate == 0 {
+		return nil
+	}
+
+	if ci.state.QueueActivationBlock != 0 {
+		return nil
+	}
+
+	activationBlock, activationKnown := ci.options.queueActivationBlock(nil)
+	if !activationKnown {
+		return nil
+	}
+
+	// include stale rows up to the activation block even if the finalized crawl is behind
+	maxBlockNumber := ci.state.FinalBlock
+	if activationBlock > 0 && activationBlock-1 > maxBlockNumber {
+		maxBlockNumber = activationBlock - 1
+	}
+
+	rows := ci.options.loadRebaseRows(maxBlockNumber)
+	updates, queueLength := ci.computeRebasedDequeueBlocks(rows, activationBlock, ci.state.FinalBlock)
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		if len(updates) > 0 {
+			err := ci.options.persistRebaseRows(tx, updates)
+			if err != nil {
+				return fmt.Errorf("error while persisting rebased dequeue blocks: %w", err)
+			}
+		}
+
+		ci.state.QueueActivationBlock = activationBlock
+		ci.state.FinalQueueLen = queueLength
+
+		return ci.persistState(tx)
+	})
+	if err != nil {
+		return err
+	}
+
+	ci.logger.Infof("queue activation block %v resolved, rebased dequeue blocks of %v request txs (%v queued)", activationBlock, len(updates), queueLength)
+
+	return nil
 }
 
 // loadFilteredLogs fetches filtered logs from the execution client
@@ -201,6 +397,8 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 
 	ctx, cancel := context.WithCancel(ci.indexer.Ctx)
 	defer cancel()
+
+	activationBlock, activationKnown := ci.getQueueActivationBlock(nil)
 
 	retryCount := 0
 
@@ -296,24 +494,15 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 				ci.logger.Warnf("contract log for block %v received after block %v", log.BlockNumber, queueBlock)
 				return nil
 			} else if ci.options.dequeueRate > 0 && queueBlock < log.BlockNumber {
-				// calculate how many requests were dequeued since the last processed log
-				dequeuedRequests := (log.BlockNumber - queueBlock) * ci.options.dequeueRate
-				if dequeuedRequests > queueLength {
-					queueLength = 0
-				} else {
-					queueLength -= dequeuedRequests
-				}
-
+				// apply the requests dequeued since the last processed log
+				queueLength = ci.applyQueueDequeues(queueLength, queueBlock, log.BlockNumber-1, activationBlock, activationKnown)
 				queueBlock = log.BlockNumber
 			}
 
 			// calculate the dequeue block number for the current log
-			var dequeueBlock uint64
+			dequeueBlock := ci.calculateDequeueBlock(log.BlockNumber, queueLength, activationBlock, activationKnown)
 			if ci.options.dequeueRate > 0 {
-				dequeueBlock = log.BlockNumber + (queueLength / ci.options.dequeueRate)
 				queueLength++
-			} else {
-				dequeueBlock = log.BlockNumber
 			}
 
 			// process the log and get the corresponding transaction
@@ -329,18 +518,9 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 			requestTxs = append(requestTxs, requestTx)
 		}
 
-		// calculate how many requests were dequeued at the end of the current block range
-		if ci.options.dequeueRate > 0 {
-			// we need to add 1 to the block range as we want to preserve the queue state after the last block in the range
-			dequeuedRequests := (toBlock - queueBlock + 1) * ci.options.dequeueRate
-			if dequeuedRequests > queueLength {
-				queueLength = 0
-			} else {
-				queueLength -= dequeuedRequests
-			}
-
-			queueBlock = toBlock
-		}
+		// apply the requests dequeued up to and including the last block in the range,
+		// so the persisted queue length reflects the state after the whole range
+		queueLength = ci.applyQueueDequeues(queueLength, queueBlock, toBlock, activationBlock, activationKnown)
 
 		if len(requestTxs) > 0 {
 			ci.logger.Infof("crawled transactions for block %v - %v: %v events", ci.state.FinalBlock, toBlock, len(requestTxs))
@@ -420,6 +600,11 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 			ctxCancel()
 		}
 	}()
+
+	// the activation block may differ between forks until the boundary is finalized, so it is
+	// resolved along the processed fork; rows written with an unfinalized activation block are
+	// re-crawled (and the pre-activation backlog rebased) by the finalization routine
+	activationBlock, activationKnown := ci.getQueueActivationBlock(headFork)
 
 	queueBlock := startBlockNumber
 
@@ -516,23 +701,15 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 					ci.logger.Warnf("contract log for block %v received after block %v", log.BlockNumber, queueBlock)
 					return nil
 				} else if ci.options.dequeueRate > 0 && queueBlock < log.BlockNumber {
-					dequeuedRequests := (log.BlockNumber - queueBlock) * ci.options.dequeueRate
-					if dequeuedRequests > queueLength {
-						queueLength = 0
-					} else {
-						queueLength -= dequeuedRequests
-					}
-
+					// apply the requests dequeued since the last processed log
+					queueLength = ci.applyQueueDequeues(queueLength, queueBlock, log.BlockNumber-1, activationBlock, activationKnown)
 					queueBlock = log.BlockNumber
 				}
 
 				// calculate the dequeue block number for the current log
-				var dequeueBlock uint64
+				dequeueBlock := ci.calculateDequeueBlock(log.BlockNumber, queueLength, activationBlock, activationKnown)
 				if ci.options.dequeueRate > 0 {
-					dequeueBlock = log.BlockNumber + (queueLength / ci.options.dequeueRate)
 					queueLength++
-				} else {
-					dequeueBlock = log.BlockNumber
 				}
 
 				// process the log and get the corresponding transaction
@@ -548,24 +725,17 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 				requestTxs = append(requestTxs, requestTx)
 			}
 
-			// calculate how many requests were dequeued at the end of the current block range
-			if ci.options.dequeueRate > 0 {
-				dequeuedRequests := (toBlock - queueBlock + 1) * ci.options.dequeueRate
-				if dequeuedRequests > queueLength {
-					queueLength = 0
-				} else {
-					queueLength -= dequeuedRequests
-				}
-			}
-
-			queueBlock = toBlock
+			// apply the requests dequeued up to and including the last block in the range,
+			// so the persisted queue length reflects the state after the whole range
+			queueLength = ci.applyQueueDequeues(queueLength, queueBlock, toBlock, activationBlock, activationKnown)
+			queueBlock = toBlock + 1
 
 			if len(requestTxs) > 0 {
 				ci.logger.Infof("crawled recent contract logs for fork %v (%v-%v): %v events", headFork.ForkId, startBlockNumber, toBlock, len(requestTxs))
 			}
 
 			// persist the processed transactions and update the indexer state
-			err := ci.persistRecentRequestTxs(headFork.ForkId, queueBlock, queueLength, requestTxs)
+			err := ci.persistRecentRequestTxs(headFork.ForkId, toBlock, queueLength, requestTxs)
 			if err != nil {
 				return fmt.Errorf("could not persist contract logs: %v", err)
 			}

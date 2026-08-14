@@ -80,6 +80,34 @@ func GetBuilderDepositTxsByDequeueRange(ctx context.Context, dequeueFirst uint64
 	return depositTxs
 }
 
+// GetBuilderDepositTxsUpToBlock returns all builder deposit request txs up to the given el
+// block number, in queue (block number, log index) order.
+func GetBuilderDepositTxsUpToBlock(ctx context.Context, maxBlockNumber uint64) []*dbtypes.BuilderDepositTx {
+	depositTxs := []*dbtypes.BuilderDepositTx{}
+
+	err := ReaderDb.SelectContext(ctx, &depositTxs, `SELECT builder_deposit_request_txs.*
+		FROM builder_deposit_request_txs
+		WHERE block_number <= $1
+		ORDER BY block_number ASC, block_index ASC
+	`, maxBlockNumber)
+	if err != nil {
+		logger.Errorf("Error while fetching builder deposit txs: %v", err)
+		return nil
+	}
+
+	return depositTxs
+}
+
+// UpdateBuilderDepositTxDequeueBlock updates the dequeue block of a builder deposit request tx.
+func UpdateBuilderDepositTxDequeueBlock(ctx context.Context, tx *sqlx.Tx, blockRoot []byte, blockIndex uint64, dequeueBlock uint64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE builder_deposit_request_txs
+		SET dequeue_block = $1
+		WHERE block_root = $2 AND block_index = $3
+	`, dequeueBlock, blockRoot, blockIndex)
+
+	return err
+}
+
 func GetBuilderDepositTxsByTxHashes(ctx context.Context, txHashes [][]byte) []*dbtypes.BuilderDepositTx {
 	var sql strings.Builder
 	args := make([]any, len(txHashes))
@@ -117,8 +145,9 @@ func GetBuilderDepositTxsFiltered(ctx context.Context, offset uint64, limit uint
 
 	filterOp := "WHERE"
 	if filter.MinDequeue > 0 {
+		// dequeue block 0 = queued before dequeue activation, not determinable yet - still pending
 		args = append(args, filter.MinDequeue)
-		fmt.Fprintf(&sql, " %v dequeue_block >= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v (dequeue_block >= $%v OR dequeue_block = 0)", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxDequeue > 0 {

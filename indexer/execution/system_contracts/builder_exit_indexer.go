@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -20,10 +21,11 @@ import (
 
 // BuilderExitIndexer indexes the EIP-8282 builder exit system contract.
 type BuilderExitIndexer struct {
-	indexerCtx *execution.IndexerCtx
-	logger     logrus.FieldLogger
-	indexer    *contractIndexer[dbtypes.BuilderExitTx]
-	matcher    *transactionMatcher[builderExitMatch]
+	indexerCtx         *execution.IndexerCtx
+	logger             logrus.FieldLogger
+	indexer            *contractIndexer[dbtypes.BuilderExitTx]
+	matcher            *transactionMatcher[builderExitMatch]
+	activationResolver *forkActivationResolver
 }
 
 type builderExitMatch struct {
@@ -42,6 +44,9 @@ func NewBuilderExitIndexer(indexer *execution.IndexerCtx) *BuilderExitIndexer {
 	bi := &BuilderExitIndexer{
 		indexerCtx: indexer,
 		logger:     indexer.Logger.WithField("indexer", "builder_exits"),
+		activationResolver: newForkActivationResolver(indexer, func(specs *consensus.ChainSpec) *uint64 {
+			return specs.GloasForkEpoch
+		}),
 	}
 
 	specs := indexer.ChainState.GetSpecs()
@@ -57,6 +62,10 @@ func NewBuilderExitIndexer(indexer *execution.IndexerCtx) *BuilderExitIndexer {
 			},
 			deployBlock: uint64(utils.Config.ExecutionApi.GloasDeployBlock),
 			dequeueRate: specs.MaxBuilderExitRequestsPerPayload,
+
+			queueActivationBlock: bi.activationResolver.resolveActivationBlock,
+			loadRebaseRows:       bi.loadRebaseRows,
+			persistRebaseRows:    bi.persistRebaseRows,
 
 			processFinalTx:  bi.processFinalTx,
 			processRecentTx: bi.processRecentTx,
@@ -171,6 +180,36 @@ func (bi *BuilderExitIndexer) parseRequestLog(log *types.Log) *dbtypes.BuilderEx
 	}
 
 	return requestTx
+}
+
+// loadRebaseRows loads persisted builder exit request txs for the one-time dequeue rebase.
+func (bi *BuilderExitIndexer) loadRebaseRows(maxBlockNumber uint64) []*dequeueRebaseRow {
+	exitTxs := db.GetBuilderExitTxsUpToBlock(bi.indexerCtx.Ctx, maxBlockNumber)
+
+	rows := make([]*dequeueRebaseRow, len(exitTxs))
+	for idx, exitTx := range exitTxs {
+		rows[idx] = &dequeueRebaseRow{
+			blockRoot:    exitTx.BlockRoot,
+			blockNumber:  exitTx.BlockNumber,
+			blockIndex:   exitTx.BlockIndex,
+			forkId:       exitTx.ForkId,
+			dequeueBlock: exitTx.DequeueBlock,
+		}
+	}
+
+	return rows
+}
+
+// persistRebaseRows persists rebased dequeue blocks of builder exit request txs.
+func (bi *BuilderExitIndexer) persistRebaseRows(tx *sqlx.Tx, rows []*dequeueRebaseRow) error {
+	for _, row := range rows {
+		err := db.UpdateBuilderExitTxDequeueBlock(bi.indexerCtx.Ctx, tx, row.blockRoot, row.blockIndex, row.dequeueBlock)
+		if err != nil {
+			return fmt.Errorf("error while updating builder exit tx dequeue block: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // persistBuilderExitTxs persists builder exit request txs to the database.
