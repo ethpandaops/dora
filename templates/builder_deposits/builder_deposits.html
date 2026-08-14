@@ -194,10 +194,10 @@
                     </td>
                     <td>
                       {{ if $deposit.IsQueuedRegular }}
-                        <span class="badge rounded-pill text-bg-light border" data-bs-toggle="tooltip" data-bs-title="Builder index not assigned yet — the deposit stays queued until Gloas activates, and builders onboarded at the fork transition are registered first"><i class="fas fa-hourglass-half mr-1"></i>no index yet</span>
+                        <span class="badge rounded-pill text-bg-secondary border" data-bs-toggle="tooltip" data-bs-title="Builder index not assigned yet — the deposit stays queued until Gloas activates, and builders onboarded at the fork transition are registered first"><i class="fas fa-hourglass-half mr-1"></i>no index yet</span>
                       {{ else if $deposit.IsProjected }}
                         {{ if $deposit.IsQueued }}
-                          <span class="badge rounded-pill text-bg-light border" data-bs-toggle="tooltip" data-bs-title="Found in the current pending deposit queue at position {{ $deposit.QueuePosition }}"><i class="fas fa-list-ol mr-1"></i>#{{ $deposit.QueuePosition }}</span>
+                          <span class="badge rounded-pill text-bg-secondary border" data-bs-toggle="tooltip" data-bs-title="Found in the current pending deposit queue at position {{ $deposit.QueuePosition }}"><i class="fas fa-list-ol mr-1"></i>#{{ $deposit.QueuePosition }}</span>
                         {{ else }}
                           <span class="text-muted">-</span>
                         {{ end }}
