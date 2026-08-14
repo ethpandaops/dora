@@ -232,20 +232,23 @@ func IncludeJSON(obj any, escapeHTML bool) template.HTML {
 	return template.HTML(s)
 }
 
-// ensNamesProvider is implemented by page models that embed models.EnsNameData.
+// ensNamesProvider is implemented by page models that embed models.EnsNameData. The
+// return type is `any` (concretely map[string][]models.EnsNameEntry) because utils is
+// imported by types/models and must not import it back.
 type ensNamesProvider interface {
-	EnsNamesForJS() map[string]string
+	EnsNamesForJS() any
 }
 
-// EnsNamesJSON returns a page model's embedded ENS names as an address->name map for the
-// client-side address swap. It returns the Go map (not a pre-marshaled string) so
-// html/template JSON-encodes it exactly once inside the <script> block — returning a
-// marshaled string there would be double-encoded. Empty map for models without names.
-func EnsNamesJSON(data any) map[string]string {
+// EnsNamesJSON returns a page model's embedded ENS names as an address->entries map for
+// the client-side address swap and name callouts. It returns the Go value (not a
+// pre-marshaled string) so html/template JSON-encodes it exactly once inside the
+// <script> block — returning a marshaled string there would be double-encoded. Empty
+// map for models without names.
+func EnsNamesJSON(data any) any {
 	if provider, ok := data.(ensNamesProvider); ok {
 		return provider.EnsNamesForJS()
 	}
-	return map[string]string{}
+	return map[string]any{}
 }
 
 func GraffitiToString(graffiti []byte) string {

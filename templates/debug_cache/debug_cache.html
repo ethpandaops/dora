@@ -188,33 +188,50 @@
           <tbody>
             <tr><td class="text-muted" style="width:220px;">Resolve Queue (pending / cap)</td><td>{{ formatNumber .QueueLen }} / {{ formatNumber .QueueCap }}</td></tr>
             <tr><td class="text-muted">Name Cache (LRU / cap)</td><td>{{ formatNumber .CacheLen }} / {{ formatNumber .CacheCap }}</td></tr>
+            <tr><td class="text-muted">Forward Cache (LRU)</td><td>{{ formatNumber .ForwardCacheLen }}</td></tr>
             <tr><td class="text-muted">Refresh — found</td><td>{{ .RefreshPositive }}</td></tr>
             <tr><td class="text-muted">Refresh — not found</td><td>{{ .RefreshNegative }}</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="col-md-6 mb-4">
-        <h5 class="card-title mb-3"><i class="fa fa-network-wired me-1"></i> Registries &amp; Multicall</h5>
-        <table class="table table-sm table-borderless">
-          <tbody>
-            <tr><td class="text-muted" style="width:220px;">Probed</td><td>{{ if .Probed }}<span class="badge bg-success">yes</span>{{ else }}<span class="badge bg-secondary">pending</span>{{ end }}</td></tr>
-            <tr><td class="text-muted">Registries (usable / configured)</td><td>{{ len .Registries }} / {{ .ConfiguredRegistries }}</td></tr>
-            <tr><td class="text-muted">Multicall3</td><td>{{ if .MulticallReady }}<span class="badge bg-success">enabled</span> <code>{{ .MulticallAddress }}</code>{{ else }}<span class="badge bg-secondary">individual calls</span>{{ end }}</td></tr>
-          </tbody>
-        </table>
-      </div>
     </div>
 
-    <h6 class="mt-2 mb-2">Working Registries</h6>
-    {{ if .Registries }}
-    <ul class="list-unstyled mb-0">
-      {{ range $i, $r := .Registries }}
-      <li class="mb-1"><span class="badge bg-primary me-1">{{ add $i 1 }}</span><code>{{ $r }}</code></li>
-      {{ end }}
-    </ul>
-    {{ else }}
-    <div class="text-muted">{{ if .Probed }}No usable registries found on the target chain.{{ else }}Not probed yet — the first resolve batch probes the configured registries.{{ end }}</div>
-    {{ end }}
+    <h5 class="card-title mb-3"><i class="fa fa-network-wired me-1"></i> Networks</h5>
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Network</th>
+            <th>Endpoints</th>
+            <th>Probed</th>
+            <th>Registries (usable / configured)</th>
+            <th>Multicall3</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Networks }}
+          <tr>
+            <td>{{ .Name }}{{ if .Local }} <span class="badge bg-primary">local</span>{{ end }}</td>
+            <td>{{ if .Local }}execution pool{{ else }}{{ formatNumber .Endpoints }}{{ end }}</td>
+            <td>{{ if .Probed }}<span class="badge bg-success">yes</span>{{ else }}<span class="badge bg-secondary">pending</span>{{ end }}</td>
+            <td>
+              {{ len .Registries }} / {{ .ConfiguredRegistries }}
+              {{ if .Registries }}
+              <ul class="list-unstyled mb-0">
+                {{ range .Registries }}
+                <li><code>{{ . }}</code></li>
+                {{ end }}
+              </ul>
+              {{ else if .Probed }}
+              <div class="text-muted">none deployed (re-probed periodically)</div>
+              {{ end }}
+            </td>
+            <td>{{ if .MulticallReady }}<span class="badge bg-success">enabled</span> <code>{{ .MulticallAddress }}</code>{{ else }}<span class="badge bg-secondary">individual calls</span>{{ end }}</td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
     {{ end }}
   </div>
 </div>

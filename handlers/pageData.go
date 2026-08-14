@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/types/models"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -396,18 +397,29 @@ func handleTemplateError(w http.ResponseWriter, r *http.Request, fileIdentifier 
 	return err
 }
 
-// resolveEnsNames resolves the primary ENS names for the given execution addresses via
-// the ENS resolver service. It returns an address->name map (empty when the resolver is
-// disabled) and enqueues unresolved/stale addresses for asynchronous resolution.
+// resolveEnsNames resolves the ENS names for the given execution addresses on all
+// configured networks via the ENS resolver service. It returns a map from lowercase
+// 0x-hex address to the per-network names (display name first; empty map when the
+// resolver is disabled) and enqueues unresolved/stale addresses for asynchronous
+// resolution.
 //
 // Handlers call this once per page build with all addresses shown on the page; the
 // result is stored on the page model (models.EnsNameData) and rendered client-side.
-func resolveEnsNames(ctx context.Context, addrs [][]byte) map[string]string {
+func resolveEnsNames(ctx context.Context, addrs [][]byte) map[string][]models.EnsNameEntry {
 	ensResolver := services.GlobalBeaconService.GetEnsResolver()
 	if ensResolver == nil {
 		return nil
 	}
-	return ensResolver.ResolveNames(ctx, addrs)
+	resolved := ensResolver.ResolveNames(ctx, addrs)
+	names := make(map[string][]models.EnsNameEntry, len(resolved))
+	for addr, entries := range resolved {
+		list := make([]models.EnsNameEntry, 0, len(entries))
+		for _, entry := range entries {
+			list = append(list, models.EnsNameEntry{Name: entry.Name, Network: entry.Network, Local: entry.Local})
+		}
+		names[addr] = list
+	}
+	return names
 }
 
 // appendEnsHexAddrs appends the 20-byte form of 0x-hex address strings to dst, skipping
