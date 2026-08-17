@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -148,26 +149,28 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 		go func(client *consensus.Client) {
 			defer wg.Done()
 
-			// Force update node metadata (including ENRs) regardless of schedule
-			if err := client.ForceUpdateNodeMetadata(ctx); err != nil {
+			// Force update node metadata (including ENRs) and chain specs regardless of schedule
+			metadataErr := client.ForceUpdateNodeMetadata(ctx)
+			specsErr := client.ForceUpdateChainSpecs(ctx)
+			err := errors.Join(metadataErr, specsErr)
+
+			if err != nil {
 				logrus.WithFields(logrus.Fields{
 					"client": client.GetName(),
 					"error":  err,
-				}).Warn("failed to force refresh ENRs for client")
-				resultsChan <- refreshResult{
-					clientName: client.GetName(),
-					success:    false,
-					error:      err,
-				}
+				}).Warn("failed to force refresh metadata for client")
 			} else {
 				logrus.WithFields(logrus.Fields{
 					"client": client.GetName(),
-				}).Info("successfully refreshed ENRs for client")
-				resultsChan <- refreshResult{
-					clientName: client.GetName(),
-					success:    true,
-					error:      nil,
-				}
+				}).Info("successfully refreshed metadata for client")
+			}
+
+			resultsChan <- refreshResult{
+				clientName: client.GetName(),
+				// count partial success as refreshed, so the page cache gets invalidated
+				// whenever any in-memory state was updated
+				success: metadataErr == nil || specsErr == nil,
+				error:   err,
 			}
 		}(client)
 	}
