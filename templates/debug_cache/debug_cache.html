@@ -203,6 +203,7 @@
           <tr>
             <th>Network</th>
             <th>Endpoints</th>
+            <th>Status</th>
             <th>Probed</th>
             <th>Registries (usable / configured)</th>
             <th>Multicall3</th>
@@ -213,6 +214,7 @@
           <tr>
             <td>{{ .Name }}{{ if .Local }} <span class="badge bg-primary">local</span>{{ end }}</td>
             <td>{{ if .Local }}execution pool{{ else }}{{ formatNumber .Endpoints }}{{ end }}</td>
+            <td>{{ if .Available }}<span class="badge bg-success">available</span>{{ else }}<span class="badge bg-danger">failing</span> <span class="text-muted">{{ .FailStreak }} errors, retry in {{ .RetryIn }}</span>{{ end }}</td>
             <td>{{ if .Probed }}<span class="badge bg-success">yes</span>{{ else }}<span class="badge bg-secondary">pending</span>{{ end }}</td>
             <td>
               {{ len .Registries }} / {{ .ConfiguredRegistries }}

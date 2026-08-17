@@ -34,9 +34,14 @@ const (
 // multicall) are re-checked, so contracts deployed after startup are picked up.
 const ensProbeRetryInterval = 5 * time.Minute
 
-// ensNetworkBackoff is how long a network is skipped by the resolve worker after a
-// client/probe error, so one broken endpoint doesn't stall the whole batch pipeline.
-const ensNetworkBackoff = 30 * time.Second
+// Error backoff for a network that fails to answer lookups, so one broken endpoint
+// doesn't stall the batch pipeline. It doubles per consecutive failure up to the cap;
+// a network in backoff is also ignored by staleness checks, so addresses settle
+// instead of re-resolving on every page view while the endpoint is down.
+const (
+	ensNetworkBackoff    = 30 * time.Second
+	ensNetworkBackoffMax = 15 * time.Minute
+)
 
 // EnsResolver resolves execution addresses to their primary ENS name on every
 // configured network: the local network (the chain this explorer indexes, via the
@@ -76,7 +81,8 @@ type ensNetwork struct {
 	clientInit sync.Once
 	clients    []*ensEndpointClient
 
-	failedUntil atomic.Int64 // resolve-worker backoff after client/probe errors (unix ts)
+	failedUntil atomic.Int64 // error backoff expiry (unix ts); 0 = network is answering
+	failStreak  atomic.Int64 // consecutive failures, drives the exponential backoff
 
 	// probe results: which contracts actually have bytecode on the network. Incomplete
 	// results are re-probed every ensProbeRetryInterval so late deployments are found.
@@ -93,6 +99,35 @@ type ensProbeState struct {
 	registries     []common.Address
 	multicallReady bool
 	multicallAddr  common.Address
+}
+
+// isAvailable reports whether the network is currently expected to answer lookups
+// (i.e. is not in error backoff). Unavailable networks are skipped by the resolve
+// worker and excluded from staleness checks, so a persistently failing endpoint does
+// not keep every viewed address in a re-resolve loop.
+func (n *ensNetwork) isAvailable(now int64) bool {
+	return now >= n.failedUntil.Load()
+}
+
+// markFailed puts the network into exponential error backoff (capped at
+// ensNetworkBackoffMax).
+func (n *ensNetwork) markFailed(now int64) time.Duration {
+	shift := n.failStreak.Add(1) - 1
+	if shift > 10 {
+		shift = 10
+	}
+	backoff := ensNetworkBackoff << uint(shift)
+	if backoff > ensNetworkBackoffMax {
+		backoff = ensNetworkBackoffMax
+	}
+	n.failedUntil.Store(now + int64(backoff/time.Second))
+	return backoff
+}
+
+// markAvailable clears the error backoff after a successful lookup.
+func (n *ensNetwork) markAvailable() {
+	n.failStreak.Store(0)
+	n.failedUntil.Store(0)
 }
 
 // getProbeState returns a snapshot of the network's probe results.
@@ -128,12 +163,18 @@ type EnsPrefixMatch struct {
 	Local   bool
 }
 
-// ensCacheEntry is a cached lookup result for one address covering all configured
-// networks. No names with full coverage is a negative result.
+// ensCacheEntry is a cached lookup result for one address across all configured
+// networks. Per-network state is kept so staleness can be evaluated per network,
+// which lets an address settle while one network is unavailable.
 type ensCacheEntry struct {
-	names        []*ResolvedEnsName // positive results in display order (local first)
-	covered      int                // number of configured networks with a persisted result
-	resolvedTime int64              // oldest resolve time across covered networks
+	names   []*ResolvedEnsName // positive results in display order (local first)
+	results []ensNetworkResult // per configured network, index matches EnsResolver.networks
+}
+
+// ensNetworkResult is the persisted lookup state of one address on one network.
+type ensNetworkResult struct {
+	resolvedTime int64 // 0 = no result persisted for this network yet
+	hasName      bool
 }
 
 // ensForwardCacheEntry is a cached forward-resolution result (name -> address).
@@ -162,7 +203,10 @@ func NewEnsResolver(ctx context.Context, logger logrus.FieldLogger, execPool *ex
 type EnsResolverNetworkStats struct {
 	Name                 string
 	Local                bool
-	Endpoints            int // dedicated endpoints (0 for local = main execution pool)
+	Endpoints            int           // dedicated endpoints (0 for local = main execution pool)
+	Available            bool          // not in error backoff
+	RetryIn              time.Duration // remaining error backoff when unavailable
+	FailStreak           int64         // consecutive lookup failures
 	Probed               bool
 	ConfiguredRegistries int
 	Registries           []string // usable (bytecode-probed) registries, in priority order
@@ -209,6 +253,7 @@ func (e *EnsResolver) GetDebugStats() *EnsResolverStats {
 		stats.ForwardCacheLen = e.forwardCache.Len()
 	}
 
+	now := time.Now().Unix()
 	stats.Networks = make([]EnsResolverNetworkStats, 0, len(e.networks))
 	for _, network := range e.networks {
 		network.probeMutex.Lock()
@@ -216,10 +261,15 @@ func (e *EnsResolver) GetDebugStats() *EnsResolverStats {
 			Name:                 network.name,
 			Local:                network.local,
 			Endpoints:            len(network.endpoints),
+			Available:            network.isAvailable(now),
+			FailStreak:           network.failStreak.Load(),
 			Probed:               network.probed,
 			ConfiguredRegistries: len(network.registryAddrs),
 			Registries:           make([]string, 0, len(network.registries)),
 			MulticallReady:       network.multicallReady,
+		}
+		if !netStats.Available {
+			netStats.RetryIn = time.Duration(network.failedUntil.Load()-now) * time.Second
 		}
 		if network.multicallReady {
 			netStats.MulticallAddress = network.multicallAddr.Hex()
@@ -460,16 +510,13 @@ func (e *EnsResolver) cacheEntryFromRows(rows []*dbtypes.EnsName) *ensCacheEntry
 		byKey[row.Network] = row
 	}
 
-	entry := &ensCacheEntry{}
-	for _, network := range e.networks {
+	entry := &ensCacheEntry{results: make([]ensNetworkResult, len(e.networks))}
+	for i, network := range e.networks {
 		row, ok := byKey[network.key]
 		if !ok {
 			continue
 		}
-		entry.covered++
-		if entry.resolvedTime == 0 || row.ResolvedTime < entry.resolvedTime {
-			entry.resolvedTime = row.ResolvedTime
-		}
+		entry.results[i] = ensNetworkResult{resolvedTime: row.ResolvedTime, hasName: row.Name != ""}
 		if row.Name != "" {
 			entry.names = append(entry.names, &ResolvedEnsName{
 				Name:    row.Name,
@@ -481,21 +528,37 @@ func (e *EnsResolver) cacheEntryFromRows(rows []*dbtypes.EnsName) *ensCacheEntry
 	return entry
 }
 
-// isStale reports whether an entry should be re-resolved: it lacks a result for a
-// configured network, or it is older than its refresh interval (positive and negative
-// results use separate intervals).
+// isStale reports whether an entry should be re-resolved: some available network lacks
+// a result (a never-resolved address, or a newly configured network to backfill) or has
+// one older than its refresh interval (positive and negative results use separate
+// intervals).
+//
+// Networks in error backoff are skipped: re-resolving cannot produce a result for them,
+// and counting their missing or outdated rows would make every viewed address stale on
+// every page view for as long as the endpoint stays down. They are picked up again once
+// the backoff expires and the network answers.
 func (e *EnsResolver) isStale(entry *ensCacheEntry, now int64) bool {
-	if entry.covered < len(e.networks) {
-		return true
+	cfg := &utils.Config.EnsResolver
+	for i, network := range e.networks {
+		if !network.isAvailable(now) {
+			continue
+		}
+		if i >= len(entry.results) {
+			return true // entry predates a newly configured network
+		}
+		result := entry.results[i]
+		if result.resolvedTime == 0 {
+			return true
+		}
+		refresh := cfg.RefreshPositive
+		if !result.hasName {
+			refresh = cfg.RefreshNegative
+		}
+		if refresh > 0 && now-result.resolvedTime > int64(refresh/time.Second) {
+			return true
+		}
 	}
-	refresh := utils.Config.EnsResolver.RefreshPositive
-	if len(entry.names) == 0 {
-		refresh = utils.Config.EnsResolver.RefreshNegative
-	}
-	if refresh <= 0 {
-		return false
-	}
-	return now-entry.resolvedTime > int64(refresh/time.Second)
+	return false
 }
 
 // ResolveEnsName forward-resolves an ENS name (EIP-137) on every configured network,
@@ -527,6 +590,10 @@ func (e *EnsResolver) ResolveEnsName(ctx context.Context, name string) []*EnsFor
 			}
 			continue
 		}
+		if !network.isAvailable(now) {
+			// in error backoff: don't hold the search up on an unreachable endpoint
+			continue
+		}
 		pending = append(pending, network)
 		pendingIdx = append(pendingIdx, i)
 	}
@@ -542,9 +609,11 @@ func (e *EnsResolver) ResolveEnsName(ctx context.Context, name string) []*EnsFor
 				defer wg.Done()
 				addr, err := e.resolveForwardOnNetwork(resolveCtx, network, name)
 				if err != nil {
-					e.logger.Warnf("ens forward resolve %q on network %q: %v", name, network.name, err)
+					backoff := network.markFailed(time.Now().Unix())
+					e.logger.Warnf("ens forward resolve %q on network %q failed (retrying in %v): %v", name, network.name, backoff, err)
 					return
 				}
+				network.markAvailable()
 				e.forwardCache.Add(network.key+"\x00"+name, &ensForwardCacheEntry{address: addr, resolvedTime: time.Now().Unix()})
 				if addr != (common.Address{}) {
 					// each goroutine writes a distinct slice index, so no lock is needed
@@ -676,11 +745,11 @@ func (e *EnsResolver) gatherBatch(first common.Address) []common.Address {
 	return batch
 }
 
-// processBatch resolves a batch of addresses on every configured network and persists
+// processBatch resolves a batch of addresses on every available network and persists
 // the per-network results (positive and negative) to the cache and DB. Networks that
-// fail with a client error are skipped for ensNetworkBackoff and get no persisted
-// result, so their coverage stays missing and affected addresses are re-enqueued on
-// the next page view. An error is returned only when every network failed.
+// fail with a client error go into error backoff and get no persisted result; their
+// previously stored rows stay untouched, so names resolved earlier keep being served
+// while the endpoint is down. An error is returned only when every network failed.
 func (e *EnsResolver) processBatch(batch []common.Address) error {
 	if len(batch) == 0 {
 		return nil
@@ -691,15 +760,16 @@ func (e *EnsResolver) processBatch(batch []common.Address) error {
 	names := make(map[string]map[common.Address]string, len(e.networks))
 
 	for _, network := range e.networks {
-		if now < network.failedUntil.Load() {
+		if !network.isAvailable(now) {
 			continue
 		}
 		resolved, err := e.resolveBatchOnNetwork(network, batch)
 		if err != nil {
-			network.failedUntil.Store(time.Now().Unix() + int64(ensNetworkBackoff/time.Second))
-			e.logger.Warnf("ens resolve batch on network %q failed: %v", network.name, err)
+			backoff := network.markFailed(time.Now().Unix())
+			e.logger.Warnf("ens resolve batch on network %q failed (retrying in %v): %v", network.name, backoff, err)
 			continue
 		}
+		network.markAvailable()
 		succeeded = append(succeeded, network)
 		names[network.key] = resolved
 	}
@@ -725,7 +795,7 @@ func (e *EnsResolver) processBatch(batch []common.Address) error {
 			e.cache.Add(addr, e.cacheEntryFromRows(rows))
 		} else {
 			// partial result: drop the cache entry so the next lookup rebuilds it from
-			// the DB (merging older rows of the failed networks) and re-enqueues.
+			// the DB, merging the rows just written with those of the skipped networks.
 			e.cache.Remove(addr)
 		}
 	}
