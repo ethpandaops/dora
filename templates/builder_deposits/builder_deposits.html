@@ -24,14 +24,16 @@
           <p class="mb-2">
             Gloas activates at epoch <strong>{{ .GloasForkEpoch }}</strong>
             (<span data-timer="{{ .GloasForkTime.Unix }}" data-bs-toggle="tooltip" data-bs-title="{{ .GloasForkTime }}">{{ formatRecentTimeShort .GloasForkTime }}</span>).
-            Builder deposits are not recorded on-chain yet &mdash; the entries below are the actual <strong>0xB0-credential deposits</strong>,
-            each annotated with its <strong>projected</strong> fate at the fork (based on the deposit churn limit and pending queue), and may change as deposits are submitted or processed.
+            Builder deposits are not recorded on-chain yet &mdash; the entries below are the actual <strong>0xB0-credential deposits</strong> made through the validator deposit contract,
+            each annotated with its <strong>projected</strong> fate at the fork (based on the deposit churn limit and pending queue), plus the regular builder deposits already
+            <strong>queued</strong> in the builder deposit contract. Projections may change as deposits are submitted or processed.
             {{ if .ProjectionTruncated }}<span class="text-muted">(showing the first {{ len .Deposits }}; older deposits omitted)</span>{{ end }}
           </p>
           <div class="row">
             <div class="col-md-6">
               <ul class="mb-2 mb-md-0">
                 <li><strong>{{ .OnboardedNewCount }}</strong> new builder{{ if ne .OnboardedNewCount 1 }}s{{ end }} projected to be onboarded at the fork{{ if gt .OnboardedTopUpCount 0 }}, plus <strong>{{ .OnboardedTopUpCount }}</strong> top-up deposit{{ if ne .OnboardedTopUpCount 1 }}s{{ end }}{{ end }}</li>
+                {{ if gt .QueuedRegularCount 0 }}<li><strong>{{ .QueuedRegularCount }}</strong> regular builder deposit{{ if ne .QueuedRegularCount 1 }}s{{ end }} queued in the builder deposit contract &mdash; dequeued after the fork, no builder index yet</li>{{ end }}
                 {{ if gt .TooEarlyCount 0 }}<li><strong>{{ .TooEarlyCount }}</strong> deposit{{ if ne .TooEarlyCount 1 }}s{{ end }} too early (processed before the fork &rarr; become validators)</li>{{ end }}
                 {{ if gt .KeptAsValidatorCount 0 }}<li><strong>{{ .KeptAsValidatorCount }}</strong> kept as validator deposit{{ if ne .KeptAsValidatorCount 1 }}s{{ end }} (pubkey already a validator)</li>{{ end }}
                 {{ if gt .InvalidSignatureCount 0 }}<li><strong>{{ .InvalidSignatureCount }}</strong> with an invalid signature (dropped at onboarding)</li>{{ end }}
@@ -184,16 +186,18 @@
                       {{ end }}
                     </td>
                     <td>
-                      {{ if $deposit.IsIncluded }}
+                      {{ if or $deposit.IsIncluded $deposit.IsQueuedRegular }}
                         <span data-timer="{{ $deposit.Time.Unix }}" data-bs-toggle="tooltip" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span>
                       {{ else }}
                         <span class="text-muted">-</span>
                       {{ end }}
                     </td>
                     <td>
-                      {{ if $deposit.IsProjected }}
+                      {{ if $deposit.IsQueuedRegular }}
+                        <span class="badge rounded-pill text-bg-secondary border" data-bs-toggle="tooltip" data-bs-title="Builder index not assigned yet — the deposit stays queued until Gloas activates, and builders onboarded at the fork transition are registered first"><i class="fas fa-hourglass-half mr-1"></i>no index yet</span>
+                      {{ else if $deposit.IsProjected }}
                         {{ if $deposit.IsQueued }}
-                          <span class="badge rounded-pill text-bg-light border" data-bs-toggle="tooltip" data-bs-title="Found in the current pending deposit queue at position {{ $deposit.QueuePosition }}"><i class="fas fa-list-ol mr-1"></i>#{{ $deposit.QueuePosition }}</span>
+                          <span class="badge rounded-pill text-bg-secondary border" data-bs-toggle="tooltip" data-bs-title="Found in the current pending deposit queue at position {{ $deposit.QueuePosition }}"><i class="fas fa-list-ol mr-1"></i>#{{ $deposit.QueuePosition }}</span>
                         {{ else }}
                           <span class="text-muted">-</span>
                         {{ end }}
@@ -217,7 +221,9 @@
                     </td>
                     <td>{{ formatEthFromGwei $deposit.Amount }}</td>
                     <td>
-                      {{ if $deposit.IsProjected }}
+                      {{ if $deposit.IsQueuedRegular }}
+                        <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-title="Queued in the builder deposit contract — dequeuing starts with the first Gloas block, so the builder activates at the earliest ~2 epochs after the fork">Queued</span>
+                      {{ else if $deposit.IsProjected }}
                         {{ if $deposit.ProjectedAlreadyProcessed }}
                           <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-title="Already processed by the deposit queue before the fork — became a regular validator, not a builder">Too early</span>
                         {{ else if $deposit.ProjectedTooEarly }}

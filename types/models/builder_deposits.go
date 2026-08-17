@@ -31,6 +31,7 @@ type BuilderDepositsPageData struct {
 	InvalidSignatureCount         uint64    `json:"invalid_signature_count"`
 	KeptAsValidatorCount          uint64    `json:"kept_as_validator_count"`
 	TotalQueueProcessedBeforeFork uint64    `json:"total_queue_processed_before_fork"`
+	QueuedRegularCount            uint64    `json:"queued_regular_count"` // regular deposits queued in the builder deposit contract until the fork
 
 	// "Is it safe to deposit right now" indicator (projection mode only).
 	HasSafetyEstimate       bool      `json:"has_safety_estimate"`
@@ -78,6 +79,7 @@ type BuilderDepositsPageDataDeposit struct {
 
 	// Pre-Gloas projection fields (set when the parent page is in projection mode).
 	IsProjected               bool      `json:"is_projected"`
+	IsQueuedRegular           bool      `json:"is_queued_regular"` // regular deposit queued in the builder deposit contract until the fork; no builder index assigned yet
 	HasDepositIndex           bool      `json:"has_deposit_index"` // EL deposit index of the deposit
 	DepositIndex              uint64    `json:"deposit_index"`
 	EstimatedTime             time.Time `json:"estimated_time"`              // when the deposit is projected to be processed

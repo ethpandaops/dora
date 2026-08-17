@@ -101,6 +101,27 @@ func (bs *ChainService) GetBuilderDepositsByFilter(ctx context.Context, filter *
 	return combinedResults, totalPendingTxResults, totalReqResults
 }
 
+// GetQueuedBuilderDepositTxs returns builder deposit request txs that are still queued in the
+// builder deposit contract. Before Gloas activation every request tx is queued - dequeuing only
+// starts with the first Gloas payload - so no dequeue-block filter is applied (the dequeue
+// block of pre-activation requests is not determinable anyway, as it depends on the yet
+// unknown activation block number).
+func (bs *ChainService) GetQueuedBuilderDepositTxs(ctx context.Context, filter *dbtypes.BuilderDepositTxFilter, pageOffset uint64, pageSize uint32) ([]*CombinedBuilderDeposit, uint64) {
+	canonicalForkIds := bs.GetCanonicalForkIds()
+
+	dbTransactions, totalRows, _ := db.GetBuilderDepositTxsFiltered(ctx, pageOffset, pageSize, filter)
+
+	results := make([]*CombinedBuilderDeposit, 0, len(dbTransactions))
+	for _, depositTx := range dbTransactions {
+		results = append(results, &CombinedBuilderDeposit{
+			Transaction:         depositTx,
+			TransactionOrphaned: !bs.isCanonicalForkId(depositTx.ForkId, canonicalForkIds),
+		})
+	}
+
+	return results, totalRows
+}
+
 func (bs *ChainService) matchBuilderDepositTxOnTheFly(ctx context.Context, dbOperation *dbtypes.BuilderDeposit, canonicalForkIds []uint64) (*dbtypes.BuilderDepositTx, bool) {
 	requestTxs := db.GetBuilderDepositTxsByDequeueRange(ctx, dbOperation.BlockNumber, dbOperation.BlockNumber)
 	if len(requestTxs) == 1 {
