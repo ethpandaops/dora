@@ -148,12 +148,17 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 		go func(client *consensus.Client) {
 			defer wg.Done()
 
-			// Force update node metadata (including ENRs) regardless of schedule
-			if err := client.ForceUpdateNodeMetadata(ctx); err != nil {
+			// Force update node metadata (including ENRs) and chain specs regardless of schedule
+			err := client.ForceUpdateNodeMetadata(ctx)
+			if err == nil {
+				err = client.ForceUpdateChainSpecs(ctx)
+			}
+
+			if err != nil {
 				logrus.WithFields(logrus.Fields{
 					"client": client.GetName(),
 					"error":  err,
-				}).Warn("failed to force refresh ENRs for client")
+				}).Warn("failed to force refresh metadata for client")
 				resultsChan <- refreshResult{
 					clientName: client.GetName(),
 					success:    false,
@@ -162,7 +167,7 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 			} else {
 				logrus.WithFields(logrus.Fields{
 					"client": client.GetName(),
-				}).Info("successfully refreshed ENRs for client")
+				}).Info("successfully refreshed metadata for client")
 				resultsChan <- refreshResult{
 					clientName: client.GetName(),
 					success:    true,
