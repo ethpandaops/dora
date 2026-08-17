@@ -36,7 +36,7 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.2.8",
     "react-select": "^5.10.2",
-    "viem": "^2.55.11",
+    "viem": "^2.55.16",
     "wagmi": "^2.19.5"
   },
   "scripts": {
