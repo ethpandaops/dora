@@ -62,6 +62,7 @@ type Client struct {
 	inclusionListDispatcher       utils.Dispatcher[*v1.InclusionListEvent]
 	fastConfirmationDispatcher    utils.Dispatcher[*rpc.FastConfirmationEvent]
 
+	specsMutex   sync.RWMutex
 	specWarnings []string // warnings from incomplete spec checks
 	specs        map[string]interface{}
 	hasBadSpecs  bool
@@ -212,9 +213,15 @@ func (client *Client) GetNodePeers() []*v1.Peer {
 }
 
 func (client *Client) GetSpecWarnings() []string {
+	client.specsMutex.RLock()
+	defer client.specsMutex.RUnlock()
+
 	return client.specWarnings
 }
 
 func (client *Client) GetSpecs() map[string]interface{} {
+	client.specsMutex.RLock()
+	defer client.specsMutex.RUnlock()
+
 	return client.specs
 }

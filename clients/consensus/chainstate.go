@@ -82,8 +82,10 @@ func (cs *ChainState) updateClientSpecs(client *Client, specValues map[string]in
 	if majoritySpecs != nil {
 		for c, specs := range cs.clientSpecs {
 			warnings := cs.checkClientSpecWarnings(majoritySpecs, specs)
+			c.specsMutex.Lock()
 			c.specWarnings = warnings
 			c.hasBadSpecs = len(warnings) > 0
+			c.specsMutex.Unlock()
 		}
 	}
 
