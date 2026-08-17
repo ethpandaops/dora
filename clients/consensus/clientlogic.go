@@ -75,24 +75,8 @@ func (client *Client) checkClient() error {
 	}
 
 	// get & compare chain specs
-	specs, err := client.rpcClient.GetConfigSpecs(ctx)
-	if err != nil {
-		return fmt.Errorf("error while fetching specs: %v", err)
-	}
-
-	err = client.pool.chainState.updateClientSpecs(client, specs)
-	client.specs = specs
-
-	if err != nil {
-		client.hasBadSpecs = true
-		return fmt.Errorf("invalid chain specs: %v", err)
-	}
-
-	// Log warnings if any were set by updateClientSpecs
-	if len(client.specWarnings) > 0 {
-		for _, warning := range client.specWarnings {
-			client.logger.Warnf("chain spec issue: %v", warning)
-		}
+	if err = client.updateChainSpecs(ctx); err != nil {
+		return err
 	}
 
 	// init wallclock
@@ -327,10 +311,50 @@ func (client *Client) updateNodeMetadata(ctx context.Context) error {
 	return nil
 }
 
+// updateChainSpecs fetches the chain specs from the client and updates the
+// client's spec cache and the pool-wide majority spec comparison
+func (client *Client) updateChainSpecs(ctx context.Context) error {
+	specs, err := client.rpcClient.GetConfigSpecs(ctx)
+	if err != nil {
+		return fmt.Errorf("error while fetching specs: %v", err)
+	}
+
+	err = client.pool.chainState.updateClientSpecs(client, specs)
+
+	client.specsMutex.Lock()
+	client.specs = specs
+	if err != nil {
+		client.hasBadSpecs = true
+	}
+	specWarnings := client.specWarnings
+	client.specsMutex.Unlock()
+
+	if err != nil {
+		return fmt.Errorf("invalid chain specs: %v", err)
+	}
+
+	// Log warnings if any were set by updateClientSpecs
+	for _, warning := range specWarnings {
+		client.logger.Warnf("chain spec issue: %v", warning)
+	}
+
+	return nil
+}
+
 // ForceUpdateNodeMetadata forces an immediate update of node metadata including ENRs,
 // bypassing the normal epoch-based update schedule
 func (client *Client) ForceUpdateNodeMetadata(ctx context.Context) error {
 	return client.updateNodeMetadata(ctx)
+}
+
+// ForceUpdateChainSpecs forces an immediate refresh of the client's chain spec values,
+// which are otherwise only fetched when the client connects
+func (client *Client) ForceUpdateChainSpecs(ctx context.Context) error {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	return client.updateChainSpecs(ctx)
 }
 
 func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Root, error) {
