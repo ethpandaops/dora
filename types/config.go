@@ -233,7 +233,7 @@ type Config struct {
 
 // EnsRemoteNetwork configures ENS resolution on an additional network reachable via
 // dedicated RPC endpoints (e.g. Ethereum mainnet on a devnet explorer). Registry and
-// multicall addresses default to the canonical mainnet deployments when empty.
+// multicall addresses fall back to the top-level EnsResolver settings when empty.
 type EnsRemoteNetwork struct {
 	Name              string           `yaml:"name"`
 	Endpoints         []EndpointConfig `yaml:"endpoints"`

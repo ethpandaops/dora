@@ -322,13 +322,15 @@ func (e *EnsResolver) buildNetworks() []*ensNetwork {
 		}
 		seen[remote.Name] = struct{}{}
 
+		// unset contract addresses fall back to the top-level ensResolver config
+		// (which itself defaults to the canonical deployments)
 		registryAddrs := remote.RegistryAddresses
 		if len(registryAddrs) == 0 {
-			registryAddrs = []string{ensDefaultRegistry}
+			registryAddrs = cfg.RegistryAddresses
 		}
 		multicallAddr := remote.MulticallAddress
 		if multicallAddr == "" {
-			multicallAddr = ensDefaultMulticall
+			multicallAddr = cfg.MulticallAddress
 		}
 
 		networks = append(networks, &ensNetwork{
