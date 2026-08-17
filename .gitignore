@@ -12,4 +12,4 @@ tmp-*
 .hack/devnet/custom-**
 
 cmd/statetransition-test/
-
+ai_plans/
