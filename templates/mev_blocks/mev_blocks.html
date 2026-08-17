@@ -267,7 +267,7 @@
   </div>
 {{ end }}
 {{ define "js" }}
-<script src="/js/bootstrap-multiselect.js"></script>
+<script src="/js/bootstrap-multiselect.js?v={{ assetVersion }}"></script>
 <script type="text/javascript">
   $('#mevBlocksFilterForm').submit(function () { 
     $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', ''); 
@@ -320,7 +320,7 @@
 </script>
 {{ end }}
 {{ define "css" }}
-<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css?v={{ assetVersion }}">
 <style>
   .filter-amount-separator {
     padding-top: 6px;

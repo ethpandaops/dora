@@ -81,18 +81,55 @@ func reverseNode(addr common.Address) [32]byte {
 	return namehash(strings.ToLower(addr.Hex()[2:]) + ".addr.reverse")
 }
 
-// resolveBatch resolves primary ENS names for the given addresses, trying the usable
-// registries in configured order and keeping the first verified name per address.
-func (e *EnsResolver) resolveBatch(ctx context.Context, ethClient *ethclient.Client, addrs []common.Address) map[common.Address]string {
+// resolveForward resolves a name to its address (forward resolution, EIP-137):
+// resolver = registry.resolver(namehash(name)); addr = resolver.addr(node).
+// Registries are tried in configured order; the first non-zero address wins.
+func (e *EnsResolver) resolveForward(ctx context.Context, ethClient *ethclient.Client, probeState ensProbeState, name string) common.Address {
+	node := namehash(name)
+
+	for _, registry := range probeState.registries {
+		res, err := e.callBatch(ctx, ethClient, probeState, []ensCall{{target: registry, data: appendNode(selectorResolver, node)}})
+		if err != nil {
+			e.logger.Warnf("ens forward stage1 (resolver) failed: %v", err)
+			continue
+		}
+		if !res[0].success {
+			continue
+		}
+		resolver := decodeAddress(res[0].data)
+		if resolver == (common.Address{}) {
+			continue
+		}
+
+		res, err = e.callBatch(ctx, ethClient, probeState, []ensCall{{target: resolver, data: appendNode(selectorEnsAddr, node)}})
+		if err != nil {
+			e.logger.Warnf("ens forward stage2 (addr) failed: %v", err)
+			continue
+		}
+		if !res[0].success {
+			continue
+		}
+		if addr := decodeAddress(res[0].data); addr != (common.Address{}) {
+			return addr
+		}
+	}
+
+	return common.Address{}
+}
+
+// resolveBatch resolves primary ENS names for the given addresses on one network,
+// trying the usable registries in configured order and keeping the first verified
+// name per address.
+func (e *EnsResolver) resolveBatch(ctx context.Context, ethClient *ethclient.Client, probeState ensProbeState, addrs []common.Address) map[common.Address]string {
 	result := make(map[common.Address]string, len(addrs))
 	pending := addrs
 
-	for _, registry := range e.registries {
+	for _, registry := range probeState.registries {
 		if len(pending) == 0 {
 			break
 		}
 
-		resolved := e.resolveWithRegistry(ctx, ethClient, registry, pending)
+		resolved := e.resolveWithRegistry(ctx, ethClient, probeState, registry, pending)
 
 		remaining := make([]common.Address, 0, len(pending))
 		for _, addr := range pending {
@@ -109,7 +146,7 @@ func (e *EnsResolver) resolveBatch(ctx context.Context, ethClient *ethclient.Cli
 }
 
 // resolveWithRegistry runs the full reverse+verify flow against a single registry.
-func (e *EnsResolver) resolveWithRegistry(ctx context.Context, ethClient *ethclient.Client, registry common.Address, addrs []common.Address) map[common.Address]string {
+func (e *EnsResolver) resolveWithRegistry(ctx context.Context, ethClient *ethclient.Client, probeState ensProbeState, registry common.Address, addrs []common.Address) map[common.Address]string {
 	out := make(map[common.Address]string)
 
 	// stage 1: registry.resolver(reverseNode) -> reverse resolver address
@@ -120,7 +157,7 @@ func (e *EnsResolver) resolveWithRegistry(ctx context.Context, ethClient *ethcli
 		calls[i] = ensCall{target: registry, data: appendNode(selectorResolver, revNodes[i])}
 	}
 
-	res, err := e.callBatch(ctx, ethClient, calls)
+	res, err := e.callBatch(ctx, ethClient, probeState, calls)
 	if err != nil {
 		e.logger.Warnf("ens stage1 (resolver) failed: %v", err)
 		return out
@@ -156,7 +193,7 @@ func (e *EnsResolver) resolveWithRegistry(ctx context.Context, ethClient *ethcli
 		calls[i] = ensCall{target: w.revResolver, data: appendNode(selectorEnsName, w.revNode)}
 	}
 
-	res, err = e.callBatch(ctx, ethClient, calls)
+	res, err = e.callBatch(ctx, ethClient, probeState, calls)
 	if err != nil {
 		e.logger.Warnf("ens stage2 (name) failed: %v", err)
 		return out
@@ -185,7 +222,7 @@ func (e *EnsResolver) resolveWithRegistry(ctx context.Context, ethClient *ethcli
 		calls[i] = ensCall{target: registry, data: appendNode(selectorResolver, w.fwdNode)}
 	}
 
-	res, err = e.callBatch(ctx, ethClient, calls)
+	res, err = e.callBatch(ctx, ethClient, probeState, calls)
 	if err != nil {
 		e.logger.Warnf("ens stage3 (fwd resolver) failed: %v", err)
 		return out
@@ -213,7 +250,7 @@ func (e *EnsResolver) resolveWithRegistry(ctx context.Context, ethClient *ethcli
 		calls[i] = ensCall{target: w.fwdResolver, data: appendNode(selectorEnsAddr, w.fwdNode)}
 	}
 
-	res, err = e.callBatch(ctx, ethClient, calls)
+	res, err = e.callBatch(ctx, ethClient, probeState, calls)
 	if err != nil {
 		e.logger.Warnf("ens stage4 (addr) failed: %v", err)
 		return out
@@ -231,15 +268,15 @@ func (e *EnsResolver) resolveWithRegistry(ctx context.Context, ethClient *ethcli
 	return out
 }
 
-// callBatch executes a set of eth_calls, using Multicall3 when available and falling
-// back to individual calls otherwise.
-func (e *EnsResolver) callBatch(ctx context.Context, ethClient *ethclient.Client, calls []ensCall) ([]ensCallResult, error) {
+// callBatch executes a set of eth_calls, using Multicall3 when available on the
+// network and falling back to individual calls otherwise.
+func (e *EnsResolver) callBatch(ctx context.Context, ethClient *ethclient.Client, probeState ensProbeState, calls []ensCall) ([]ensCallResult, error) {
 	if len(calls) == 0 {
 		return nil, nil
 	}
 
-	if e.multicallReady {
-		return e.callBatchMulticall(ctx, ethClient, calls)
+	if probeState.multicallReady {
+		return e.callBatchMulticall(ctx, ethClient, probeState, calls)
 	}
 
 	results := make([]ensCallResult, len(calls))
@@ -255,7 +292,7 @@ func (e *EnsResolver) callBatch(ctx context.Context, ethClient *ethclient.Client
 }
 
 // callBatchMulticall batches all calls into a single Multicall3.aggregate3 eth_call.
-func (e *EnsResolver) callBatchMulticall(ctx context.Context, ethClient *ethclient.Client, calls []ensCall) ([]ensCallResult, error) {
+func (e *EnsResolver) callBatchMulticall(ctx context.Context, ethClient *ethclient.Client, probeState ensProbeState, calls []ensCall) ([]ensCallResult, error) {
 	mcCalls := make([]multicall3Call, len(calls))
 	for i, c := range calls {
 		mcCalls[i] = multicall3Call{Target: c.target, AllowFailure: true, CallData: c.data}
@@ -266,7 +303,7 @@ func (e *EnsResolver) callBatchMulticall(ctx context.Context, ethClient *ethclie
 		return nil, fmt.Errorf("pack aggregate3: %w", err)
 	}
 
-	target := e.multicallAddress
+	target := probeState.multicallAddr
 	output, err := ethClient.CallContract(ctx, ethereum.CallMsg{To: &target, Data: input}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("multicall eth_call: %w", err)

@@ -1,5 +1,5 @@
 {{ define "elFilterCss" }}
-<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css?v={{ assetVersion }}">
 <style>
   .filter-multiselect-container {
     width: 100%;
@@ -26,7 +26,7 @@
 {{ end }}
 
 {{ define "elFilterJs" }}
-<script src="/js/bootstrap-multiselect.js"></script>
+<script src="/js/bootstrap-multiselect.js?v={{ assetVersion }}"></script>
 <script type="text/javascript">
 function decorateFilterMultiselect() {
   this.$button.attr("data-bs-toggle", "dropdown");

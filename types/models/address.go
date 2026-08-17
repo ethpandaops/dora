@@ -6,10 +6,11 @@ import (
 
 // AddressPageData is a struct to hold info for the address page
 type AddressPageData struct {
-	Address            []byte `json:"address"`
-	AddressEnsName     string `json:"address_ens_name"` // resolved primary ENS name for this address (empty if none)
-	AccountID          uint64 `json:"account_id"`
-	IsContract         bool   `json:"is_contract"`
+	Address            []byte         `json:"address"`
+	AddressEnsName     string         `json:"address_ens_name"`  // primary (display) ENS name for this address (empty if none)
+	AddressEnsNames    []EnsNameEntry `json:"address_ens_names"` // all resolved ENS names for this address across networks
+	AccountID          uint64         `json:"account_id"`
+	IsContract         bool           `json:"is_contract"`
 	DataRange          *ElDataRangeInfo
 	IsToken            bool   `json:"is_token"`
 	TokenName          string `json:"token_name"`

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -26,6 +27,16 @@ import (
 )
 
 var searchLikeRE = regexp.MustCompile(`^[0-9a-fA-F]{0,96}$`)
+
+// ensNameRE loosely matches a complete ENS name: dot-separated non-empty labels
+// without whitespace, ending in a TLD-like label of at least 3 chars (e.g. "eth").
+var ensNameRE = regexp.MustCompile(`^[^\s.]+(\.[^\s.]+)*\.[^\s.]{3,}$`)
+
+// ensSearchEnabled reports whether ENS names can be searched: the resolver must be
+// active and the execution indexer enabled (resolved names redirect to /address).
+func ensSearchEnabled() bool {
+	return utils.Config.EnsResolver.Enabled && utils.Config.ExecutionIndexer.Enabled
+}
 
 // searchResolverResult is the cached outcome of resolving a search query (redirect URL or empty = not found).
 type searchResolverResult struct {
@@ -150,6 +161,13 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 		}
 	}
 
+	if ensSearchEnabled() && ensNameRE.MatchString(searchQuery) {
+		// matches are in network priority order (local first), so the first one wins
+		if matches := services.GlobalBeaconService.GetEnsResolver().ResolveEnsName(ctx, searchQuery); len(matches) > 0 {
+			return searchResolverResult{RedirectURL: fmt.Sprintf("/address/%s", strings.ToLower(matches[0].Address.Hex()))}, cacheTimeout
+		}
+	}
+
 	if nameMatch, err := db.HasValidatorNameMatch(ctx, "%"+searchQuery+"%"); err == nil && nameMatch {
 		return searchResolverResult{RedirectURL: "/slots/filtered?f&f.missing=1&f.orphaned=1&f.pname=" + searchQuery}, cacheTimeout
 	}
@@ -188,8 +206,12 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 	searchType := vars["type"]
 	urlArgs := r.URL.Query()
 	search := strings.Trim(urlArgs.Get("q"), " \t")
-	search = strings.Replace(search, "0x", "", -1)
-	search = strings.Replace(search, "0X", "", -1)
+	if searchType != "ens" {
+		// hex-based types accept queries with or without 0x prefix; ENS labels may
+		// legitimately contain "0x", so the raw query is kept for them
+		search = strings.ReplaceAll(search, "0x", "")
+		search = strings.ReplaceAll(search, "0X", "")
+	}
 
 	// 404 before cache so we don't cache disabled/unknown types
 	allowedTypes := map[string]bool{
@@ -201,6 +223,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 		"validator":    true,
 		"addresses":    utils.Config.ExecutionIndexer.Enabled,
 		"transactions": utils.Config.ExecutionIndexer.Enabled,
+		"ens":          ensSearchEnabled(),
 	}
 	if !allowedTypes[searchType] {
 		http.Error(w, "Not found", 404)
@@ -570,6 +593,52 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				}
 				result = model
 			}
+		}
+	case "ens":
+		if len(search) < 2 {
+			break
+		}
+		ensResolver := services.GlobalBeaconService.GetEnsResolver()
+		results := make([]models.SearchAheadEnsResult, 0, 10)
+		seen := make(map[string]struct{}, 10)
+
+		// complete names are forward-resolved (EIP-137) on every configured network
+		if ensNameRE.MatchString(search) {
+			for _, match := range ensResolver.ResolveEnsName(ctx, search) {
+				results = append(results, models.SearchAheadEnsResult{
+					EnsName: utils.FormatGraffitiString(strings.ToLower(search)),
+					Address: strings.ToLower(match.Address.Hex()),
+					Network: match.Network,
+					Local:   match.Local,
+				})
+				seen[strings.ToLower(search)+"\x00"+match.Network] = struct{}{}
+			}
+		}
+
+		// suggest already-known (reverse-resolved) names matching the prefix
+		for _, match := range ensResolver.GetCachedNamesByPrefix(ctx, search, 10) {
+			if _, ok := seen[strings.ToLower(match.Name)+"\x00"+match.Network]; ok {
+				continue
+			}
+			if len(results) >= 10 {
+				break
+			}
+			results = append(results, models.SearchAheadEnsResult{
+				EnsName: utils.FormatGraffitiString(match.Name),
+				Address: strings.ToLower(match.Address.Hex()),
+				Network: match.Network,
+				Local:   match.Local,
+			})
+		}
+
+		for i := range results {
+			addrBytes := common.HexToAddress(results[i].Address).Bytes()
+			account, _ := db.GetElAccountByAddress(ctx, addrBytes)
+			results[i].IsContract = account != nil && account.IsContract
+			results[i].HasData = account != nil && account.ID > 0
+		}
+		if len(results) > 0 {
+			result = &results
 		}
 	case "transactions":
 		if len(search) == 0 {

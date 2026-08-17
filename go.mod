@@ -34,6 +34,7 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/sirupsen/logrus v1.10.0
 	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.6
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
@@ -154,7 +155,6 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/swaggo/files v1.0.1 // indirect
 	github.com/thomaso-mirodin/intmath v0.0.0-20160323211736-5dc6d854e46e // indirect
 	github.com/tinylib/msgp v1.6.1 // indirect

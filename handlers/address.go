@@ -330,8 +330,11 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 	ensNames := resolveEnsNames(ctx, ensAddrs)
 	pageData.SetEnsNames(ensNames)
 	// The page's own address is rendered full (not as a swappable link), so surface its
-	// name explicitly for the header to show alongside the address.
-	pageData.AddressEnsName = ensNames[strings.ToLower(common.BytesToAddress(pageData.Address).Hex())]
+	// names explicitly for the header/info rows to show alongside the address.
+	pageData.AddressEnsNames = ensNames[strings.ToLower(common.BytesToAddress(pageData.Address).Hex())]
+	if len(pageData.AddressEnsNames) > 0 {
+		pageData.AddressEnsName = pageData.AddressEnsNames[0].Name
+	}
 
 	return pageData, 2 * time.Minute
 }

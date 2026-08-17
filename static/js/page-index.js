@@ -128,7 +128,8 @@
     isRefreshing = true;
 
     try {
-      var jqXHR = $.get("/index/data");
+      // timestamp param busts CDN/proxy caches (e.g. cloudflare) on the refresh endpoint
+      var jqXHR = $.get("/index/data?t=" + Date.now());
       var pageData = await jqXHR;
       window.explorer.updateServerTime(jqXHR.getResponseHeader("X-Server-Time"));
       updateModel(pageData);

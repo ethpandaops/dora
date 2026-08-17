@@ -26,8 +26,8 @@
   </div>
 {{ end }}
 {{ define "js" }}
-  <script src="/js/knockout.min.js"></script>
-  <script src="/js/page-index.js"></script>
+  <script src="/js/knockout.min.js?v={{ assetVersion }}"></script>
+  <script src="/js/page-index.js?v={{ assetVersion }}"></script>
   <script>
     function toggleForkView(element) {
       const badges = document.getElementById('forkBadges');
@@ -50,7 +50,7 @@
   </script>
 {{ end }}
 {{ define "css" }}
-<link rel="stylesheet" href="/css/forkgraph.css" />
+<link rel="stylesheet" href="/css/forkgraph.css?v={{ assetVersion }}" />
 <style>
   #recent-epochs, #recent-blocks, #recent-slots {
     margin-bottom: 0;

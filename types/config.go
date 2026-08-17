@@ -215,19 +215,30 @@ type Config struct {
 	} `yaml:"rpcProxy"`
 
 	// EnsResolver optionally resolves execution addresses to their primary ENS name.
-	// ENS lives on Ethereum mainnet, so Endpoints usually point at a mainnet RPC; when
-	// empty the resolver falls back to an available client from the main execution pool.
+	// Names are resolved on the local network (the chain this explorer indexes, via
+	// the main execution pool) and on every configured remote network (each with its
+	// own RPC endpoints), so e.g. a devnet explorer can show mainnet ENS names.
 	EnsResolver struct {
-		Enabled           bool             `yaml:"enabled" envconfig:"ENSRESOLVER_ENABLED"`
-		Endpoints         []EndpointConfig `yaml:"endpoints"`
-		RegistryAddresses []string         `yaml:"registryAddresses" envconfig:"ENSRESOLVER_REGISTRY_ADDRESSES"` // tried in config order; first verified name wins
-		MulticallAddress  string           `yaml:"multicallAddress" envconfig:"ENSRESOLVER_MULTICALL_ADDRESS"`   // used to batch lookups when deployed
-		RefreshPositive   time.Duration    `yaml:"refreshPositive" envconfig:"ENSRESOLVER_REFRESH_POSITIVE"`     // re-resolve interval for addresses with a name
-		RefreshNegative   time.Duration    `yaml:"refreshNegative" envconfig:"ENSRESOLVER_REFRESH_NEGATIVE"`     // re-resolve interval for addresses without a name
-		BatchSize         int              `yaml:"batchSize" envconfig:"ENSRESOLVER_BATCH_SIZE"`
-		QueueSize         int              `yaml:"queueSize" envconfig:"ENSRESOLVER_QUEUE_SIZE"`
-		CacheSize         int              `yaml:"cacheSize" envconfig:"ENSRESOLVER_CACHE_SIZE"`
+		Enabled           bool               `yaml:"enabled" envconfig:"ENSRESOLVER_ENABLED"`
+		RegistryAddresses []string           `yaml:"registryAddresses" envconfig:"ENSRESOLVER_REGISTRY_ADDRESSES"` // local-network registries; tried in config order, first verified name wins
+		MulticallAddress  string             `yaml:"multicallAddress" envconfig:"ENSRESOLVER_MULTICALL_ADDRESS"`   // local-network multicall; used to batch lookups when deployed
+		RemoteNetworks    []EnsRemoteNetwork `yaml:"remoteNetworks"`                                               // additional networks to resolve names on
+		RefreshPositive   time.Duration      `yaml:"refreshPositive" envconfig:"ENSRESOLVER_REFRESH_POSITIVE"`     // re-resolve interval for addresses with a name
+		RefreshNegative   time.Duration      `yaml:"refreshNegative" envconfig:"ENSRESOLVER_REFRESH_NEGATIVE"`     // re-resolve interval for addresses without a name
+		BatchSize         int                `yaml:"batchSize" envconfig:"ENSRESOLVER_BATCH_SIZE"`
+		QueueSize         int                `yaml:"queueSize" envconfig:"ENSRESOLVER_QUEUE_SIZE"`
+		CacheSize         int                `yaml:"cacheSize" envconfig:"ENSRESOLVER_CACHE_SIZE"`
 	} `yaml:"ensResolver"`
+}
+
+// EnsRemoteNetwork configures ENS resolution on an additional network reachable via
+// dedicated RPC endpoints (e.g. Ethereum mainnet on a devnet explorer). Registry and
+// multicall addresses fall back to the top-level EnsResolver settings when empty.
+type EnsRemoteNetwork struct {
+	Name              string           `yaml:"name"`
+	Endpoints         []EndpointConfig `yaml:"endpoints"`
+	RegistryAddresses []string         `yaml:"registryAddresses"`
+	MulticallAddress  string           `yaml:"multicallAddress"`
 }
 
 type EndpointConfig struct {

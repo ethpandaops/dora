@@ -380,6 +380,44 @@ span.validator-label {
   vertical-align: bottom;
 }
 
+/* Clickable ENS badge in front of a swapped name (local = tag icon, remote = globe
+   icon); opens the ENS callout popover with the raw address and all resolved names. */
+.ens-icon {
+  cursor: pointer;
+  margin-right: 0.25em;
+  font-size: 0.85em;
+}
+.ens-icon-local i {
+  color: var(--bs-primary);
+}
+.ens-icon-remote i {
+  color: var(--bs-secondary-color);
+}
+.ens-callout-popover {
+  max-width: 470px;
+}
+.ens-callout-popover .popover-body {
+  font-family: var(--bs-font-monospace);
+  font-size: 0.85em;
+}
+.ens-callout-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.ens-callout-row .ens-callout-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ens-callout-row .badge {
+  flex-shrink: 0;
+}
+.ens-callout-row .fa-copy {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 /* Highlight equal address links across rows on hover (set by explorer.js). */
 .el-data-table .addr-cell a,
 .itx-wrap .itx-addr a {

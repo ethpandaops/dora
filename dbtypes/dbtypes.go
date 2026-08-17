@@ -677,10 +677,12 @@ type ElAccount struct {
 	LastBlockUid uint64 `db:"last_block_uid"`
 }
 
-// EnsName holds a resolved primary ENS name for an execution address.
-// An empty Name is a persisted negative result (address has no primary name).
+// EnsName holds a resolved primary ENS name for an execution address on one network.
+// An empty Network is the local network (the chain this explorer indexes); an empty
+// Name is a persisted negative result (address has no primary name on that network).
 type EnsName struct {
 	Address      []byte `db:"address"`
+	Network      string `db:"network"`
 	Name         string `db:"name"`
 	ResolvedTime int64  `db:"resolved_time"`
 }

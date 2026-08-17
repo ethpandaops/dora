@@ -84,6 +84,8 @@
       // reset any ENS state left from a previous open (the container is reused)
       var existing = bootstrap.Tooltip.getInstance(el);
       if (existing) existing.dispose();
+      var staleIcon = el.previousElementSibling;
+      if (staleIcon && staleIcon.classList.contains('ens-icon')) staleIcon.remove();
       el.classList.remove('ens-name');
       el.removeAttribute('data-bs-html');
       el.removeAttribute('data-bs-toggle');
