@@ -35,17 +35,19 @@ type ClientsELPageDataClient struct {
 }
 
 type ClientsELPageDataNode struct {
-	PeerID        string                       `json:"peer_id"`
-	Name          string                       `json:"name"`
-	Version       string                       `json:"version"`
-	Status        string                       `json:"status"`
-	PeerName      string                       `json:"peer_name"`
-	Enode         string                       `json:"enode"`
-	IPAddr        string                       `json:"ip_addr"`
-	ListenAddr    string                       `json:"listen_addr"`
-	Peers         []*ClientELPageDataNodePeers `json:"peers"`
-	DidFetchPeers bool                         `json:"peers_fetched"`
-	ForkConfig    *ClientELPageDataForkConfig  `json:"fork_config"`
+	PeerID        string                          `json:"peer_id"`
+	Name          string                          `json:"name"`
+	Version       string                          `json:"version"`
+	Status        string                          `json:"status"`
+	PeerName      string                          `json:"peer_name"`
+	Enode         string                          `json:"enode"`
+	ENR           string                          `json:"enr"`
+	ENRKeyValues  []*ClientELPageDataNodeENRValue `json:"enr_kv"`
+	IPAddr        string                          `json:"ip_addr"`
+	ListenAddr    string                          `json:"listen_addr"`
+	Peers         []*ClientELPageDataNodePeers    `json:"peers"`
+	DidFetchPeers bool                            `json:"peers_fetched"`
+	ForkConfig    *ClientELPageDataForkConfig     `json:"fork_config"`
 }
 
 type ClientELPageDataForkConfig struct {
@@ -75,15 +77,23 @@ type EthConfigKeyValue struct {
 }
 
 type ClientELPageDataNodePeers struct {
-	ID        string                          `json:"id"`
-	Alias     string                          `json:"alias"`
-	Enode     string                          `json:"enode"`
-	Name      string                          `json:"name"`
-	Type      string                          `json:"type"`
-	State     string                          `json:"state"`
-	Direction string                          `json:"direction"`
-	Caps      []string                        `json:"caps"`
-	Protocols []*ClientELPageDataNodeProtocol `json:"protocols"`
+	ID           string                          `json:"id"`
+	Alias        string                          `json:"alias"`
+	Enode        string                          `json:"enode"`
+	ENR          string                          `json:"enr"`
+	ENRKeyValues []*ClientELPageDataNodeENRValue `json:"enr_kv"`
+	Name         string                          `json:"name"`
+	Type         string                          `json:"type"`
+	State        string                          `json:"state"`
+	Direction    string                          `json:"direction"`
+	Caps         []string                        `json:"caps"`
+	Protocols    []*ClientELPageDataNodeProtocol `json:"protocols"`
+}
+
+// ClientELPageDataNodeENRValue is a single decoded key/value pair of a node's ENR.
+type ClientELPageDataNodeENRValue struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // ClientELPageDataNodeProtocol holds a single sub-protocol metadata entry of a

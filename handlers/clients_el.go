@@ -194,6 +194,35 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		ShowSensitivePeerInfos: utils.Config.Frontend.ShowSensitivePeerInfos,
 		Nodes:                  []*models.ClientsELPageDataNode{},
 	}
+
+	// getEnrValues decodes an "enr:..." record into a sorted key/value list.
+	// Some clients report an enode URL in the enr field, so only decode real ENRs.
+	enrValuesMap := map[string][]*models.ClientELPageDataNodeENRValue{}
+	getEnrValues := func(enrStr string) []*models.ClientELPageDataNodeENRValue {
+		if !strings.HasPrefix(enrStr, "enr:") {
+			return []*models.ClientELPageDataNodeENRValue{}
+		}
+		if values, ok := enrValuesMap[enrStr]; ok {
+			return values
+		}
+		enrValues := []*models.ClientELPageDataNodeENRValue{}
+		rec, err := utils.DecodeENR(enrStr)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"enr": enrStr}).Warn("failed to decode enr. ", err)
+		} else {
+			for k, v := range utils.GetKeyValuesFromENR(rec) {
+				enrValues = append(enrValues, &models.ClientELPageDataNodeENRValue{
+					Key:   k,
+					Value: fmt.Sprintf("%v", v),
+				})
+			}
+			sort.Slice(enrValues, func(i, j int) bool {
+				return enrValues[i].Key < enrValues[j].Key
+			})
+		}
+		enrValuesMap[enrStr] = enrValues
+		return enrValues
+	}
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	cacheTime := time.Duration(specs.SlotDurationMs) * time.Millisecond
@@ -238,7 +267,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 				direction = "inbound"
 			}
 
-			resPeers = append(resPeers, &models.ClientELPageDataNodePeers{
+			resPeer := &models.ClientELPageDataNodePeers{
 				ID:        peerID,
 				State:     peer.Name,
 				Direction: direction,
@@ -248,7 +277,14 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 				Caps:      peer.Caps,
 				Protocols: buildPeerProtocols(peer.Protocols),
 				Type:      peerType,
-			})
+			}
+
+			if pageData.ShowSensitivePeerInfos && strings.HasPrefix(peer.ENR, "enr:") {
+				resPeer.ENR = peer.ENR
+				resPeer.ENRKeyValues = getEnrValues(peer.ENR)
+			}
+
+			resPeers = append(resPeers, resPeer)
 
 			if direction == "inbound" {
 				inPeerCount++
@@ -268,6 +304,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		peerID := fmt.Sprintf("unknown-%v", idx)
 		peerName := "unknown"
 		enoderaw := "unknown"
+		enrRaw := ""
 		ipAddr := "unknown"
 		listenAddr := "unknown"
 		if nodeInfo != nil {
@@ -277,6 +314,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 				enoderaw = en.String()
 			}
 			peerName = nodeInfo.Name
+			enrRaw = nodeInfo.ENR
 			ipAddr = nodeInfo.IP
 			listenAddr = nodeInfo.ListenAddr
 		}
@@ -313,6 +351,8 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 
 		if pageData.ShowSensitivePeerInfos {
 			resNode.Enode = enoderaw
+			resNode.ENR = enrRaw
+			resNode.ENRKeyValues = getEnrValues(enrRaw)
 			resNode.IPAddr = ipAddr
 			resNode.ListenAddr = listenAddr
 		}
