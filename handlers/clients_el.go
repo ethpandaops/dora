@@ -269,19 +269,24 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 
 			resPeer := &models.ClientELPageDataNodePeers{
 				ID:        peerID,
-				State:     peer.Name,
 				Direction: direction,
 				Alias:     peerAlias,
-				Name:      peer.Name,
-				Enode:     enoderaw,
-				Caps:      peer.Caps,
-				Protocols: buildPeerProtocols(peer.Protocols),
 				Type:      peerType,
 			}
 
-			if pageData.ShowSensitivePeerInfos && strings.HasPrefix(peer.ENR, "enr:") {
-				resPeer.ENR = peer.ENR
-				resPeer.ENRKeyValues = getEnrValues(peer.ENR)
+			// The peer details (enode, name, caps, protocols, ENR) are only rendered
+			// when ShowSensitivePeerInfos is enabled, so gate them server-side like
+			// the node's own enode/ENR/IPs to keep them out of the page data.
+			if pageData.ShowSensitivePeerInfos {
+				resPeer.State = peer.Name
+				resPeer.Name = peer.Name
+				resPeer.Enode = enoderaw
+				resPeer.Caps = peer.Caps
+				resPeer.Protocols = buildPeerProtocols(peer.Protocols)
+				if strings.HasPrefix(peer.ENR, "enr:") {
+					resPeer.ENR = peer.ENR
+					resPeer.ENRKeyValues = getEnrValues(peer.ENR)
+				}
 			}
 
 			resPeers = append(resPeers, resPeer)
