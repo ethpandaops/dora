@@ -219,6 +219,17 @@
                     </div>
                   </td>
                 </tr>
+                {{ html "<!-- ko if: enr -->" }}
+                <tr style="vertical-align: top;">
+                  <td style="white-space: nowrap;">ENR</td>
+                  <td>
+                    <div style="word-break: break-all; text-wrap: pretty;">
+                      <code data-bind="text: enr"></code>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr}"></i>
+                    </div>
+                  </td>
+                </tr>
+                {{ html "<!-- /ko -->" }}
                 <tr style="vertical-align: top;">
                   <td style="white-space: nowrap;">IP Address</td>
                   <td>
@@ -241,7 +252,26 @@
               </tbody>
             </table>
           </div>
-          
+
+          {{ html "<!-- ko if: showSensitivePeerInfos && enr() -->" }}
+          <div class="client-row-divider">ENR fields</div>
+          <div class="client-node-peerinfo">
+            <table class="table table-borderless table-sm client-table-info">
+              <tbody>
+                {{ html "<!-- ko foreach: enr_kv -->" }}
+                <tr>
+                  <td data-bind="text: key"></td>
+                  <td>
+                    <code data-bind="text: value"></code>
+                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" data-bind="attr: {'data-clipboard-text': $data.value, title: 'Copy ' + $data.key + ' to clipboard'}"></i>
+                  </td>
+                </tr>
+                {{ html "<!-- /ko -->" }}
+              </tbody>
+            </table>
+          </div>
+          {{ html "<!-- /ko -->" }}
+
           <div class="client-row-divider">
             Fork Configuration
             <span class="text-muted" style="float: right; font-size: 0.9em;">
@@ -347,6 +377,28 @@
                             </div>
                           </td>
                         </tr>
+                        {{ html "<!-- ko if: enr -->" }}
+                        <tr>
+                          <td>ENR</td>
+                          <td>
+                            <div style="word-break: break-all; text-wrap: pretty;">
+                              <code data-bind="text: enr"></code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr}"></i>
+                            </div>
+                          </td>
+                        </tr>
+                        {{ html "<!-- ko foreach: enr_kv -->" }}
+                        <tr>
+                          <td data-bind="text: key"></td>
+                          <td>
+                            <div style="word-break: break-all; text-wrap: pretty;">
+                              <code data-bind="text: value"></code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" data-bind="attr: {'data-clipboard-text': value, title: 'Copy ' + key + ' to clipboard'}"></i>
+                            </div>
+                          </td>
+                        </tr>
+                        {{ html "<!-- /ko -->" }}
+                        {{ html "<!-- /ko -->" }}
                         <tr>
                           <td>Name</td>
                           <td>
