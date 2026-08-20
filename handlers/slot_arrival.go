@@ -254,6 +254,10 @@ func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 			node.countryCode = row.MetaClientGeoCountryCode
 		}
 
+		if node.implementation == "" {
+			node.implementation = reduceSidecarName(row.MetaClientImplementation)
+		}
+
 		if node.p2pMs == nil {
 			ms := row.PropagationSlotStartDiff
 			node.p2pMs = &ms
@@ -261,6 +265,18 @@ func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 	}
 
 	return observations, rows.Err()
+}
+
+// reduceSidecarName shortens gossip listener implementation names like
+// "Xatu Sidecar (lighthouse)" to the client they attach to.
+func reduceSidecarName(name string) string {
+	if open := strings.Index(name, "("); open >= 0 {
+		if close := strings.Index(name[open:], ")"); close > 1 {
+			return name[open+1 : open+close]
+		}
+	}
+
+	return name
 }
 
 // loadHeadArrivals loads the beacon API head event series into nodes. A head

@@ -19,6 +19,8 @@
     .arrival-table .mark-demo {
       display: inline-block;
       vertical-align: middle;
+      position: relative;
+      top: -1px;
       margin-right: 4px;
     }
     .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -268,7 +270,6 @@
         var rows = data.nodes.map(function(n) {
           var cc = (n.country_code || '').toUpperCase();
           var dVerify = (n.api_ms != null && n.p2p_ms != null) ? n.api_ms - n.p2p_ms : null;
-          var dHead = (n.head_ms != null && n.api_ms != null) ? n.head_ms - n.api_ms : null;
 
           var np = '<span class="text-muted">&mdash;</span>';
           if (n.np_ms != null) {
@@ -291,7 +292,6 @@
             '<td class="text-end grp-start">' + fmtMsColored(n.api_ms) + '</td>' +
             '<td class="text-end num">' + fmtDelta(dVerify) + '</td>' +
             '<td class="text-end">' + fmtMsColored(n.head_ms) + '</td>' +
-            '<td class="text-end num">' + fmtDelta(dHead) + '</td>' +
             '<td class="text-end grp-start" data-col="np">' + np + '</td>' +
             last + '</tr>';
         }).join('');
@@ -302,7 +302,7 @@
           '<tr class="group-row">' +
           '<th></th><th></th><th></th>' +
           '<th class="text-end layer grp-start" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
-          '<th colspan="4" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
+          '<th colspan="3" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
           '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
           '<th class="grp-start"></th></tr>' +
           '<tr>' +
@@ -314,7 +314,6 @@
           '<th class="text-end" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify</th>' +
           '<th class="text-end" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">' +
           '<span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>Head event</th>' +
-          '<th class="text-end" title="Block event to head event: fork-choice lag (negative when head is emitted first)">&Delta;&nbsp;head</th>' +
           '<th class="text-end grp-start" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
           '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload</th>' +
           '<th class="text-center grp-start" style="min-width: 11rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">Timeline</th>' +
