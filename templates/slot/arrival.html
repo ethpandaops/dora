@@ -159,6 +159,7 @@
       z-index: 1;
       background: var(--bs-body-bg);
     }
+    .arrival-hide-np [data-col="np"] { display: none; }
     .arrival-group-badge {
       font-size: 0.66rem;
       padding: 0.12rem 0.4rem;
@@ -189,13 +190,13 @@
               <th rowspan="2" class="align-bottom" style="width: 5rem;">Loc</th>
               <th rowspan="2" class="align-bottom text-end" style="width: 5.5rem;" title="First seen on the libp2p gossip layer — the raw message, before full verification">P2P</th>
               <th colspan="2" class="text-center border-bottom-0" style="width: 11rem;">Beacon API</th>
-              <th rowspan="2" class="align-bottom text-end" style="width: 7rem;" title="Engine API newPayload: when the consensus client handed the payload to its execution client · how long the import took">newPayload</th>
+              <th rowspan="2" class="align-bottom text-end" style="width: 7rem;" data-col="np" title="Engine API newPayload: when the consensus client handed the payload to its execution client · how long the import took">newPayload</th>
               <th rowspan="2" class="align-bottom" style="min-width: 13rem;">
                 <span class="arrival-legend">
                   <span><span class="mark-demo" style="transform:rotate(45deg);background:#9775fa"></span>p2p</span>
                   <span><span class="mark-demo" style="border-radius:50%;background:#5b8def"></span>block</span>
                   <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head</span>
-                  <span><span class="mark-demo" style="width:2px;background:#f1b44c"></span>np</span>
+                  <span data-col="np"><span class="mark-demo" style="width:2px;background:#f1b44c"></span>np</span>
                 </span>
               </th>
             </tr>
@@ -312,7 +313,7 @@
         // straggler cannot compress the bulk of the chart. Overflowing
         // markers clamp to the right edge and keep their true value in the
         // tooltip.
-        var axisMin = Math.max(0, Math.floor((s.min_ms - 100) / 250) * 250);
+        var axisMin = Math.max(0, Math.floor((s.min_ms - 50) / 100) * 100);
         var axisMax = Math.ceil((Math.min(s.max_ms, s.p90_ms * 1.6) + 1) / 250) * 250;
         var axisSpan = Math.max(1, axisMax - axisMin);
         var clamped = axisMax < s.max_ms;
@@ -321,6 +322,8 @@
         }
 
         var hist = (data.histogram || []).filter(function(b) { return b.to_ms >= axisMin && b.from_ms <= axisMax; });
+        var table = document.querySelector('.arrival-table');
+        if (table) table.classList.toggle('arrival-hide-np', !data.np_observations);
         var maxCount = 1;
         hist.forEach(function(b) { if (b.count > maxCount) maxCount = b.count; });
         document.getElementById('arrival-histogram').innerHTML = hist.map(function(b) {
@@ -364,14 +367,14 @@
           }
 
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
-            '<td><span class="arrival-group-badge ' + st.cls + ' me-1">' + st.label + '</span>' +
+            '<td class="text-nowrap">' + '<span class="arrival-group-badge ' + st.cls + ' me-1">' + st.label + '</span>' +
             '<span class="arrival-node-name" title="' + esc(n.full_name) + '">' + esc(n.name) + '</span></td>' +
             '<td>' + esc(n.implementation || '') + '</td>' +
             '<td title="' + esc(n.country || '') + '">' + flag(cc) + ' <span class="text-muted small">' + esc(cc || n.continent || '') + '</span></td>' +
             '<td class="text-end num">' + fmtMsColored(n.p2p_ms) + '</td>' +
             '<td class="text-end num">' + fmtMsColored(n.api_ms) + '</td>' +
             '<td class="text-end num">' + fmtMsColored(n.head_ms) + '</td>' +
-            '<td class="text-end num">' + np + '</td>' +
+            '<td class="text-end num" data-col="np">' + np + '</td>' +
             '<td>' + track + '</td>' +
             '</tr>';
         }).join('');

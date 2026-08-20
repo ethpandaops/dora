@@ -415,7 +415,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 			minMs = *node.npMs
 		}
 
-		group, operator, display := parseSentryName(node.fullName)
+		group, operator, display := parseSentryName(node.fullName, xatu.GlobalClient.Network())
 
 		entry := &models.SlotArrivalNode{
 			Name:           display,
@@ -555,9 +555,10 @@ func buildArrivalHistogram(nodes []*models.SlotArrivalNode) []*models.SlotArriva
 
 // parseSentryName splits a xatu sentry name of the form
 // <classifier>/<operator>/<node> into a display group, operator and short
-// display name. Community and corp contributoor nodes carry a hashed suffix
-// that is shortened for display.
-func parseSentryName(name string) (group, operator, display string) {
+// display name. Names without that shape (e.g. locally run xatu instances)
+// pass through unchanged. Community and corp contributoor nodes carry a
+// hashed suffix that is shortened for display.
+func parseSentryName(name, network string) (group, operator, display string) {
 	parts := strings.Split(name, "/")
 	if len(parts) != 3 {
 		return "other", "", name
@@ -576,8 +577,10 @@ func parseSentryName(name string) (group, operator, display string) {
 
 	switch {
 	case classifier == "ethpandaops":
-		display = strings.Replace(node, "utility-"+mid+"-", "", 1)
-		display = strings.TrimPrefix(display, mid+"-")
+		display = node
+		for _, prefix := range []string{"utility-" + mid + "-", mid + "-", "utility-" + network + "-", network + "-"} {
+			display = strings.Replace(display, prefix, "", 1)
+		}
 
 		return "ethpandaops", "ethpandaops", display
 	case strings.HasPrefix(classifier, "pub-"):
