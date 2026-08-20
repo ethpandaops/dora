@@ -74,6 +74,11 @@
             <a class="nav-link" id="bids-tab" data-bs-toggle="tab" href="#bids" role="tab" aria-controls="bids" aria-selected="false">Bids <span class="badge bg-secondary text-white">{{ .Block.BidsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if .XatuEnabled }}
+          <li class="nav-item">
+            <a class="nav-link" id="arrival-tab" data-bs-toggle="tab" href="#arrival" role="tab" aria-controls="arrival" aria-selected="false">Propagation</a>
+          </li>
+        {{ end }}
         <li class="nav-item">
           <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
         </li>
@@ -328,6 +333,15 @@
                 </div>
               </div>
               {{ template "block_bids" . }}
+            </div>
+          </div>
+        {{ end }}
+        {{ if .XatuEnabled }}
+          <div class="tab-pane fade show active" id="arrival" role="tabpanel" aria-labelledby="arrival-tab">
+            <div class="card block-card">
+              <div class="card-body px-3 py-2">
+                {{ template "block_arrival" . }}
+              </div>
             </div>
           </div>
         {{ end }}

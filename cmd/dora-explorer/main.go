@@ -18,6 +18,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/negroni"
 
+	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/handlers"
 	"github.com/ethpandaops/dora/handlers/api"
@@ -87,6 +88,18 @@ func main() {
 	err = services.StartTxSignaturesService()
 	if err != nil {
 		logger.Fatalf("error starting tx signature service: %v", err)
+	}
+
+	if cfg.Xatu.Enabled {
+		specs := services.GlobalBeaconService.GetChainState().GetSpecs()
+
+		xatuClient, err := xatu.NewClient(&cfg.Xatu, specs.ConfigName)
+		if err != nil {
+			logger.Fatalf("error connecting to xatu clickhouse: %v", err)
+		}
+
+		xatu.GlobalClient = xatuClient
+		logger.WithField("module", "xatu").Infof("connected to xatu clickhouse (network: %v)", xatuClient.Network())
 	}
 
 	if cfg.RateLimit.Enabled {
@@ -199,6 +212,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/slot/{slotOrHash}/tracoor", handlers.SlotTracoor).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/duties", handlers.SlotDuties).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/bidseen", handlers.SlotBidSeen).Methods("GET")
+	router.HandleFunc("/slot/{slotOrHash}/arrival", handlers.SlotArrival).Methods("GET")
 	router.HandleFunc("/slot/{root}/blob/{index}", handlers.SlotBlob).Methods("GET")
 	router.HandleFunc("/blocks", handlers.Blocks).Methods("GET")
 	router.HandleFunc("/blocks/filtered", handlers.BlocksFiltered).Methods("GET")

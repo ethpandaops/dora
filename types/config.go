@@ -161,6 +161,8 @@ type Config struct {
 		RefreshInterval time.Duration    `yaml:"refreshInterval" envconfig:"MEVINDEXER_REFRESH_INTERVAL"`
 	} `yaml:"mevIndexer"`
 
+	Xatu XatuConfig `yaml:"xatu"`
+
 	ExecutionIndexer struct {
 		Enabled         bool          `yaml:"enabled" envconfig:"EXECUTIONINDEXER_ENABLED"`
 		ParallelBlocks  int           `yaml:"parallelBlocks" envconfig:"EXECUTIONINDEXER_PARALLEL_BLOCKS"`
@@ -276,6 +278,25 @@ type MevRelayConfig struct {
 	Name       string `yaml:"name"`
 	Url        string `yaml:"url"`
 	BlockLimit int    `yaml:"blockLimit"`
+}
+
+// XatuConfig configures the optional Xatu ClickHouse data source.
+type XatuConfig struct {
+	Enabled bool `yaml:"enabled" envconfig:"XATU_ENABLED"`
+	// ClickhouseDsn is the ClickHouse endpoint, e.g. "https://user:pass@clickhouse.example.com"
+	// (HTTP protocol) or "clickhouse://user:pass@host:9000" (native protocol).
+	ClickhouseDsn string `yaml:"clickhouseDsn" envconfig:"XATU_CLICKHOUSE_DSN"`
+	// ClickhouseCachedDsn optionally points at a response-caching proxy (e.g. chproxy).
+	// Queries for settled slots are routed here so identical queries across
+	// instances and page loads share one cached response.
+	ClickhouseCachedDsn string `yaml:"clickhouseCachedDsn" envconfig:"XATU_CLICKHOUSE_CACHED_DSN"`
+	Database            string `yaml:"database" envconfig:"XATU_DATABASE"`
+	// NetworkName filters rows by meta_network_name; defaults to the chain name.
+	NetworkName string `yaml:"networkName" envconfig:"XATU_NETWORK_NAME"`
+	// SettleDelay is how long after slot start the ingest pipeline is assumed to
+	// still be receiving events. Responses for younger slots are never cached.
+	SettleDelay      time.Duration `yaml:"settleDelay" envconfig:"XATU_SETTLE_DELAY"`
+	ConcurrencyLimit int           `yaml:"concurrencyLimit" envconfig:"XATU_CONCURRENCY_LIMIT"`
 }
 
 type DatabaseConfig struct {

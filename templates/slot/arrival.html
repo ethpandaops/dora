@@ -1,0 +1,107 @@
+{{ define "block_arrival" }}
+  <div id="arrival-content">
+    <div class="text-center p-3" id="arrival-loading">
+      <div class="spinner-border spinner-border-sm" role="status"></div>
+      Loading propagation data from Xatu...
+    </div>
+    <div id="arrival-loaded" style="display: none;">
+      <div class="d-flex flex-wrap gap-3 mb-2" id="arrival-stats"></div>
+      <div class="table-responsive">
+        <table class="table table-sm text-left">
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Implementation</th>
+              <th>Continent</th>
+              <th>First seen</th>
+              <th>Observations</th>
+            </tr>
+          </thead>
+          <tbody id="arrival-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="text-muted small mt-2 d-flex align-items-center" style="gap: 6px;">
+      <img src="/images/xatu.png" alt="Xatu" style="width: 18px; height: 18px;" />
+      Data from <a href="https://github.com/ethpandaops/xatu" target="_blank" rel="noopener">Xatu</a>
+    </div>
+  </div>
+  <script type="text/javascript">
+    (function() {
+      var arrivalSlot = {{ .Slot }};
+      var arrivalLoaded = false;
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function(c) {
+          return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+      }
+      function fmtMs(ms) {
+        if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
+        return ms + 'ms';
+      }
+
+      function renderArrival(data) {
+        document.getElementById('arrival-loading').style.display = 'none';
+        document.getElementById('arrival-loaded').style.display = '';
+
+        var stats = document.getElementById('arrival-stats');
+        var chips = [];
+        if (data.stats) {
+          chips.push('<span class="badge bg-secondary">clients: ' + data.stats.unique_clients + '</span>');
+          chips.push('<span class="badge bg-secondary">observations: ' + data.observations + '</span>');
+          chips.push('<span class="badge bg-success">min: ' + fmtMs(data.stats.min_ms) + '</span>');
+          chips.push('<span class="badge bg-primary">p50: ' + fmtMs(data.stats.p50_ms) + '</span>');
+          chips.push('<span class="badge bg-warning text-dark">p90: ' + fmtMs(data.stats.p90_ms) + '</span>');
+          chips.push('<span class="badge bg-danger">max: ' + fmtMs(data.stats.max_ms) + '</span>');
+        }
+        if (data.continents) {
+          data.continents.forEach(function(c) {
+            chips.push('<span class="badge bg-dark">' + escapeHtml(c.code || '??') + ': ' + fmtMs(c.min_ms) + ' (' + c.clients + ')</span>');
+          });
+        }
+        if (!data.settled) {
+          chips.push('<span class="badge bg-info text-dark">live: data may still be arriving</span>');
+        }
+        stats.innerHTML = chips.join(' ');
+
+        var rows = document.getElementById('arrival-rows');
+        if (!data.clients || !data.clients.length) {
+          rows.innerHTML = '<tr><td colspan="5" class="text-muted">No observations for this slot (yet).</td></tr>';
+          return;
+        }
+        rows.innerHTML = data.clients.map(function(c) {
+          return '<tr>' +
+            '<td class="text-truncate" style="max-width: 24rem;">' + escapeHtml(c.name) + '</td>' +
+            '<td>' + escapeHtml(c.implementation || '') + '</td>' +
+            '<td>' + escapeHtml(c.continent || '') + '</td>' +
+            '<td>' + fmtMs(c.min_ms) + '</td>' +
+            '<td>' + c.observations + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+
+      function loadArrival() {
+        if (arrivalLoaded) return;
+        arrivalLoaded = true;
+        fetch('/slot/' + arrivalSlot + '/arrival')
+          .then(function(r) {
+            if (!r.ok) throw new Error('status ' + r.status);
+            return r.json();
+          })
+          .then(renderArrival)
+          .catch(function(err) {
+            document.getElementById('arrival-loading').innerHTML =
+              '<span class="text-danger">Failed to load propagation data: ' + escapeHtml(err.message) + '</span>';
+          });
+      }
+
+      var tab = document.getElementById('arrival-tab');
+      if (tab) {
+        tab.addEventListener('shown.bs.tab', loadArrival);
+        // load immediately when the tab is preselected via url hash
+        if (window.location.hash === '#arrival') loadArrival();
+      }
+    })();
+  </script>
+{{ end }}
