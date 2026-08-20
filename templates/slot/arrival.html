@@ -69,56 +69,7 @@
     }
     .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-    /* timeline view */
-    .arrival-ruler {
-      position: relative;
-      height: 1.2rem;
-    }
-    .arrival-ruler .tick {
-      position: absolute;
-      bottom: 0;
-      transform: translateX(-50%);
-      font-size: 0.68rem;
-      color: var(--bs-secondary-color);
-      font-variant-numeric: tabular-nums;
-    }
-    .arrival-lanes {
-      max-height: 32rem;
-      overflow-y: auto;
-    }
-    .arrival-lane {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      height: 1.6rem;
-    }
-    .arrival-lane .lane-label {
-      width: 17rem;
-      flex: none;
-      font-size: 0.78rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .arrival-lane .lane-value {
-      width: 3.6rem;
-      flex: none;
-      text-align: right;
-      font-size: 0.78rem;
-    }
-    .arrival-lane .lane-track {
-      position: relative;
-      flex: 1 1 0;
-      height: 100%;
-    }
-    .lane-track .grid {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 1px;
-      background: var(--bs-border-color);
-      opacity: 0.6;
-    }
+    .lane-track { position: relative; }
     .lane-track .rail {
       position: absolute; left: 0; right: 0; top: 50%; height: 1px;
       background: var(--bs-secondary-bg);
@@ -140,13 +91,23 @@
       background: #f1b44c; opacity: 0.9; border-radius: 2px; min-width: 2px;
     }
 
-    /* table view */
     .arrival-table td, .arrival-table th { vertical-align: middle; font-size: 0.8rem; }
+    .arrival-table thead th { vertical-align: bottom; }
+    .arrival-table thead .group-row th {
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--bs-secondary-color);
+      font-weight: 600;
+      border-bottom: none;
+      padding-bottom: 0;
+    }
     .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
-    .arrival-scroll { max-height: 32rem; overflow-y: auto; }
+    .arrival-scroll { max-height: 34rem; overflow-y: auto; }
     .arrival-scroll thead th {
       position: sticky; top: 0; z-index: 1; background: var(--bs-body-bg);
     }
+    .arrival-scroll thead .group-row th { top: 0; }
     .arrival-node-name {
       max-width: 15rem; overflow: hidden; text-overflow: ellipsis;
       white-space: nowrap; display: inline-block; vertical-align: middle;
@@ -161,16 +122,12 @@
     </div>
     <div id="arrival-loaded" style="display: none;">
       <div class="arrival-stat-grid mb-2" id="arrival-statgrid"></div>
-      <div class="arrival-chipline mb-3" id="arrival-chips"></div>
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <div class="btn-group btn-group-sm" role="group" aria-label="View">
-          <button type="button" class="btn btn-outline-secondary" id="arrival-view-timeline">Timeline</button>
-          <button type="button" class="btn btn-outline-secondary" id="arrival-view-table">Table</button>
-        </div>
+      <div class="arrival-chipline mb-2" id="arrival-chips"></div>
+      <div class="d-flex justify-content-end mb-1">
         <span class="arrival-legend" id="arrival-legend">
-          <span><span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>p2p</span>
-          <span><span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>block</span>
-          <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head</span>
+          <span><span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>gossip</span>
+          <span><span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>block event</span>
+          <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head event</span>
           <span data-col="np"><span class="mark-demo" style="width:14px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload start&rarr;done</span>
         </span>
       </div>
@@ -186,8 +143,6 @@
     (function() {
       var arrivalSlot = {{ .Slot }};
       var arrivalLoaded = false;
-      var arrivalData = null;
-      var VIEW_KEY = 'dora-arrival-view';
 
       var continentColors = {
         EU: '#5b8def', NA: '#34c38f', AS: '#f1b44c',
@@ -247,15 +202,13 @@
         return '<span class="arrival-group-badge ' + st.cls + ' me-1">' + st.label + '</span>';
       }
 
-      // Shared axis: from just below the fastest observation to a little past
-      // p90, so a lone straggler cannot compress the chart.
+      // Shared time axis for the per-row tracks: from just below the fastest
+      // observation to a little past p90, so a lone straggler cannot compress
+      // the chart.
       function axis(s) {
         var lo = Math.max(0, Math.floor((s.min_ms - 50) / 100) * 100);
         var hi = Math.ceil((Math.min(s.max_ms, s.p90_ms * 1.6) + 1) / 250) * 250;
         return { lo: lo, hi: hi, span: Math.max(1, hi - lo) };
-      }
-      function posFn(ax) {
-        return function(ms) { return Math.min(100, Math.max(0, (ms - ax.lo) / ax.span * 100)); };
       }
 
       function laneMarks(n, pos) {
@@ -268,56 +221,19 @@
         }
         if (n.np_ms != null) {
           var w = n.np_dur_ms ? Math.max(0.4, pos(n.np_ms + n.np_dur_ms) - pos(n.np_ms)) : 0.4;
-          html += '<div class="np-span" style="left:' + pos(n.np_ms) + '%;width:' + w + '%" title="newPayload: ' +
+          html += '<div class="np-span" style="left:' + pos(n.np_ms) + '%;width:' + w + '%" title="engine newPayload: ' +
             fmtStr(n.np_ms) + ' &rarr; ' + fmtStr(n.np_ms + (n.np_dur_ms || 0)) + ' (' + (n.np_dur_ms || 0) + 'ms, ' + esc(n.np_status || '') + ')"></div>';
         }
-        if (n.api_ms != null) html += '<div class="mark api" style="left:' + pos(n.api_ms) + '%" title="block seen: ' + fmtStr(n.api_ms) + '"></div>';
-        if (n.p2p_ms != null) html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) + '%" title="p2p: ' + fmtStr(n.p2p_ms) + '"></div>';
-        if (n.head_ms != null) html += '<div class="mark head" style="left:' + pos(n.head_ms) + '%" title="head: ' + fmtStr(n.head_ms) + '"></div>';
+        if (n.api_ms != null) html += '<div class="mark api" style="left:' + pos(n.api_ms) + '%" title="beacon api block event: ' + fmtStr(n.api_ms) + '"></div>';
+        if (n.p2p_ms != null) html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) + '%" title="libp2p gossip: ' + fmtStr(n.p2p_ms) + '"></div>';
+        if (n.head_ms != null) html += '<div class="mark head" style="left:' + pos(n.head_ms) + '%" title="beacon api head event: ' + fmtStr(n.head_ms) + '"></div>';
         return html;
-      }
-
-      function renderTimeline(data) {
-        var s = data.stats;
-        var ax = axis(s);
-        var pos = posFn(ax);
-
-        // ruler tick every 250/500/1000ms depending on span
-        var step = ax.span <= 1500 ? 250 : (ax.span <= 4000 ? 500 : 1000);
-        var ticks = '';
-        var grid = '';
-        for (var t = Math.ceil(ax.lo / step) * step; t <= ax.hi; t += step) {
-          ticks += '<span class="tick" style="left:' + pos(t) + '%">' + fmtStr(t) + '</span>';
-          grid += '<div class="grid" style="left:' + pos(t) + '%"></div>';
-        }
-
-        var live = data.nodes.filter(function(n) { return !n.late; });
-        var lanes = live.map(function(n) {
-          var first = Math.min.apply(null, nodeTimes(n));
-          return '<div class="arrival-lane">' +
-            '<div class="lane-label" title="' + esc(n.full_name) + '">' + groupBadge(n.group) + esc(n.name) + '</div>' +
-            '<div class="lane-track">' + grid + '<div class="rail"></div>' + laneMarks(n, pos) + '</div>' +
-            '<div class="lane-value num" style="color:' + timeColor(first) + '">' + fmtStr(first) + '</div>' +
-            '</div>';
-        }).join('');
-
-        var lateNote = '';
-        if (s.late_nodes > 0) {
-          lateNote = '<div class="text-muted small mt-2">' + s.late_nodes + ' late node' + (s.late_nodes > 1 ? 's' : '') +
-            ' excluded (&gt; one slot after start) &mdash; listed in the Table view</div>';
-        }
-
-        return '<div class="d-flex" style="gap: 0.6rem">' +
-          '<div style="width: 17rem; flex: none"></div>' +
-          '<div class="arrival-ruler" style="flex: 1 1 0">' + ticks + '</div>' +
-          '<div style="width: 3.6rem; flex: none"></div></div>' +
-          '<div class="arrival-lanes">' + lanes + '</div>' + lateNote;
       }
 
       function renderTable(data) {
         var s = data.stats;
         var ax = axis(s);
-        var pos = posFn(ax);
+        var pos = function(ms) { return Math.min(100, Math.max(0, (ms - ax.lo) / ax.span * 100)); };
 
         var rows = data.nodes.map(function(n) {
           var cc = (n.country_code || '').toUpperCase();
@@ -333,7 +249,7 @@
           var last = n.late
             ? '<td><span class="badge text-bg-danger" title="Earliest observation ' + fmtStr(n.min_ms) +
               ' after slot start — likely a syncing or stalled node">late &middot; ' + fmtStr(n.min_ms) + '</span></td>'
-            : '<td><div class="lane-track" style="position: relative; height: 18px; min-width: 11rem">' +
+            : '<td><div class="lane-track" style="height: 18px; min-width: 11rem">' +
               '<div class="rail"></div>' + laneMarks(n, pos) + '</div></td>';
 
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
@@ -350,38 +266,28 @@
             last + '</tr>';
         }).join('');
 
-        var th = 'class="text-end"';
         return '<div class="table-responsive arrival-scroll">' +
           '<table class="table table-sm arrival-table text-left mb-1' + (data.np_observations ? '' : ' arrival-hide-np') + '">' +
-          '<thead><tr>' +
+          '<thead>' +
+          '<tr class="group-row">' +
+          '<th></th><th></th><th></th>' +
+          '<th class="text-end" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
+          '<th colspan="4" class="text-center" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
+          '<th class="text-end" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
+          '<th></th></tr>' +
+          '<tr>' +
           '<th style="width: 18rem">Node</th><th>Client</th><th style="width: 5rem">Loc</th>' +
-          '<th ' + th + ' title="First seen on the libp2p gossip layer — the raw message, before full verification">P2P</th>' +
-          '<th ' + th + ' title="First seen on the beacon API event stream — the node has fully verified the block">Block</th>' +
-          '<th ' + th + ' title="Gossip arrival to verified block event: the node&#39;s verification cost">&Delta;&nbsp;verify</th>' +
-          '<th ' + th + ' title="Node adopted the block as chain head via fork choice">Head</th>' +
-          '<th ' + th + ' title="Block event to head adoption: fork-choice lag">&Delta;&nbsp;head</th>' +
-          '<th ' + th + ' data-col="np" title="Engine API newPayload: request start · how long the execution client took">newPayload</th>' +
+          '<th class="text-end" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">Gossip</th>' +
+          '<th class="text-end" title="Block event on the beacon API — the node has fully verified and imported the block">Block event</th>' +
+          '<th class="text-end" title="Gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify</th>' +
+          '<th class="text-end" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">Head event</th>' +
+          '<th class="text-end" title="Block event to head event: fork-choice lag (negative when head is emitted first)">&Delta;&nbsp;head</th>' +
+          '<th class="text-end" data-col="np" title="engine_newPayload request start · how long the execution client took to import">newPayload</th>' +
           '<th style="min-width: 11rem"></th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
 
-      function setView(view) {
-        try { localStorage.setItem(VIEW_KEY, view); } catch (e) {}
-        var tl = document.getElementById('arrival-view-timeline');
-        var tb = document.getElementById('arrival-view-table');
-        tl.classList.toggle('active', view === 'timeline');
-        tb.classList.toggle('active', view === 'table');
-        if (arrivalData && arrivalData.nodes && arrivalData.nodes.length) {
-          document.getElementById('arrival-body').innerHTML =
-            view === 'table' ? renderTable(arrivalData) : renderTimeline(arrivalData);
-        }
-      }
-      function currentView() {
-        try { return localStorage.getItem(VIEW_KEY) === 'timeline' ? 'timeline' : 'table'; } catch (e) { return 'table'; }
-      }
-
       function render(data) {
-        arrivalData = data;
         document.getElementById('arrival-loading').style.display = 'none';
         document.getElementById('arrival-loaded').style.display = '';
 
@@ -400,7 +306,7 @@
 
         var chips = [];
         chips.push('<span class="arrival-chip"><b>' + s.unique_nodes + '</b>&nbsp;nodes &middot; ' +
-          data.observations + ' block / ' + data.p2p_observations + ' p2p / ' + data.head_observations + ' head / ' +
+          data.observations + ' block / ' + data.p2p_observations + ' gossip / ' + data.head_observations + ' head / ' +
           data.np_observations + ' engine observations</span>');
         (data.groups || []).forEach(function(g) {
           var st = groupStyles[g.name] || groupStyles.other;
@@ -421,7 +327,7 @@
         document.getElementById('arrival-chips').innerHTML = chips.join('');
 
         document.getElementById('arrival-legend').classList.toggle('arrival-hide-np', !data.np_observations);
-        setView(currentView());
+        document.getElementById('arrival-body').innerHTML = renderTable(data);
       }
 
       function loadArrival() {
@@ -438,9 +344,6 @@
               '<span class="text-danger">Failed to load propagation data: ' + esc(err.message) + '</span>';
           });
       }
-
-      document.getElementById('arrival-view-timeline').addEventListener('click', function() { setView('timeline'); });
-      document.getElementById('arrival-view-table').addEventListener('click', function() { setView('table'); });
 
       var tab = document.getElementById('arrival-tab');
       if (tab) {
