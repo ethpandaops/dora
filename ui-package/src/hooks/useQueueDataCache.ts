@@ -3,6 +3,7 @@ import { useStorageAt, useBlockNumber, usePublicClient } from 'wagmi';
 
 interface QueueData {
   queueLength: bigint;
+  blockCount: bigint;
   lastFetch: number;
   isLoading: boolean;
   error: Error | null;
@@ -47,7 +48,16 @@ export const useQueueDataCache = (contractAddress: string, chainId?: number) => 
   
   const storageCall = useStorageAt({
     address: contractAddress as `0x${string}`,
-    slot: "0x00",
+    slot: "0x00", // excess requests (fee numerator base)
+    chainId,
+    query: {
+      enabled: false, // We'll manually control when to fetch
+    }
+  });
+
+  const countStorageCall = useStorageAt({
+    address: contractAddress as `0x${string}`,
+    slot: "0x01", // requests added in the current block
     chainId,
     query: {
       enabled: false, // We'll manually control when to fetch
@@ -88,12 +98,17 @@ export const useQueueDataCache = (contractAddress: string, chainId?: number) => 
     fetchingContracts.add(cacheKey);
     
     try {
-      const result = await storageCall.refetch();
-      
+      const [result, countResult] = await Promise.all([
+        storageCall.refetch(),
+        countStorageCall.refetch(),
+      ]);
+
       if (result.data) {
         const queueLength = BigInt(result.data as string);
+        const blockCount = countResult.data ? BigInt(countResult.data as string) : 0n;
         const queueData: QueueData = {
           queueLength,
+          blockCount,
           lastFetch: Date.now(),
           isLoading: false,
           error: null,
@@ -110,6 +125,7 @@ export const useQueueDataCache = (contractAddress: string, chainId?: number) => 
     } catch (error) {
       const queueData: QueueData = {
         queueLength: 0n,
+        blockCount: 0n,
         lastFetch: Date.now(),
         isLoading: false,
         error: error as Error,
@@ -125,7 +141,7 @@ export const useQueueDataCache = (contractAddress: string, chainId?: number) => 
     } finally {
       fetchingContracts.delete(cacheKey);
     }
-  }, [cacheKey, storageCall]);
+  }, [cacheKey, storageCall, countStorageCall]);
 
   const fetchLogData = useCallback(async () => {
     if (!client || !blockNumber.data) return;
@@ -205,6 +221,7 @@ export const useQueueDataCache = (contractAddress: string, chainId?: number) => 
     if (fetchingContracts.has(cacheKey)) {
       return {
         queueLength: 0n,
+        blockCount: 0n,
         lastFetch: 0,
         isLoading: true,
         error: null,
