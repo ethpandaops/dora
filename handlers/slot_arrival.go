@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -69,10 +70,27 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// buildSlotArrivalData queries Xatu for the slot's block events and aggregates
-// them per observing client. It returns the response and the cache timeout:
-// no caching while the ingest pipeline may still receive events for the slot,
-// a short timeout for recent slots and a long one for historic slots.
+// arrivalNode accumulates per-node observations across both series.
+type arrivalNode struct {
+	fullName       string
+	implementation string
+	continent      string
+	country        string
+	countryCode    string
+	apiMs          *uint32
+	p2pMs          *uint32
+	headMs         *uint32
+	npMs           *uint32
+	npDurMs        *uint32
+	npStatus       string
+	observations   int
+}
+
+// buildSlotArrivalData queries Xatu for the slot's block observations on the
+// beacon API event stream and the libp2p gossip layer, and aggregates them
+// per observing node. It returns the response and the cache timeout: no
+// caching while the ingest pipeline may still receive events for the slot, a
+// short timeout for recent slots and a long one for historic slots.
 func buildSlotArrivalData(ctx context.Context, slot phase0.Slot) (*models.SlotArrivalResponse, time.Duration, error) {
 	client := xatu.GlobalClient
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -80,116 +98,42 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot) (*models.SlotAr
 
 	settled := time.Now().After(slotTime.Add(client.SettleDelay()))
 
-	req := &xch.ListBeaconApiEthV1EventsBlockRequest{
-		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
-		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
-		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
-			Eq: uint32(slotTime.Unix()),
-		}},
-		OrderBy:  "propagation_slot_start_diff",
-		PageSize: 10000,
-	}
-
-	query, err := xch.BuildListBeaconApiEthV1EventsBlockQuery(req)
-	if err != nil {
-		return nil, -1, fmt.Errorf("build query: %w", err)
-	}
-
 	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	rows, err := client.Query(queryCtx, settled, query)
+	nodes := map[string]*arrivalNode{}
+
+	apiObservations, err := loadAPIArrivals(queryCtx, client, slot, slotTime, settled, nodes)
 	if err != nil {
-		return nil, -1, fmt.Errorf("query: %w", err)
-	}
-	defer rows.Close()
-
-	type clientAgg struct {
-		row   xch.BeaconApiEthV1EventsBlockRow
-		count int
+		return nil, -1, err
 	}
 
-	perClient := map[string]*clientAgg{}
-	observations := 0
-
-	for rows.Next() {
-		var row xch.BeaconApiEthV1EventsBlockRow
-		if err := rows.ScanStruct(&row); err != nil {
-			return nil, -1, fmt.Errorf("scan: %w", err)
-		}
-
-		observations++
-
-		// Rows are ordered by propagation time, so the first row per client is
-		// its earliest observation; later rows only bump the duplicate count.
-		if agg := perClient[row.MetaClientName]; agg != nil {
-			agg.count++
-		} else {
-			perClient[row.MetaClientName] = &clientAgg{row: row, count: 1}
-		}
+	p2pObservations, err := loadP2PArrivals(queryCtx, client, slot, slotTime, settled, nodes)
+	if err != nil {
+		return nil, -1, err
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, -1, fmt.Errorf("rows: %w", err)
+	headObservations, err := loadHeadArrivals(queryCtx, client, slot, slotTime, settled, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	npObservations, err := loadEngineTimings(queryCtx, client, slot, slotTime, settled, nodes)
+	if err != nil {
+		return nil, -1, err
 	}
 
 	response := &models.SlotArrivalResponse{
-		Slot:         uint64(slot),
-		Settled:      settled,
-		Observations: observations,
+		Slot:             uint64(slot),
+		Settled:          settled,
+		Observations:     apiObservations,
+		P2PObservations:  p2pObservations,
+		HeadObservations: headObservations,
+		NPObservations:   npObservations,
 	}
 
-	if len(perClient) > 0 {
-		clients := make([]*models.SlotArrivalClient, 0, len(perClient))
-		continents := map[string]*models.SlotArrivalContinent{}
-
-		for _, agg := range perClient {
-			clients = append(clients, &models.SlotArrivalClient{
-				Name:           agg.row.MetaClientName,
-				Implementation: agg.row.MetaConsensusImplementation,
-				Continent:      agg.row.MetaClientGeoContinentCode,
-				MinMs:          agg.row.PropagationSlotStartDiff,
-				Observations:   agg.count,
-			})
-
-			continent := continents[agg.row.MetaClientGeoContinentCode]
-			if continent == nil {
-				continent = &models.SlotArrivalContinent{
-					Code:  agg.row.MetaClientGeoContinentCode,
-					MinMs: agg.row.PropagationSlotStartDiff,
-				}
-				continents[agg.row.MetaClientGeoContinentCode] = continent
-			}
-
-			continent.Clients++
-			if agg.row.PropagationSlotStartDiff < continent.MinMs {
-				continent.MinMs = agg.row.PropagationSlotStartDiff
-			}
-		}
-
-		sort.Slice(clients, func(a, b int) bool {
-			return clients[a].MinMs < clients[b].MinMs
-		})
-
-		response.Clients = clients
-		response.Stats = &models.SlotArrivalStats{
-			UniqueClients: len(clients),
-			MinMs:         clients[0].MinMs,
-			P50Ms:         clients[len(clients)/2].MinMs,
-			P90Ms:         clients[len(clients)*9/10].MinMs,
-			MaxMs:         clients[len(clients)-1].MinMs,
-		}
-
-		continentList := make([]*models.SlotArrivalContinent, 0, len(continents))
-		for _, continent := range continents {
-			continentList = append(continentList, continent)
-		}
-
-		sort.Slice(continentList, func(a, b int) bool {
-			return continentList[a].MinMs < continentList[b].MinMs
-		})
-
-		response.Continents = continentList
+	if len(nodes) > 0 {
+		buildArrivalAggregates(response, nodes)
 	}
 
 	cacheTimeout := time.Duration(-1)
@@ -205,4 +149,442 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot) (*models.SlotAr
 	}
 
 	return response, cacheTimeout, nil
+}
+
+// loadAPIArrivals loads the beacon API block event series into nodes.
+func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+	req := &xch.ListBeaconApiEthV1EventsBlockRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
+		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
+			Eq: uint32(slotTime.Unix()),
+		}},
+		OrderBy:  "propagation_slot_start_diff",
+		PageSize: 10000,
+	}
+
+	query, err := xch.BuildListBeaconApiEthV1EventsBlockQuery(req)
+	if err != nil {
+		return 0, fmt.Errorf("build api query: %w", err)
+	}
+
+	rows, err := client.Query(ctx, settled, query)
+	if err != nil {
+		return 0, fmt.Errorf("api query: %w", err)
+	}
+	defer rows.Close()
+
+	observations := 0
+
+	for rows.Next() {
+		var row xch.BeaconApiEthV1EventsBlockRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return 0, fmt.Errorf("api scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[row.MetaClientName]
+		if node == nil {
+			node = &arrivalNode{fullName: row.MetaClientName}
+			nodes[row.MetaClientName] = node
+		}
+
+		node.observations++
+		node.implementation = row.MetaConsensusImplementation
+		node.continent = row.MetaClientGeoContinentCode
+		node.country = row.MetaClientGeoCountry
+		node.countryCode = row.MetaClientGeoCountryCode
+
+		// Rows are ordered by propagation time, so the first row per node is
+		// its earliest observation.
+		if node.apiMs == nil {
+			ms := row.PropagationSlotStartDiff
+			node.apiMs = &ms
+		}
+	}
+
+	return observations, rows.Err()
+}
+
+// loadP2PArrivals loads the libp2p gossipsub block series into nodes.
+func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+	req := &xch.ListLibp2PGossipsubBeaconBlockRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
+		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
+			Eq: uint32(slotTime.Unix()),
+		}},
+		OrderBy:  "propagation_slot_start_diff",
+		PageSize: 10000,
+	}
+
+	query, err := xch.BuildListLibp2PGossipsubBeaconBlockQuery(req)
+	if err != nil {
+		return 0, fmt.Errorf("build p2p query: %w", err)
+	}
+
+	rows, err := client.Query(ctx, settled, query)
+	if err != nil {
+		return 0, fmt.Errorf("p2p query: %w", err)
+	}
+	defer rows.Close()
+
+	observations := 0
+
+	for rows.Next() {
+		var row xch.Libp2PGossipsubBeaconBlockRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return 0, fmt.Errorf("p2p scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[row.MetaClientName]
+		if node == nil {
+			node = &arrivalNode{fullName: row.MetaClientName}
+			nodes[row.MetaClientName] = node
+		}
+
+		node.observations++
+
+		if node.continent == "" {
+			node.continent = row.MetaClientGeoContinentCode
+			node.country = row.MetaClientGeoCountry
+			node.countryCode = row.MetaClientGeoCountryCode
+		}
+
+		if node.p2pMs == nil {
+			ms := row.PropagationSlotStartDiff
+			node.p2pMs = &ms
+		}
+	}
+
+	return observations, rows.Err()
+}
+
+// loadHeadArrivals loads the beacon API head event series into nodes. A head
+// event marks the node adopting the block as its head via fork choice, a
+// stronger signal than merely having seen the block.
+func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+	req := &xch.ListBeaconApiEthV1EventsHeadRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
+		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
+			Eq: uint32(slotTime.Unix()),
+		}},
+		OrderBy:  "propagation_slot_start_diff",
+		PageSize: 10000,
+	}
+
+	query, err := xch.BuildListBeaconApiEthV1EventsHeadQuery(req)
+	if err != nil {
+		return 0, fmt.Errorf("build head query: %w", err)
+	}
+
+	rows, err := client.Query(ctx, settled, query)
+	if err != nil {
+		return 0, fmt.Errorf("head query: %w", err)
+	}
+	defer rows.Close()
+
+	observations := 0
+
+	for rows.Next() {
+		var row xch.BeaconApiEthV1EventsHeadRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return 0, fmt.Errorf("head scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[row.MetaClientName]
+		if node == nil {
+			node = &arrivalNode{fullName: row.MetaClientName}
+			nodes[row.MetaClientName] = node
+		}
+
+		node.observations++
+
+		if node.continent == "" {
+			node.continent = row.MetaClientGeoContinentCode
+			node.country = row.MetaClientGeoCountry
+			node.countryCode = row.MetaClientGeoCountryCode
+		}
+
+		if node.headMs == nil {
+			ms := row.PropagationSlotStartDiff
+			node.headMs = &ms
+		}
+	}
+
+	return observations, rows.Err()
+}
+
+// lateThresholdMs marks observations arriving more than a full slot after
+// slot start as late: typically syncing or stalled nodes whose event times
+// say nothing about propagation.
+const lateThresholdMs = 12000
+
+// loadEngineTimings loads engine API newPayload calls observed by the
+// snooper into nodes: when the consensus client handed the payload to its
+// execution client, and how long the execution client took to import it.
+func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+	req := &xch.ListConsensusEngineApiNewPayloadRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
+		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
+			Eq: uint32(slotTime.Unix()),
+		}},
+		OrderBy:  "event_date_time",
+		PageSize: 10000,
+	}
+
+	query, err := xch.BuildListConsensusEngineApiNewPayloadQuery(req)
+	if err != nil {
+		return 0, fmt.Errorf("build newpayload query: %w", err)
+	}
+
+	rows, err := client.Query(ctx, settled, query)
+	if err != nil {
+		return 0, fmt.Errorf("newpayload query: %w", err)
+	}
+	defer rows.Close()
+
+	slotStartMs := slotTime.UnixMilli()
+	observations := 0
+
+	for rows.Next() {
+		var row xch.ConsensusEngineApiNewPayloadRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return 0, fmt.Errorf("newpayload scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[row.MetaClientName]
+		if node == nil {
+			node = &arrivalNode{fullName: row.MetaClientName}
+			nodes[row.MetaClientName] = node
+		}
+
+		node.observations++
+
+		if node.npMs == nil {
+			offset := row.EventDateTime/1000 - slotStartMs
+			if offset < 0 {
+				offset = 0
+			}
+
+			ms := uint32(min(offset, int64(^uint32(0))))           //nolint:gosec // clamped above
+			dur := uint32(min(row.DurationMs, uint64(^uint32(0)))) //nolint:gosec // clamped
+
+			node.npMs = &ms
+			node.npDurMs = &dur
+			node.npStatus = row.Status
+		}
+	}
+
+	return observations, rows.Err()
+}
+
+// buildArrivalAggregates fills the response's nodes, stats, histogram and
+// per-continent/group summaries from the accumulated per-node observations.
+// Late nodes are listed after on-time nodes and excluded from all summaries.
+func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[string]*arrivalNode) {
+	nodeList := make([]*models.SlotArrivalNode, 0, len(nodes))
+	lateList := make([]*models.SlotArrivalNode, 0)
+	continents := map[string]*models.SlotArrivalContinent{}
+	groups := map[string][]uint32{}
+
+	for _, node := range nodes {
+		// Earliest block arrival: beacon API or gossip layer. Head adoption is
+		// tracked separately and only used as a fallback for head-only nodes.
+		var minMs uint32
+
+		switch {
+		case node.apiMs != nil && node.p2pMs != nil:
+			minMs = min(*node.apiMs, *node.p2pMs)
+		case node.apiMs != nil:
+			minMs = *node.apiMs
+		case node.p2pMs != nil:
+			minMs = *node.p2pMs
+		case node.headMs != nil:
+			minMs = *node.headMs
+		case node.npMs != nil:
+			minMs = *node.npMs
+		}
+
+		group, operator, display := parseSentryName(node.fullName)
+
+		entry := &models.SlotArrivalNode{
+			Name:           display,
+			FullName:       node.fullName,
+			Group:          group,
+			Operator:       operator,
+			Implementation: node.implementation,
+			Continent:      node.continent,
+			Country:        node.country,
+			CountryCode:    node.countryCode,
+			MinMs:          minMs,
+			APIMs:          node.apiMs,
+			P2PMs:          node.p2pMs,
+			HeadMs:         node.headMs,
+			NPMs:           node.npMs,
+			NPDurMs:        node.npDurMs,
+			NPStatus:       node.npStatus,
+			Observations:   node.observations,
+		}
+
+		if minMs > lateThresholdMs {
+			entry.Late = true
+
+			lateList = append(lateList, entry)
+
+			continue
+		}
+
+		nodeList = append(nodeList, entry)
+
+		continent := continents[node.continent]
+		if continent == nil {
+			continent = &models.SlotArrivalContinent{Code: node.continent, MinMs: minMs}
+			continents[node.continent] = continent
+		}
+
+		continent.Nodes++
+		if minMs < continent.MinMs {
+			continent.MinMs = minMs
+		}
+
+		groups[group] = append(groups[group], minMs)
+	}
+
+	sort.Slice(nodeList, func(a, b int) bool {
+		return nodeList[a].MinMs < nodeList[b].MinMs
+	})
+	sort.Slice(lateList, func(a, b int) bool {
+		return lateList[a].MinMs < lateList[b].MinMs
+	})
+
+	if len(nodeList) == 0 {
+		response.Nodes = lateList
+		response.Stats = &models.SlotArrivalStats{LateNodes: len(lateList)}
+
+		return
+	}
+
+	response.Stats = &models.SlotArrivalStats{
+		UniqueNodes: len(nodeList),
+		MinMs:       nodeList[0].MinMs,
+		P50Ms:       nodeList[len(nodeList)/2].MinMs,
+		P90Ms:       nodeList[len(nodeList)*9/10].MinMs,
+		MaxMs:       nodeList[len(nodeList)-1].MinMs,
+		LateNodes:   len(lateList),
+	}
+	response.Histogram = buildArrivalHistogram(nodeList)
+	response.Nodes = append(nodeList, lateList...)
+
+	continentList := make([]*models.SlotArrivalContinent, 0, len(continents))
+	for _, continent := range continents {
+		continentList = append(continentList, continent)
+	}
+
+	sort.Slice(continentList, func(a, b int) bool {
+		return continentList[a].MinMs < continentList[b].MinMs
+	})
+
+	response.Continents = continentList
+
+	groupList := make([]*models.SlotArrivalGroup, 0, len(groups))
+
+	for name, values := range groups {
+		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
+		groupList = append(groupList, &models.SlotArrivalGroup{
+			Name:  name,
+			Nodes: len(values),
+			P50Ms: values[len(values)/2],
+		})
+	}
+
+	sort.Slice(groupList, func(a, b int) bool {
+		return groupList[a].Nodes > groupList[b].Nodes
+	})
+
+	response.Groups = groupList
+}
+
+// buildArrivalHistogram buckets each node's earliest observation into a
+// small fixed number of bars with a friendly bucket width.
+func buildArrivalHistogram(nodes []*models.SlotArrivalNode) []*models.SlotArrivalBucket {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	maxMs := nodes[len(nodes)-1].MinMs
+	if maxMs == 0 {
+		maxMs = 1
+	}
+
+	// Pick the smallest friendly bucket width that keeps the bar count <= 24.
+	widths := []uint32{50, 100, 200, 250, 500, 1000, 2000, 5000, 10000}
+	width := widths[len(widths)-1]
+
+	for _, w := range widths {
+		if maxMs/w < 24 {
+			width = w
+			break
+		}
+	}
+
+	buckets := make([]*models.SlotArrivalBucket, maxMs/width+1)
+
+	for i := range buckets {
+		buckets[i] = &models.SlotArrivalBucket{
+			FromMs: uint32(i) * width,     //nolint:gosec // bounded by bucket count
+			ToMs:   uint32(i+1)*width - 1, //nolint:gosec // bounded by bucket count
+		}
+	}
+
+	for _, node := range nodes {
+		buckets[node.MinMs/width].Count++
+	}
+
+	return buckets
+}
+
+// parseSentryName splits a xatu sentry name of the form
+// <classifier>/<operator>/<node> into a display group, operator and short
+// display name. Community and corp contributoor nodes carry a hashed suffix
+// that is shortened for display.
+func parseSentryName(name string) (group, operator, display string) {
+	parts := strings.Split(name, "/")
+	if len(parts) != 3 {
+		return "other", "", name
+	}
+
+	classifier, mid, node := parts[0], parts[1], parts[2]
+
+	shortHash := func(s string) string {
+		h := strings.TrimPrefix(s, "hashed-")
+		if len(h) > 8 {
+			h = h[:8]
+		}
+
+		return h
+	}
+
+	switch {
+	case classifier == "ethpandaops":
+		display = strings.Replace(node, "utility-"+mid+"-", "", 1)
+		display = strings.TrimPrefix(display, mid+"-")
+
+		return "ethpandaops", "ethpandaops", display
+	case strings.HasPrefix(classifier, "pub-"):
+		return "community", mid, mid + " #" + shortHash(node)
+	case strings.HasPrefix(classifier, "corp-"):
+		return "corp", mid, mid + " #" + shortHash(node)
+	default:
+		return "other", mid, node
+	}
 }
