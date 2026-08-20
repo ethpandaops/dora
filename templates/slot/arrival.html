@@ -99,8 +99,10 @@
       var tab = document.getElementById('arrival-tab');
       if (tab) {
         tab.addEventListener('shown.bs.tab', loadArrival);
-        // load immediately when the tab is preselected via url hash
-        if (window.location.hash === '#arrival') loadArrival();
+        // Load immediately when the tab is preselected via url hash. The page
+        // header script strips the fragment before this runs (to avoid the
+        // browser's scroll-to-fragment) and stashes it in __doraInitialHash.
+        if (window.location.hash === '#arrival' || window.__doraInitialHash === '#arrival') loadArrival();
       }
     })();
   </script>
