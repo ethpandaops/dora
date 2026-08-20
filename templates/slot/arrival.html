@@ -163,6 +163,10 @@
         EU: '#5b8def', NA: '#34c38f', AS: '#f1b44c',
         OC: '#50c3e6', SA: '#a78bfa', AF: '#f46a6a'
       };
+      var continentNames = {
+        EU: 'Europe', NA: 'North America', AS: 'Asia',
+        OC: 'Oceania', SA: 'South America', AF: 'Africa'
+      };
       var groupStyles = {
         ethpandaops: { label: 'EF', cls: 'text-bg-primary' },
         community:   { label: 'community', cls: 'text-bg-success' },
@@ -281,7 +285,7 @@
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
             '<td class="text-nowrap">' + groupBadge(n.group) +
             '<span class="arrival-node-name" title="' + esc(n.full_name) + '">' + esc(n.name) + '</span></td>' +
-            '<td>' + esc(n.implementation || '') + '</td>' +
+            '<td>' + (n.implementation ? esc(n.implementation) : '<span class="text-muted" title="Not a beacon node — a gossip listener observing the p2p wire">&mdash;</span>') + '</td>' +
             '<td title="' + esc(n.country || '') + '">' + flag(cc) + ' <span class="text-muted small">' + esc(cc || n.continent || '') + '</span></td>' +
             '<td class="text-end grp-start">' + fmtMsColored(n.p2p_ms) + '</td>' +
             '<td class="text-end grp-start">' + fmtMsColored(n.api_ms) + '</td>' +
@@ -300,7 +304,7 @@
           '<th class="text-end layer grp-start" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
           '<th colspan="4" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
           '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
-          '<th class="layer grp-start" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">timeline</th></tr>' +
+          '<th class="grp-start"></th></tr>' +
           '<tr>' +
           '<th style="width: 18rem">Node</th><th>Client</th><th style="width: 5rem">Loc</th>' +
           '<th class="text-end grp-start" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">' +
@@ -313,7 +317,7 @@
           '<th class="text-end" title="Block event to head event: fork-choice lag (negative when head is emitted first)">&Delta;&nbsp;head</th>' +
           '<th class="text-end grp-start" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
           '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload</th>' +
-          '<th class="grp-start" style="min-width: 11rem"></th>' +
+          '<th class="text-center grp-start" style="min-width: 11rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">Timeline</th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
 
@@ -364,12 +368,15 @@
         var totalNodes = s.unique_nodes || 1;
         document.getElementById('arrival-regions').innerHTML = (data.continents || []).map(function(c) {
           var share = Math.max(1.5, c.nodes / totalNodes * 100);
+          var name = continentNames[c.code] || c.code || 'Unknown';
           return '<div class="d-flex align-items-center arrival-region-line">' +
-            '<span style="width: 2.6rem; flex: none"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(c.code || '??') + '</span>' +
+            '<span style="width: 8.5rem; flex: none"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
             '<span class="region-bar-track" style="flex: none"><span class="region-bar" style="width:' + share.toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
             '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b> <span class="text-muted small">node' + (c.nodes > 1 ? 's' : '') + '</span></span>' +
-            '<span class="num" style="width: 7.5rem; flex: none; text-align: right"><span class="text-muted small">first</span> ' + fmtMsColored(c.min_ms) + '</span>' +
-            '<span class="num" style="width: 7rem; flex: none; text-align: right"><span class="text-muted small">p50</span> ' + fmtMsColored(c.p50_ms) + '</span>' +
+            '<span class="num" style="width: 7rem; flex: none; text-align: right"><span class="text-muted small">first</span> ' + fmtMsColored(c.min_ms) + '</span>' +
+            '<span class="num" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">p50</span> ' + fmtMsColored(c.p50_ms) + '</span>' +
+            '<span class="num" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">p90</span> ' + fmtMsColored(c.p90_ms) + '</span>' +
+            '<span class="num" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">max</span> ' + fmtMsColored(c.max_ms) + '</span>' +
             '</div>';
         }).join('');
 

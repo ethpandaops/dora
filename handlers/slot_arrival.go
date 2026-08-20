@@ -312,6 +312,10 @@ func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot
 			node.countryCode = row.MetaClientGeoCountryCode
 		}
 
+		if node.implementation == "" {
+			node.implementation = row.MetaConsensusImplementation
+		}
+
 		if node.headMs == nil {
 			ms := row.PropagationSlotStartDiff
 			node.headMs = &ms
@@ -498,6 +502,8 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 		values := continentValues[code]
 		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
 		continent.P50Ms = values[len(values)/2]
+		continent.P90Ms = values[len(values)*9/10]
+		continent.MaxMs = values[len(values)-1]
 
 		continentList = append(continentList, continent)
 	}
