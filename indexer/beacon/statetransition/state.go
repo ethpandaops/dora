@@ -379,3 +379,25 @@ func (s *stateAccessor) getActivationExitChurnLimit() phase0.Gwei {
 	}
 	return churn
 }
+
+// getActivationChurnLimit returns the per-epoch churn budget that deposits consume.
+// New in Gloas (EIP-8061), which gives activations their own quotient and cap so deposits no
+// longer share the budget with exits; before Gloas it is the activation/exit churn limit.
+// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-get_activation_churn_limit
+func (s *stateAccessor) getActivationChurnLimit() phase0.Gwei {
+	if s.Version < spec.DataVersionGloas {
+		return s.getActivationExitChurnLimit()
+	}
+
+	churn := uint64(s.getTotalActiveBalance()) / s.specs.ChurnLimitQuotientGloas
+	if s.specs.MinPerEpochChurnLimitElectra > churn {
+		churn = s.specs.MinPerEpochChurnLimitElectra
+	}
+	churn -= churn % s.specs.EffectiveBalanceIncrement
+
+	if s.specs.MaxPerEpochActivationChurnLimitGloas < churn {
+		return phase0.Gwei(s.specs.MaxPerEpochActivationChurnLimitGloas)
+	}
+
+	return phase0.Gwei(churn)
+}

@@ -9,7 +9,19 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// builderDepositFieldCount is the number of columns written per row; it must match the column list
+// below and is what bounds the chunk size in InsertBuilderDeposits.
+const builderDepositFieldCount = 13
+
 func InsertBuilderDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.BuilderDeposit) error {
+	return insertChunks(deposits, builderDepositFieldCount, func(chunk []*dbtypes.BuilderDeposit) error {
+		return insertBuilderDepositsChunk(ctx, tx, chunk)
+	})
+}
+
+// insertBuilderDepositsChunk inserts a single statement worth of rows; callers must go through
+// InsertBuilderDeposits so the bind-parameter limit is respected.
+func insertBuilderDepositsChunk(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.BuilderDeposit) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -20,7 +32,7 @@ func InsertBuilderDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 13
+	fieldCount := builderDepositFieldCount
 
 	args := make([]interface{}, len(deposits)*fieldCount)
 	for i, deposit := range deposits {

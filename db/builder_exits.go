@@ -9,7 +9,19 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// builderExitFieldCount is the number of columns written per row; it must match the column list
+// below and is what bounds the chunk size in InsertBuilderExits.
+const builderExitFieldCount = 11
+
 func InsertBuilderExits(ctx context.Context, tx *sqlx.Tx, exits []*dbtypes.BuilderExit) error {
+	return insertChunks(exits, builderExitFieldCount, func(chunk []*dbtypes.BuilderExit) error {
+		return insertBuilderExitsChunk(ctx, tx, chunk)
+	})
+}
+
+// insertBuilderExitsChunk inserts a single statement worth of rows; callers must go through
+// InsertBuilderExits so the bind-parameter limit is respected.
+func insertBuilderExitsChunk(ctx context.Context, tx *sqlx.Tx, exits []*dbtypes.BuilderExit) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -20,7 +32,7 @@ func InsertBuilderExits(ctx context.Context, tx *sqlx.Tx, exits []*dbtypes.Build
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 11
+	fieldCount := builderExitFieldCount
 
 	args := make([]interface{}, len(exits)*fieldCount)
 	for i, exit := range exits {

@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"fmt"
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -98,7 +99,54 @@ func (bs *ChainService) GetBuilderDepositsByFilter(ctx context.Context, filter *
 		}
 	}
 
+	bs.matchSentinelBuilderDepositTxs(ctx, combinedResults, canonicalForkIds)
+
 	return combinedResults, totalPendingTxResults, totalReqResults
+}
+
+// matchSentinelBuilderDepositTxs links included builder deposits to request txs that are still
+// stored with the dequeue-block sentinel (0).
+//
+// Requests enqueued before the activation fork keep that sentinel until the fork boundary is
+// finalized and the dequeue rebase runs, and the transaction matcher pairs rows by dequeue
+// block - so on a chain that has not finalized past the fork yet, those deposits would show no
+// transaction at all. They are matched by content instead (pubkey, amount, signature is unique
+// per deposit), consumed in queue order so repeated identical top-ups pair one to one.
+func (bs *ChainService) matchSentinelBuilderDepositTxs(ctx context.Context, results []*CombinedBuilderDeposit, canonicalForkIds []uint64) {
+	pubkeys := make([][]byte, 0, len(results))
+	for _, result := range results {
+		if result.Request != nil && result.Transaction == nil {
+			pubkeys = append(pubkeys, result.Request.PublicKey)
+		}
+	}
+	if len(pubkeys) == 0 {
+		return
+	}
+
+	sentinelTxs := make(map[string][]*dbtypes.BuilderDepositTx)
+	for _, depositTx := range db.GetBuilderDepositTxsWithSentinelDequeue(ctx, pubkeys) {
+		key := fmt.Sprintf("%x-%d-%x", depositTx.PublicKey, depositTx.Amount, depositTx.Signature)
+		sentinelTxs[key] = append(sentinelTxs[key], depositTx)
+	}
+	if len(sentinelTxs) == 0 {
+		return
+	}
+
+	for _, result := range results {
+		if result.Request == nil || result.Transaction != nil {
+			continue
+		}
+
+		key := fmt.Sprintf("%x-%d-%x", result.Request.PublicKey, result.Request.Amount, result.Request.Signature)
+		candidates := sentinelTxs[key]
+		if len(candidates) == 0 {
+			continue
+		}
+
+		result.Transaction = candidates[0]
+		result.TransactionOrphaned = !bs.isCanonicalForkId(candidates[0].ForkId, canonicalForkIds)
+		sentinelTxs[key] = candidates[1:]
+	}
 }
 
 // GetQueuedBuilderDepositTxs returns builder deposit request txs that are still queued in the

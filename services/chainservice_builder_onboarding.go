@@ -21,9 +21,14 @@ func isBuilderCredential(wc []byte) bool {
 	return len(wc) > 0 && wc[0] == builderWithdrawalCredType
 }
 
-// projectionFetchCap bounds how many builder-credential deposits the projection enumerates. It is
-// far above any realistic count of pre-fork builder deposits; hitting it sets Truncated.
-const projectionFetchCap = 10000
+// projectionFetchCap bounds how many builder-credential deposits the projection enumerates.
+//
+// The onboarding simulation is sequential and only produces the right new-builder/top-up
+// classification if it starts at the very first builder deposit, so the window is anchored at
+// the OLDEST deposit and the newest ones are dropped when the cap is hit (which sets
+// Truncated). Anchoring at the newest instead starts the simulation mid-stream and shifts the
+// whole list by one on every new deposit.
+const projectionFetchCap = 100000
 
 // ProjectedBuilderDeposit is one builder-credential (0xB0) deposit on chain together with its
 // projected fate at the upcoming Gloas fork transition. When none of the fate flags is set the
@@ -37,6 +42,13 @@ type ProjectedBuilderDeposit struct {
 
 	// EstimateEpoch is the projected epoch the deposit is processed (0 = unknown).
 	EstimateEpoch phase0.Epoch
+
+	// ProjectedBuilderIndex is the builder index this deposit registers or tops up at the fork.
+	// Onboarding assigns indexes in queue order starting at 0, before the builder deposit
+	// contract queue is dequeued, so these are the lowest indexes on the chain. Unset for
+	// deposits that never become a builder.
+	ProjectedBuilderIndex    uint64
+	HasProjectedBuilderIndex bool
 
 	// Fate flags (at most one set; none set => onboarded as a builder):
 	TooEarly         bool // processed before the fork -> becomes a regular validator, not a builder
@@ -68,8 +80,13 @@ type BuilderOnboardingProjection struct {
 	// each annotated with its projected fate.
 	Deposits []*ProjectedBuilderDeposit
 
-	OnboardedNewCount     uint64
-	OnboardedTopUpCount   uint64
+	OnboardedNewCount   uint64
+	OnboardedTopUpCount uint64
+
+	// NextBuilderIndex is the first builder index that onboarding does NOT take, i.e. where the
+	// builder deposit contract queue continues once it starts dequeuing after the fork.
+	NextBuilderIndex uint64
+
 	TooEarlyCount         uint64
 	InvalidSignatureCount uint64
 	KeptAsValidatorCount  uint64
@@ -171,10 +188,17 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 		WithValid:           1, // no signature-validity filter — invalid sigs are a classified outcome
 		WithdrawalCredTypes: []uint8{builderWithdrawalCredType},
 	}
-	deposits, _ := bs.GetDepositOperationsByFilter(ctx, depositFilter, txFilter, 0, projectionFetchCap)
-	if len(deposits) >= projectionFetchCap {
+	// The result set is ordered newest-first, so the oldest deposits sit at the end: resolve the
+	// total first and page to the tail, keeping the simulation anchored at the first deposit.
+	_, totalDeposits := bs.GetDepositOperationsByFilter(ctx, depositFilter, txFilter, 0, 1)
+	fetchOffset := uint64(0)
+	if totalDeposits > projectionFetchCap {
+		fetchOffset = totalDeposits - projectionFetchCap
 		proj.Truncated = true
+		bs.logger.Warnf("builder onboarding projection truncated: %v of %v builder deposits enumerated", projectionFetchCap, totalDeposits)
 	}
+
+	deposits, _ := bs.GetDepositOperationsByFilter(ctx, depositFilter, txFilter, fetchOffset, projectionFetchCap)
 
 	// Process in deposit-index order (= queue / processing order); unresolved-index deposits (very
 	// recent) sort last.
@@ -187,8 +211,10 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 		return found && !bs.IsProjectedValidatorIndex(idx)
 	}
 
-	acceptedBuilderPubkeys := make(map[phase0.BLSPubKey]bool) // pubkeys onboarded as new builders so far
-	validatorFromDeposit := make(map[phase0.BLSPubKey]bool)   // pubkeys turned into validators by an earlier too-early deposit
+	// pubkeys onboarded as new builders so far, mapped to the builder index they took
+	acceptedBuilderIndexes := make(map[phase0.BLSPubKey]uint64)
+	nextBuilderIndex := uint64(0)
+	validatorFromDeposit := make(map[phase0.BLSPubKey]bool) // pubkeys turned into validators by an earlier too-early deposit
 	for _, dep := range deposits {
 		if dep.Orphaned || !isBuilderCredential(dep.WithdrawalCredentials) {
 			continue
@@ -239,9 +265,13 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 			validSig = *dep.ValidSignature == 1 || *dep.ValidSignature == 2
 		}
 
+		builderIndex, isAcceptedBuilder := acceptedBuilderIndexes[pubkey]
+
 		switch {
-		case acceptedBuilderPubkeys[pubkey]:
+		case isAcceptedBuilder:
 			pd.Result = dbtypes.BuilderDepositRequestResultTopUp
+			pd.ProjectedBuilderIndex = builderIndex
+			pd.HasProjectedBuilderIndex = true
 			proj.OnboardedTopUpCount++
 		case isExistingValidator(pubkey) || validatorFromDeposit[pubkey] || queueNonBuilderPubkeys[pubkey]:
 			pd.KeptAsValidator = true
@@ -252,12 +282,17 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 			proj.InvalidSignatureCount++
 		default:
 			pd.Result = dbtypes.BuilderDepositRequestResultNewBuilder
-			acceptedBuilderPubkeys[pubkey] = true
+			pd.ProjectedBuilderIndex = nextBuilderIndex
+			pd.HasProjectedBuilderIndex = true
+			acceptedBuilderIndexes[pubkey] = nextBuilderIndex
+			nextBuilderIndex++
 			proj.OnboardedNewCount++
 		}
 
 		proj.Deposits = append(proj.Deposits, pd)
 	}
+
+	proj.NextBuilderIndex = nextBuilderIndex
 
 	if tailEstimate > 0 {
 		proj.HasSafetyEstimate = true
