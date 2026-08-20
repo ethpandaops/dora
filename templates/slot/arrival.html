@@ -1,51 +1,5 @@
 {{ define "block_arrival" }}
   <style>
-    .arrival-stat-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 0.75rem;
-      max-width: 44rem;
-    }
-    .arrival-stat {
-      background: var(--bs-secondary-bg);
-      border-radius: 0.5rem;
-      padding: 0.55rem 0.9rem;
-    }
-    .arrival-stat .value {
-      font-size: 1.3rem;
-      font-weight: 600;
-      line-height: 1.25;
-      font-variant-numeric: tabular-nums;
-    }
-    .arrival-stat .label {
-      font-size: 0.68rem;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      color: var(--bs-secondary-color);
-    }
-    .arrival-chipline {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      align-items: center;
-    }
-    .arrival-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      background: var(--bs-secondary-bg);
-      border-radius: 2rem;
-      padding: 0.18rem 0.7rem;
-      font-size: 0.76rem;
-      white-space: nowrap;
-    }
-    .arrival-dot {
-      width: 0.5rem;
-      height: 0.5rem;
-      border-radius: 50%;
-      display: inline-block;
-      flex: none;
-    }
     .arrival-group-badge {
       font-size: 0.66rem;
       padding: 0.12rem 0.4rem;
@@ -53,6 +7,14 @@
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+    }
+    .arrival-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      display: inline-block;
+      flex: none;
+      vertical-align: middle;
     }
     .arrival-legend {
       display: inline-flex;
@@ -107,7 +69,6 @@
     .arrival-scroll thead th {
       position: sticky; top: 0; z-index: 1; background: var(--bs-body-bg);
     }
-    .arrival-scroll thead .group-row th { top: 0; }
     .arrival-node-name {
       max-width: 15rem; overflow: hidden; text-overflow: ellipsis;
       white-space: nowrap; display: inline-block; vertical-align: middle;
@@ -115,25 +76,42 @@
     .arrival-hide-np [data-col="np"] { display: none; }
   </style>
 
-  <div id="arrival-content">
+  <div id="arrival-content" class="card-body px-0 py-1">
     <div class="text-center p-4" id="arrival-loading">
       <div class="spinner-border spinner-border-sm me-2" role="status"></div>
       Loading propagation data from Xatu...
     </div>
     <div id="arrival-loaded" style="display: none;">
-      <div class="arrival-stat-grid mb-2" id="arrival-statgrid"></div>
-      <div class="arrival-chipline mb-2" id="arrival-chips"></div>
-      <div class="d-flex justify-content-end mb-1">
-        <span class="arrival-legend" id="arrival-legend">
-          <span><span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>gossip</span>
-          <span><span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>block event</span>
-          <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head event</span>
-          <span data-col="np"><span class="mark-demo" style="width:14px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload start&rarr;done</span>
-        </span>
+      <div id="arrival-empty" class="p-3 text-muted" style="display: none;"></div>
+      <div id="arrival-rows-wrap" style="display: none;">
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When nodes first observed this block, relative to slot start. Each node counts once with its earliest observation across all layers.">Arrival:</span></div>
+          <div class="col-md-10" id="arrival-stats"></div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Raw observation counts per source layer">Observations:</span></div>
+          <div class="col-md-10" id="arrival-observations"></div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Who runs the observing nodes">Sources:</span></div>
+          <div class="col-md-10" id="arrival-sources"></div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Observing nodes per continent, with the region's earliest observation">Regions:</span></div>
+          <div class="col-md-10" id="arrival-regions"></div>
+        </div>
+        <div class="d-flex justify-content-end px-2 pt-2">
+          <span class="arrival-legend" id="arrival-legend">
+            <span><span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>block gossip</span>
+            <span><span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>block event</span>
+            <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head event</span>
+            <span data-col="np"><span class="mark-demo" style="width:14px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload start&rarr;done</span>
+          </span>
+        </div>
+        <div id="arrival-body" class="px-2"></div>
       </div>
-      <div id="arrival-body"></div>
     </div>
-    <div class="text-muted small mt-2 d-flex align-items-center" style="gap: 6px;">
+    <div class="text-muted small px-2 pb-2 d-flex align-items-center" style="gap: 6px;">
       <img src="/images/xatu.png" alt="Xatu" style="width: 18px; height: 18px;" />
       Data from <a href="https://github.com/ethpandaops/xatu" target="_blank" rel="noopener">Xatu</a>
     </div>
@@ -164,10 +142,6 @@
         if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
         return ms + 'ms';
       }
-      function fmtMs(ms) {
-        if (ms == null) return '<span class="text-muted">&mdash;</span>';
-        return fmtStr(ms);
-      }
       function timeColor(ms) {
         if (ms < 1000) return '#34c38f';
         if (ms < 2000) return '#7bc96f';
@@ -177,7 +151,7 @@
       }
       function fmtMsColored(ms) {
         if (ms == null) return '<span class="text-muted">&mdash;</span>';
-        return '<span style="color:' + timeColor(ms) + '">' + fmtStr(ms) + '</span>';
+        return '<span class="num" style="color:' + timeColor(ms) + '">' + fmtStr(ms) + '</span>';
       }
       function fmtDelta(ms) {
         if (ms == null) return '<span class="text-muted">&mdash;</span>';
@@ -192,10 +166,6 @@
       function contColor(code) { return continentColors[code] || '#74788d'; }
       function nodeTimes(n) {
         return [n.api_ms, n.p2p_ms, n.head_ms, n.np_ms].filter(function(v) { return v != null; });
-      }
-      function statBlock(label, value, color) {
-        return '<div class="arrival-stat"><div class="value"' + (color ? ' style="color:' + color + '"' : '') + '>' +
-          value + '</div><div class="label">' + label + '</div></div>';
       }
       function groupBadge(g) {
         var st = groupStyles[g] || groupStyles.other;
@@ -225,7 +195,7 @@
             fmtStr(n.np_ms) + ' &rarr; ' + fmtStr(n.np_ms + (n.np_dur_ms || 0)) + ' (' + (n.np_dur_ms || 0) + 'ms, ' + esc(n.np_status || '') + ')"></div>';
         }
         if (n.api_ms != null) html += '<div class="mark api" style="left:' + pos(n.api_ms) + '%" title="beacon api block event: ' + fmtStr(n.api_ms) + '"></div>';
-        if (n.p2p_ms != null) html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) + '%" title="libp2p gossip: ' + fmtStr(n.p2p_ms) + '"></div>';
+        if (n.p2p_ms != null) html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) + '%" title="libp2p block gossip: ' + fmtStr(n.p2p_ms) + '"></div>';
         if (n.head_ms != null) html += '<div class="mark head" style="left:' + pos(n.head_ms) + '%" title="beacon api head event: ' + fmtStr(n.head_ms) + '"></div>';
         return html;
       }
@@ -242,12 +212,12 @@
 
           var np = '<span class="text-muted">&mdash;</span>';
           if (n.np_ms != null) {
-            np = '<span style="color:' + timeColor(n.np_ms) + '" title="' + esc(n.np_status || '') + '">' + fmtStr(n.np_ms) + '</span>' +
+            np = '<span class="num" style="color:' + timeColor(n.np_ms) + '" title="' + esc(n.np_status || '') + '">' + fmtStr(n.np_ms) + '</span>' +
               ' <span class="text-muted small">+' + n.np_dur_ms + 'ms</span>';
           }
 
           var last = n.late
-            ? '<td><span class="badge text-bg-danger" title="Earliest observation ' + fmtStr(n.min_ms) +
+            ? '<td><span class="badge rounded-pill text-bg-danger" style="font-size: 11px;" title="Earliest observation ' + fmtStr(n.min_ms) +
               ' after slot start — likely a syncing or stalled node">late &middot; ' + fmtStr(n.min_ms) + '</span></td>'
             : '<td><div class="lane-track" style="height: 18px; min-width: 11rem">' +
               '<div class="rail"></div>' + laneMarks(n, pos) + '</div></td>';
@@ -257,12 +227,12 @@
             '<span class="arrival-node-name" title="' + esc(n.full_name) + '">' + esc(n.name) + '</span></td>' +
             '<td>' + esc(n.implementation || '') + '</td>' +
             '<td title="' + esc(n.country || '') + '">' + flag(cc) + ' <span class="text-muted small">' + esc(cc || n.continent || '') + '</span></td>' +
-            '<td class="text-end num">' + fmtMsColored(n.p2p_ms) + '</td>' +
-            '<td class="text-end num">' + fmtMsColored(n.api_ms) + '</td>' +
+            '<td class="text-end">' + fmtMsColored(n.p2p_ms) + '</td>' +
+            '<td class="text-end">' + fmtMsColored(n.api_ms) + '</td>' +
             '<td class="text-end num">' + fmtDelta(dVerify) + '</td>' +
-            '<td class="text-end num">' + fmtMsColored(n.head_ms) + '</td>' +
+            '<td class="text-end">' + fmtMsColored(n.head_ms) + '</td>' +
             '<td class="text-end num">' + fmtDelta(dHead) + '</td>' +
-            '<td class="text-end num" data-col="np">' + np + '</td>' +
+            '<td class="text-end" data-col="np">' + np + '</td>' +
             last + '</tr>';
         }).join('');
 
@@ -277,9 +247,9 @@
           '<th></th></tr>' +
           '<tr>' +
           '<th style="width: 18rem">Node</th><th>Client</th><th style="width: 5rem">Loc</th>' +
-          '<th class="text-end" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">Gossip</th>' +
+          '<th class="text-end" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">Block&nbsp;gossip</th>' +
           '<th class="text-end" title="Block event on the beacon API — the node has fully verified and imported the block">Block event</th>' +
-          '<th class="text-end" title="Gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify</th>' +
+          '<th class="text-end" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify</th>' +
           '<th class="text-end" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">Head event</th>' +
           '<th class="text-end" title="Block event to head event: fork-choice lag (negative when head is emitted first)">&Delta;&nbsp;head</th>' +
           '<th class="text-end" data-col="np" title="engine_newPayload request start · how long the execution client took to import">newPayload</th>' +
@@ -292,39 +262,45 @@
         document.getElementById('arrival-loaded').style.display = '';
 
         if (!data.nodes || !data.nodes.length) {
-          document.getElementById('arrival-statgrid').innerHTML =
-            '<div class="text-muted p-2">No observations for this slot' + (data.settled ? '' : ' yet') + '.</div>';
+          var empty = document.getElementById('arrival-empty');
+          empty.style.display = '';
+          empty.innerHTML = 'No propagation observations for this slot' + (data.settled ? '.' : ' yet.');
           return;
         }
 
-        var s = data.stats;
-        document.getElementById('arrival-statgrid').innerHTML =
-          statBlock('fastest', fmtStr(s.min_ms), timeColor(s.min_ms)) +
-          statBlock('median', fmtStr(s.p50_ms), timeColor(s.p50_ms)) +
-          statBlock('p90', fmtStr(s.p90_ms), timeColor(s.p90_ms)) +
-          statBlock('slowest', fmtStr(s.max_ms), timeColor(s.max_ms));
+        document.getElementById('arrival-rows-wrap').style.display = '';
 
-        var chips = [];
-        chips.push('<span class="arrival-chip"><b>' + s.unique_nodes + '</b>&nbsp;nodes &middot; ' +
-          data.observations + ' block / ' + data.p2p_observations + ' gossip / ' + data.head_observations + ' head / ' +
-          data.np_observations + ' engine observations</span>');
-        (data.groups || []).forEach(function(g) {
-          var st = groupStyles[g.name] || groupStyles.other;
-          chips.push('<span class="arrival-chip"><span class="arrival-group-badge ' + st.cls + '">' + st.label + '</span> ' +
-            g.nodes + ' &middot; p50 ' + fmtStr(g.p50_ms) + '</span>');
+        var s = data.stats;
+        var statParts = [];
+        [['fastest', s.min_ms], ['median', s.p50_ms], ['p90', s.p90_ms], ['slowest', s.max_ms]].forEach(function(kv) {
+          statParts.push('<span class="num" style="color:' + timeColor(kv[1]) + '"><b>' + fmtStr(kv[1]) + '</b></span> <span class="text-muted">' + kv[0] + '</span>');
         });
-        (data.continents || []).forEach(function(c) {
-          chips.push('<span class="arrival-chip"><span class="arrival-dot" style="background:' + contColor(c.code) + '"></span>' +
-            esc(c.code || '??') + ' ' + c.nodes + ' &middot; ' + fmtStr(c.min_ms) + '</span>');
-        });
+        document.getElementById('arrival-stats').innerHTML = statParts.join('<span class="text-muted px-2">&middot;</span>');
+
+        var obs = '<b>' + s.unique_nodes + '</b> nodes &mdash; ' +
+          data.observations + ' block / ' + data.p2p_observations + ' block gossip / ' + data.head_observations + ' head / ' +
+          data.np_observations + ' engine observations';
         if (s.late_nodes > 0) {
-          chips.push('<span class="arrival-chip" title="Nodes whose earliest observation came more than a slot after slot start; excluded from stats">' +
-            s.late_nodes + ' late node' + (s.late_nodes > 1 ? 's' : '') + '</span>');
+          obs += ' <span class="badge rounded-pill text-bg-danger ms-1" style="font-size: 11px;" title="Nodes whose earliest observation came more than a slot after slot start; excluded from stats">' +
+            s.late_nodes + ' late node' + (s.late_nodes > 1 ? 's' : '') + '</span>';
         }
         if (!data.settled) {
-          chips.push('<span class="arrival-chip text-bg-info">live &mdash; data may still be arriving</span>');
+          obs += ' <span class="badge rounded-pill text-bg-info ms-1" style="font-size: 11px;">live &mdash; data may still be arriving</span>';
         }
-        document.getElementById('arrival-chips').innerHTML = chips.join('');
+        document.getElementById('arrival-observations').innerHTML = obs;
+
+        var sources = (data.groups || []).map(function(g) {
+          var st = groupStyles[g.name] || groupStyles.other;
+          return '<span class="text-nowrap">' + '<span class="arrival-group-badge ' + st.cls + '">' + st.label + '</span> ' +
+            g.nodes + ' <span class="text-muted">&middot; p50 ' + fmtStr(g.p50_ms) + '</span></span>';
+        });
+        document.getElementById('arrival-sources').innerHTML = sources.join('<span class="text-muted px-2">&middot;</span>');
+
+        var regions = (data.continents || []).map(function(c) {
+          return '<span class="text-nowrap"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' +
+            esc(c.code || '??') + ' ' + c.nodes + ' <span class="text-muted">&middot; ' + fmtStr(c.min_ms) + '</span></span>';
+        });
+        document.getElementById('arrival-regions').innerHTML = regions.join('<span class="text-muted px-2">&middot;</span>');
 
         document.getElementById('arrival-legend').classList.toggle('arrival-hide-np', !data.np_observations);
         document.getElementById('arrival-body').innerHTML = renderTable(data);

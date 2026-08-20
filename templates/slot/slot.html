@@ -339,9 +339,7 @@
         {{ if .XatuEnabled }}
           <div class="tab-pane fade show active" id="arrival" role="tabpanel" aria-labelledby="arrival-tab">
             <div class="card block-card">
-              <div class="card-body px-3 py-2">
-                {{ template "block_arrival" . }}
-              </div>
+              {{ template "block_arrival" . }}
             </div>
           </div>
         {{ end }}
