@@ -377,7 +377,7 @@
         }
       }
       function currentView() {
-        try { return localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'timeline'; } catch (e) { return 'timeline'; }
+        try { return localStorage.getItem(VIEW_KEY) === 'timeline' ? 'timeline' : 'table'; } catch (e) { return 'table'; }
       }
 
       function render(data) {
