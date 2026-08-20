@@ -11,6 +11,7 @@ type EpochPageData struct {
 	NextEpoch               uint64    `json:"next_epoch"`
 	Ts                      time.Time `json:"ts"`
 	Synchronized            bool      `json:"synchronized"`
+	XatuEnabled             bool      `json:"xatu_enabled"`
 	Finalized               bool      `json:"finalized"`
 	Future                  bool      `json:"future"`
 	AttestationCount        uint64    `json:"attestation_count"`

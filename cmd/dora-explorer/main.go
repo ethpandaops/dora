@@ -206,6 +206,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/chain-forks", handlers.ChainForks).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
 	router.HandleFunc("/epoch/{epoch}", handlers.Epoch).Methods("GET")
+	router.HandleFunc("/epoch/{epoch}/arrival", handlers.EpochArrival).Methods("GET")
 	router.HandleFunc("/slots", handlers.Slots).Methods("GET")
 	router.HandleFunc("/slots/filtered", handlers.SlotsFiltered).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")

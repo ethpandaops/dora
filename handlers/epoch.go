@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -134,6 +135,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	firstSlot := chainState.EpochToSlot(phase0.Epoch(epoch))
 	lastSlot := chainState.EpochToSlot(phase0.Epoch(epoch+1)) - 1
 	pageData := &models.EpochPageData{
+		XatuEnabled:   xatu.GlobalClient != nil,
 		Epoch:         epoch,
 		PreviousEpoch: epoch - 1,
 		NextEpoch:     nextEpoch,
