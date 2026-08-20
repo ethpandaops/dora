@@ -228,7 +228,7 @@
                     {{ end }}
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
                   {{ else }}
-                    <td colspan="6">Not indexed yet</td>
+                    <td colspan="{{ if $epoch.XatuEnabled }}7{{ else }}6{{ end }}">Not indexed yet</td>
                   {{ end }}
                 </tr>
               {{ end }}
