@@ -49,6 +49,25 @@
     .arrival-dist .dist-bar > div { height: 100%; }
     .arrival-dist .entry { font-size: 0.85rem; white-space: nowrap; }
 
+    .arrival-region-line {
+      gap: 0.9rem;
+      font-size: 0.85rem;
+      padding: 0.1rem 0;
+    }
+    .arrival-region-line .region-bar-track {
+      display: inline-block;
+      width: 160px;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--bs-secondary-bg);
+      overflow: hidden;
+    }
+    .arrival-region-line .region-bar {
+      display: block;
+      height: 100%;
+      border-radius: 4px;
+    }
+
     .lane-track { position: relative; }
     .lane-track .rail {
       position: absolute; left: 0; right: 0; top: 50%; height: 1px;
@@ -294,7 +313,7 @@
           '<th class="text-end" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify</th>' +
           '<th class="text-end" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">Head event</th>' +
           '<th class="text-end" title="Block event to head event: fork-choice lag (negative when head is emitted first)">&Delta;&nbsp;head</th>' +
-          '<th class="text-end" data-col="np" title="engine_newPayload request start · how long the execution client took to import">newPayload</th>' +
+          '<th class="text-end" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">newPayload</th>' +
           '<th style="min-width: 11rem"></th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
@@ -343,16 +362,17 @@
           };
         }));
 
-        document.getElementById('arrival-regions').innerHTML = distBar((data.continents || []).map(function(c) {
-          return {
-            count: c.nodes,
-            color: contColor(c.code),
-            title: (c.code || '??') + ': ' + c.nodes + ' nodes, first ' + fmtStr(c.min_ms),
-            legend: '<span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' +
-              esc(c.code || '??') + ' <b>' + c.nodes + '</b>' +
-              ' <span class="text-muted small">' + fmtStr(c.min_ms) + '</span>'
-          };
-        }));
+        var totalNodes = s.unique_nodes || 1;
+        document.getElementById('arrival-regions').innerHTML = (data.continents || []).map(function(c) {
+          var share = Math.max(1.5, c.nodes / totalNodes * 100);
+          return '<div class="d-flex align-items-center arrival-region-line">' +
+            '<span style="width: 2.6rem; flex: none"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(c.code || '??') + '</span>' +
+            '<span class="region-bar-track" style="flex: none"><span class="region-bar" style="width:' + share.toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
+            '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b> <span class="text-muted small">node' + (c.nodes > 1 ? 's' : '') + '</span></span>' +
+            '<span class="num" style="width: 7.5rem; flex: none; text-align: right"><span class="text-muted small">first</span> ' + fmtMsColored(c.min_ms) + '</span>' +
+            '<span class="num" style="width: 7rem; flex: none; text-align: right"><span class="text-muted small">p50</span> ' + fmtMsColored(c.p50_ms) + '</span>' +
+            '</div>';
+        }).join('');
 
         document.getElementById('arrival-legend').classList.toggle('arrival-hide-np', !data.np_observations);
         document.getElementById('arrival-body').innerHTML = renderTable(data);

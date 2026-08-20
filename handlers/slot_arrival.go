@@ -328,7 +328,8 @@ const lateThresholdMs = 12000
 
 // loadEngineTimings loads engine API newPayload calls observed by the
 // snooper into nodes: when the consensus client handed the payload to its
-// execution client, and how long the execution client took to import it.
+// execution client (derived from the observed completion minus the call
+// duration), and how long the execution client took to import it.
 func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
 	req := &xch.ListConsensusEngineApiNewPayloadRequest{
 		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
@@ -371,7 +372,10 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 		node.observations++
 
 		if node.npMs == nil {
-			offset := row.EventDateTime/1000 - slotStartMs
+			// event_date_time is stamped when the sentry receives the snooper's
+			// event, which is emitted after the call completes - so the call
+			// START is the observed completion minus the call duration.
+			offset := row.EventDateTime/1000 - slotStartMs - int64(row.DurationMs) //nolint:gosec // duration is bounded
 			if offset < 0 {
 				offset = 0
 			}
@@ -395,6 +399,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 	nodeList := make([]*models.SlotArrivalNode, 0, len(nodes))
 	lateList := make([]*models.SlotArrivalNode, 0)
 	continents := map[string]*models.SlotArrivalContinent{}
+	continentValues := map[string][]uint32{}
 	groups := map[string][]uint32{}
 
 	for _, node := range nodes {
@@ -453,6 +458,8 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 		}
 
 		continent.Nodes++
+		continentValues[node.continent] = append(continentValues[node.continent], minMs)
+
 		if minMs < continent.MinMs {
 			continent.MinMs = minMs
 		}
@@ -486,7 +493,12 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 	response.Nodes = append(nodeList, lateList...)
 
 	continentList := make([]*models.SlotArrivalContinent, 0, len(continents))
-	for _, continent := range continents {
+
+	for code, continent := range continents {
+		values := continentValues[code]
+		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
+		continent.P50Ms = values[len(values)/2]
+
 		continentList = append(continentList, continent)
 	}
 

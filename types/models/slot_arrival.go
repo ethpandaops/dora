@@ -67,6 +67,7 @@ type SlotArrivalContinent struct {
 	Code  string `json:"code"`
 	Nodes int    `json:"nodes"`
 	MinMs uint32 `json:"min_ms"`
+	P50Ms uint32 `json:"p50_ms"`
 }
 
 // SlotArrivalGroup aggregates earliest observations per node group.
