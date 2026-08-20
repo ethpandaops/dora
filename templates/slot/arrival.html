@@ -76,11 +76,11 @@
       opacity: 0.55;
       border-radius: 6px;
     }
-    .lane-track .connector {
-      position: absolute; top: 50%; height: 3px; margin-top: -1.5px;
+    .lane-track .bar {
+      position: absolute; top: 50%; height: 8px; margin-top: -4px;
       background: linear-gradient(90deg, #9775fa, #5b8def);
-      opacity: 0.6;
-      border-radius: 2px;
+      border-radius: 4px;
+      min-width: 3px;
     }
     .lane-track .range {
       position: absolute; top: 50%; height: 2px; margin-top: -1px;
@@ -96,8 +96,8 @@
       border-bottom: 8px solid #20c997; margin: -4px 0 0 -5px;
     }
     .lane-track .np-span {
-      position: absolute; top: 50%; height: 6px; margin-top: -3px;
-      background: #f1b44c; opacity: 0.95; border-radius: 3px; min-width: 2px;
+      position: absolute; top: 50%; height: 8px; margin-top: -4px;
+      background: #f1b44c; border-radius: 2px; min-width: 2px;
     }
     .arrival-axis-header {
       font-weight: 400;
@@ -286,7 +286,8 @@
       // the chart.
       function axis(s) {
         var lo = Math.max(0, Math.floor((s.min_ms - 50) / 100) * 100);
-        var hi = Math.ceil((Math.min(s.max_ms, s.p90_ms * 1.6) + 1) / 250) * 250;
+        var pad = Math.max(150, (s.p90_ms - s.min_ms) * 0.25);
+        var hi = Math.ceil((Math.min(s.max_ms, s.p90_ms + pad) + 1) / 100) * 100;
         return { lo: lo, hi: hi, span: Math.max(1, hi - lo) };
       }
 
@@ -325,25 +326,27 @@
 
       function laneMarks(n, pos) {
         var html = '';
-        var times = nodeTimes(n);
-        if (n.p2p_ms != null && n.api_ms != null && n.api_ms > n.p2p_ms) {
-          // the verify span: gossip arrival to verified block event
-          var cLo = pos(n.p2p_ms);
-          var cHi = pos(n.api_ms);
-          html += '<div class="connector" style="left:' + cLo + '%;width:' + Math.max(0.6, cHi - cLo) + '%" title="verify: +' + (n.api_ms - n.p2p_ms) + 'ms"></div>';
-        } else if (times.length > 1) {
-          var lo = pos(Math.min.apply(null, times));
-          var hi = pos(Math.max.apply(null, times));
-          html += '<div class="range" style="left:' + lo + '%;width:' + Math.max(0.5, hi - lo) + '%"></div>';
+        var hasBar = n.p2p_ms != null && n.api_ms != null && n.api_ms > n.p2p_ms;
+
+        if (hasBar) {
+          // the pipeline bar: gossip arrival through to the verified block event
+          var bLo = pos(n.p2p_ms);
+          var bHi = pos(n.api_ms);
+          html += '<div class="bar" style="left:' + bLo + '%;width:' + Math.max(0.8, bHi - bLo) + '%" title="block gossip ' +
+            fmtStr(n.p2p_ms) + ' &rarr; block event ' + fmtStr(n.api_ms) + ' (verify +' + (n.api_ms - n.p2p_ms) + 'ms)"></div>';
+        } else {
+          if (n.p2p_ms != null) html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) + '%" title="libp2p block gossip: ' + fmtStr(n.p2p_ms) + '"></div>';
+          if (n.api_ms != null) html += '<div class="mark api" style="left:' + pos(n.api_ms) + '%" title="beacon api block event: ' + fmtStr(n.api_ms) + '"></div>';
         }
+
         if (n.np_ms != null) {
           var w = n.np_dur_ms ? Math.max(0.4, pos(n.np_ms + n.np_dur_ms) - pos(n.np_ms)) : 0.4;
           html += '<div class="np-span" style="left:' + pos(n.np_ms) + '%;width:' + w + '%" title="engine newPayload: ' +
             fmtStr(n.np_ms) + ' &rarr; ' + fmtStr(n.np_ms + (n.np_dur_ms || 0)) + ' (' + (n.np_dur_ms || 0) + 'ms, ' + esc(n.np_status || '') + ')"></div>';
         }
-        if (n.api_ms != null) html += '<div class="mark api" style="left:' + pos(n.api_ms) + '%" title="beacon api block event: ' + fmtStr(n.api_ms) + '"></div>';
-        if (n.p2p_ms != null) html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) + '%" title="libp2p block gossip: ' + fmtStr(n.p2p_ms) + '"></div>';
+
         if (n.head_ms != null) html += '<div class="mark head" style="left:' + pos(n.head_ms) + '%" title="beacon api head event: ' + fmtStr(n.head_ms) + '"></div>';
+
         return html;
       }
 
