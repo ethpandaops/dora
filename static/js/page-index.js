@@ -6,7 +6,7 @@
     initCountdownTooltips();
   });
 
-  var refreshInterval = 15000;
+  var defaultRefreshInterval = 15000;
   var lastRefresh = new Date().getTime();
   var loopTimer = null;
   var isRefreshing = false;
@@ -97,10 +97,22 @@
     },
   };
 
+  // refreshInterval is read on every loop rather than captured once, so an external
+  // driver (dora-replay, which advances slots far faster than real time) can retune
+  // it at runtime by setting window.doraIndexRefreshInterval.
+  function refreshInterval() {
+    var override = window.doraIndexRefreshInterval;
+    if (typeof override === "number" && isFinite(override) && override > 0) {
+      return override;
+    }
+
+    return defaultRefreshInterval;
+  }
+
   function scheduleLoop() {
     if(loopTimer)
       return;
-    var refreshTimeout = refreshInterval - ((new Date().getTime() - lastRefresh));
+    var refreshTimeout = refreshInterval() - ((new Date().getTime() - lastRefresh));
     if(refreshTimeout < 0)
       refreshTimeout = 0;
     else if(refreshTimeout > 1000)
@@ -110,14 +122,13 @@
 
   function refreshLoop() {
     loopTimer = null;
-    var refreshTimeout = refreshInterval - ((new Date().getTime() - lastRefresh));
+    var refreshTimeout = refreshInterval() - ((new Date().getTime() - lastRefresh));
     if(refreshTimeout < 0)
       refreshTimeout = 0;
     document.getElementById("update_timer").innerText = "Next update in " + Math.ceil(refreshTimeout / 1000) + "s";
 
     if(refreshTimeout <= 0) {
       lastRefresh = new Date().getTime();
-      refreshTimeout = refreshInterval;
       refresh();
     }
   }

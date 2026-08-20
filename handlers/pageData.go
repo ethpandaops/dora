@@ -38,6 +38,8 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		siteDomain = r.Host
 	}
 
+	chainState := services.GlobalBeaconService.GetChainState()
+
 	data := &types.PageData{
 		Meta: &types.Meta{
 			Title:       fullTitle,
@@ -50,7 +52,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Data:                    &types.Empty{},
 		Version:                 utils.GetExplorerVersion(),
 		BuildTime:               fmt.Sprintf("%v", buildTime.Unix()),
-		ServerTime:              time.Now().UnixMilli(),
+		ServerTime:              chainState.Now().UnixMilli(),
 		Year:                    time.Now().UTC().Year(),
 		ExplorerTitle:           utils.Config.Frontend.SiteName,
 		ExplorerSubtitle:        utils.Config.Frontend.SiteSubtitle,
@@ -61,9 +63,9 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		ApiEnabled:              utils.Config.Api.Enabled && !utils.Config.Api.RequireAuth,
 		ExecutionIndexerEnabled: utils.Config.ExecutionIndexer.Enabled,
 		EnsSearchEnabled:        ensSearchEnabled(),
+		ReplayControlUrl:        replayControlURL(),
 	}
 
-	chainState := services.GlobalBeaconService.GetChainState()
 	if specs := chainState.GetSpecs(); specs != nil {
 		data.IsReady = true
 		data.ChainSlotsPerEpoch = specs.SlotsPerEpoch
@@ -92,6 +94,16 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 	}
 
 	return data
+}
+
+// replayControlURL returns the dora-replay control server, or "" when the explorer is
+// not running a replay.
+func replayControlURL() string {
+	if !utils.Config.Replay.Enabled {
+		return ""
+	}
+
+	return strings.TrimSuffix(utils.Config.Replay.ControlUrl, "/")
 }
 
 func createMenuItems(active string) []types.MainMenuItem {

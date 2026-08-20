@@ -34,6 +34,12 @@ type PageData struct {
 	ApiEnabled              bool
 	ExecutionIndexerEnabled bool
 	EnsSearchEnabled        bool
+
+	// ReplayControlUrl is the dora-replay control server this explorer is driven by.
+	// It is only set in replay mode, and it is the whole of the explorer's knowledge
+	// about the replay UI: the layout side-loads that UI from the replay process and
+	// hands it this address to talk to.
+	ReplayControlUrl string
 }
 
 type MainMenuItem struct {

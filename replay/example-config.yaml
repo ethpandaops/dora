@@ -1,0 +1,96 @@
+# Example explorer config for a dora-replay run. Copy it to config-<name>.yaml, point
+# the endpoints at your dora-replay listeners, and start the explorer with it.
+logging:
+  outputLevel: "info"
+
+chain:
+  displayName: "devnet (replay)"
+
+server:
+  host: "0.0.0.0"
+  port: "8083"
+
+frontend:
+  enabled: true
+  debug: true
+  pprof: true
+  minimize: false
+
+  siteName: "Dora the Explorer"
+  siteSubtitle: "replay"
+
+  ethExplorerLink: ""
+
+  validatorNamesInventory: "https://config.glamsterdam-devnet-8.ethpandaops.io/api/v1/nodes/validator-ranges"
+
+  publicRpcUrl: ""
+  showSubmitDeposit: true
+  showSubmitElRequests: true
+  showValidatorSummary: true
+
+  # the replay steps slot by slot, so cached pages would hide what just changed
+  disablePageCache: true
+
+  tracoorUrl: "https://tracoor.glamsterdam-devnet-8.ethpandaops.io"
+  tracoorNetwork: "glamsterdam-devnet-8"
+
+api:
+  enabled: true
+
+# drive every "now" in the explorer off the dora-replay control server instead of the
+# real wall clock. the endpoints below must point at the matching dora-replay proxies.
+replay:
+  enabled: true
+  controlUrl: "http://127.0.0.1:15000"
+
+beaconapi:
+  endpoints:
+    - url: "http://127.0.0.1:15052"
+      name: "replay-cl"
+  localCacheSize: 100
+
+executionapi:
+  endpoints:
+    - url: "http://127.0.0.1:15545"
+      name: "replay-el"
+  logBatchSize: 1000
+  genesisConfig: "https://config.glamsterdam-devnet-8.ethpandaops.io/el/genesis.json"
+
+mevIndexer:
+  relays: []
+  refreshInterval: 5m
+
+indexer:
+  inMemoryEpochs: 6
+
+  # the replay starts mid-chain, so there is no history to walk back to: without this
+  # the synchronizer would try to backfill from epoch 0, and the upstreams no longer
+  # have the states to do it with.
+  #
+  # to repair a hole (e.g. after the explorer was restarted mid-finalization), flip
+  # this to false and add `resyncFromEpoch: <first bad epoch>` for one run: the
+  # synchronizer then walks from there up to the live finalized epoch and stops.
+  disableSynchronizer: true
+
+  pubkeyCachePath: "./temp/pubkeys-glamsterdam8-replay.db"
+
+  stateCache:
+    enabled: true
+    path: "./temp/statecache-glamsterdam8-replay"
+
+executionIndexer:
+  enabled: true
+  retention: 336h
+  detailsEnabled: false
+  tracesEnabled: false
+
+database:
+  engine: "sqlite"
+  sqlite:
+    file: "tmp-db-glamsterdam8-replay.sqlite"
+
+blockDb:
+  engine: "pebble"
+  pebble:
+    path: "./temp/blockdb-glamsterdam8-replay.peb"
+    cacheSize: 100
