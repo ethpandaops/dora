@@ -83,7 +83,7 @@
     .lane-track .mark.head {
       width: 0; height: 0; background: none;
       border-left: 5px solid transparent; border-right: 5px solid transparent;
-      border-bottom: 8px solid #20c997; margin: -4px 0 0 -5px;
+      border-bottom: 8px solid #3457c4; margin: -4px 0 0 -5px;
     }
     .lane-track .np-span {
       position: absolute; top: 50%; height: 7px; margin-top: -3.5px;
@@ -99,7 +99,26 @@
       color: var(--bs-secondary-color);
       font-weight: 600;
       border-bottom: none;
-      padding-bottom: 0;
+      padding-bottom: 0.15rem;
+    }
+    .arrival-table thead .group-row th.layer-p2p {
+      color: #9775fa;
+      border-bottom: 2px solid #9775fa;
+    }
+    .arrival-table thead .group-row th.layer-api {
+      color: #5b8def;
+      border-bottom: 2px solid #5b8def;
+    }
+    .arrival-table thead .group-row th.layer-engine {
+      color: #d29b2c;
+      border-bottom: 2px solid #f1b44c;
+    }
+    .arrival-legend .layer-label {
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.62rem;
+      font-weight: 600;
+      margin-right: -0.2rem;
     }
     .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
     .arrival-scroll {
@@ -144,9 +163,14 @@
         </div>
         <div class="d-flex justify-content-end px-2 pt-2">
           <span class="arrival-legend" id="arrival-legend">
+            <span class="layer-label" style="color:#9775fa">libp2p</span>
             <span><span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>block gossip</span>
+            <span class="text-muted">&middot;</span>
+            <span class="layer-label" style="color:#5b8def">beacon api</span>
             <span><span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>block event</span>
-            <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head event</span>
+            <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #3457c4;background:none"></span>head event</span>
+            <span class="text-muted" data-col="np">&middot;</span>
+            <span class="layer-label" data-col="np" style="color:#d29b2c">engine api</span>
             <span data-col="np"><span class="mark-demo" style="width:14px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload start&rarr;done</span>
           </span>
         </div>
@@ -302,9 +326,9 @@
           '<thead>' +
           '<tr class="group-row">' +
           '<th></th><th></th><th></th>' +
-          '<th class="text-end" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
-          '<th colspan="4" class="text-center" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
-          '<th class="text-end" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
+          '<th class="text-end layer-p2p" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
+          '<th colspan="4" class="text-center layer-api" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
+          '<th class="text-end layer-engine" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
           '<th></th></tr>' +
           '<tr>' +
           '<th style="width: 18rem">Node</th><th>Client</th><th style="width: 5rem">Loc</th>' +
