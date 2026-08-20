@@ -610,7 +610,6 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 
 	fmt.Fprintf(&sql, `	ORDER BY slots.slot DESC `)
 	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
-	argIdx += 2
 	args = append(args, limit)
 	args = append(args, offset)
 
