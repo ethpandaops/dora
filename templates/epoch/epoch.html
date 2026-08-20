@@ -183,8 +183,7 @@
                 <th>Txs / Blobs</th>
                 <th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>
                 {{ if .XatuEnabled }}
-                  <th class="d-none d-md-table-cell text-end" data-bs-toggle="tooltip" data-bs-placement="top" title="Earliest block arrival across Xatu's observing nodes">Arr<span class="d-none d-lg-inline">ival</span> min</th>
-                  <th class="d-none d-md-table-cell text-end" data-bs-toggle="tooltip" data-bs-placement="top" title="90th percentile block arrival across Xatu's observing nodes">p90</th>
+                  <th class="d-none d-md-table-cell text-end" data-bs-toggle="tooltip" data-bs-placement="top" title="Block arrival across Xatu's observing nodes: earliest / 90th percentile">Arrival <span class="d-none d-lg-inline">min / p90</span></th>
                 {{ end }}
                 <th>Graffiti</th>
               </tr>
@@ -225,8 +224,7 @@
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
                     {{ if $epoch.XatuEnabled }}
-                      <td class="d-none d-md-table-cell text-end xatu-arrival-min" data-slot="{{ $slot.Slot }}"><span class="text-muted">&mdash;</span></td>
-                      <td class="d-none d-md-table-cell text-end xatu-arrival-p90" data-slot="{{ $slot.Slot }}"><span class="text-muted">&mdash;</span></td>
+                      <td class="d-none d-md-table-cell text-end text-nowrap xatu-arrival" data-slot="{{ $slot.Slot }}"><span class="text-muted">&mdash;</span></td>
                     {{ end }}
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
                   {{ else }}
@@ -261,13 +259,13 @@
           .then(function(r) { if (!r.ok) throw new Error('status ' + r.status); return r.json(); })
           .then(function(data) {
             var slots = data.slots || {};
-            document.querySelectorAll('.xatu-arrival-min').forEach(function(td) {
+            document.querySelectorAll('.xatu-arrival').forEach(function(td) {
               var entry = slots[td.getAttribute('data-slot')];
-              if (entry) td.innerHTML = '<span style="color:' + timeColor(entry.min_ms) + '">' + fmtStr(entry.min_ms) + '</span>';
-            });
-            document.querySelectorAll('.xatu-arrival-p90').forEach(function(td) {
-              var entry = slots[td.getAttribute('data-slot')];
-              if (entry) td.innerHTML = '<span style="color:' + timeColor(entry.p90_ms) + '">' + fmtStr(entry.p90_ms) + '</span>';
+              if (entry) {
+                td.innerHTML = '<span style="color:' + timeColor(entry.min_ms) + '">' + fmtStr(entry.min_ms) + '</span>' +
+                  ' <span class="text-muted">/</span> ' +
+                  '<span style="color:' + timeColor(entry.p90_ms) + '">' + fmtStr(entry.p90_ms) + '</span>';
+              }
             });
           })
           .catch(function() { /* leave the dashes */ });

@@ -48,6 +48,13 @@
       font-size: 0.85rem;
       padding: 0.1rem 0;
     }
+    .arrival-region-line .region-name {
+      flex: 0 1 8.5rem;
+      min-width: 5rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .arrival-region-line .region-bar-track {
       display: inline-block;
       width: 160px;
@@ -409,13 +416,13 @@
           var share = Math.max(1.5, c.nodes / totalNodes * 100);
           var name = continentNames[c.code] || c.code || 'Unknown';
           return '<div class="d-flex align-items-center arrival-region-line">' +
-            '<span style="width: 8.5rem; flex: none"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
-            '<span class="region-bar-track" style="flex: none"><span class="region-bar" style="width:' + share.toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
+            '<span class="region-name"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
+            '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + share.toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
             '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b> <span class="text-muted small">node' + (c.nodes > 1 ? 's' : '') + '</span></span>' +
             '<span class="num" style="width: 7rem; flex: none; text-align: right"><span class="text-muted small">first</span> ' + fmtMsColored(c.min_ms) + '</span>' +
-            '<span class="num" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">p50</span> ' + fmtMsColored(c.p50_ms) + '</span>' +
-            '<span class="num" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">p90</span> ' + fmtMsColored(c.p90_ms) + '</span>' +
-            '<span class="num" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">max</span> ' + fmtMsColored(c.max_ms) + '</span>' +
+            '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">p50</span> ' + fmtMsColored(c.p50_ms) + '</span>' +
+            '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">p90</span> ' + fmtMsColored(c.p90_ms) + '</span>' +
+            '<span class="num d-none d-md-inline" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">max</span> ' + fmtMsColored(c.max_ms) + '</span>' +
             '</div>';
         }).join('');
 
