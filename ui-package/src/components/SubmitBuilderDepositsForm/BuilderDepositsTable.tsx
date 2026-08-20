@@ -62,6 +62,10 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
   }, [dataSourceKey, blsReady]);
 
   // Compute the predeploy queue fee (shared across all rows).
+  // Unlike EIP-7002/7251, the EIP-8282 contract charges fees per write path: the fee
+  // numerator is the excess (slot 0) plus the requests already added in the current
+  // block (slot 1) beyond TARGET_PER_BLOCK, so the fee rises within a block.
+  const targetPerBlock = 8n; // TARGET_PER_BLOCK of the builder deposit contract
   let queueLength = 0n;
   let isPreFork = false;
   let requiredFee = 0n;
@@ -73,12 +77,16 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
     if (queueLength === 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffn) {
       isPreFork = true;
     } else {
-      requiredFee = getRequiredFee(queueLength);
+      let feeNumerator = queueLength;
+      if (queueData.blockCount > targetPerBlock) {
+        feeNumerator += queueData.blockCount - targetPerBlock;
+      }
+      requiredFee = getRequiredFee(feeNumerator);
       if (addExtraFee && cachedLogData) {
         for (let block in cachedLogData.logCount) avgRequestPerBlock += cachedLogData.logCount[block];
         avgRequestPerBlock /= logLookbackRange;
         let extra = avgRequestPerBlock < 2 ? 3 : avgRequestPerBlock + 1;
-        requestFee = getRequiredFee(queueLength + BigInt(Math.ceil(extra)));
+        requestFee = getRequiredFee(feeNumerator + BigInt(Math.ceil(extra)));
       } else {
         requestFee = requiredFee;
       }
