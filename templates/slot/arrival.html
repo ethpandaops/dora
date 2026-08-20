@@ -108,14 +108,6 @@
     .arrival-table td.grp-start {
       border-left: 1px solid var(--bs-border-color);
     }
-    .arrival-legend .layer-label {
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-size: 0.62rem;
-      font-weight: 600;
-      margin-right: -0.2rem;
-      color: var(--bs-secondary-color);
-    }
     .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
     .arrival-scroll {
       max-height: 34rem;
@@ -159,14 +151,9 @@
         </div>
         <div class="d-flex justify-content-end px-2 pt-2">
           <span class="arrival-legend" id="arrival-legend">
-            <span class="layer-label">libp2p</span>
             <span><span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>block gossip</span>
-            <span class="text-muted">&middot;</span>
-            <span class="layer-label">beacon api</span>
             <span><span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>block event</span>
             <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head event</span>
-            <span class="text-muted" data-col="np">&middot;</span>
-            <span class="layer-label" data-col="np">engine api</span>
             <span data-col="np"><span class="mark-demo" style="width:14px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload start&rarr;done</span>
           </span>
         </div>
