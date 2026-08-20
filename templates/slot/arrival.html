@@ -16,18 +16,10 @@
       flex: none;
       vertical-align: middle;
     }
-    .arrival-legend {
-      display: inline-flex;
-      gap: 0.7rem;
-      font-weight: 400;
-      font-size: 0.7rem;
-      color: var(--bs-secondary-color);
-      align-items: center;
-    }
-    .arrival-legend .mark-demo {
+    .arrival-table .mark-demo {
       display: inline-block;
       vertical-align: middle;
-      margin-right: 3px;
+      margin-right: 4px;
     }
     .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
@@ -90,7 +82,11 @@
       background: #f1b44c; opacity: 0.9; border-radius: 2px; min-width: 2px;
     }
 
-    .arrival-table td, .arrival-table th { vertical-align: middle; font-size: 0.8rem; }
+    .arrival-table td, .arrival-table th {
+      vertical-align: middle;
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
     .arrival-table thead th { vertical-align: bottom; }
     .arrival-table thead .group-row th {
       font-size: 0.66rem;
@@ -149,15 +145,7 @@
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Observing nodes per continent, with the region's earliest observation">Regions:</span></div>
           <div class="col-md-10" id="arrival-regions"></div>
         </div>
-        <div class="d-flex justify-content-end px-2 pt-2">
-          <span class="arrival-legend" id="arrival-legend">
-            <span><span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>block gossip</span>
-            <span><span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>block event</span>
-            <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head event</span>
-            <span data-col="np"><span class="mark-demo" style="width:14px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload start&rarr;done</span>
-          </span>
-        </div>
-        <div id="arrival-body" class="px-2"></div>
+        <div id="arrival-body" class="px-2 pt-1"></div>
       </div>
     </div>
     <div class="text-muted small px-2 pb-2 d-flex align-items-center" style="gap: 6px;">
@@ -315,12 +303,16 @@
           '<th></th></tr>' +
           '<tr>' +
           '<th style="width: 18rem">Node</th><th>Client</th><th style="width: 5rem">Loc</th>' +
-          '<th class="text-end grp-start" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">Block&nbsp;gossip</th>' +
-          '<th class="text-end grp-start" title="Block event on the beacon API — the node has fully verified and imported the block">Block event</th>' +
+          '<th class="text-end grp-start" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">' +
+          '<span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>Block&nbsp;gossip</th>' +
+          '<th class="text-end grp-start" title="Block event on the beacon API — the node has fully verified and imported the block">' +
+          '<span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>Block event</th>' +
           '<th class="text-end" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify</th>' +
-          '<th class="text-end" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">Head event</th>' +
+          '<th class="text-end" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">' +
+          '<span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>Head event</th>' +
           '<th class="text-end" title="Block event to head event: fork-choice lag (negative when head is emitted first)">&Delta;&nbsp;head</th>' +
-          '<th class="text-end grp-start" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">newPayload</th>' +
+          '<th class="text-end grp-start" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload</th>' +
           '<th class="grp-start" style="min-width: 11rem"></th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
@@ -381,7 +373,6 @@
             '</div>';
         }).join('');
 
-        document.getElementById('arrival-legend').classList.toggle('arrival-hide-np', !data.np_observations);
         document.getElementById('arrival-body').innerHTML = renderTable(data);
       }
 
