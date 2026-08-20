@@ -104,8 +104,13 @@ export const useQueueDataCache = (contractAddress: string, chainId?: number) => 
       ]);
 
       if (result.data) {
+        // refetch() resolves even on query errors; a missing slot-1 value must not
+        // silently degrade to 0n, as that would understate the quoted fee
+        if (countResult.data == null) {
+          throw countResult.error ?? new Error('Failed to read request count (slot 0x01)');
+        }
         const queueLength = BigInt(result.data as string);
-        const blockCount = countResult.data ? BigInt(countResult.data as string) : 0n;
+        const blockCount = BigInt(countResult.data as string);
         const queueData: QueueData = {
           queueLength,
           blockCount,
