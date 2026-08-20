@@ -121,6 +121,8 @@
       white-space: nowrap; display: inline-block; vertical-align: middle;
     }
     .arrival-hide-np [data-col="np"] { display: none; }
+    .arrival-table th.sortable { cursor: pointer; user-select: none; }
+    .arrival-table th.sortable:hover { color: var(--bs-emphasis-color); }
   </style>
 
   <div id="arrival-content" class="card-body px-0 py-1">
@@ -160,6 +162,8 @@
     (function() {
       var arrivalSlot = {{ .Slot }};
       var arrivalLoaded = false;
+      var arrivalData = null;
+      var sortState = { key: 'min', dir: 1 };
 
       var continentColors = {
         EU: '#5b8def', NA: '#34c38f', AS: '#f1b44c',
@@ -243,6 +247,39 @@
         return { lo: lo, hi: hi, span: Math.max(1, hi - lo) };
       }
 
+      function sortInd(key) {
+        if (sortState.key !== key) return '';
+        return ' <span class="text-muted">' + (sortState.dir > 0 ? '&uarr;' : '&darr;') + '</span>';
+      }
+      function nodeSortValue(n, key) {
+        switch (key) {
+          case 'name': return (n.name || '').toLowerCase();
+          case 'impl': return (n.implementation || '').toLowerCase() || null;
+          case 'cc': return ((n.country_code || n.continent || '').toLowerCase()) || null;
+          case 'p2p': return n.p2p_ms != null ? n.p2p_ms : null;
+          case 'api': return n.api_ms != null ? n.api_ms : null;
+          case 'dv': return (n.api_ms != null && n.p2p_ms != null) ? n.api_ms - n.p2p_ms : null;
+          case 'head': return n.head_ms != null ? n.head_ms : null;
+          case 'np': return n.np_ms != null ? n.np_ms : null;
+          default: return n.min_ms;
+        }
+      }
+      // Sorts a copy: missing values always last, earliest arrival breaks ties.
+      function sortedNodes(nodes) {
+        var arr = nodes.slice();
+        arr.sort(function(a, b) {
+          var va = nodeSortValue(a, sortState.key);
+          var vb = nodeSortValue(b, sortState.key);
+          if (va == null && vb == null) return a.min_ms - b.min_ms;
+          if (va == null) return 1;
+          if (vb == null) return -1;
+          if (va < vb) return -sortState.dir;
+          if (va > vb) return sortState.dir;
+          return a.min_ms - b.min_ms;
+        });
+        return arr;
+      }
+
       function laneMarks(n, pos) {
         var html = '';
         var times = nodeTimes(n);
@@ -267,7 +304,7 @@
         var ax = axis(s);
         var pos = function(ms) { return Math.min(100, Math.max(0, (ms - ax.lo) / ax.span * 100)); };
 
-        var rows = data.nodes.map(function(n) {
+        var rows = sortedNodes(data.nodes).map(function(n) {
           var cc = (n.country_code || '').toUpperCase();
           var dVerify = (n.api_ms != null && n.p2p_ms != null) ? n.api_ms - n.p2p_ms : null;
 
@@ -306,21 +343,24 @@
           '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
           '<th class="grp-start"></th></tr>' +
           '<tr>' +
-          '<th style="width: 18rem">Node</th><th>Client</th><th style="width: 5rem">Loc</th>' +
-          '<th class="text-end grp-start" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">' +
-          '<span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>Block&nbsp;gossip</th>' +
-          '<th class="text-end grp-start" title="Block event on the beacon API — the node has fully verified and imported the block">' +
-          '<span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>Block event</th>' +
-          '<th class="text-end" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify</th>' +
-          '<th class="text-end" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">' +
-          '<span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>Head event</th>' +
-          '<th class="text-end grp-start" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
-          '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload</th>' +
-          '<th class="text-center grp-start" style="min-width: 11rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">Timeline</th>' +
+          '<th style="width: 18rem" class="sortable" data-sort="name">Node' + sortInd('name') + '</th>' +
+          '<th class="sortable" data-sort="impl">Client' + sortInd('impl') + '</th>' +
+          '<th style="width: 5rem" class="sortable" data-sort="cc">Loc' + sortInd('cc') + '</th>' +
+          '<th class="text-end grp-start sortable" data-sort="p2p" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">' +
+          '<span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>Block&nbsp;gossip' + sortInd('p2p') + '</th>' +
+          '<th class="text-end grp-start sortable" data-sort="api" title="Block event on the beacon API — the node has fully verified and imported the block">' +
+          '<span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>Block event' + sortInd('api') + '</th>' +
+          '<th class="text-end sortable" data-sort="dv" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify' + sortInd('dv') + '</th>' +
+          '<th class="text-end sortable" data-sort="head" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">' +
+          '<span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>Head event' + sortInd('head') + '</th>' +
+          '<th class="text-end grp-start sortable" data-sort="np" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload' + sortInd('np') + '</th>' +
+          '<th class="text-center grp-start sortable" data-sort="min" style="min-width: 11rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">Timeline' + sortInd('min') + '</th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
 
       function render(data) {
+        arrivalData = data;
         document.getElementById('arrival-loading').style.display = 'none';
         document.getElementById('arrival-loaded').style.display = '';
 
@@ -396,6 +436,19 @@
               '<span class="text-danger">Failed to load propagation data: ' + esc(err.message) + '</span>';
           });
       }
+
+      document.getElementById('arrival-body').addEventListener('click', function(ev) {
+        var th = ev.target.closest('th[data-sort]');
+        if (!th || !arrivalData) return;
+        var key = th.getAttribute('data-sort');
+        if (sortState.key === key) {
+          sortState.dir = -sortState.dir;
+        } else {
+          sortState.key = key;
+          sortState.dir = 1;
+        }
+        document.getElementById('arrival-body').innerHTML = renderTable(arrivalData);
+      });
 
       var tab = document.getElementById('arrival-tab');
       if (tab) {
