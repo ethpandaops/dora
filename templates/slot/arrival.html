@@ -102,7 +102,7 @@
     }
     .arrival-table th.grp-start,
     .arrival-table td.grp-start {
-      border-left: 1px solid var(--bs-border-color);
+      padding-left: 1.4rem;
     }
     .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
     .arrival-scroll {
@@ -300,7 +300,7 @@
           '<th class="text-end layer grp-start" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
           '<th colspan="4" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
           '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
-          '<th></th></tr>' +
+          '<th class="layer grp-start" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">timeline</th></tr>' +
           '<tr>' +
           '<th style="width: 18rem">Node</th><th>Client</th><th style="width: 5rem">Loc</th>' +
           '<th class="text-end grp-start" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">' +
