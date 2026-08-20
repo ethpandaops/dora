@@ -59,7 +59,7 @@ func TestValidatorDepositAppliedBeforeForkKeepsBuilderDeposit(t *testing.T) {
 	pubkey := testPubkey(0x11)
 
 	validatorDeposits := newValidatorDepositsInQueue()
-	validatorDeposits.add(queueEntry(0, pubkey, validatorCredentials()), false)
+	validatorDeposits.add(queueEntry(0, pubkey, validatorCredentials()), false, true)
 
 	// order is irrelevant once the validator exists: both a later and an earlier builder deposit
 	// are kept
@@ -75,7 +75,7 @@ func TestQueuedValidatorDepositKeepsOnlyLaterBuilderDeposits(t *testing.T) {
 	pubkey := testPubkey(0x22)
 
 	validatorDeposits := newValidatorDepositsInQueue()
-	validatorDeposits.add(queueEntry(10, pubkey, validatorCredentials()), true)
+	validatorDeposits.add(queueEntry(10, pubkey, validatorCredentials()), true, false)
 
 	require.True(t, validatorDeposits.keeps(builderDeposit(pubkey, true, 11)),
 		"a builder deposit behind the kept validator deposit is kept too")
@@ -89,8 +89,8 @@ func TestValidatorDepositsInQueueTracksTheEarliestKeptPosition(t *testing.T) {
 	pubkey := testPubkey(0x33)
 
 	validatorDeposits := newValidatorDepositsInQueue()
-	validatorDeposits.add(queueEntry(20, pubkey, validatorCredentials()), true)
-	validatorDeposits.add(queueEntry(5, pubkey, validatorCredentials()), true)
+	validatorDeposits.add(queueEntry(20, pubkey, validatorCredentials()), true, false)
+	validatorDeposits.add(queueEntry(5, pubkey, validatorCredentials()), true, false)
 
 	require.True(t, validatorDeposits.keeps(builderDeposit(pubkey, true, 10)),
 		"the earliest kept validator deposit decides, not the last one seen")
@@ -100,8 +100,8 @@ func TestBuilderDepositsAreNotValidatorDeposits(t *testing.T) {
 	pubkey := testPubkey(0x44)
 
 	validatorDeposits := newValidatorDepositsInQueue()
-	validatorDeposits.add(queueEntry(0, pubkey, builderCredentials()), false)
-	validatorDeposits.add(queueEntry(1, pubkey, builderCredentials()), true)
+	validatorDeposits.add(queueEntry(0, pubkey, builderCredentials()), false, true)
+	validatorDeposits.add(queueEntry(1, pubkey, builderCredentials()), true, false)
 
 	require.False(t, validatorDeposits.keeps(builderDeposit(pubkey, true, 5)),
 		"builder deposits are onboarded, so they never keep a later builder deposit as a validator")
@@ -109,8 +109,47 @@ func TestBuilderDepositsAreNotValidatorDeposits(t *testing.T) {
 
 func TestUnrelatedPubkeysAreUnaffected(t *testing.T) {
 	validatorDeposits := newValidatorDepositsInQueue()
-	validatorDeposits.add(queueEntry(0, testPubkey(0x55), validatorCredentials()), false)
-	validatorDeposits.add(queueEntry(1, testPubkey(0x66), validatorCredentials()), true)
+	validatorDeposits.add(queueEntry(0, testPubkey(0x55), validatorCredentials()), false, true)
+	validatorDeposits.add(queueEntry(1, testPubkey(0x66), validatorCredentials()), true, false)
 
 	require.False(t, validatorDeposits.keeps(builderDeposit(testPubkey(0x77), true, 9)))
+}
+
+// TestInvalidValidatorDepositDoesNotBlockOnboarding is the case that made the projection hide a
+// real builder: a pubkey with thousands of invalid validator deposits drained before the fork.
+// None of them registers anything, so onboarding still sees a free pubkey and registers the
+// builder from its one valid builder deposit.
+func TestInvalidValidatorDepositDoesNotBlockOnboarding(t *testing.T) {
+	pubkey := testPubkey(0x88)
+
+	validatorDeposits := newValidatorDepositsInQueue()
+	for pos := uint64(0); pos < 5; pos++ {
+		validatorDeposits.add(queueEntry(pos, pubkey, validatorCredentials()), false, false)
+	}
+
+	require.False(t, validatorDeposits.keeps(builderDeposit(pubkey, true, 10)),
+		"deposits that register nothing must not keep the builder deposit out of the registry")
+}
+
+// TestQueuedValidatorDepositKeepsRegardlessOfSignature guards the asymmetry: onboarding keeps every
+// non-builder deposit it walks past without looking at the signature, and only apply_pending_deposit
+// judges it later. So a still-queued validator deposit keeps the builder deposit even when its own
+// proof-of-possession is invalid.
+func TestQueuedValidatorDepositKeepsRegardlessOfSignature(t *testing.T) {
+	pubkey := testPubkey(0x99)
+
+	validatorDeposits := newValidatorDepositsInQueue()
+	validatorDeposits.add(queueEntry(3, pubkey, validatorCredentials()), true, false)
+
+	require.True(t, validatorDeposits.keeps(builderDeposit(pubkey, true, 4)))
+}
+
+func TestDepositSignatureVerdicts(t *testing.T) {
+	verdict := func(v uint8) *uint8 { return &v }
+
+	require.True(t, depositSignatureIsValid(verdict(1)), "a verified signature registers")
+	require.True(t, depositSignatureIsValid(verdict(2)), "a top-up implies an earlier valid signature")
+	require.False(t, depositSignatureIsValid(verdict(0)), "an invalid proof-of-possession registers nothing")
+	require.False(t, depositSignatureIsValid(nil),
+		"an unindexed deposit transaction leaves the verdict unknown, which must not be read as valid")
 }
