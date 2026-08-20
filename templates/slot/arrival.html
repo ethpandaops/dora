@@ -70,13 +70,22 @@
     }
 
     .lane-track { position: relative; }
-    .lane-track .rail {
-      position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+    .lane-track .lane-bg {
+      position: absolute; left: 0; right: 0; top: 50%; height: 12px; margin-top: -6px;
       background: var(--bs-secondary-bg);
+      opacity: 0.55;
+      border-radius: 6px;
+    }
+    .lane-track .connector {
+      position: absolute; top: 50%; height: 3px; margin-top: -1.5px;
+      background: linear-gradient(90deg, #9775fa, #5b8def);
+      opacity: 0.6;
+      border-radius: 2px;
     }
     .lane-track .range {
       position: absolute; top: 50%; height: 2px; margin-top: -1px;
-      background: var(--bs-secondary-color); opacity: 0.5;
+      background: var(--bs-secondary-color); opacity: 0.4;
+      border-radius: 1px;
     }
     .lane-track .mark { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; }
     .lane-track .mark.api { border-radius: 50%; background: #5b8def; }
@@ -87,9 +96,36 @@
       border-bottom: 8px solid #20c997; margin: -4px 0 0 -5px;
     }
     .lane-track .np-span {
-      position: absolute; top: 50%; height: 7px; margin-top: -3.5px;
-      background: #f1b44c; opacity: 0.9; border-radius: 2px; min-width: 2px;
+      position: absolute; top: 50%; height: 6px; margin-top: -3px;
+      background: #f1b44c; opacity: 0.95; border-radius: 3px; min-width: 2px;
     }
+    .arrival-axis-header {
+      font-weight: 400;
+      font-size: 0.68rem;
+      color: var(--bs-secondary-color);
+      font-variant-numeric: tabular-nums;
+    }
+    .arrival-axis-header .axis-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1px;
+    }
+    .arrival-axis-header .axis-line {
+      height: 1px;
+      background: var(--bs-border-color);
+      position: relative;
+    }
+    .arrival-axis-header .axis-line::before,
+    .arrival-axis-header .axis-line::after {
+      content: "";
+      position: absolute;
+      top: -2px;
+      width: 1px;
+      height: 5px;
+      background: var(--bs-border-color);
+    }
+    .arrival-axis-header .axis-line::before { left: 0; }
+    .arrival-axis-header .axis-line::after { right: 0; }
 
     .arrival-table td, .arrival-table th {
       vertical-align: middle;
@@ -290,7 +326,12 @@
       function laneMarks(n, pos) {
         var html = '';
         var times = nodeTimes(n);
-        if (times.length > 1) {
+        if (n.p2p_ms != null && n.api_ms != null && n.api_ms > n.p2p_ms) {
+          // the verify span: gossip arrival to verified block event
+          var cLo = pos(n.p2p_ms);
+          var cHi = pos(n.api_ms);
+          html += '<div class="connector" style="left:' + cLo + '%;width:' + Math.max(0.6, cHi - cLo) + '%" title="verify: +' + (n.api_ms - n.p2p_ms) + 'ms"></div>';
+        } else if (times.length > 1) {
           var lo = pos(Math.min.apply(null, times));
           var hi = pos(Math.max.apply(null, times));
           html += '<div class="range" style="left:' + lo + '%;width:' + Math.max(0.5, hi - lo) + '%"></div>';
@@ -325,7 +366,7 @@
             ? '<td class="grp-start"><span class="badge rounded-pill text-bg-danger" style="font-size: 11px;" title="Earliest observation ' + fmtStr(n.min_ms) +
               ' after slot start — likely a syncing or stalled node">late &middot; ' + fmtStr(n.min_ms) + '</span></td>'
             : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 11rem">' +
-              '<div class="rail"></div>' + laneMarks(n, pos) + '</div></td>';
+              '<div class="lane-bg"></div>' + laneMarks(n, pos) + '</div></td>';
 
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
             '<td class="text-nowrap">' + groupBadge(n.group) +
@@ -348,7 +389,7 @@
           '<th class="text-end layer grp-start" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
           '<th colspan="3" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
           '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
-          '<th class="grp-start"></th></tr>' +
+          '<th class="text-center layer grp-start">timeline</th></tr>' +
           '<tr>' +
           '<th style="width: 18rem" class="sortable" data-sort="name">Node' + sortInd('name') + '</th>' +
           '<th class="sortable" data-sort="impl">Client' + sortInd('impl') + '</th>' +
@@ -362,7 +403,9 @@
           '<span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>Head event' + sortInd('head') + '</th>' +
           '<th class="text-end grp-start sortable" data-sort="np" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
           '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload' + sortInd('np') + '</th>' +
-          '<th class="text-center grp-start sortable" data-sort="min" style="min-width: 11rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">Timeline' + sortInd('min') + '</th>' +
+          '<th class="grp-start sortable" data-sort="min" style="min-width: 11rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">' +
+          '<div class="arrival-axis-header"><div class="axis-line"></div>' +
+          '<div class="axis-labels"><span>' + fmtStr(ax.lo) + '</span><span>' + (ax.hi < s.max_ms ? '&ge;' : '') + fmtStr(ax.hi) + sortInd('min') + '</span></div></div></th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
 
