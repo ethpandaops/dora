@@ -70,6 +70,12 @@
     }
 
     .lane-track { position: relative; }
+    .lane-track .lead {
+      position: absolute; top: 50%; height: 3px; margin-top: -1.5px;
+      background: var(--bs-border-color);
+      opacity: 0.7;
+      border-radius: 2px;
+    }
     .lane-track .bar {
       position: absolute; top: 50%; height: 10px; margin-top: -5px;
       background: linear-gradient(90deg, #9775fa, #5b8def);
@@ -80,6 +86,12 @@
     .lane-track .bar .bar-np {
       position: absolute; top: 0; bottom: 0;
       background: #f1b44c;
+    }
+    .lane-track .overflow {
+      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+      font-size: 0.7rem;
+      color: var(--bs-secondary-color);
+      line-height: 1;
     }
     .lane-track .tick-head {
       position: absolute; top: 50%; width: 2px; height: 16px; margin: -8px 0 0 -1px;
@@ -285,8 +297,8 @@
       // the chart.
       function axis(s) {
         var lo = Math.max(0, Math.floor((s.min_ms - 50) / 100) * 100);
-        var pad = Math.max(150, (s.p90_ms - s.min_ms) * 0.25);
-        var hi = Math.ceil((Math.min(s.max_ms, s.p90_ms + pad) + 1) / 100) * 100;
+        var pad = Math.max(200, (s.p50_ms - s.min_ms) * 0.6);
+        var hi = Math.ceil((Math.min(s.max_ms, s.p50_ms + pad) + 1) / 100) * 100;
         return { lo: lo, hi: hi, span: Math.max(1, hi - lo) };
       }
 
@@ -327,6 +339,14 @@
         var html = '';
         var hasBar = n.p2p_ms != null && n.api_ms != null && n.api_ms > n.p2p_ms;
 
+        // lead-in from the axis start to the node's first observation: the
+        // block is in flight elsewhere; anchors every row to a common baseline
+        var first = Math.min.apply(null, nodeTimes(n));
+        var firstPos = pos(first);
+        if (firstPos > 0.5) {
+          html += '<div class="lead" style="left:0;width:' + firstPos + '%"></div>';
+        }
+
         if (hasBar) {
           // the pipeline bar: gossip arrival through to the verified block
           // event, with the newPayload window clipped inside it
@@ -360,6 +380,11 @@
         return html;
       }
 
+      function laneOverflows(n, ax) {
+        var last = Math.max.apply(null, nodeTimes(n));
+        return last > ax.hi;
+      }
+
       function renderTable(data) {
         var s = data.stats;
         var ax = axis(s);
@@ -378,7 +403,8 @@
           var last = n.late
             ? '<td class="grp-start"><span class="badge rounded-pill text-bg-danger" style="font-size: 11px;" title="Earliest observation ' + fmtStr(n.min_ms) +
               ' after slot start — likely a syncing or stalled node">late &middot; ' + fmtStr(n.min_ms) + '</span></td>'
-            : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 11rem">' + laneMarks(n, pos) + '</div></td>';
+            : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 16rem">' + laneMarks(n, pos) +
+              (laneOverflows(n, ax) ? '<span class="overflow" title="continues past the axis">&raquo;</span>' : '') + '</div></td>';
 
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
             '<td class="text-nowrap">' + groupBadge(n.group) +
@@ -415,7 +441,7 @@
           '<span class="mark-demo" style="width:2px;height:10px;background:#20c997;border-radius:1px"></span>Head event' + sortInd('head') + '</th>' +
           '<th class="text-end grp-start sortable" data-sort="np" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
           '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload' + sortInd('np') + '</th>' +
-          '<th class="grp-start sortable" data-sort="min" style="min-width: 11rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">' +
+          '<th class="grp-start sortable" data-sort="min" style="min-width: 16rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">' +
           '<div class="arrival-axis-header"><div class="axis-line"></div>' +
           '<div class="axis-labels"><span>' + fmtStr(ax.lo) + '</span><span>' + (ax.hi < s.max_ms ? '&ge;' : '') + fmtStr(ax.hi) + sortInd('min') + '</span></div></div></th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
