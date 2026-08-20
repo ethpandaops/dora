@@ -99,9 +99,13 @@ func TestAwaitStateLoadsHoldsUntilTheReadFinishes(t *testing.T) {
 
 	released := make(chan struct{})
 
+	// the gate only holds once the replay is more than stateLoadLeadSlots ahead of the
+	// slot at which the read started
+	replay.stateLeadFrom = 100
+
 	go func() {
 		defer close(released)
-		require.NoError(t, replay.awaitStateLoads(context.Background()))
+		require.NoError(t, replay.awaitStateLoads(context.Background(), 100+stateLoadLeadSlots))
 	}()
 
 	require.Eventually(t, func() bool { return replay.clock.isHeld() }, 5*time.Second, 5*time.Millisecond,
@@ -142,7 +146,7 @@ func TestAwaitStateLoadsReturnsImmediatelyWhenIdle(t *testing.T) {
 
 	go func() {
 		defer close(done)
-		require.NoError(t, replay.awaitStateLoads(context.Background()))
+		require.NoError(t, replay.awaitStateLoads(context.Background(), 100))
 	}()
 
 	select {
@@ -159,12 +163,13 @@ func TestAwaitStateLoadsGivesUpAfterTheTimeout(t *testing.T) {
 	replay.cfg.StateHoldTimeout = 50 * time.Millisecond
 
 	replay.states.begin() // never finishes
+	replay.stateLeadFrom = 100
 
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
-		require.NoError(t, replay.awaitStateLoads(context.Background()))
+		require.NoError(t, replay.awaitStateLoads(context.Background(), 100+stateLoadLeadSlots))
 	}()
 
 	select {
@@ -179,12 +184,13 @@ func TestAwaitStateLoadsGivesUpAfterTheTimeout(t *testing.T) {
 func TestAwaitStateLoadsStopsOnShutdown(t *testing.T) {
 	replay := testConsoleReplay(100)
 	replay.states.begin() // never finishes
+	replay.stateLeadFrom = 100
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
 
-	go func() { done <- replay.awaitStateLoads(ctx) }()
+	go func() { done <- replay.awaitStateLoads(ctx, 100+stateLoadLeadSlots) }()
 
 	cancel()
 
@@ -214,4 +220,60 @@ func requireOpen(t *testing.T, channel <-chan struct{}, message string) {
 		t.Fatalf("expected a busy (open) channel: %v", message)
 	default:
 	}
+}
+
+// TestStateLoadGateLetsTheReplayRunOnBriefly is the behaviour that keeps blocks flowing
+// during a multi-second state read: the explorer indexes blocks on a different goroutine
+// than it loads states on, so the replay serves a few more slots before it holds.
+func TestStateLoadGateLetsTheReplayRunOnBriefly(t *testing.T) {
+	replay := testConsoleReplay(100)
+	replay.clock.setRate(10)
+
+	replay.states.begin() // never finishes
+
+	for slot := uint64(100); slot < 100+stateLoadLeadSlots; slot++ {
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+			require.NoError(t, replay.awaitStateLoads(context.Background(), slot))
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("the gate must not hold at slot %v, only %v slots into the read", slot, slot-100)
+		}
+
+		require.False(t, replay.clock.isHeld(), "the clock must keep running within the lead window")
+	}
+
+	// beyond the lead window it holds
+	held := make(chan struct{})
+
+	go func() {
+		defer close(held)
+		require.NoError(t, replay.awaitStateLoads(context.Background(), 100+stateLoadLeadSlots))
+	}()
+
+	require.Eventually(t, func() bool { return replay.clock.isHeld() }, 5*time.Second, 5*time.Millisecond,
+		"the gate must hold once the replay would get further ahead than the lead window")
+}
+
+// TestStateLoadGateResetsBetweenReads guards that the lead window is per read, not
+// cumulative: a finished read must not leave the next one starting mid-window.
+func TestStateLoadGateResetsBetweenReads(t *testing.T) {
+	replay := testConsoleReplay(100)
+
+	end := replay.states.begin()
+	require.NoError(t, replay.awaitStateLoads(context.Background(), 100))
+	require.Equal(t, uint64(100), replay.stateLeadFrom)
+
+	end()
+	require.NoError(t, replay.awaitStateLoads(context.Background(), 101))
+	require.Zero(t, replay.stateLeadFrom, "an idle tracker must clear the lead window")
+
+	replay.states.begin()
+	require.NoError(t, replay.awaitStateLoads(context.Background(), 200))
+	require.Equal(t, uint64(200), replay.stateLeadFrom, "the next read starts its own window")
 }

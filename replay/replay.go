@@ -27,6 +27,12 @@ const (
 	// upstreamPollInterval is how often the head of the real chain is re-read, purely
 	// so the UI can show how far the replay still has to go.
 	upstreamPollInterval = 30 * time.Second
+
+	// stateLoadLeadSlots is how many slots the replay may still serve while the explorer
+	// is loading a beacon state. It is the slack that keeps blocks flowing during a
+	// multi-second read, so the explorer's block indexer is not idled by a wait that
+	// only its state loader is in.
+	stateLoadLeadSlots = 4
 )
 
 // Replay steps a past slot range through a fake beacon/execution node pair, driving a
@@ -44,6 +50,10 @@ type Replay struct {
 
 	// wake nudges the driver whenever the drive state changed.
 	wake chan struct{}
+
+	// stateLeadFrom is the slot at which the explorer last started loading a state, or
+	// 0 when it is not loading one. Driver-owned: only advanceSlot touches it.
+	stateLeadFrom uint64
 
 	mutex         sync.RWMutex
 	virtualSlot   uint64
@@ -556,7 +566,7 @@ func (r *Replay) advanceSlot(ctx context.Context, slot uint64) error {
 		return err
 	}
 
-	if err := r.awaitStateLoads(ctx); err != nil {
+	if err := r.awaitStateLoads(ctx, slot); err != nil {
 		return err
 	}
 
@@ -579,16 +589,37 @@ func (r *Replay) advanceSlot(ctx context.Context, slot uint64) error {
 	return nil
 }
 
-// awaitStateLoads holds the replay until the explorer has finished loading the beacon
-// states it asked for. It gives up after StateHoldTimeout so a stuck read cannot wedge
-// the replay for good.
-func (r *Replay) awaitStateLoads(ctx context.Context) error {
+// awaitStateLoads keeps the replay from running away while the explorer is loading a
+// beacon state, without stalling it outright.
+//
+// The explorer loads states on a different goroutine than it indexes blocks on, so a
+// state read of several seconds does not stop it from processing blocks — it only stops
+// it from finishing that epoch's stats. Holding the whole replay for the read therefore
+// idles the block indexer for nothing, and emits no block or head events at all while it
+// lasts. So the replay is allowed to run stateLoadLeadSlots further while a read is in
+// flight, and only holds once it would get further ahead than that.
+//
+// Once it does hold, the clock is frozen, so the wait costs real time and no virtual
+// time. It gives up after StateHoldTimeout so a stuck read cannot wedge the replay.
+func (r *Replay) awaitStateLoads(ctx context.Context, slot uint64) error {
 	idle := r.states.idleChan()
 
 	select {
 	case <-idle:
+		r.stateLeadFrom = 0
+
 		return nil
 	default:
+	}
+
+	// first slot of this busy period: remember where the explorer started falling behind
+	if r.stateLeadFrom == 0 {
+		r.stateLeadFrom = slot
+	}
+
+	if slot-r.stateLeadFrom < stateLoadLeadSlots {
+		// let the replay run on; the explorer can index these blocks meanwhile
+		return nil
 	}
 
 	r.clock.hold()
@@ -596,6 +627,7 @@ func (r *Replay) awaitStateLoads(ctx context.Context) error {
 
 	defer func() {
 		r.clock.release()
+		r.stateLeadFrom = 0
 		r.notifyStatus()
 	}()
 

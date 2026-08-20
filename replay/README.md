@@ -155,10 +155,17 @@ state arrived the explorer would be several slots behind the slot the replay cla
 be at.
 
 So halfway through every slot the replay checks whether a state is still on its way to
-the explorer, and if so **freezes the clock** until it arrives. The wait costs real time
-and no virtual time: the explorer's own clock mirrors the frozen rate, so it stays
-exactly where the replay left it instead of drifting. The console and the control panel
-both report this as `holding for N state load(s)`.
+the explorer. It does **not** stop there: the explorer indexes blocks on a different
+goroutine than it loads states on, so a read of several seconds does not stop it from
+processing blocks, and holding the replay outright would idle its block indexer and emit
+no events at all for the duration. The replay is allowed to serve a few more slots
+(`stateLoadLeadSlots`) while a read is in flight, and only **freezes the clock** once it
+would get further ahead than that.
+
+Once it holds, the wait costs real time and no virtual time: the explorer's own clock
+mirrors the frozen rate, so it stays exactly where the replay left it instead of
+drifting. The console and the control panel both report this as
+`holding for N state load(s)`.
 
 A read that never finishes cannot wedge a run — the gate gives up after
 `--state-hold-timeout` (default 2m) and logs a warning.
