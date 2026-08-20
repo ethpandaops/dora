@@ -31,6 +31,24 @@
     }
     .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+    .arrival-dist {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem 1.1rem;
+    }
+    .arrival-dist .dist-bar {
+      display: flex;
+      width: 220px;
+      height: 10px;
+      border-radius: 5px;
+      overflow: hidden;
+      flex: none;
+      background: var(--bs-secondary-bg);
+    }
+    .arrival-dist .dist-bar > div { height: 100%; }
+    .arrival-dist .entry { font-size: 0.85rem; white-space: nowrap; }
+
     .lane-track { position: relative; }
     .lane-track .rail {
       position: absolute; left: 0; right: 0; top: 50%; height: 1px;
@@ -65,7 +83,12 @@
       padding-bottom: 0;
     }
     .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
-    .arrival-scroll { max-height: 34rem; overflow-y: auto; }
+    .arrival-scroll {
+      max-height: 34rem;
+      overflow-y: auto;
+      border-bottom: 1px solid var(--bs-border-color);
+      margin-bottom: 0.5rem;
+    }
     .arrival-scroll thead th {
       position: sticky; top: 0; z-index: 1; background: var(--bs-body-bg);
     }
@@ -170,6 +193,25 @@
       function groupBadge(g) {
         var st = groupStyles[g] || groupStyles.other;
         return '<span class="arrival-group-badge ' + st.cls + ' me-1">' + st.label + '</span>';
+      }
+
+      // distBar renders a proportional stacked bar plus aligned legend entries:
+      // segments = [{count, color, title, legend}]
+      function distBar(segments) {
+        var total = 0;
+        segments.forEach(function(seg) { total += seg.count; });
+        if (!total) return '';
+
+        var bar = segments.map(function(seg) {
+          var w = (seg.count / total * 100).toFixed(2);
+          return '<div style="width:' + w + '%;background:' + seg.color + '" title="' + seg.title + '"></div>';
+        }).join('');
+
+        var entries = segments.map(function(seg) {
+          return '<span class="entry">' + seg.legend + '</span>';
+        }).join('');
+
+        return '<div class="arrival-dist"><div class="dist-bar">' + bar + '</div>' + entries + '</div>';
       }
 
       // Shared time axis for the per-row tracks: from just below the fastest
@@ -289,18 +331,28 @@
         }
         document.getElementById('arrival-observations').innerHTML = obs;
 
-        var sources = (data.groups || []).map(function(g) {
+        var groupColors = { ethpandaops: '#0d6efd', community: '#198754', corp: '#ffc107', other: '#6c757d' };
+        document.getElementById('arrival-sources').innerHTML = distBar((data.groups || []).map(function(g) {
           var st = groupStyles[g.name] || groupStyles.other;
-          return '<span class="text-nowrap">' + '<span class="arrival-group-badge ' + st.cls + '">' + st.label + '</span> ' +
-            g.nodes + ' <span class="text-muted">&middot; p50 ' + fmtStr(g.p50_ms) + '</span></span>';
-        });
-        document.getElementById('arrival-sources').innerHTML = sources.join('<span class="text-muted px-2">&middot;</span>');
+          return {
+            count: g.nodes,
+            color: groupColors[g.name] || groupColors.other,
+            title: st.label + ': ' + g.nodes + ' nodes, p50 ' + fmtStr(g.p50_ms),
+            legend: '<span class="arrival-group-badge ' + st.cls + '">' + st.label + '</span> <b>' + g.nodes + '</b>' +
+              ' <span class="text-muted small">p50 ' + fmtStr(g.p50_ms) + '</span>'
+          };
+        }));
 
-        var regions = (data.continents || []).map(function(c) {
-          return '<span class="text-nowrap"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' +
-            esc(c.code || '??') + ' ' + c.nodes + ' <span class="text-muted">&middot; ' + fmtStr(c.min_ms) + '</span></span>';
-        });
-        document.getElementById('arrival-regions').innerHTML = regions.join('<span class="text-muted px-2">&middot;</span>');
+        document.getElementById('arrival-regions').innerHTML = distBar((data.continents || []).map(function(c) {
+          return {
+            count: c.nodes,
+            color: contColor(c.code),
+            title: (c.code || '??') + ': ' + c.nodes + ' nodes, first ' + fmtStr(c.min_ms),
+            legend: '<span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' +
+              esc(c.code || '??') + ' <b>' + c.nodes + '</b>' +
+              ' <span class="text-muted small">' + fmtStr(c.min_ms) + '</span>'
+          };
+        }));
 
         document.getElementById('arrival-legend').classList.toggle('arrival-hide-np', !data.np_observations);
         document.getElementById('arrival-body').innerHTML = renderTable(data);
