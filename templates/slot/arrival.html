@@ -83,7 +83,7 @@
     .lane-track .mark.head {
       width: 0; height: 0; background: none;
       border-left: 5px solid transparent; border-right: 5px solid transparent;
-      border-bottom: 8px solid #3457c4; margin: -4px 0 0 -5px;
+      border-bottom: 8px solid #20c997; margin: -4px 0 0 -5px;
     }
     .lane-track .np-span {
       position: absolute; top: 50%; height: 7px; margin-top: -3.5px;
@@ -101,17 +101,12 @@
       border-bottom: none;
       padding-bottom: 0.15rem;
     }
-    .arrival-table thead .group-row th.layer-p2p {
-      color: #9775fa;
-      border-bottom: 2px solid #9775fa;
+    .arrival-table thead .group-row th.layer {
+      border-bottom: 1px solid var(--bs-border-color);
     }
-    .arrival-table thead .group-row th.layer-api {
-      color: #5b8def;
-      border-bottom: 2px solid #5b8def;
-    }
-    .arrival-table thead .group-row th.layer-engine {
-      color: #d29b2c;
-      border-bottom: 2px solid #f1b44c;
+    .arrival-table th.grp-start,
+    .arrival-table td.grp-start {
+      border-left: 1px solid var(--bs-border-color);
     }
     .arrival-legend .layer-label {
       text-transform: uppercase;
@@ -119,6 +114,7 @@
       font-size: 0.62rem;
       font-weight: 600;
       margin-right: -0.2rem;
+      color: var(--bs-secondary-color);
     }
     .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
     .arrival-scroll {
@@ -163,14 +159,14 @@
         </div>
         <div class="d-flex justify-content-end px-2 pt-2">
           <span class="arrival-legend" id="arrival-legend">
-            <span class="layer-label" style="color:#9775fa">libp2p</span>
+            <span class="layer-label">libp2p</span>
             <span><span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>block gossip</span>
             <span class="text-muted">&middot;</span>
-            <span class="layer-label" style="color:#5b8def">beacon api</span>
+            <span class="layer-label">beacon api</span>
             <span><span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>block event</span>
-            <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #3457c4;background:none"></span>head event</span>
+            <span><span class="mark-demo" style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #20c997;background:none"></span>head event</span>
             <span class="text-muted" data-col="np">&middot;</span>
-            <span class="layer-label" data-col="np" style="color:#d29b2c">engine api</span>
+            <span class="layer-label" data-col="np">engine api</span>
             <span data-col="np"><span class="mark-demo" style="width:14px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload start&rarr;done</span>
           </span>
         </div>
@@ -302,9 +298,9 @@
           }
 
           var last = n.late
-            ? '<td><span class="badge rounded-pill text-bg-danger" style="font-size: 11px;" title="Earliest observation ' + fmtStr(n.min_ms) +
+            ? '<td class="grp-start"><span class="badge rounded-pill text-bg-danger" style="font-size: 11px;" title="Earliest observation ' + fmtStr(n.min_ms) +
               ' after slot start — likely a syncing or stalled node">late &middot; ' + fmtStr(n.min_ms) + '</span></td>'
-            : '<td><div class="lane-track" style="height: 18px; min-width: 11rem">' +
+            : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 11rem">' +
               '<div class="rail"></div>' + laneMarks(n, pos) + '</div></td>';
 
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
@@ -312,12 +308,12 @@
             '<span class="arrival-node-name" title="' + esc(n.full_name) + '">' + esc(n.name) + '</span></td>' +
             '<td>' + esc(n.implementation || '') + '</td>' +
             '<td title="' + esc(n.country || '') + '">' + flag(cc) + ' <span class="text-muted small">' + esc(cc || n.continent || '') + '</span></td>' +
-            '<td class="text-end">' + fmtMsColored(n.p2p_ms) + '</td>' +
-            '<td class="text-end">' + fmtMsColored(n.api_ms) + '</td>' +
+            '<td class="text-end grp-start">' + fmtMsColored(n.p2p_ms) + '</td>' +
+            '<td class="text-end grp-start">' + fmtMsColored(n.api_ms) + '</td>' +
             '<td class="text-end num">' + fmtDelta(dVerify) + '</td>' +
             '<td class="text-end">' + fmtMsColored(n.head_ms) + '</td>' +
             '<td class="text-end num">' + fmtDelta(dHead) + '</td>' +
-            '<td class="text-end" data-col="np">' + np + '</td>' +
+            '<td class="text-end grp-start" data-col="np">' + np + '</td>' +
             last + '</tr>';
         }).join('');
 
@@ -326,19 +322,19 @@
           '<thead>' +
           '<tr class="group-row">' +
           '<th></th><th></th><th></th>' +
-          '<th class="text-end layer-p2p" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
-          '<th colspan="4" class="text-center layer-api" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
-          '<th class="text-end layer-engine" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
+          '<th class="text-end layer grp-start" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
+          '<th colspan="4" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
+          '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
           '<th></th></tr>' +
           '<tr>' +
           '<th style="width: 18rem">Node</th><th>Client</th><th style="width: 5rem">Loc</th>' +
-          '<th class="text-end" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">Block&nbsp;gossip</th>' +
-          '<th class="text-end" title="Block event on the beacon API — the node has fully verified and imported the block">Block event</th>' +
+          '<th class="text-end grp-start" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">Block&nbsp;gossip</th>' +
+          '<th class="text-end grp-start" title="Block event on the beacon API — the node has fully verified and imported the block">Block event</th>' +
           '<th class="text-end" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify</th>' +
           '<th class="text-end" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">Head event</th>' +
           '<th class="text-end" title="Block event to head event: fork-choice lag (negative when head is emitted first)">&Delta;&nbsp;head</th>' +
-          '<th class="text-end" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">newPayload</th>' +
-          '<th style="min-width: 11rem"></th>' +
+          '<th class="text-end grp-start" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">newPayload</th>' +
+          '<th class="grp-start" style="min-width: 11rem"></th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
 
