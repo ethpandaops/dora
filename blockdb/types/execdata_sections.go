@@ -48,6 +48,27 @@ type FlatCallFrame struct {
 	Error   string `ssz-max:"10485760"`
 }
 
+// TracePayloadLimit is the number of payload bytes kept per call frame for the
+// Input and Output fields. A payload longer than the limit is captured as its
+// first TracePayloadLimit+1 bytes, so a stored length above the limit is itself
+// the marker that the value was truncated - no separate flag is needed on disk.
+//
+// Contracts can turn a single transaction's gas into hundreds of megabytes of
+// tracer output by looping over calls that pass large memory buffers around
+// (the identity precompile being the cheapest vehicle), so payloads are pruned
+// while the tracer response is being read rather than after it is decoded.
+const TracePayloadLimit = 16384
+
+// TrimPrunedPayload splits a stored call frame payload into the bytes that are
+// safe to display and whether the value was truncated when it was captured.
+func TrimPrunedPayload(data []byte) (visible []byte, pruned bool) {
+	if len(data) > TracePayloadLimit {
+		return data[:TracePayloadLimit], true
+	}
+
+	return data, false
+}
+
 // State change section version.
 const (
 	StateChangesVersion1 = 1
