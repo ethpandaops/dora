@@ -187,6 +187,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 
 	// load slots
 	pageData.Slots = make([]*models.EpochPageDataSlot, 0)
+	epochArrival := getEpochArrivalData(phase0.Epoch(epoch))
 	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(ctx, uint64(lastSlot), uint32(specs.SlotsPerEpoch), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
@@ -291,5 +292,16 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	default:
 		cacheTimeout = 12 * time.Second
 	}
+	if epochArrival != nil {
+		for _, slotData := range pageData.Slots {
+			if entry, ok := epochArrival.Slots[slotData.Slot]; ok {
+				minMs := entry.MinMs
+				p90Ms := entry.P90Ms
+				slotData.ArrivalMinMs = &minMs
+				slotData.ArrivalP90Ms = &p90Ms
+			}
+		}
+	}
+
 	return pageData, cacheTimeout
 }

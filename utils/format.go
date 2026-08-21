@@ -1011,6 +1011,36 @@ func FormatRecentTimeShort(ts time.Time) template.HTML {
 	}
 }
 
+// FormatArrivalMs renders a block arrival time colorized by speed, matching
+// the propagation tab's thresholds.
+func FormatArrivalMs(msPtr *uint32) template.HTML {
+	if msPtr == nil {
+		return template.HTML("<span class=\"text-muted\">&mdash;</span>")
+	}
+
+	ms := *msPtr
+
+	color := "#f46a6a"
+
+	switch {
+	case ms < 1000:
+		color = "#34c38f"
+	case ms < 2000:
+		color = "#7bc96f"
+	case ms < 3000:
+		color = "#f1b44c"
+	case ms < 4000:
+		color = "#f0824c"
+	}
+
+	value := fmt.Sprintf("%dms", ms)
+	if ms >= 1000 {
+		value = fmt.Sprintf("%.2fs", float64(ms)/1000)
+	}
+
+	return template.HTML(fmt.Sprintf("<span style=%q>%s</span>", "color: "+color, value))
+}
+
 func FormatGraffiti(graffiti []byte) template.HTML {
 	return template.HTML(fmt.Sprintf("<span class=\"graffiti-label\" data-graffiti=\"%#x\">%s</span>", graffiti, html.EscapeString(string(graffiti))))
 }

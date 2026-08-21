@@ -164,6 +164,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatBuilderWithIndexAndURL":  FormatBuilderWithIndexAndURL,
 		"formatWithdawalCredentials":    FormatWithdawalCredentials,
 		"formatRecentTimeShort":         FormatRecentTimeShort,
+		"formatArrivalMs":               FormatArrivalMs,
 		"formatGraffiti":                FormatGraffiti,
 		"formatSlotStatusTooltip":       FormatSlotStatusTooltip,
 		"formatRecvDelay":               FormatRecvDelay,

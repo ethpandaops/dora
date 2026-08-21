@@ -2,14 +2,10 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"sort"
-	"strconv"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -22,31 +18,23 @@ import (
 	xch "github.com/ethpandaops/xatu/pkg/proto/clickhouse"
 )
 
-// EpochArrival returns per-slot block arrival summaries for the path epoch
-// from Xatu, as JSON for the arrival columns on the epoch page.
-func EpochArrival(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+// getEpochArrivalData returns the epoch's per-slot arrival summaries through
+// the frontend cache, so the epoch page renders them inline without paying a
+// ClickHouse round trip on every build. Returns nil when xatu is not
+// configured or the data cannot be loaded.
+func getEpochArrivalData(epoch phase0.Epoch) *models.EpochArrivalResponse {
 	if xatu.GlobalClient == nil {
-		http.Error(w, "Xatu is not configured", http.StatusNotFound)
-		return
-	}
-
-	vars := mux.Vars(r)
-	epoch, err := strconv.ParseUint(vars["epoch"], 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid epoch", http.StatusBadRequest)
-		return
+		return nil
 	}
 
 	cacheKey := fmt.Sprintf("epocharrival:%d", epoch)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.EpochArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
-		data, cacheTimeout, buildErr := buildEpochArrivalData(pageCall.CallCtx, phase0.Epoch(epoch))
+		data, cacheTimeout, buildErr := buildEpochArrivalData(pageCall.CallCtx, epoch)
 		if buildErr != nil {
 			logrus.WithError(buildErr).Error("error loading epoch arrival data from xatu")
 			pageCall.CacheTimeout = -1
 
-			return &models.EpochArrivalResponse{Epoch: epoch, Slots: map[uint64]*models.EpochArrivalSlot{}}
+			return nil
 		}
 
 		pageCall.CacheTimeout = cacheTimeout
@@ -55,20 +43,12 @@ func EpochArrival(w http.ResponseWriter, r *http.Request) {
 	})
 	if pageErr != nil {
 		logrus.WithError(pageErr).Error("error building epoch arrival data")
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-		return
+		return nil
 	}
 
-	result, ok := pageRes.(*models.EpochArrivalResponse)
-	if !ok {
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-		return
-	}
+	result, _ := pageRes.(*models.EpochArrivalResponse)
 
-	if err := json.NewEncoder(w).Encode(result); err != nil {
-		logrus.WithError(err).Error("error encoding epoch arrival data")
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-	}
+	return result
 }
 
 // buildEpochArrivalData queries Xatu for all block observations in the epoch
@@ -87,7 +67,8 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 
 	settled := time.Now().After(lastTime.Add(client.SettleDelay()))
 
-	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// this runs on the epoch page build path, so keep the budget tight
+	queryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	// earliest observation per slot per node across the three arrival series

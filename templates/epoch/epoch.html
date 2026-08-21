@@ -224,7 +224,9 @@
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
                     {{ if $epoch.XatuEnabled }}
-                      <td class="d-none d-md-table-cell text-end text-nowrap xatu-arrival" data-slot="{{ $slot.Slot }}"><span class="text-muted">&mdash;</span></td>
+                      <td class="d-none d-md-table-cell text-end text-nowrap">
+                        {{ if $slot.ArrivalMinMs }}{{ formatArrivalMs $slot.ArrivalMinMs }} <span class="text-muted">/</span> {{ formatArrivalMs $slot.ArrivalP90Ms }}{{ else }}<span class="text-muted">&mdash;</span>{{ end }}
+                      </td>
                     {{ end }}
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
                   {{ else }}
@@ -241,37 +243,6 @@
   </div>
 {{ end }}
 {{ define "js" }}
-  {{ if .XatuEnabled }}
-    <script type="text/javascript">
-      (function() {
-        function fmtStr(ms) {
-          if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
-          return ms + 'ms';
-        }
-        function timeColor(ms) {
-          if (ms < 1000) return '#34c38f';
-          if (ms < 2000) return '#7bc96f';
-          if (ms < 3000) return '#f1b44c';
-          if (ms < 4000) return '#f0824c';
-          return '#f46a6a';
-        }
-        fetch('/epoch/{{ .Epoch }}/arrival')
-          .then(function(r) { if (!r.ok) throw new Error('status ' + r.status); return r.json(); })
-          .then(function(data) {
-            var slots = data.slots || {};
-            document.querySelectorAll('.xatu-arrival').forEach(function(td) {
-              var entry = slots[td.getAttribute('data-slot')];
-              if (entry) {
-                td.innerHTML = '<span style="color:' + timeColor(entry.min_ms) + '">' + fmtStr(entry.min_ms) + '</span>' +
-                  ' <span class="text-muted">/</span> ' +
-                  '<span style="color:' + timeColor(entry.p90_ms) + '">' + fmtStr(entry.p90_ms) + '</span>';
-              }
-            });
-          })
-          .catch(function() { /* leave the dashes */ });
-      })();
-    </script>
-  {{ end }}
 {{ end }}
 {{ define "css" }}
 <style>

@@ -73,4 +73,6 @@ type EpochPageDataSlot struct {
 	WithEthBlock          bool      `json:"with_eth_block"`
 	Graffiti              []byte    `json:"graffiti"`
 	BlockRoot             []byte    `json:"block_root" ssz-size:"32"`
+	ArrivalMinMs          *uint32   `json:"arrival_min_ms,omitempty"`
+	ArrivalP90Ms          *uint32   `json:"arrival_p90_ms,omitempty"`
 }
