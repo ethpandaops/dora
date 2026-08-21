@@ -39,6 +39,10 @@ func processOperations(s *stateAccessor, block *all.SignedBeaconBlock, parentSlo
 
 	processAttestations(s, block, parentSlot)
 
+	for _, deposit := range body.Deposits {
+		processDeposit(s, deposit)
+	}
+
 	for _, exit := range body.VoluntaryExits {
 		processVoluntaryExit(s, exit)
 	}
@@ -87,6 +91,66 @@ func applyExecutionRequests(s *stateAccessor, requests *all.ExecutionRequests) {
 			processBuilderExitRequest(s, builderExit)
 		}
 	}
+}
+
+// processDeposit implements process_deposit: the Eth1 bridge deposit path, which
+// stays open until the deposit contract's requests take over
+// (state.eth1_deposit_index reaching state.deposit_requests_start_index).
+//
+// The Merkle branch is not verified — a block carrying an invalid proof is
+// rejected by the beacon node before it gets here — but the deposit index
+// bookkeeping and the signature gate below are state-changing and are not.
+//
+// https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#deposits
+func processDeposit(s *stateAccessor, deposit *phase0.Deposit) {
+	if deposit == nil || deposit.Data == nil {
+		return
+	}
+
+	// Deposits must be processed in order
+	s.ETH1DepositIndex++
+
+	applyDeposit(s, deposit.Data.PublicKey, deposit.Data.WithdrawalCredentials, deposit.Data.Amount, deposit.Data.Signature)
+}
+
+// applyDeposit implements apply_deposit. A deposit for an unknown pubkey only
+// creates a validator when it carries a valid proof-of-possession — the deposit
+// contract does not check it — and is dropped entirely otherwise. The amount is
+// never credited directly: it goes through the pending_deposits queue, marked with
+// GENESIS_SLOT to distinguish it from a deposit request.
+//
+// Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-apply_deposit
+func applyDeposit(s *stateAccessor, pubkey phase0.BLSPubKey, withdrawalCredentials []byte, amount phase0.Gwei, signature phase0.BLSSignature) {
+	if findValidatorByPubkeyInRegistry(s, pubkey) == nil {
+		if !depositsig.Valid(pubkey, withdrawalCredentials, amount, signature, depositsig.Domain(s.specs.GenesisForkVersion)) {
+			return
+		}
+
+		addValidatorToRegistry(s, pubkey, withdrawalCredentials, 0)
+	}
+
+	s.PendingDeposits = append(s.PendingDeposits, &electra.PendingDeposit{
+		Pubkey:                pubkey,
+		WithdrawalCredentials: append([]byte(nil), withdrawalCredentials...),
+		Amount:                amount,
+		Signature:             signature,
+		Slot:                  0, // GENESIS_SLOT, distinguishes from a deposit request
+	})
+}
+
+// findValidatorByPubkeyInRegistry scans the whole registry for a pubkey. Unlike
+// findValidatorByPubkey it does not use the lookup cache, which only holds the
+// validators that can still be active or on a sync committee — a deposit may well
+// be a top-up for a long-exited validator.
+func findValidatorByPubkeyInRegistry(s *stateAccessor, pubkey phase0.BLSPubKey) *phase0.ValidatorIndex {
+	for i, validator := range s.Validators {
+		if validator.PublicKey == pubkey {
+			index := phase0.ValidatorIndex(i)
+			return &index
+		}
+	}
+
+	return nil
 }
 
 // processDepositRequest implements process_deposit_request.
