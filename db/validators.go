@@ -390,3 +390,21 @@ func StreamValidatorsByIndexes(ctx context.Context, indexes []uint64, cb func(va
 
 	return nil
 }
+
+// DeleteValidators removes the given validator indexes. Real validators are never removed
+// from the registry, so this only exists to clean up rows that should not have been written
+// in the first place (see the projected-validator cleanup in the validator cache).
+func DeleteValidators(ctx context.Context, tx *sqlx.Tx, indexes []uint64) error {
+	return insertChunks(indexes, 1, func(chunk []uint64) error {
+		var sql strings.Builder
+		args := make([]any, 0, len(chunk))
+
+		fmt.Fprint(&sql, "DELETE FROM validators WHERE validator_index IN (")
+		appendUint64ListPlaceholders(&sql, &args, chunk, ", ")
+		fmt.Fprint(&sql, ")")
+
+		_, err := tx.ExecContext(ctx, sql.String(), args...)
+
+		return err
+	})
+}

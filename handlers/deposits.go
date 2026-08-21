@@ -6,7 +6,6 @@ import (
 	"math"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -16,8 +15,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -177,60 +174,27 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				IsBuilder:             isBuilder,
 			}
 
-			validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey))
-			if !found {
-				depositTxData.ValidatorStatus = "Deposited"
-				depositTxData.ValidatorExists = false
-			} else if uint64(validatorIndex)&services.BuilderIndexFlag != 0 {
-				builderIndex := uint64(validatorIndex) &^ services.BuilderIndexFlag
-				depositTxData.IsBuilder = true
+			owner := resolveDepositPubkeyOwner(phase0.BLSPubKey(depositTx.PublicKey))
+			switch {
+			case owner.Validator != nil:
 				depositTxData.ValidatorExists = true
-				depositTxData.ValidatorIndex = builderIndex
-				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
-
-				builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
-				if builder == nil {
-					depositTxData.ValidatorStatus = "Deposited"
-				} else {
-					currentEpoch := chainState.CurrentEpoch()
-					if builder.WithdrawableEpoch <= currentEpoch {
-						depositTxData.ValidatorStatus = "Exited"
-					} else {
-						depositTxData.ValidatorStatus = "Active"
-					}
-				}
-			} else {
-				depositTxData.ValidatorExists = true
-				depositTxData.ValidatorIndex = uint64(validatorIndex)
-				depositTxData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIndex)
+				depositTxData.ValidatorIndex = uint64(owner.ValidatorIndex)
+				depositTxData.ProjectedIndex = owner.IsProjected
 				depositTxData.IsBuilder = false
-				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAtTime(uint64(validatorIndex), int64(depositTx.BlockTime))
-
-				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
-				if validator == nil {
-					depositTxData.ValidatorStatus = "Deposited"
-				} else if strings.HasPrefix(validator.Status.String(), "pending") {
-					depositTxData.ValidatorStatus = "Pending"
-				} else if validator.Status == v1.ValidatorStateActiveOngoing {
-					depositTxData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateActiveExiting {
-					depositTxData.ValidatorStatus = "Exiting"
-					depositTxData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateActiveSlashed {
-					depositTxData.ValidatorStatus = "Slashed"
-					depositTxData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-					depositTxData.ValidatorStatus = "Exited"
-				} else if validator.Status == v1.ValidatorStateExitedSlashed {
-					depositTxData.ValidatorStatus = "Slashed"
-				} else {
-					depositTxData.ValidatorStatus = validator.Status.String()
-				}
+				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAtTime(uint64(owner.ValidatorIndex), int64(depositTx.BlockTime))
+				depositTxData.ValidatorStatus, depositTxData.ShowUpcheck = depositValidatorStatus(owner.Validator)
 
 				if depositTxData.ShowUpcheck {
-					depositTxData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+					depositTxData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(owner.Validator.Index, 3))
 					depositTxData.UpcheckMaximum = uint8(3)
 				}
+			case owner.Builder != nil:
+				depositTxData.IsBuilder = true
+				depositTxData.ValidatorExists = true
+				depositTxData.ValidatorIndex = uint64(owner.BuilderIndex)
+				depositTxData.ValidatorStatus = depositBuilderStatus(owner.Builder, chainState.CurrentEpoch())
+			default:
+				depositTxData.ValidatorStatus = "Deposited"
 			}
 
 			pageData.InitiatedDeposits = append(pageData.InitiatedDeposits, depositTxData)
@@ -293,60 +257,27 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				}
 			}
 
-			validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey()))
-			if !found {
-				depositData.ValidatorStatus = "Deposited"
-			} else if uint64(validatorIndex)&services.BuilderIndexFlag != 0 {
-				builderIndex := uint64(validatorIndex) &^ services.BuilderIndexFlag
-				depositData.IsBuilder = true
+			owner := resolveDepositPubkeyOwner(phase0.BLSPubKey(deposit.PublicKey()))
+			switch {
+			case owner.Validator != nil:
 				depositData.ValidatorExists = true
-				depositData.ValidatorIndex = builderIndex
-				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
-
-				builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
-				if builder == nil {
-					depositData.ValidatorStatus = "Deposited"
-				} else {
-					currentEpoch := chainState.CurrentEpoch()
-					if builder.WithdrawableEpoch <= currentEpoch {
-						depositData.ValidatorStatus = "Exited"
-					} else {
-						depositData.ValidatorStatus = "Active"
-					}
-				}
-			} else {
-				depositData.ValidatorExists = true
-				depositData.ValidatorIndex = uint64(validatorIndex)
-				depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIndex)
+				depositData.ValidatorIndex = uint64(owner.ValidatorIndex)
+				depositData.ProjectedIndex = owner.IsProjected
 				depositData.IsBuilder = false
-				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(uint64(validatorIndex), phase0.Slot(deposit.Request.SlotNumber))
-
-				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
-				if validator == nil {
-					depositData.ValidatorStatus = "Deposited"
-				} else if strings.HasPrefix(validator.Status.String(), "pending") {
-					depositData.ValidatorStatus = "Pending"
-				} else if validator.Status == v1.ValidatorStateActiveOngoing {
-					depositData.ValidatorStatus = "Active"
-					depositData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateActiveExiting {
-					depositData.ValidatorStatus = "Exiting"
-					depositData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateActiveSlashed {
-					depositData.ValidatorStatus = "Slashed"
-					depositData.ShowUpcheck = true
-				} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-					depositData.ValidatorStatus = "Exited"
-				} else if validator.Status == v1.ValidatorStateExitedSlashed {
-					depositData.ValidatorStatus = "Slashed"
-				} else {
-					depositData.ValidatorStatus = validator.Status.String()
-				}
+				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(uint64(owner.ValidatorIndex), phase0.Slot(deposit.Request.SlotNumber))
+				depositData.ValidatorStatus, depositData.ShowUpcheck = depositValidatorStatus(owner.Validator)
 
 				if depositData.ShowUpcheck {
-					depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+					depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(owner.Validator.Index, 3))
 					depositData.UpcheckMaximum = uint8(3)
 				}
+			case owner.Builder != nil:
+				depositData.IsBuilder = true
+				depositData.ValidatorExists = true
+				depositData.ValidatorIndex = uint64(owner.BuilderIndex)
+				depositData.ValidatorStatus = depositBuilderStatus(owner.Builder, chainState.CurrentEpoch())
+			default:
+				depositData.ValidatorStatus = "Deposited"
 			}
 
 			pageData.IncludedDeposits = append(pageData.IncludedDeposits, depositData)
@@ -397,59 +328,27 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 					Postponed:             queueEntry.Postponed,
 				}
 
-				if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositData.PublicKey)); !found {
-					depositData.ValidatorStatus = "Deposited"
-				} else if uint64(validatorIdx)&services.BuilderIndexFlag != 0 {
-					builderIndex := uint64(validatorIdx) &^ services.BuilderIndexFlag
-					depositData.IsBuilder = true
+				owner := resolveDepositPubkeyOwner(phase0.BLSPubKey(depositData.PublicKey))
+				switch {
+				case owner.Validator != nil:
 					depositData.ValidatorExists = true
-					depositData.ValidatorIndex = builderIndex
-					depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
-
-					builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
-					if builder == nil {
-						depositData.ValidatorStatus = "Deposited"
-					} else {
-						currentEpoch := chainState.CurrentEpoch()
-						if builder.WithdrawableEpoch <= currentEpoch {
-							depositData.ValidatorStatus = "Exited"
-						} else {
-							depositData.ValidatorStatus = "Active"
-						}
-					}
-				} else {
-					depositData.ValidatorExists = true
-					depositData.ValidatorIndex = uint64(validatorIdx)
-					depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIdx)
+					depositData.ValidatorIndex = uint64(owner.ValidatorIndex)
+					depositData.ProjectedIndex = owner.IsProjected
 					depositData.IsBuilder = false
-					depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
-
-					validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
-					if validator == nil {
-						depositData.ValidatorStatus = "Deposited"
-					} else if strings.HasPrefix(validator.Status.String(), "pending") {
-						depositData.ValidatorStatus = "Pending"
-					} else if validator.Status == v1.ValidatorStateActiveOngoing {
-						depositData.ValidatorStatus = "Active"
-						depositData.ShowUpcheck = true
-					} else if validator.Status == v1.ValidatorStateActiveExiting {
-						depositData.ValidatorStatus = "Exiting"
-						depositData.ShowUpcheck = true
-					} else if validator.Status == v1.ValidatorStateActiveSlashed {
-						depositData.ValidatorStatus = "Slashed"
-						depositData.ShowUpcheck = true
-					} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-						depositData.ValidatorStatus = "Exited"
-					} else if validator.Status == v1.ValidatorStateExitedSlashed {
-						depositData.ValidatorStatus = "Slashed"
-					} else {
-						depositData.ValidatorStatus = validator.Status.String()
-					}
+					depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(owner.ValidatorIndex))
+					depositData.ValidatorStatus, depositData.ShowUpcheck = depositValidatorStatus(owner.Validator)
 
 					if depositData.ShowUpcheck {
-						depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+						depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(owner.Validator.Index, 3))
 						depositData.UpcheckMaximum = uint8(3)
 					}
+				case owner.Builder != nil:
+					depositData.IsBuilder = true
+					depositData.ValidatorExists = true
+					depositData.ValidatorIndex = uint64(owner.BuilderIndex)
+					depositData.ValidatorStatus = depositBuilderStatus(owner.Builder, chainState.CurrentEpoch())
+				default:
+					depositData.ValidatorStatus = "Deposited"
 				}
 
 				if queueEntry.DepositIndex != nil {

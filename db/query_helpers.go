@@ -67,3 +67,37 @@ func appendWithOrphanedFilter(sql *strings.Builder, args *[]any, filterOp *strin
 		*filterOp = "AND"
 	}
 }
+
+// maxBindParams bounds the placeholder count of a single INSERT statement. PostgreSQL's
+// extended protocol allows 65535 bind parameters per statement and SQLite's default
+// SQLITE_MAX_VARIABLE_NUMBER is 32766, so the lower of the two is applied to both engines.
+const maxBindParams = 32766
+
+// insertChunks splits items into slices small enough that fieldCount placeholders per item
+// stay below maxBindParams and runs insert for each of them. Bulk inserts whose size is
+// driven by chain data rather than by a per-block limit (e.g. the one-time Gloas builder
+// onboarding, which produces one row per queued builder deposit) exceed the limit in a
+// single statement and would fail the whole transaction.
+func insertChunks[T any](items []T, fieldCount int, insert func(chunk []T) error) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	chunkSize := maxBindParams / fieldCount
+	if chunkSize < 1 {
+		chunkSize = 1
+	}
+
+	for start := 0; start < len(items); start += chunkSize {
+		end := start + chunkSize
+		if end > len(items) {
+			end = len(items)
+		}
+
+		if err := insert(items[start:end]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

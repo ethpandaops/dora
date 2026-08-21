@@ -16,9 +16,20 @@ func regularDeposit(slot phase0.Slot, pubkeyByte byte) *electra.PendingDeposit {
 	return d
 }
 
-// syntheticDeposit builds a synthesized (0x01->0x02 compounding switch) pending deposit
-// carrying the G2 point-at-infinity signature.
-func syntheticDeposit(slot phase0.Slot, pubkeyByte byte) *electra.PendingDeposit {
+// syntheticDeposit builds a synthesized (0x01->0x02 compounding switch) pending deposit:
+// the G2 point-at-infinity signature at GENESIS_SLOT, which is how queue_excess_active_balance
+// marks a deposit that has no EL counterpart.
+func syntheticDeposit(pubkeyByte byte) *electra.PendingDeposit {
+	d := &electra.PendingDeposit{Slot: 0}
+	d.Pubkey[0] = pubkeyByte
+	d.Signature[0] = 0xc0
+	return d
+}
+
+// infinitySigDeposit builds a real EL deposit that happens to carry the G2 point-at-infinity
+// signature. The deposit contract accepts any 96-byte signature, so these exist on chain and
+// must NOT be mistaken for synthesized deposits.
+func infinitySigDeposit(slot phase0.Slot, pubkeyByte byte) *electra.PendingDeposit {
 	d := &electra.PendingDeposit{Slot: slot}
 	d.Pubkey[0] = pubkeyByte
 	d.Signature[0] = 0xc0
@@ -52,7 +63,7 @@ func buildQueue(roles []queueRole) ([]*electra.PendingDeposit, []queueRole) {
 		pubkey := byte(i % 251)
 		switch role {
 		case roleSynthetic:
-			queue[i] = syntheticDeposit(nextRegularSlot, pubkey)
+			queue[i] = syntheticDeposit(pubkey)
 		case rolePostponed:
 			// far below any regular slot so it always dips below the running max
 			queue[i] = regularDeposit(10+phase0.Slot(i), pubkey)
@@ -98,6 +109,7 @@ func TestResolveQueueDepositIndexes(t *testing.T) {
 		anchor        *dbtypes.Deposit
 		wantIndexes   []*uint64
 		wantPostponed []bool
+		wantBySlot    []bool
 	}{
 		{
 			name:          "contiguous regular deposits",
@@ -105,6 +117,7 @@ func TestResolveQueueDepositIndexes(t *testing.T) {
 			anchor:        anchorAt(5, 12),
 			wantIndexes:   []*uint64{u64p(3), u64p(4), u64p(5)},
 			wantPostponed: []bool{false, false, false},
+			wantBySlot:    []bool{false, false, false},
 		},
 		{
 			name:          "postponed entry dips below running max slot",
@@ -112,13 +125,15 @@ func TestResolveQueueDepositIndexes(t *testing.T) {
 			anchor:        anchorAt(5, 11),
 			wantIndexes:   []*uint64{u64p(4), u64p(5), nil},
 			wantPostponed: []bool{false, false, true},
+			wantBySlot:    []bool{false, false, true},
 		},
 		{
 			name:          "synthetic compounding-switch deposit is skipped, not postponed",
-			queue:         []*electra.PendingDeposit{regularDeposit(10, 1), syntheticDeposit(10, 2), regularDeposit(11, 3)},
+			queue:         []*electra.PendingDeposit{regularDeposit(10, 1), syntheticDeposit(2), regularDeposit(11, 3)},
 			anchor:        anchorAt(5, 11),
 			wantIndexes:   []*uint64{u64p(4), nil, u64p(5)},
 			wantPostponed: []bool{false, false, false},
+			wantBySlot:    []bool{false, false, false},
 		},
 		{
 			name:          "0xB0 (builder-cred) regular deposit is indexed contiguously like any validator deposit",
@@ -126,26 +141,43 @@ func TestResolveQueueDepositIndexes(t *testing.T) {
 			anchor:        anchorAt(8, 11),
 			wantIndexes:   []*uint64{u64p(7), u64p(8)},
 			wantPostponed: []bool{false, false},
+			wantBySlot:    []bool{false, false},
 		},
 		{
-			name:          "anchor slot mismatch falls back to slot resolution for all entries",
+			name:          "anchor slot mismatch falls back to slot resolution without claiming the entry is postponed",
 			queue:         []*electra.PendingDeposit{regularDeposit(10, 1)},
 			anchor:        anchorAt(5, 20),
 			wantIndexes:   []*uint64{nil},
-			wantPostponed: []bool{true},
+			wantPostponed: []bool{false},
+			wantBySlot:    []bool{true},
 		},
 		{
 			name:          "nil anchor leaves every entry to slot resolution",
 			queue:         []*electra.PendingDeposit{regularDeposit(10, 1), regularDeposit(11, 2)},
 			anchor:        nil,
 			wantIndexes:   []*uint64{nil, nil},
-			wantPostponed: []bool{true, true},
+			wantPostponed: []bool{false, false},
+			wantBySlot:    []bool{true, true},
+		},
+		{
+			name:          "real deposit with a point-at-infinity signature is indexed like any other",
+			queue:         []*electra.PendingDeposit{regularDeposit(10, 1), infinitySigDeposit(11, 2), regularDeposit(12, 3)},
+			anchor:        anchorAt(9, 12),
+			wantIndexes:   []*uint64{u64p(7), u64p(8), u64p(9)},
+			wantPostponed: []bool{false, false, false},
+			wantBySlot:    []bool{false, false, false},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			indexes, postponed := resolveQueueDepositIndexes(tt.queue, tt.anchor)
+			indexes, postponed, bySlot := resolveQueueDepositIndexes(tt.queue, tt.anchor, true)
+
+			for i := range tt.wantBySlot {
+				if bySlot[i] != tt.wantBySlot[i] {
+					t.Errorf("resolveBySlot[%d] = %v, want %v", i, bySlot[i], tt.wantBySlot[i])
+				}
+			}
 
 			if len(postponed) != len(tt.wantPostponed) {
 				t.Fatalf("postponed length = %d, want %d", len(postponed), len(tt.wantPostponed))
@@ -263,7 +295,7 @@ func TestResolveQueueDepositIndexesRealistic(t *testing.T) {
 			anchor := anchorAt(tc.anchorIndex, uint64(1000+regCount-1))
 
 			wantIndexes, wantPostponed := expectedFor(roles, tc.anchorIndex)
-			gotIndexes, gotPostponed := resolveQueueDepositIndexes(queue, anchor)
+			gotIndexes, gotPostponed, _ := resolveQueueDepositIndexes(queue, anchor, true)
 
 			if len(gotIndexes) != len(queue) || len(gotPostponed) != len(queue) {
 				t.Fatalf("result lengths = (%d,%d), want %d", len(gotIndexes), len(gotPostponed), len(queue))
@@ -297,13 +329,135 @@ func TestResolveQueueDepositIndexesStuckDepositsFallback(t *testing.T) {
 	}
 	anchor := anchorAt(9_000_000, 5_000_000) // recent, unrelated deposit
 
-	indexes, postponed := resolveQueueDepositIndexes(queue, anchor)
+	indexes, postponed, bySlot := resolveQueueDepositIndexes(queue, anchor, true)
 	for i := range queue {
-		if !postponed[i] {
-			t.Errorf("postponed[%d] = false, want true (slot fallback)", i)
+		if !bySlot[i] {
+			t.Errorf("resolveBySlot[%d] = false, want true (slot fallback)", i)
+		}
+		if postponed[i] {
+			t.Errorf("postponed[%d] = true, want false (the entries are stuck, not reordered)", i)
 		}
 		if indexes[i] != nil {
 			t.Errorf("index[%d] = %d, want nil (slot fallback)", i, *indexes[i])
 		}
+	}
+}
+
+// TestResolveQueueDepositIndexesPostGloas checks that the positional shortcut is fully
+// disabled once Gloas is active: onboard_builders_from_pending_deposits and the builder
+// fast path in process_deposit_request both leave holes in the deposit index sequence, so
+// every non-synthetic entry must be resolved by slot even though the queue looks in-order.
+func TestResolveQueueDepositIndexesPostGloas(t *testing.T) {
+	queue := []*electra.PendingDeposit{
+		regularDeposit(1000, 1),
+		syntheticDeposit(2),
+		regularDeposit(1001, 3),
+	}
+	anchor := anchorAt(500, 1001) // would verify fine under the positional path
+
+	indexes, postponed, bySlot := resolveQueueDepositIndexes(queue, anchor, false)
+	wantBySlot := []bool{true, false, true}
+	for i := range queue {
+		if bySlot[i] != wantBySlot[i] {
+			t.Errorf("resolveBySlot[%d] = %v, want %v", i, bySlot[i], wantBySlot[i])
+		}
+		if postponed[i] {
+			t.Errorf("postponed[%d] = true, want false", i)
+		}
+		if indexes[i] != nil {
+			t.Errorf("index[%d] = %d, want nil (no positional assignment post-Gloas)", i, *indexes[i])
+		}
+	}
+}
+
+// depositRow builds a db deposit row as GetDepositRequestsBySlots returns them.
+func depositRow(index, slot uint64, pubkeyByte byte, amount uint64) *dbtypes.Deposit {
+	idx := index
+	pubkey := make([]byte, 48)
+	pubkey[0] = pubkeyByte
+
+	return &dbtypes.Deposit{
+		Index:                 &idx,
+		SlotNumber:            slot,
+		PublicKey:             pubkey,
+		WithdrawalCredentials: []byte{0x01},
+		Amount:                amount,
+	}
+}
+
+// queueEntryAt builds a pending deposit matching depositRow's identity fields.
+func queueEntryAt(slot phase0.Slot, pubkeyByte byte, amount phase0.Gwei) *electra.PendingDeposit {
+	d := &electra.PendingDeposit{Slot: slot, Amount: amount}
+	d.Pubkey[0] = pubkeyByte
+	d.WithdrawalCredentials = []byte{0x01}
+
+	return d
+}
+
+// TestAssignDepositIndexesBySlotUsesSlotTail covers the queue's head slot, which the chain has
+// normally already drained part of. Its remaining entries are the LAST deposits of that slot,
+// so they must get the highest indexes - handing out the slot's first indexes instead links
+// each row to a deposit transaction that was already applied.
+func TestAssignDepositIndexesBySlotUsesSlotTail(t *testing.T) {
+	// slot 100 included six identical deposits; only the last three are still queued
+	rows := []*dbtypes.Deposit{
+		depositRow(10, 100, 1, 1_000_000_000),
+		depositRow(11, 100, 1, 1_000_000_000),
+		depositRow(12, 100, 1, 1_000_000_000),
+		depositRow(13, 100, 1, 1_000_000_000),
+		depositRow(14, 100, 1, 1_000_000_000),
+		depositRow(15, 100, 1, 1_000_000_000),
+		// a later, fully queued slot
+		depositRow(20, 101, 2, 1_000_000_000),
+		depositRow(21, 101, 2, 1_000_000_000),
+	}
+
+	queue := []*electra.PendingDeposit{
+		queueEntryAt(100, 1, 1_000_000_000),
+		queueEntryAt(100, 1, 1_000_000_000),
+		queueEntryAt(100, 1, 1_000_000_000),
+		queueEntryAt(101, 2, 1_000_000_000),
+		queueEntryAt(101, 2, 1_000_000_000),
+	}
+	resolveBySlot := []bool{true, true, true, true, true}
+
+	want := []uint64{13, 14, 15, 20, 21}
+	got := assignDepositIndexesBySlot(queue, resolveBySlot, rows)
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d indexes, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] == nil {
+			t.Errorf("index[%d] = nil, want %d", i, want[i])
+			continue
+		}
+		if *got[i] != want[i] {
+			t.Errorf("index[%d] = %d, want %d", i, *got[i], want[i])
+		}
+	}
+}
+
+// TestAssignDepositIndexesBySlotSkipsUnflagged leaves entries that were already resolved
+// positionally untouched, and reports no index for a queue entry with no matching deposit.
+func TestAssignDepositIndexesBySlotSkipsUnflagged(t *testing.T) {
+	rows := []*dbtypes.Deposit{depositRow(7, 100, 1, 1_000_000_000)}
+
+	queue := []*electra.PendingDeposit{
+		queueEntryAt(100, 1, 1_000_000_000),
+		queueEntryAt(100, 1, 1_000_000_000),
+		queueEntryAt(100, 9, 1_000_000_000), // no matching deposit row
+	}
+	resolveBySlot := []bool{false, true, true}
+
+	got := assignDepositIndexesBySlot(queue, resolveBySlot, rows)
+	if got[0] != nil {
+		t.Errorf("index[0] = %d, want nil (not flagged for slot resolution)", *got[0])
+	}
+	if got[1] == nil || *got[1] != 7 {
+		t.Errorf("index[1] = %v, want 7", got[1])
+	}
+	if got[2] != nil {
+		t.Errorf("index[2] = %d, want nil (no matching deposit)", *got[2])
 	}
 }

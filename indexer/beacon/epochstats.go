@@ -30,12 +30,17 @@ type EpochStats struct {
 
 	requestedMutex  sync.Mutex
 	requestedBy     []*Client
-	ready           bool
 	readyChanMutex  sync.Mutex
 	readyChan       chan bool
 	processingMutex sync.Mutex
+	ready           bool
 	processing      bool
 	isInDb          bool
+
+	// gloasOnboardingStored records that the builder deposits onboarded by the
+	// upgrade_to_gloas fork transition have been copied into the builder deposit tables for
+	// this dependent root, so repeated processState runs don't rewrite thousands of rows.
+	gloasOnboardingStored bool
 
 	precalcBaseRoot phase0.Root
 	precalcValues   *EpochStatsValues
@@ -584,19 +589,31 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	}
 
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		if err := db.InsertUnfinalizedDuty(indexer.ctx, tx, dbDuty); err != nil {
-			return err
-		}
-		if len(onboardedDeposits) > 0 {
-			return indexer.dbWriter.persistGloasOnboardedBuilderDeposits(tx, es.epoch, es.dependentRoot, onboardedForkId, onboardedDeposits)
-		}
-		return nil
+		return db.InsertUnfinalizedDuty(indexer.ctx, tx, dbDuty)
 	})
 	if err != nil {
 		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String())
+	} else {
+		// Only mark the stats as readable from the db once the row is actually there;
+		// otherwise loadValuesFromDb would keep looking for a row that was never written.
+		es.isInDb = true
 	}
 
-	es.isInDb = true
+	// The onboarding copy is written in its own transaction: it is an order of magnitude
+	// larger than the duty row (one row per queued builder deposit) and a failure there must
+	// not take the epoch stats down with it. The write is an upsert, so a retry on a later
+	// processState run repairs a previous failure.
+	if len(onboardedDeposits) > 0 && !es.gloasOnboardingStored {
+		err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return indexer.dbWriter.persistGloasOnboardedBuilderDeposits(tx, es.epoch, es.dependentRoot, onboardedForkId, onboardedDeposits)
+		})
+		if err != nil {
+			indexer.logger.WithError(err).Errorf("failed storing %v onboarded builder deposits for epoch %v (%v)", len(onboardedDeposits), es.epoch, es.dependentRoot.String())
+		} else {
+			es.gloasOnboardingStored = true
+			indexer.logger.Infof("stored %v builder deposits onboarded at the gloas fork (epoch %v, root %v)", len(onboardedDeposits), es.epoch, es.dependentRoot.String())
+		}
+	}
 
 	indexer.logger.Infof(
 		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, load: %v ms, process: %v ms), %v bytes",

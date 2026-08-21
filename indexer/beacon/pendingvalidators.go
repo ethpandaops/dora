@@ -113,7 +113,7 @@ type pendingProjectionInput struct {
 	depositBalanceToConsume    phase0.Gwei
 	maxPendingDepositsPerEpoch uint64
 	gloasForkEpoch             *phase0.Epoch                          // nil if no Gloas fork is scheduled
-	churnLimit                 func(totalActiveBalance uint64) uint64 // activation/exit churn limit for a given active balance
+	churnLimit                 func(totalActiveBalance uint64) uint64 // per-epoch churn budget deposits consume at currentEpoch
 }
 
 // isActiveAtEpoch reports whether a validator is active at the given epoch.
@@ -148,6 +148,11 @@ type depositProcessingEstimator struct {
 	maxPendingDepositsPerEpoch uint64
 	countInEpoch               uint64
 	gloasForkEpoch             *phase0.Epoch
+
+	// gloasActive records that the one-time onboarding already happened, so no queue entry can
+	// still be removed by it: a builder-credential deposit that is in the queue after the fork
+	// was kept by onboarding and is applied as a normal validator deposit.
+	gloasActive bool
 }
 
 func newDepositProcessingEstimator(currentEpoch phase0.Epoch, depositBalanceToConsume phase0.Gwei, churnLimit phase0.Gwei, maxPendingDepositsPerEpoch uint64, gloasForkEpoch *phase0.Epoch) *depositProcessingEstimator {
@@ -160,6 +165,7 @@ func newDepositProcessingEstimator(currentEpoch phase0.Epoch, depositBalanceToCo
 		churnLimit:                 churnLimit,
 		maxPendingDepositsPerEpoch: maxPendingDepositsPerEpoch,
 		gloasForkEpoch:             gloasForkEpoch,
+		gloasActive:                gloasForkEpoch != nil && currentEpoch >= *gloasForkEpoch,
 	}
 }
 
@@ -184,7 +190,7 @@ func (e *depositProcessingEstimator) next(amount phase0.Gwei, isBuilder bool) (e
 		e.balance += e.churnLimit
 		e.countInEpoch = 0
 	}
-	if isBuilder && e.gloasForkEpoch != nil && e.epoch >= *e.gloasForkEpoch {
+	if isBuilder && e.gloasForkEpoch != nil && !e.gloasActive && e.epoch >= *e.gloasForkEpoch {
 		// onboarded as a builder at the fork; removed from the queue, consumes no churn
 		return e.epoch, true
 	}

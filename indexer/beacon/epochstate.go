@@ -248,13 +248,17 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 				e := phase0.Epoch(*specs.GloasForkEpoch)
 				gloasForkEpoch = &e
 			}
+			stateEpoch := chainState.EpochOfSlot(state.Slot)
 			projectedValidators, projectedBalances := cache.indexer.pendingValidators.project(state.Validators, state.PendingDeposits, pendingProjectionInput{
 				genesisForkVersion:         specs.GenesisForkVersion,
-				currentEpoch:               chainState.EpochOfSlot(state.Slot),
+				currentEpoch:               stateEpoch,
 				depositBalanceToConsume:    state.DepositBalanceToConsume,
 				maxPendingDepositsPerEpoch: specs.MaxPendingDepositsPerEpoch,
 				gloasForkEpoch:             gloasForkEpoch,
-				churnLimit:                 chainState.GetActivationExitChurnLimit,
+				churnLimit: func(totalActiveBalance uint64) uint64 {
+					// Deposits consume the activation-only churn budget from Gloas on (EIP-8061).
+					return chainState.GetActivationChurnLimit(stateEpoch, totalActiveBalance)
+				},
 			})
 			if len(projectedValidators) > 0 {
 				validators = make([]*phase0.Validator, 0, realValidatorCount+len(projectedValidators))
@@ -269,7 +273,7 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 	}
 
 	if cache != nil {
-		cache.indexer.validatorCache.updateValidatorSet(state.Slot, dependentRoot, validators)
+		cache.indexer.validatorCache.updateValidatorSet(state.Slot, dependentRoot, validators, realValidatorCount)
 	}
 
 	// Process builder set for Gloas+
