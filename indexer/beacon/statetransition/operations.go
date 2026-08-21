@@ -99,6 +99,11 @@ func applyExecutionRequests(s *stateAccessor, requests *all.ExecutionRequests) {
 //
 // https://github.com/ethereum/consensus-specs/pull/5359
 func processDepositRequest(s *stateAccessor, deposit *electra.DepositRequest) {
+	// The first deposit request marks where the Eth1 bridge deposits end.
+	if s.DepositRequestsStartIndex == unsetDepositRequestsStartIndex {
+		s.DepositRequestsStartIndex = deposit.Index
+	}
+
 	s.PendingDeposits = append(s.PendingDeposits, &electra.PendingDeposit{
 		Pubkey:                deposit.Pubkey,
 		WithdrawalCredentials: deposit.WithdrawalCredentials,
@@ -129,8 +134,22 @@ func processBuilderDepositRequest(s *stateAccessor, request *gloas.BuilderDeposi
 	if request == nil {
 		return
 	}
+
+	// Deposits with any other withdrawal credential prefix are ignored.
+	if !isBuilderWithdrawalCredential(request.WithdrawalCredentials) {
+		return
+	}
+
 	if builderIndex, isBuilder := findBuilderByPubkey(s, request.Pubkey); isBuilder {
-		s.Builders[builderIndex].Balance += request.Amount
+		builder := s.Builders[builderIndex]
+
+		// The builder exited and its balance has been swept: put it back into the
+		// withdrawal delay so the top-up isn't swept out again right away.
+		if builder.WithdrawableEpoch != FarFutureEpoch && builder.Balance == 0 {
+			builder.WithdrawableEpoch = s.currentEpoch() + phase0.Epoch(s.specs.MinBuilderWithdrawabilityDelay)
+		}
+
+		builder.Balance += request.Amount
 		return
 	}
 
@@ -140,12 +159,8 @@ func processBuilderDepositRequest(s *stateAccessor, request *gloas.BuilderDeposi
 	}
 
 	var execAddr bellatrix.ExecutionAddress
-	var credVersion byte
-	if len(request.WithdrawalCredentials) >= 32 {
-		credVersion = request.WithdrawalCredentials[0]
-		copy(execAddr[:], request.WithdrawalCredentials[12:])
-	}
-	addBuilderToRegistry(s, request.Pubkey, credVersion, execAddr, request.Amount, s.Slot)
+	copy(execAddr[:], request.WithdrawalCredentials[12:])
+	addBuilderToRegistry(s, request.Pubkey, payloadBuilderVersion, execAddr, request.Amount, s.Slot)
 }
 
 // isValidBuilderDepositSignature implements is_valid_builder_deposit_signature
@@ -227,10 +242,10 @@ func initiateBuilderExit(s *stateAccessor, builderIndex uint64) {
 // or is appended when no such slot exists.
 //
 // https://github.com/ethereum/consensus-specs/pull/5359
-func addBuilderToRegistry(s *stateAccessor, pubkey phase0.BLSPubKey, credVersion byte, execAddr bellatrix.ExecutionAddress, amount phase0.Gwei, slot phase0.Slot) {
+func addBuilderToRegistry(s *stateAccessor, pubkey phase0.BLSPubKey, version byte, execAddr bellatrix.ExecutionAddress, amount phase0.Gwei, slot phase0.Slot) {
 	builder := &gloas.Builder{
 		PublicKey:         pubkey,
-		Version:           credVersion,
+		Version:           version,
 		ExecutionAddress:  execAddr,
 		Balance:           amount,
 		DepositEpoch:      phase0.Epoch(uint64(slot) / s.specs.SlotsPerEpoch),
@@ -325,10 +340,18 @@ func processAttesterSlashing(s *stateAccessor, slashing *all.AttesterSlashing) {
 		att2Set[idx] = true
 	}
 
+	// The intersection may contain validators that are not slashable any more (already
+	// slashed, or already withdrawable); the block stays valid as long as one of them is.
+	epoch := s.currentEpoch()
 	for _, idx := range att1Indices {
-		if att2Set[idx] && phase0.ValidatorIndex(idx) < phase0.ValidatorIndex(len(s.Validators)) {
-			slashValidator(s, phase0.ValidatorIndex(idx))
+		if !att2Set[idx] || phase0.ValidatorIndex(idx) >= phase0.ValidatorIndex(len(s.Validators)) {
+			continue
 		}
+		if !isSlashableValidator(s.Validators[idx], epoch) {
+			continue
+		}
+
+		slashValidator(s, phase0.ValidatorIndex(idx))
 	}
 }
 
@@ -668,7 +691,10 @@ func processConsolidationRequest(s *stateAccessor, request *electra.Consolidatio
 	// pending_deposits queue via switch_to_compounding_validator.
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-process_consolidation_request
 	if *sourceIndex == *targetIndex {
-		if sourceValidator.WithdrawalCredentials[0] == 0x01 {
+		isValidSwitch := sourceValidator.WithdrawalCredentials[0] == 0x01 &&
+			isActiveValidator(sourceValidator, s.currentEpoch()) &&
+			sourceValidator.ExitEpoch == FarFutureEpoch
+		if isValidSwitch {
 			switchToCompoundingValidator(s, *sourceIndex)
 		}
 		return
@@ -823,17 +849,14 @@ func processSyncAggregate(s *stateAccessor, block *all.SignedBeaconBlock) {
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-slash_validator
 func slashValidator(s *stateAccessor, index phase0.ValidatorIndex) {
 	validator := s.Validators[index]
-	if validator.Slashed {
-		return
-	}
-
 	epoch := s.currentEpoch()
+
+	// The exit is initiated first: it sets withdrawable_epoch to exit_epoch +
+	// MIN_VALIDATOR_WITHDRAWABILITY_DELAY, which the slashing delay below then extends.
+	initiateValidatorExit(s, index)
+
 	validator.Slashed = true
 	validator.WithdrawableEpoch = maxEpoch(validator.WithdrawableEpoch, epoch+phase0.Epoch(s.specs.EpochsPerSlashingVector))
-
-	if validator.ExitEpoch == FarFutureEpoch {
-		initiateValidatorExit(s, index)
-	}
 
 	slashingIdx := uint64(epoch) % s.specs.EpochsPerSlashingVector
 	s.Slashings[slashingIdx] += validator.EffectiveBalance
@@ -857,9 +880,13 @@ func slashValidator(s *stateAccessor, index phase0.ValidatorIndex) {
 		whistleblowerRewardQuotient = s.specs.WhitelistRewardQuotient
 	}
 	if whistleblowerRewardQuotient > 0 {
+		// Block processing never names a whistleblower, so the proposer is also the
+		// whistleblower and collects both shares of the reward.
+		whistleblowerIndex := proposerIndex
 		whistleblowerReward := validator.EffectiveBalance / phase0.Gwei(whistleblowerRewardQuotient)
 		proposerReward := whistleblowerReward * ProposerWeight / WeightDenominator
 		s.increaseBalance(proposerIndex, proposerReward)
+		s.increaseBalance(whistleblowerIndex, whistleblowerReward-proposerReward)
 	}
 }
 
@@ -871,8 +898,8 @@ func (s *stateAccessor) getProposerIndex() phase0.ValidatorIndex {
 		return s.ProposerLookahead[idx]
 	}
 	// Fallback: compute directly
-	activeIndices := s.getActiveValidatorIndices(s.currentEpoch())
-	return computeProposerIndex(s, activeIndices, s.currentEpoch(), s.Slot)
+	candidates := s.getProposerCandidates(s.currentEpoch())
+	return computeProposerIndex(s, candidates, s.currentEpoch(), s.Slot)
 }
 
 // getBlockRootAtSlot returns the block root at a specific slot.
