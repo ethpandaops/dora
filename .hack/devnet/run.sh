@@ -106,7 +106,6 @@ frontend:
     enabled: true
     privateKeys:
       - "bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31"
-      - "39725efee3fb28614de3bacaffe4cc4bd8c436257e2c8bb887c4b5c4be45e76d"
     fundingAmount: 100
   showSubmitElRequests: true
   showPeerDASInfos: true
