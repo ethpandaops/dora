@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -15,8 +14,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -253,57 +250,27 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 		}
 
 		// Add validator status
-		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey())); !found {
-			depositData.ValidatorStatus = "Deposited"
-			depositData.ValidatorExists = false
-		} else if uint64(validatorIdx)&services.BuilderIndexFlag != 0 {
-			builderIndex := uint64(validatorIdx) &^ services.BuilderIndexFlag
-			depositData.IsBuilder = true
+		owner := resolveDepositPubkeyOwner(phase0.BLSPubKey(deposit.PublicKey()))
+		switch {
+		case owner.Validator != nil:
 			depositData.ValidatorExists = true
-			depositData.ValidatorIndex = builderIndex
-			depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
-
-			builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
-			if builder == nil {
-				depositData.ValidatorStatus = "Deposited"
-			} else if builder.WithdrawableEpoch <= chainState.CurrentEpoch() {
-				depositData.ValidatorStatus = "Exited"
-			} else {
-				depositData.ValidatorStatus = "Active"
-			}
-		} else {
-			depositData.ValidatorExists = true
-			depositData.ValidatorIndex = uint64(validatorIdx)
-			depositData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIdx)
+			depositData.ValidatorIndex = uint64(owner.ValidatorIndex)
+			depositData.ProjectedIndex = owner.IsProjected
 			depositData.IsBuilder = false
-			depositData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(uint64(validatorIdx), phase0.Slot(deposit.Request.SlotNumber))
-
-			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
-			if validator == nil {
-				depositData.ValidatorStatus = "Deposited"
-			} else if strings.HasPrefix(validator.Status.String(), "pending") {
-				depositData.ValidatorStatus = "Pending"
-			} else if validator.Status == v1.ValidatorStateActiveOngoing {
-				depositData.ValidatorStatus = "Active"
-				depositData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateActiveExiting {
-				depositData.ValidatorStatus = "Exiting"
-				depositData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateActiveSlashed {
-				depositData.ValidatorStatus = "Slashed"
-				depositData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-				depositData.ValidatorStatus = "Exited"
-			} else if validator.Status == v1.ValidatorStateExitedSlashed {
-				depositData.ValidatorStatus = "Slashed"
-			} else {
-				depositData.ValidatorStatus = validator.Status.String()
-			}
+			depositData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(uint64(owner.ValidatorIndex), phase0.Slot(deposit.Request.SlotNumber))
+			depositData.ValidatorStatus, depositData.ShowUpcheck = depositValidatorStatus(owner.Validator)
 
 			if depositData.ShowUpcheck {
-				depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+				depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(owner.Validator.Index, 3))
 				depositData.UpcheckMaximum = uint8(3)
 			}
+		case owner.Builder != nil:
+			depositData.IsBuilder = true
+			depositData.ValidatorExists = true
+			depositData.ValidatorIndex = uint64(owner.BuilderIndex)
+			depositData.ValidatorStatus = depositBuilderStatus(owner.Builder, chainState.CurrentEpoch())
+		default:
+			depositData.ValidatorStatus = "Deposited"
 		}
 
 		// Add transaction details if available

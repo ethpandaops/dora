@@ -136,3 +136,93 @@ func TestVerifyBatch(t *testing.T) {
 		t.Errorf("VerifyBatch(nil) = %v, want empty", got)
 	}
 }
+
+// TestVerifyBatchSpansGroups covers the paths that only appear beyond a single group:
+// results must stay correct across group boundaries, and once enough groups fail the
+// verifier gives up on aggregate checking for the rest of the batch and must still
+// return the same verdicts.
+func TestVerifyBatchSpansGroups(t *testing.T) {
+	domain := Domain(phase0.Version{})
+	wc := make([]byte, 32)
+	wc[0] = 0x01
+
+	// enough items that more than maxAggregateFailures groups contain an invalid
+	// signature, so the give-up path is exercised
+	n := batchGroupSize * (maxAggregateFailures + 2)
+
+	skWrong, _ := keyPair(t, 0xfe)
+
+	inputs := make([]Input, 0, n)
+	want := make([]bool, 0, n)
+
+	for i := range n {
+		sk, pubkey := keyPair(t, byte(i%251)+1)
+		amount := phase0.Gwei(32_000_000_000 + uint64(i))
+
+		// one bad signature in every group, plus a run of them at the end
+		bad := i%batchGroupSize == 7 || i >= n-batchGroupSize
+
+		signer := sk
+		if bad {
+			signer = skWrong
+		}
+
+		inputs = append(inputs, Input{
+			Pubkey:                pubkey,
+			WithdrawalCredentials: wc,
+			Amount:                amount,
+			Signature:             signDeposit(signer, pubkey, wc, amount, domain),
+		})
+		want = append(want, !bad)
+	}
+
+	got := VerifyBatch(inputs, domain)
+	if len(got) != len(want) {
+		t.Fatalf("VerifyBatch returned %d results, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("result[%d] = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestVerifyBatchIsolatesASingleFailure guards the case a batch verifier is easiest to
+// get wrong: one bad signature must not condemn the rest of its group.
+func TestVerifyBatchIsolatesASingleFailure(t *testing.T) {
+	domain := Domain(phase0.Version{})
+	wc := make([]byte, 32)
+	wc[0] = 0x01
+	amount := phase0.Gwei(32_000_000_000)
+
+	n := batchGroupSize + 10
+	badIndex := batchGroupSize / 2
+
+	skWrong, _ := keyPair(t, 0xfd)
+
+	inputs := make([]Input, 0, n)
+	for i := range n {
+		sk, pubkey := keyPair(t, byte(i%251)+1)
+
+		signer := sk
+		if i == badIndex {
+			signer = skWrong
+		}
+
+		inputs = append(inputs, Input{
+			Pubkey:                pubkey,
+			WithdrawalCredentials: wc,
+			Amount:                amount,
+			Signature:             signDeposit(signer, pubkey, wc, amount, domain),
+		})
+	}
+
+	got := VerifyBatch(inputs, domain)
+	for i := range inputs {
+		want := i != badIndex
+		if got[i] != want {
+			t.Fatalf("result[%d] = %v, want %v", i, got[i], want)
+		}
+	}
+}

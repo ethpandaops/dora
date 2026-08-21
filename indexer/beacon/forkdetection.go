@@ -280,6 +280,34 @@ func (cache *forkCache) processBlock(block *Block) error {
 				return nil
 			}
 
+			// helper function to move the execution layer request txs of the same blocks onto the
+			// fork as well. Those rows are keyed by execution block hash, so the consensus roots
+			// are resolved through the block index; a block whose payload is not known yet
+			// (Gloas reveals it a slot later) is skipped and re-tagged when it is.
+			updateExecutionRequestForkIds := func(updateRoots [][]byte, forkId ForkKey) error {
+				blockHashes := make([][]byte, 0, len(updateRoots))
+
+				for _, root := range updateRoots {
+					if len(root) != len(phase0.Root{}) {
+						continue
+					}
+
+					block := cache.indexer.GetBlockByRoot(phase0.Root(root))
+					if block == nil {
+						continue
+					}
+
+					blockIndex := block.GetBlockIndex(cache.indexer.ctx)
+					if blockIndex == nil || blockIndex.ExecutionHash == (phase0.Hash32{}) {
+						continue
+					}
+
+					blockHashes = append(blockHashes, blockIndex.ExecutionHash[:])
+				}
+
+				return db.UpdateExecutionRequestTxsForkId(cache.indexer.ctx, tx, blockHashes, uint64(forkId))
+			}
+
 			// add new forks
 			for _, newFork := range newForks {
 				err := db.InsertFork(cache.indexer.ctx, tx, newFork.fork.toDbFork())
@@ -292,12 +320,22 @@ func (cache *forkCache) processBlock(block *Block) error {
 					if err != nil {
 						return err
 					}
+
+					err = updateExecutionRequestForkIds(newFork.updateRoots, newFork.fork.forkId)
+					if err != nil {
+						return err
+					}
 				}
 			}
 
 			// update blocks building on top of current block
 			if len(updatedBlocks) > 0 {
 				err := updateUnfinalizedBlockForkIds(updatedBlocks, currentForkId)
+				if err != nil {
+					return err
+				}
+
+				err = updateExecutionRequestForkIds(updatedBlocks, currentForkId)
 				if err != nil {
 					return err
 				}

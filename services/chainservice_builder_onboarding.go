@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
@@ -21,9 +22,14 @@ func isBuilderCredential(wc []byte) bool {
 	return len(wc) > 0 && wc[0] == builderWithdrawalCredType
 }
 
-// projectionFetchCap bounds how many builder-credential deposits the projection enumerates. It is
-// far above any realistic count of pre-fork builder deposits; hitting it sets Truncated.
-const projectionFetchCap = 10000
+// projectionFetchCap bounds how many builder-credential deposits the projection enumerates.
+//
+// The onboarding simulation is sequential and only produces the right new-builder/top-up
+// classification if it starts at the very first builder deposit, so the window is anchored at
+// the OLDEST deposit and the newest ones are dropped when the cap is hit (which sets
+// Truncated). Anchoring at the newest instead starts the simulation mid-stream and shifts the
+// whole list by one on every new deposit.
+const projectionFetchCap = 100000
 
 // ProjectedBuilderDeposit is one builder-credential (0xB0) deposit on chain together with its
 // projected fate at the upcoming Gloas fork transition. When none of the fate flags is set the
@@ -37,6 +43,13 @@ type ProjectedBuilderDeposit struct {
 
 	// EstimateEpoch is the projected epoch the deposit is processed (0 = unknown).
 	EstimateEpoch phase0.Epoch
+
+	// ProjectedBuilderIndex is the builder index this deposit registers or tops up at the fork.
+	// Onboarding assigns indexes in queue order starting at 0, before the builder deposit
+	// contract queue is dequeued, so these are the lowest indexes on the chain. Unset for
+	// deposits that never become a builder.
+	ProjectedBuilderIndex    uint64
+	HasProjectedBuilderIndex bool
 
 	// Fate flags (at most one set; none set => onboarded as a builder):
 	TooEarly         bool // processed before the fork -> becomes a regular validator, not a builder
@@ -68,8 +81,13 @@ type BuilderOnboardingProjection struct {
 	// each annotated with its projected fate.
 	Deposits []*ProjectedBuilderDeposit
 
-	OnboardedNewCount     uint64
-	OnboardedTopUpCount   uint64
+	OnboardedNewCount   uint64
+	OnboardedTopUpCount uint64
+
+	// NextBuilderIndex is the first builder index that onboarding does NOT take, i.e. where the
+	// builder deposit contract queue continues once it starts dequeuing after the fork.
+	NextBuilderIndex uint64
+
 	TooEarlyCount         uint64
 	InvalidSignatureCount uint64
 	KeptAsValidatorCount  uint64
@@ -131,21 +149,13 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 		return epoch == 0 || epoch >= gloasForkEpoch
 	}
 
-	// Queue cross-check map + secondary stats. queueNonBuilderPubkeys collects pubkeys with a pending
-	// non-builder deposit remaining at the fork, so a same-pubkey builder deposit is kept as a
-	// validator deposit rather than onboarded.
 	pendingByIndex := make(map[uint64]*IndexedDepositQueueEntry, len(indexedQueue.Queue))
-	queueNonBuilderPubkeys := make(map[phase0.BLSPubKey]bool)
 	for _, entry := range indexedQueue.Queue {
 		if entry.DepositIndex != nil {
 			pendingByIndex[*entry.DepositIndex] = entry
 		}
-		remains := remainsAtFork(entry.EpochEstimate)
-		if !remains {
+		if !remainsAtFork(entry.EpochEstimate) {
 			proj.TotalQueueProcessedBeforeFork++
-		}
-		if remains && !isBuilderCredential(entry.PendingDeposit.WithdrawalCredentials) {
-			queueNonBuilderPubkeys[entry.PendingDeposit.Pubkey] = true
 		}
 	}
 
@@ -171,10 +181,17 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 		WithValid:           1, // no signature-validity filter — invalid sigs are a classified outcome
 		WithdrawalCredTypes: []uint8{builderWithdrawalCredType},
 	}
-	deposits, _ := bs.GetDepositOperationsByFilter(ctx, depositFilter, txFilter, 0, projectionFetchCap)
-	if len(deposits) >= projectionFetchCap {
+	// The result set is ordered newest-first, so the oldest deposits sit at the end: resolve the
+	// total first and page to the tail, keeping the simulation anchored at the first deposit.
+	_, totalDeposits := bs.GetDepositOperationsByFilter(ctx, depositFilter, txFilter, 0, 1)
+	fetchOffset := uint64(0)
+	if totalDeposits > projectionFetchCap {
+		fetchOffset = totalDeposits - projectionFetchCap
 		proj.Truncated = true
+		bs.logger.Warnf("builder onboarding projection truncated: %v of %v builder deposits enumerated", projectionFetchCap, totalDeposits)
 	}
+
+	deposits, _ := bs.GetDepositOperationsByFilter(ctx, depositFilter, txFilter, fetchOffset, projectionFetchCap)
 
 	// Process in deposit-index order (= queue / processing order); unresolved-index deposits (very
 	// recent) sort last.
@@ -182,13 +199,20 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 		return depositIndexOrMax(deposits[i]) < depositIndexOrMax(deposits[j])
 	})
 
+	// The validator deposits that keep a same-pubkey builder deposit out of the registry can only
+	// be judged once the builder pubkeys are known, since resolving whether a pre-fork deposit
+	// actually registers a validator needs a signature lookup (see validatorDepositsInQueue).
+	validatorDeposits := bs.collectValidatorDepositsInQueue(ctx, indexedQueue, deposits, remainsAtFork)
+
 	isExistingValidator := func(pubkey phase0.BLSPubKey) bool {
 		idx, found := bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
 		return found && !bs.IsProjectedValidatorIndex(idx)
 	}
 
-	acceptedBuilderPubkeys := make(map[phase0.BLSPubKey]bool) // pubkeys onboarded as new builders so far
-	validatorFromDeposit := make(map[phase0.BLSPubKey]bool)   // pubkeys turned into validators by an earlier too-early deposit
+	// pubkeys onboarded as new builders so far, mapped to the builder index they took
+	acceptedBuilderIndexes := make(map[phase0.BLSPubKey]uint64)
+	nextBuilderIndex := uint64(0)
+	validatorFromDeposit := make(map[phase0.BLSPubKey]bool) // pubkeys turned into validators by an earlier too-early deposit
 	for _, dep := range deposits {
 		if dep.Orphaned || !isBuilderCredential(dep.WithdrawalCredentials) {
 			continue
@@ -225,25 +249,30 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 			remains = false
 		}
 
+		validSig := depositSignatureIsValid(dep.ValidSignature)
+
 		if !remains {
 			pd.TooEarly = true
 			proj.TooEarlyCount++
-			validatorFromDeposit[pubkey] = true
+			// only a deposit with a valid proof-of-possession registers the validator; an
+			// invalid one is dropped by apply_pending_deposit and leaves the pubkey free
+			if validSig {
+				validatorFromDeposit[pubkey] = true
+			}
 			proj.Deposits = append(proj.Deposits, pd)
 			continue
 		}
 
 		// Remains at the fork — onboarding selection (sequential, mirrors onboarding).
-		validSig := true
-		if dep.ValidSignature != nil {
-			validSig = *dep.ValidSignature == 1 || *dep.ValidSignature == 2
-		}
+		builderIndex, isAcceptedBuilder := acceptedBuilderIndexes[pubkey]
 
 		switch {
-		case acceptedBuilderPubkeys[pubkey]:
+		case isAcceptedBuilder:
 			pd.Result = dbtypes.BuilderDepositRequestResultTopUp
+			pd.ProjectedBuilderIndex = builderIndex
+			pd.HasProjectedBuilderIndex = true
 			proj.OnboardedTopUpCount++
-		case isExistingValidator(pubkey) || validatorFromDeposit[pubkey] || queueNonBuilderPubkeys[pubkey]:
+		case isExistingValidator(pubkey) || validatorFromDeposit[pubkey] || validatorDeposits.keeps(pd):
 			pd.KeptAsValidator = true
 			proj.KeptAsValidatorCount++
 		case !validSig:
@@ -252,12 +281,17 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 			proj.InvalidSignatureCount++
 		default:
 			pd.Result = dbtypes.BuilderDepositRequestResultNewBuilder
-			acceptedBuilderPubkeys[pubkey] = true
+			pd.ProjectedBuilderIndex = nextBuilderIndex
+			pd.HasProjectedBuilderIndex = true
+			acceptedBuilderIndexes[pubkey] = nextBuilderIndex
+			nextBuilderIndex++
 			proj.OnboardedNewCount++
 		}
 
 		proj.Deposits = append(proj.Deposits, pd)
 	}
+
+	proj.NextBuilderIndex = nextBuilderIndex
 
 	if tailEstimate > 0 {
 		proj.HasSafetyEstimate = true
@@ -276,4 +310,142 @@ func depositIndexOrMax(dep *dbtypes.DepositWithTx) uint64 {
 		return *dep.Index
 	}
 	return math.MaxUint64
+}
+
+// validatorDepositsInQueue tracks the pending validator (non-builder) deposits that stop a
+// same-pubkey builder deposit from being onboarded at the fork. There are two ways that happens,
+// and they behave differently:
+//
+//   - The validator deposit is applied *before* the fork. It registers the pubkey as a validator,
+//     so onboarding finds it in state.validators and keeps every builder deposit for that pubkey,
+//     whatever their order in the queue.
+//   - The validator deposit is still queued *at* the fork. Onboarding walks the queue in order and
+//     keeps it, which only affects builder deposits that sit behind it — a builder deposit ahead of
+//     it is onboarded normally, and the validator deposit is applied to that validator later.
+//
+// Mirrors onboard_builders_from_pending_deposits (state.validators and the keptPubkeys set).
+type validatorDepositsInQueue struct {
+	// appliedBeforeFork are pubkeys that become validators before the fork.
+	appliedBeforeFork map[phase0.BLSPubKey]bool
+
+	// firstKeptPos is the queue position of the earliest validator deposit that is still queued at
+	// the fork, per pubkey.
+	firstKeptPos map[phase0.BLSPubKey]uint64
+}
+
+func newValidatorDepositsInQueue() *validatorDepositsInQueue {
+	return &validatorDepositsInQueue{
+		appliedBeforeFork: make(map[phase0.BLSPubKey]bool),
+		firstKeptPos:      make(map[phase0.BLSPubKey]uint64),
+	}
+}
+
+// add records a queue entry. remains says whether it survives process_pending_deposits up to the
+// fork epoch, and registersValidator whether an entry applied before the fork actually creates the
+// validator (it does not if its proof-of-possession is invalid). Builder-credential deposits are
+// not validator deposits and are ignored here.
+func (v *validatorDepositsInQueue) add(entry *IndexedDepositQueueEntry, remains, registersValidator bool) {
+	if isBuilderCredential(entry.PendingDeposit.WithdrawalCredentials) {
+		return
+	}
+
+	pubkey := entry.PendingDeposit.Pubkey
+
+	if !remains {
+		// Applied before the fork. It only makes the pubkey a validator if its signature is
+		// valid: apply_pending_deposit drops an invalid proof-of-possession for a new pubkey
+		// without registering anything, leaving the builder deposit onboardable after all.
+		if registersValidator {
+			v.appliedBeforeFork[pubkey] = true
+		}
+
+		return
+	}
+
+	// A deposit that is still queued at the fork is kept regardless of its signature —
+	// onboard_builders_from_pending_deposits keeps every non-builder deposit it walks past,
+	// and only later does apply_pending_deposit judge the signature.
+	if pos, seen := v.firstKeptPos[pubkey]; !seen || entry.QueuePos < pos {
+		v.firstKeptPos[pubkey] = entry.QueuePos
+	}
+}
+
+// depositSignatureIsValid reads the indexer's proof-of-possession verdict: 1 is a verified
+// signature and 2 a top-up of a pubkey that already had one. Anything else — including an
+// unknown verdict, for a deposit whose contract transaction has not been indexed yet — is
+// treated as not registering anything, matching what onboarding does with a bad signature.
+func depositSignatureIsValid(validSignature *uint8) bool {
+	return validSignature != nil && (*validSignature == 1 || *validSignature == 2)
+}
+
+// collectValidatorDepositsInQueue builds the tracker for a projection run. Deciding whether a
+// pre-fork validator deposit registers anything needs its signature verdict, which the queue
+// entries do not carry, so it is looked up from the deposit transactions — restricted to the
+// pubkeys that actually have a builder deposit, since no other pubkey can change an outcome.
+func (bs *ChainService) collectValidatorDepositsInQueue(
+	ctx context.Context,
+	indexedQueue *IndexedDepositQueue,
+	builderDeposits []*dbtypes.DepositWithTx,
+	remainsAtFork func(phase0.Epoch) bool,
+) *validatorDepositsInQueue {
+	builderPubkeys := make(map[phase0.BLSPubKey]bool, len(builderDeposits))
+	for _, dep := range builderDeposits {
+		pubkey := phase0.BLSPubKey{}
+		copy(pubkey[:], dep.PublicKey)
+		builderPubkeys[pubkey] = true
+	}
+
+	// pre-fork validator deposits of those pubkeys are the only ones whose signature matters
+	lookup := make([]uint64, 0)
+	for _, entry := range indexedQueue.Queue {
+		if entry.DepositIndex == nil || remainsAtFork(entry.EpochEstimate) {
+			continue
+		}
+		if isBuilderCredential(entry.PendingDeposit.WithdrawalCredentials) {
+			continue
+		}
+		if builderPubkeys[entry.PendingDeposit.Pubkey] {
+			lookup = append(lookup, *entry.DepositIndex)
+		}
+	}
+
+	validity := make(map[uint64]bool, len(lookup))
+	for _, depositTx := range db.GetDepositTxsByIndexes(ctx, lookup) {
+		validSignature := depositTx.ValidSignature
+		validity[depositTx.Index] = depositSignatureIsValid(&validSignature)
+	}
+
+	validatorDeposits := newValidatorDepositsInQueue()
+	for _, entry := range indexedQueue.Queue {
+		remains := remainsAtFork(entry.EpochEstimate)
+
+		registersValidator := false
+		if !remains && entry.DepositIndex != nil {
+			registersValidator = validity[*entry.DepositIndex]
+		}
+
+		validatorDeposits.add(entry, remains, registersValidator)
+	}
+
+	return validatorDeposits
+}
+
+// keeps reports whether a validator deposit keeps this builder deposit in the pending queue
+// instead of onboarding it as a builder.
+func (v *validatorDepositsInQueue) keeps(deposit *ProjectedBuilderDeposit) bool {
+	pubkey := phase0.BLSPubKey{}
+	copy(pubkey[:], deposit.Deposit.PublicKey)
+
+	if v.appliedBeforeFork[pubkey] {
+		return true
+	}
+
+	pos, queued := v.firstKeptPos[pubkey]
+	if !queued {
+		return false
+	}
+
+	// a deposit that is not in the queue snapshot was included after it, so it sits behind
+	// everything the snapshot holds
+	return !deposit.IsQueued || pos < deposit.QueuePos
 }

@@ -193,14 +193,14 @@
                       {{ end }}
                     </td>
                     <td>
-                      {{ if $deposit.IsQueuedRegular }}
-                        <span class="badge rounded-pill text-bg-secondary border" data-bs-toggle="tooltip" data-bs-title="Builder index not assigned yet — the deposit stays queued until Gloas activates, and builders onboarded at the fork transition are registered first"><i class="fas fa-hourglass-half mr-1"></i>no index yet</span>
-                      {{ else if $deposit.IsProjected }}
-                        {{ if $deposit.IsQueued }}
-                          <span class="badge rounded-pill text-bg-secondary border" data-bs-toggle="tooltip" data-bs-title="Found in the current pending deposit queue at position {{ $deposit.QueuePosition }}"><i class="fas fa-list-ol mr-1"></i>#{{ $deposit.QueuePosition }}</span>
+                      {{ if $deposit.HasProjectedBuilderIndex }}
+                        {{ if $deposit.IsQueuedRegular }}
+                          <span class="badge rounded-pill text-bg-secondary border" data-bs-toggle="tooltip" data-bs-title="Projected builder index. The deposit stays queued in the builder deposit contract until Gloas activates; the builders onboarded at the fork transition are registered first, so this index continues behind them."><i class="fas fa-hourglass-half mr-1"></i>#{{ $deposit.ProjectedBuilderIndex }}</span>
                         {{ else }}
-                          <span class="text-muted">-</span>
+                          <span class="badge rounded-pill text-bg-secondary border" data-bs-toggle="tooltip" data-bs-title="Projected builder index. Onboarding assigns indexes in deposit order at the Gloas fork transition, so this is an estimate that shifts if earlier deposits are processed before the fork."><i class="fas fa-hourglass-half mr-1"></i>#{{ $deposit.ProjectedBuilderIndex }}</span>
                         {{ end }}
+                      {{ else if or $deposit.IsQueuedRegular $deposit.IsProjected }}
+                        <span class="text-muted">-</span>
                       {{ else if $deposit.HasBuilderIndex }}
                         {{ formatBuilderWithIndex $deposit.BuilderIndex "" }}
                       {{ else if $deposit.IsInactiveBuilder }}
@@ -241,6 +241,12 @@
                         <span class="badge rounded-pill text-bg-secondary">Pending</span>
                       {{ else if $deposit.Orphaned }}
                         <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                      {{ else if eq $deposit.Result 2 }}
+                        <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-title="Registered a new builder">New builder</span>
+                      {{ else if eq $deposit.Result 3 }}
+                        <span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" data-bs-title="Topped up the balance of an existing builder">Top-up</span>
+                      {{ else if eq $deposit.Result 20 }}
+                        <span class="badge rounded-pill text-bg-danger" data-bs-toggle="tooltip" data-bs-title="Invalid proof-of-possession — dropped without registering a builder">Invalid sig</span>
                       {{ else }}
                         <span class="badge rounded-pill text-bg-success">Included</span>
                       {{ end }}
