@@ -558,3 +558,26 @@ func (cs *ChainState) GetActivationExitChurnLimit(totalActiveBalance uint64) uin
 
 	return balanceChurnLimit
 }
+
+// GetConsolidationChurnLimit returns the per-epoch churn limit reserved for consolidations
+// at the given epoch.
+//
+// Since Gloas the consolidation churn is derived directly from the total active balance via
+// CONSOLIDATION_CHURN_LIMIT_QUOTIENT, while before it was the leftover of the balance churn
+// after subtracting the activation/exit churn.
+//
+// Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-get_consolidation_churn_limit
+// Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-get_consolidation_churn_limit
+func (cs *ChainState) GetConsolidationChurnLimit(epoch phase0.Epoch, totalActiveBalance uint64) uint64 {
+	if cs.specs == nil {
+		return 0
+	}
+
+	if cs.IsEip7732Enabled(epoch) && cs.specs.ConsolidationChurnLimitQuotient > 0 {
+		churnLimit := totalActiveBalance / cs.specs.ConsolidationChurnLimitQuotient
+
+		return churnLimit - (churnLimit % cs.specs.EffectiveBalanceIncrement)
+	}
+
+	return cs.GetBalanceChurnLimit(totalActiveBalance) - cs.GetActivationExitChurnLimit(totalActiveBalance)
+}

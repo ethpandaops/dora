@@ -679,6 +679,11 @@ func processConsolidationRequest(s *stateAccessor, request *electra.Consolidatio
 		return
 	}
 
+	// Ignore the request if there is too little available consolidation churn limit
+	if s.getConsolidationChurnLimit() <= phase0.Gwei(s.specs.MinActivationBalance) {
+		return
+	}
+
 	// Check target has compounding credentials
 	if targetValidator.WithdrawalCredentials[0] != 0x02 {
 		return
