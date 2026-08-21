@@ -11,6 +11,9 @@ export interface ISubmitDepositsFormProps {
   depositContract: string;
   maxEffectiveBalance: string;
   maxEffectiveBalanceElectra: string;
+  faucetEnabled?: boolean;
+  faucetAmount?: number;
+  showGenerator?: boolean;
   loadDepositTxs(pubkeys: string[]): Promise<{deposits: IDepositTx[], count: number, havemore: boolean}>;
   // Properties for topup deposit functionality
   loadValidators?: (address: string) => Promise<IValidator[]>;

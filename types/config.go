@@ -66,6 +66,9 @@ type Config struct {
 		ShowSensitivePeerInfos bool `yaml:"showSensitivePeerInfos" envconfig:"FRONTEND_SHOW_SENSITIVE_PEER_INFOS"`
 		ShowPeerDASInfos       bool `yaml:"showPeerDASInfos" envconfig:"FRONTEND_SHOW_PEER_DAS_INFOS"`
 		ShowSubmitDeposit      bool `yaml:"showSubmitDeposit" envconfig:"FRONTEND_SHOW_SUBMIT_DEPOSIT"`
+		// DisableDepositGenerator hides the in-browser deposit generator on the submit
+		// deposit pages (devnet tool; leave enabled only on development networks).
+		DisableDepositGenerator bool `yaml:"disableDepositGenerator" envconfig:"FRONTEND_DISABLE_DEPOSIT_GENERATOR"`
 		ShowSubmitElRequests   bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
 		ShowValidatorSummary   bool `yaml:"showValidatorSummary" envconfig:"FRONTEND_SHOW_VALIDATOR_SUMMARY"`
 
@@ -76,6 +79,10 @@ type Config struct {
 		// Tracoor configuration
 		TracoorUrl     string `yaml:"tracoorUrl" envconfig:"FRONTEND_TRACOOR_URL"`
 		TracoorNetwork string `yaml:"tracoorNetwork" envconfig:"FRONTEND_TRACOOR_NETWORK"`
+
+		// Faucet configuration (devnet only): funds wallets from prefunded keys
+		// via the submit deposit pages so generated mnemonics can be used directly.
+		Faucet FaucetConfig `yaml:"faucet"`
 	} `yaml:"frontend"`
 
 	Api struct {
@@ -239,6 +246,15 @@ type EnsRemoteNetwork struct {
 	Endpoints         []EndpointConfig `yaml:"endpoints"`
 	RegistryAddresses []string         `yaml:"registryAddresses"`
 	MulticallAddress  string           `yaml:"multicallAddress"`
+}
+
+// FaucetConfig configures the devnet faucet on the submit deposit pages.
+// PrivateKeys are hex encoded execution layer private keys of prefunded accounts.
+type FaucetConfig struct {
+	Enabled       bool          `yaml:"enabled" envconfig:"FRONTEND_FAUCET_ENABLED"`
+	PrivateKeys   []string      `yaml:"privateKeys" envconfig:"FRONTEND_FAUCET_PRIVATE_KEYS"`
+	FundingAmount float64       `yaml:"fundingAmount" envconfig:"FRONTEND_FAUCET_FUNDING_AMOUNT"` // ETH sent per request (default 50)
+	Cooldown      time.Duration `yaml:"cooldown" envconfig:"FRONTEND_FAUCET_COOLDOWN"`            // per-address cooldown between requests (default 30s)
 }
 
 type EndpointConfig struct {

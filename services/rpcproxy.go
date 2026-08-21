@@ -96,6 +96,7 @@ func NewRPCProxy(config *RPCProxyConfig) *RPCProxy {
 		// Default safe methods for validator operations
 		config.AllowedMethods = []string{
 			"eth_blockNumber",
+			"eth_getBlockByNumber",
 			"eth_getStorageAt",
 			"eth_getLogs",
 			"eth_call",
@@ -105,8 +106,10 @@ func NewRPCProxy(config *RPCProxyConfig) *RPCProxy {
 			"eth_feeHistory",
 			"eth_getBalance",
 			"eth_getTransactionCount",
+			"eth_getTransactionReceipt",
 			"eth_getCode",
 			"eth_chainId",
+			"eth_sendRawTransaction",
 			"net_version",
 		}
 	}

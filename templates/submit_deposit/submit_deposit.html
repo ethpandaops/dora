@@ -55,6 +55,9 @@
           explorerLink: "{{ .ExplorerUrl }}",
           maxEffectiveBalance: "{{ .MaxEffectiveBalance }}",
           maxEffectiveBalanceElectra: "{{ .MaxEffectiveBalanceElectra }}",
+          faucetEnabled: {{ .FaucetEnabled }},
+          faucetAmount: {{ .FaucetAmount }},
+          showGenerator: {{ .ShowGenerator }},
           loadDepositTxs: function(pubkeys) {
             return fetch("?ajax=load_deposits", {
               method: "POST",

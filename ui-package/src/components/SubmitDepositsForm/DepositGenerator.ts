@@ -1,7 +1,7 @@
 import { ContainerType, ByteVectorType, UintNumberType } from "@chainsafe/ssz";
 import bls from "@chainsafe/bls/herumi";
 import { deriveKeyFromMnemonic, deriveEth2ValidatorKeys } from "@chainsafe/bls-keygen";
-import { validateMnemonic } from "@scure/bip39";
+import { validateMnemonic, generateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
 
 import { IDeposit } from "./DepositsTable";
@@ -66,6 +66,13 @@ export interface GeneratorConfig {
 export function validateMnemonicWords(mnemonic: string): boolean {
   const normalizedMnemonic = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
   return validateMnemonic(normalizedMnemonic, wordlist);
+}
+
+/**
+ * Generate a random 24-word BIP-39 mnemonic phrase
+ */
+export function generateRandomMnemonic(): string {
+  return generateMnemonic(wordlist, 256);
 }
 
 /**

@@ -214,6 +214,8 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/mev/blocks", handlers.MevBlocks).Methods("GET")
 
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
+	router.HandleFunc("/ens/resolve", handlers.EnsResolve).Methods("GET")
+	router.HandleFunc("/ens/lookup", handlers.EnsLookup).Methods("GET")
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 	if utils.Config.Frontend.ShowValidatorSummary {
@@ -224,6 +226,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validators/offline", handlers.ValidatorsOffline).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
 	router.HandleFunc("/validators/deposits/submit", handlers.SubmitDeposit).Methods("GET", "POST")
+	router.HandleFunc("/validators/deposits/faucet", handlers.SubmitDepositFaucet).Methods("POST")
 	router.HandleFunc("/validators/initiated_deposits", handlers.InitiatedDeposits).Methods("GET")
 	router.HandleFunc("/validators/included_deposits", handlers.IncludedDeposits).Methods("GET")
 	router.HandleFunc("/validators/queued_deposits", handlers.QueuedDeposits).Methods("GET")

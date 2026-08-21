@@ -82,6 +82,8 @@
           <div class="col-md-9">
             {{ if .Status }}
             <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
+            {{ else if eq .StatusText "Pending" }}
+            <span class="badge rounded-pill text-bg-secondary"><i class="fas fa-hourglass-half me-1"></i>{{ .StatusText }}</span>
             {{ else }}
             <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
             {{ if .RevertReason }}<span class="text-monospace text-break ms-2">{{ .RevertReason }}</span>{{ end }}

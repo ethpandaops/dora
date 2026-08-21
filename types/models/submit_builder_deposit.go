@@ -9,4 +9,8 @@ type SubmitBuilderDepositPageData struct {
 	BuilderDepositContract string `json:"builderdepositcontract"`
 	GenesisForkVersion     []byte `json:"genesisforkversion"`
 	ExplorerUrl            string `json:"explorerurl"`
+
+	FaucetEnabled bool    `json:"faucetenabled"`
+	FaucetAmount  float64 `json:"faucetamount"`
+	ShowGenerator bool    `json:"showgenerator"`
 }
