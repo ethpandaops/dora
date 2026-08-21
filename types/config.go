@@ -69,8 +69,8 @@ type Config struct {
 		// DisableDepositGenerator hides the in-browser deposit generator on the submit
 		// deposit pages (devnet tool; leave enabled only on development networks).
 		DisableDepositGenerator bool `yaml:"disableDepositGenerator" envconfig:"FRONTEND_DISABLE_DEPOSIT_GENERATOR"`
-		ShowSubmitElRequests   bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
-		ShowValidatorSummary   bool `yaml:"showValidatorSummary" envconfig:"FRONTEND_SHOW_VALIDATOR_SUMMARY"`
+		ShowSubmitElRequests    bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
+		ShowValidatorSummary    bool `yaml:"showValidatorSummary" envconfig:"FRONTEND_SHOW_VALIDATOR_SUMMARY"`
 
 		// DAS Guardian configuration
 		DisableDasGuardianCheck   bool `yaml:"disableDasGuardianCheck" envconfig:"FRONTEND_DISABLE_DAS_GUARDIAN_CHECK"`
