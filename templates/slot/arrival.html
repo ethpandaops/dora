@@ -70,73 +70,73 @@
     }
 
     .lane-track { position: relative; }
-    .lane-track .lead {
-      position: absolute; top: 50%; height: 3px; margin-top: -1.5px;
+    /* shared gridlines: let arrival times be compared straight down the column */
+    .lane-track .grid {
+      position: absolute; top: 0; bottom: 0; width: 1px;
       background: var(--bs-border-color);
-      opacity: 0.7;
+      opacity: 0.5;
+    }
+    /* the bar starts at slot start, so its length is the node's time-to-block;
+       it is coloured for the event it ends on, with the gossip leg overlaid */
+    .lane-track .bar {
+      position: absolute; left: 0; top: 2px; height: 9px;
+      min-width: 2px;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #5b8def;
+    }
+    .lane-track .bar .flight {
+      position: absolute; top: 0; bottom: 0; left: 0;
+      background: #9775fa;
+    }
+    /* no gossip observation, so the time cannot be attributed to either leg */
+    .lane-track .bar.unsplit {
+      background: repeating-linear-gradient(135deg,
+        var(--bs-secondary-bg) 0 4px, var(--bs-tertiary-bg) 4px 8px);
+      box-shadow: inset 0 0 0 1px var(--bs-border-color);
+    }
+    .lane-track .np {
+      position: absolute; top: 13px; height: 3px;
+      min-width: 2px;
+      background: #f1b44c;
       border-radius: 2px;
     }
-    .lane-track .bar {
-      position: absolute; top: 50%; height: 10px; margin-top: -5px;
-      background: linear-gradient(90deg, #9775fa, #5b8def);
-      border-radius: 5px;
-      min-width: 4px;
-      overflow: hidden;
-    }
-    .lane-track .bar .bar-np {
-      position: absolute; top: 0; bottom: 0;
-      background: #f1b44c;
-    }
-    .lane-track .overflow {
-      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
-      font-size: 0.7rem;
-      color: var(--bs-secondary-color);
-      line-height: 1;
-    }
     .lane-track .tick-head {
-      position: absolute; top: 50%; width: 2px; height: 16px; margin: -8px 0 0 -1px;
+      position: absolute; top: 0; height: 13px; width: 2px; margin-left: -1px;
       background: #20c997;
       border-radius: 1px;
+      box-shadow: 0 0 0 1px var(--bs-body-bg);
     }
-    .lane-track .range {
-      position: absolute; top: 50%; height: 2px; margin-top: -1px;
-      background: var(--bs-secondary-color); opacity: 0.4;
-      border-radius: 1px;
-    }
-    .lane-track .mark { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; }
-    .lane-track .mark.api { border-radius: 50%; background: #5b8def; }
-    .lane-track .mark.p2p { transform: rotate(45deg); background: #9775fa; }
-    .lane-track .np-span {
-      position: absolute; top: 50%; height: 8px; margin-top: -4px;
-      background: #f1b44c; border-radius: 2px; min-width: 2px;
+    .lane-track .overflow {
+      position: absolute; right: -2px; top: 2px;
+      font-size: 0.7rem;
+      line-height: 9px;
+      color: var(--bs-secondary-color);
     }
     .arrival-axis-header {
       font-weight: 400;
-      font-size: 0.68rem;
+      font-size: 0.63rem;
       color: var(--bs-secondary-color);
       font-variant-numeric: tabular-nums;
     }
+    .arrival-axis-header .axis-line {
+      height: 4px;
+      position: relative;
+      border-bottom: 1px solid var(--bs-border-color);
+    }
+    .arrival-axis-header .axis-line i {
+      position: absolute; bottom: 0; width: 1px; height: 4px;
+      background: var(--bs-border-color);
+    }
     .arrival-axis-header .axis-labels {
-      display: flex;
-      justify-content: space-between;
+      position: relative;
+      height: 0.85rem;
       margin-top: 1px;
     }
-    .arrival-axis-header .axis-line {
-      height: 1px;
-      background: var(--bs-border-color);
-      position: relative;
+    .arrival-axis-header .axis-labels > span {
+      position: absolute; top: 0;
+      white-space: nowrap;
     }
-    .arrival-axis-header .axis-line::before,
-    .arrival-axis-header .axis-line::after {
-      content: "";
-      position: absolute;
-      top: -2px;
-      width: 1px;
-      height: 5px;
-      background: var(--bs-border-color);
-    }
-    .arrival-axis-header .axis-line::before { left: 0; }
-    .arrival-axis-header .axis-line::after { right: 0; }
 
     .arrival-table td, .arrival-table th {
       vertical-align: middle;
@@ -243,6 +243,11 @@
         if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
         return ms + 'ms';
       }
+      // Axis ticks are round numbers, so drop the trailing zeroes fmtStr keeps.
+      function fmtAxis(ms) {
+        if (ms < 1000) return ms + 'ms';
+        return String(+(ms / 1000).toFixed(2)) + 's';
+      }
       function timeColor(ms) {
         if (ms < 1000) return '#34c38f';
         if (ms < 2000) return '#7bc96f';
@@ -292,14 +297,24 @@
         return '<div class="arrival-dist"><div class="dist-bar">' + bar + '</div>' + entries + '</div>';
       }
 
-      // Shared time axis for the per-row tracks: from just below the fastest
-      // observation to a little past p90, so a lone straggler cannot compress
-      // the chart.
+      // Shared time axis for the per-row lanes. Anchored at slot start so a
+      // bar's length is the node's time-to-block, and stepped in round numbers
+      // so the gridlines can be read without consulting the labels.
       function axis(s) {
-        var lo = Math.max(0, Math.floor((s.min_ms - 50) / 100) * 100);
-        var pad = Math.max(200, (s.p50_ms - s.min_ms) * 0.6);
-        var hi = Math.ceil((Math.min(s.max_ms, s.p50_ms + pad) + 1) / 100) * 100;
-        return { lo: lo, hi: hi, span: Math.max(1, hi - lo) };
+        var steps = [100, 250, 500, 1000, 2500, 5000];
+        var target = Math.max(s.p90_ms * 1.05, s.min_ms + 150, 250);
+        var step = steps[steps.length - 1];
+
+        for (var i = 0; i < steps.length; i++) {
+          if (Math.ceil(target / steps[i]) <= 5) { step = steps[i]; break; }
+        }
+
+        var hi = Math.max(step, Math.ceil(target / step) * step);
+        var lines = [];
+
+        for (var t = step; t < hi - 1; t += step) lines.push(t);
+
+        return { lo: 0, hi: hi, span: hi, step: step, lines: lines };
       }
 
       function sortInd(key) {
@@ -335,47 +350,54 @@
         return arr;
       }
 
-      function laneMarks(n, pos) {
+      function laneMarks(n, pos, ax, splittable) {
         var html = '';
-        var hasBar = n.p2p_ms != null && n.api_ms != null && n.api_ms > n.p2p_ms;
 
-        // lead-in from the axis start to the node's first observation: the
-        // block is in flight elsewhere; anchors every row to a common baseline
-        var first = Math.min.apply(null, nodeTimes(n));
-        var firstPos = pos(first);
-        if (firstPos > 0.5) {
-          html += '<div class="lead" style="left:0;width:' + firstPos + '%"></div>';
-        }
+        ax.lines.forEach(function(t) {
+          html += '<div class="grid" style="left:' + pos(t) + '%"></div>';
+        });
 
-        if (hasBar) {
-          // the pipeline bar: gossip arrival through to the verified block
-          // event, with the newPayload window clipped inside it
-          var bLo = pos(n.p2p_ms);
-          var bHi = Math.max(bLo + 0.8, pos(n.api_ms));
+        // one bar per row, always from slot start to the last block sighting, so
+        // every lane has the same shape whichever events the node reported
+        var barEnd = n.api_ms;
+        if (n.p2p_ms != null && (barEnd == null || n.p2p_ms > barEnd)) barEnd = n.p2p_ms;
+
+        if (barEnd != null) {
+          var end = Math.max(0.6, pos(barEnd));
+          var split = n.api_ms != null && n.p2p_ms != null && n.api_ms > n.p2p_ms;
           var inner = '';
+          var tip;
 
-          if (n.np_ms != null && n.np_dur_ms) {
-            var span = bHi - bLo;
-            var npLo = Math.min(100, Math.max(0, (pos(n.np_ms) - bLo) / span * 100));
-            var npHi = Math.min(100, Math.max(npLo + 2, (pos(n.np_ms + n.np_dur_ms) - bLo) / span * 100));
-            inner = '<div class="bar-np" style="left:' + npLo + '%;width:' + (npHi - npLo) + '%"></div>';
+          if (split) {
+            inner = '<div class="flight" style="width:' + Math.max(2, pos(n.p2p_ms) / end * 100) + '%"></div>';
+            tip = 'in flight ' + fmtStr(n.p2p_ms) + ' &middot; verify +' + (n.api_ms - n.p2p_ms) +
+              'ms &rarr; block event ' + fmtStr(n.api_ms);
+          } else if (n.p2p_ms != null) {
+            inner = '<div class="flight" style="width:100%"></div>';
+            tip = 'block gossip ' + fmtStr(n.p2p_ms) + ' &middot; no block event observed';
+          } else {
+            tip = 'block event ' + fmtStr(n.api_ms) + (splittable
+              ? ' &middot; no gossip observed, so the in-flight and verify legs cannot be split'
+              : '');
           }
 
-          html += '<div class="bar" style="left:' + bLo + '%;width:' + (bHi - bLo) + '%" title="block gossip ' +
-            fmtStr(n.p2p_ms) + ' &rarr; block event ' + fmtStr(n.api_ms) + ' (verify +' + (n.api_ms - n.p2p_ms) + 'ms' +
-            (n.np_ms != null && n.np_dur_ms ? ', EL import ' + n.np_dur_ms + 'ms' : '') + ')">' + inner + '</div>';
-        } else {
-          if (n.p2p_ms != null) html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) + '%" title="libp2p block gossip: ' + fmtStr(n.p2p_ms) + '"></div>';
-          if (n.api_ms != null) html += '<div class="mark api" style="left:' + pos(n.api_ms) + '%" title="beacon api block event: ' + fmtStr(n.api_ms) + '"></div>';
-
-          if (n.np_ms != null) {
-            var w = n.np_dur_ms ? Math.max(0.4, pos(n.np_ms + n.np_dur_ms) - pos(n.np_ms)) : 0.4;
-            html += '<div class="np-span" style="left:' + pos(n.np_ms) + '%;width:' + w + '%" title="engine newPayload: ' +
-              fmtStr(n.np_ms) + ' &rarr; ' + fmtStr(n.np_ms + (n.np_dur_ms || 0)) + ' (' + (n.np_dur_ms || 0) + 'ms, ' + esc(n.np_status || '') + ')"></div>';
-          }
+          html += '<div class="bar' + (splittable && n.p2p_ms == null ? ' unsplit' : '') +
+            '" style="width:' + end + '%" title="' + tip + '">' + inner + '</div>';
         }
 
-        if (n.head_ms != null) html += '<div class="tick-head" style="left:' + pos(n.head_ms) + '%" title="beacon api head event: ' + fmtStr(n.head_ms) + '"></div>';
+        if (n.np_ms != null) {
+          var npLo = pos(n.np_ms);
+          var npHi = Math.max(npLo + 0.5, pos(n.np_ms + (n.np_dur_ms || 0)));
+          html += '<div class="np" style="left:' + npLo + '%;width:' + (npHi - npLo) +
+            '%" title="engine newPayload ' + fmtStr(n.np_ms) + ' &rarr; ' +
+            fmtStr(n.np_ms + (n.np_dur_ms || 0)) + ' (' + (n.np_dur_ms || 0) + 'ms, ' +
+            esc(n.np_status || '') + ')"></div>';
+        }
+
+        if (n.head_ms != null) {
+          html += '<div class="tick-head" style="left:' + pos(n.head_ms) +
+            '%" title="head event ' + fmtStr(n.head_ms) + '"></div>';
+        }
 
         return html;
       }
@@ -385,10 +407,30 @@
         return last > ax.hi;
       }
 
+      // Ruler above the lanes; ticks line up with the per-row gridlines.
+      function axisHeader(ax, ind) {
+        var pos = function(ms) { return ms / ax.span * 100; };
+        var ticks = '';
+        var labels = '<span style="left:0">0</span>';
+
+        ax.lines.forEach(function(t) {
+          ticks += '<i style="left:' + pos(t) + '%"></i>';
+          labels += '<span style="left:' + pos(t) + '%;transform:translateX(-50%)">' + fmtAxis(t) + '</span>';
+        });
+
+        return '<div class="arrival-axis-header"><div class="axis-line">' + ticks + '</div>' +
+          '<div class="axis-labels">' + labels +
+          '<span style="right:0">' + fmtAxis(ax.hi) + ind + '</span></div></div>';
+      }
+
       function renderTable(data) {
         var s = data.stats;
         var ax = axis(s);
         var pos = function(ms) { return Math.min(100, Math.max(0, (ms - ax.lo) / ax.span * 100)); };
+        // flagging a missing gossip leg only says something when gossip is
+        // covered broadly enough that its absence is about this node
+        var withGossip = data.nodes.filter(function(n) { return n.p2p_ms != null; }).length;
+        var splittable = withGossip * 4 > data.nodes.length;
 
         var rows = sortedNodes(data.nodes).map(function(n) {
           var cc = (n.country_code || '').toUpperCase();
@@ -403,7 +445,7 @@
           var last = n.late
             ? '<td class="grp-start"><span class="badge rounded-pill text-bg-danger" style="font-size: 11px;" title="Earliest observation ' + fmtStr(n.min_ms) +
               ' after slot start — likely a syncing or stalled node">late &middot; ' + fmtStr(n.min_ms) + '</span></td>'
-            : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 16rem">' + laneMarks(n, pos) +
+            : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 16rem">' + laneMarks(n, pos, ax, splittable) +
               (laneOverflows(n, ax) ? '<span class="overflow" title="continues past the axis">&raquo;</span>' : '') + '</div></td>';
 
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
@@ -433,17 +475,16 @@
           '<th class="sortable" data-sort="impl">Client' + sortInd('impl') + '</th>' +
           '<th style="width: 5rem" class="sortable" data-sort="cc">Loc' + sortInd('cc') + '</th>' +
           '<th class="text-end grp-start sortable" data-sort="p2p" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">' +
-          '<span class="mark-demo" style="width:8px;height:8px;transform:rotate(45deg);background:#9775fa"></span>Block&nbsp;gossip' + sortInd('p2p') + '</th>' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#9775fa;border-radius:2px"></span>Block&nbsp;gossip' + sortInd('p2p') + '</th>' +
           '<th class="text-end grp-start sortable" data-sort="api" title="Block event on the beacon API — the node has fully verified and imported the block">' +
-          '<span class="mark-demo" style="width:8px;height:8px;border-radius:50%;background:#5b8def"></span>Block event' + sortInd('api') + '</th>' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#5b8def;border-radius:2px"></span>Block event' + sortInd('api') + '</th>' +
           '<th class="text-end sortable" data-sort="dv" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify' + sortInd('dv') + '</th>' +
           '<th class="text-end sortable" data-sort="head" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">' +
           '<span class="mark-demo" style="width:2px;height:10px;background:#20c997;border-radius:1px"></span>Head event' + sortInd('head') + '</th>' +
           '<th class="text-end grp-start sortable" data-sort="np" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
           '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload' + sortInd('np') + '</th>' +
-          '<th class="grp-start sortable" data-sort="min" style="min-width: 16rem" title="All observations for the node on a shared time axis, from just before the fastest node to just past p90">' +
-          '<div class="arrival-axis-header"><div class="axis-line"></div>' +
-          '<div class="axis-labels"><span>' + fmtStr(ax.lo) + '</span><span>' + (ax.hi < s.max_ms ? '&ge;' : '') + fmtStr(ax.hi) + sortInd('min') + '</span></div></div></th>' +
+          '<th class="grp-start sortable" data-sort="min" style="min-width: 16rem" title="Every node on one axis running from slot start, so bar length is the time the node took to have the block in hand">' +
+          axisHeader(ax, sortInd('min')) + '</th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
 
