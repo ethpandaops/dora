@@ -1,0 +1,101 @@
+name: Check spec vectors
+
+# Replays the consensus-specs reference test vectors through the state
+# transition. It runs on changes to the state transition and to the chain spec
+# it reads, which is where a divergence from the consensus specs can appear.
+#
+# The vectors come from the newest consensus-specs release, so this also reports
+# when the specs move ahead of what the state transition implements. A failure
+# is therefore either a bug or a spec change to catch up with - the run output
+# names the cases either way.
+
+on:
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'indexer/beacon/statetransition/**'
+      - 'clients/consensus/chainspec.go'
+      - 'clients/consensus/chainstate.go'
+      - '.github/scripts/fetch-spec-tests.sh'
+      - '.github/workflows/test-spec-vectors.yml'
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'indexer/beacon/statetransition/**'
+      - 'clients/consensus/chainspec.go'
+      - 'clients/consensus/chainstate.go'
+      - '.github/scripts/fetch-spec-tests.sh'
+      - '.github/workflows/test-spec-vectors.yml'
+  workflow_dispatch:
+    inputs:
+      spec_version:
+        description: 'consensus-specs release to take the vectors from (empty: newest)'
+        required: false
+        type: string
+      preset:
+        description: 'Preset to run'
+        required: false
+        default: 'minimal'
+        type: choice
+        options:
+          - minimal
+          - mainnet
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  spec_vectors:
+    name: "Replay the consensus-specs vectors"
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Set up go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: 1.26.x
+
+    # The release has to be resolved before the cache step, which keys on it.
+    - name: Resolve the spec release
+      id: params
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        preset="${{ inputs.preset }}"
+        if [ -z "$preset" ]; then preset="minimal"; fi
+
+        version="${{ inputs.spec_version }}"
+        if [ -z "$version" ]; then
+          version="$(./.github/scripts/fetch-spec-tests.sh --latest-version "$preset")"
+        fi
+
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "preset=$preset" >> "$GITHUB_OUTPUT"
+        echo "Running the $preset vectors of $version"
+
+    # The vector tarballs are hundreds of megabytes and a release never changes,
+    # so the extracted tree is cached per release and preset.
+    - name: Cache spec vectors
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .spec-tests/${{ steps.params.outputs.version }}
+        key: spec-tests-${{ steps.params.outputs.version }}-${{ steps.params.outputs.preset }}
+
+    - name: Fetch spec vectors
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: ./.github/scripts/fetch-spec-tests.sh "${{ steps.params.outputs.version }}" "${{ steps.params.outputs.preset }}"
+
+    - name: Prepare test environment
+      run: mkdir -p ui-package/dist && touch ui-package/dist/dummy
+
+    - name: Replay the vectors
+      env:
+        SPEC_TESTS_DIR: .spec-tests/${{ steps.params.outputs.version }}
+        SPEC_TESTS_PRESET: ${{ steps.params.outputs.preset }}
+      run: go test -vet=off -timeout 60m ./indexer/beacon/statetransition/ -run TestSpecVectors -v

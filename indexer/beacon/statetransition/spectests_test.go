@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,22 +22,31 @@ import (
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
-// The consensus-spec-tests runner. It replays the reference test vectors from
-// https://github.com/ethereum/consensus-spec-tests through this package's state
-// transition and compares the resulting state against the vector's post state.
+// The consensus-spec-tests runner. It replays the reference test vectors through
+// this package's state transition and compares the resulting state against the
+// vector's post state.
 //
-// Run it with:
+// The vectors are published as per-preset tarballs on the consensus-specs
+// releases (the separate consensus-spec-tests repository is archived):
+// https://github.com/ethereum/consensus-specs/releases
 //
-//	SPEC_TESTS_DIR=<vectors>/tests SPEC_CONFIGS_DIR=<consensus-specs checkout> \
+// .github/scripts/fetch-spec-tests.sh lays a release out the way this runner
+// expects, defaulting to the newest one:
+//
+//	.github/scripts/fetch-spec-tests.sh
+//	SPEC_TESTS_DIR=.spec-tests/<version> \
 //	    go test ./indexer/beacon/statetransition/ -run TestSpecVectors -v
 //
-// SPEC_CONFIGS_DIR must hold the presets/ and configs/ of the *same* spec release
-// the vectors were generated from — the constants are part of the fixture.
+// SPEC_TESTS_DIR points at a directory holding the vectors in tests/ and the
+// matching presets/ and configs/ of the *same* release — the constants are part
+// of the fixture. It also accepts a bare tests/ directory, in which case
+// SPEC_CONFIGS_DIR must name the directory holding presets/ and configs/.
+//
 // Optional filters: SPEC_TESTS_PRESET (mainnet|minimal), SPEC_TESTS_FORK,
 // SPEC_TESTS_RUNNER (sanity|operations|epoch_processing|finality|random),
 // SPEC_TESTS_CASE (substring match on the case name).
 //
-// Both env vars unset ⇒ the test skips, so the normal `go test ./...` stays fast.
+// SPEC_TESTS_DIR unset ⇒ the test skips, so the normal `go test ./...` stays fast.
 
 // supportedForks maps a spec-test fork directory to the state version it produces.
 // Everything before Fulu is out of scope: applyBlock returns early below Fulu.
@@ -46,20 +56,20 @@ var supportedForks = map[string]spec.DataVersion{
 	"heze":  spec.DataVersionHeze,
 }
 
-// defaultForks are the fork directories run when SPEC_TESTS_FORK is unset. Only
-// fulu is on by default: the latest published vectors (v1.6.0-beta.0) predate the
-// Gloas spec this package implements (EIP-8282 builder deposits, the removal of
-// process_execution_payload, the reworked bid), so their gloas/heze suites report
-// divergences against the older spec rather than real bugs.
-var defaultForks = []string{"fulu"}
+// defaultForks are the fork directories run when SPEC_TESTS_FORK is unset. Heze
+// is left out: its upgrade is not implemented here, and the BeaconState the
+// vectors carry does not match the container this build decodes with, so every
+// heze case fails on the SSZ decode rather than on a state transition result.
+var defaultForks = []string{"fulu", "gloas"}
 
 // unsupportedSuites lists the runner/handler combinations this package does not
 // implement, with the reason. Anything not listed is expected to pass.
 var unsupportedSuites = map[string]string{
-	"fork":                   "only the Fulu→Gloas upgrade is implemented, the fork suite covers the preceding upgrades",
-	"transition":             "fork transitions other than Fulu→Gloas are not implemented",
+	"fork":                   "", // only the Fulu→Gloas upgrade is implemented, see runFork
+	"transition":             "", // only the Fulu→Gloas transition is implemented, see runTransition
 	"rewards":                "the rewards suite asserts per-validator delta arrays; rewards are applied inline here",
 	"light_client":           "not a state transition suite",
+	"fast_confirmation":      "not a state transition suite",
 	"fork_choice":            "not a state transition suite",
 	"ssz_static":             "not a state transition suite",
 	"merkle_proof":           "not a state transition suite",
@@ -117,10 +127,9 @@ type specTestStats struct {
 }
 
 func TestSpecVectors(t *testing.T) {
-	testsDir := os.Getenv("SPEC_TESTS_DIR")
-	configsDir := os.Getenv("SPEC_CONFIGS_DIR")
-	if testsDir == "" || configsDir == "" {
-		t.Skip("set SPEC_TESTS_DIR (consensus-spec-tests/tests) and SPEC_CONFIGS_DIR (matching consensus-specs checkout) to run the spec vectors")
+	testsDir, configsDir, err := resolveSpecTestDirs(os.Getenv("SPEC_TESTS_DIR"), os.Getenv("SPEC_CONFIGS_DIR"))
+	if err != nil {
+		t.Skipf("%v", err)
 	}
 
 	stats := &specTestStats{unsupported: map[string]int{}}
@@ -227,6 +236,10 @@ func runCase(t *testing.T, runner, handler string, testCase *specTestCase, stats
 		err = testCase.runOperation(t, handler)
 	case "epoch_processing":
 		err = testCase.runEpochProcessing(t, handler)
+	case "fork":
+		err = testCase.runFork(t)
+	case "transition":
+		err = testCase.runTransition(t)
 	default:
 		t.Skipf("unknown runner %v", runner)
 	}
@@ -290,7 +303,10 @@ func (tc *specTestCase) runOperation(t *testing.T, handler string) error {
 	case "attestation":
 		attestation := &all.Attestation{Version: tc.version}
 		tc.readSSZ(t, "attestation", attestation)
-		processAttestation(s, attestation, s.caches.committeeCache, 0)
+		// Since Gloas the payload availability is looked up at the parent block's
+		// slot, which process_execution_payload_bid supplies during block
+		// processing and the vector carries in its meta for the isolated operation.
+		processAttestation(s, attestation, s.caches.committeeCache, phase0.Slot(tc.metaInt(t, "parent_slot")))
 
 	case "attester_slashing":
 		slashing := &all.AttesterSlashing{Version: tc.version}
@@ -404,6 +420,95 @@ func (tc *specTestCase) runEpochProcessing(t *testing.T, handler string) error {
 	return tc.compareState(t, state)
 }
 
+// preForkVersions maps a fork to the state version its upgrade starts from.
+var preForkVersions = map[string]spec.DataVersion{
+	"gloas": spec.DataVersionFulu,
+}
+
+// runFork applies the fork's irregular state change to the pre-fork state.
+//
+// Only upgrade_to_gloas is implemented here, so the suites of the preceding
+// upgrades are skipped rather than reported as divergences.
+func (tc *specTestCase) runFork(t *testing.T) error {
+	preVersion, supported := preForkVersions[tc.fork]
+	if !supported {
+		t.Skipf("upgrade_to_%v is not implemented", tc.fork)
+	}
+
+	// The pre state is still of the previous fork's type; the post state is the
+	// upgraded one, so the accessor has to be built on the pre-fork version and
+	// carry the state across the version change itself.
+	state := &all.BeaconState{Version: preVersion}
+	tc.readSSZ(t, "pre", state)
+
+	st := NewStateTransition(tc.specs, tc.dynSsz)
+	s, err := st.newAccessor(state)
+	if err != nil {
+		return fmt.Errorf("failed to create accessor: %w", err)
+	}
+
+	// upgrade_to_gloas is called directly rather than through maybeUpgradeToGloas:
+	// the wrapper only fires on the first slot of the fork epoch, which is where
+	// process_slots triggers it on a chain, while the vectors carry pre states
+	// from arbitrary slots.
+	upgradeToGloas(s)
+
+	if state.Version != supportedForks[tc.fork] {
+		return fmt.Errorf("state was not upgraded: version is %v", state.Version)
+	}
+
+	return tc.compareState(t, state)
+}
+
+// runTransition replays a chain across a fork boundary, which is how the fork
+// upgrade is reached on a live chain: process_slots applies it at the first slot
+// of the fork epoch, in between the blocks of the two forks.
+func (tc *specTestCase) runTransition(t *testing.T) error {
+	preVersion, supported := preForkVersions[tc.fork]
+	if !supported {
+		t.Skipf("the transition to %v is not implemented", tc.fork)
+	}
+
+	state := &all.BeaconState{Version: preVersion}
+	tc.readSSZ(t, "pre", state)
+
+	// The vector picks the fork epoch, so the spec the transition runs against
+	// has to be the one the blocks were built for.
+	forkEpoch := uint64(tc.metaInt(t, "fork_epoch"))
+	specsAtFork := *tc.specs
+	specsAtFork.GloasForkEpoch = &forkEpoch
+
+	// fork_block is the index of the last block of the initial fork, so every
+	// later block is of the post-fork type. It is absent when the fork epoch
+	// holds no pre-fork block at all, which metaInt reports as 0 - the explicit
+	// lookup separates that from a genuine index 0.
+	lastPreForkBlock := -1
+	if value, found := tc.metaValue(t, "fork_block"); found {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("failed to parse fork_block: %w", err)
+		}
+		lastPreForkBlock = parsed
+	}
+
+	st := NewStateTransition(&specsAtFork, tc.dynSsz)
+	for i := 0; i < tc.metaInt(t, "blocks_count"); i++ {
+		version := tc.version
+		if i <= lastPreForkBlock {
+			version = preVersion
+		}
+
+		block := &all.SignedBeaconBlock{Version: version}
+		tc.readSSZ(t, fmt.Sprintf("blocks_%d", i), block)
+
+		if err := st.ApplyBlock(state, block); err != nil {
+			return fmt.Errorf("apply block %d (slot %d): %w", i, block.Message.Slot, err)
+		}
+	}
+
+	return tc.compareState(t, state)
+}
+
 // compareState checks the produced state against the case's post state and, on a
 // mismatch, points at the first field that differs.
 func (tc *specTestCase) compareState(t *testing.T, got *all.BeaconState) error {
@@ -425,38 +530,38 @@ func (tc *specTestCase) compareState(t *testing.T, got *all.BeaconState) error {
 		gotRoot, wantRoot, describeStateDiff(got, want))
 }
 
-// describeStateDiff lists the high-level state fields that differ, to point at the
-// processing step responsible for a mismatch.
+// describeStateDiff lists the state fields that differ, to point at the
+// processing step responsible for a mismatch. It walks the state struct by
+// reflection so a divergence in a field this file does not know about still
+// shows up by name instead of as a bare root mismatch.
 func describeStateDiff(got, want *all.BeaconState) string {
 	var diffs []string
 
-	report := func(field string, gotValue, wantValue any) {
-		if fmt.Sprint(gotValue) != fmt.Sprint(wantValue) {
-			diffs = append(diffs, fmt.Sprintf("  %v: got %v, want %v", field, gotValue, wantValue))
-		}
-	}
+	gotValue := reflect.ValueOf(got).Elem()
+	wantValue := reflect.ValueOf(want).Elem()
 
-	report("slot", got.Slot, want.Slot)
-	report("len(validators)", len(got.Validators), len(want.Validators))
-	report("len(balances)", len(got.Balances), len(want.Balances))
-	report("eth1_deposit_index", got.ETH1DepositIndex, want.ETH1DepositIndex)
-	report("deposit_requests_start_index", got.DepositRequestsStartIndex, want.DepositRequestsStartIndex)
-	report("deposit_balance_to_consume", got.DepositBalanceToConsume, want.DepositBalanceToConsume)
-	report("exit_balance_to_consume", got.ExitBalanceToConsume, want.ExitBalanceToConsume)
-	report("earliest_exit_epoch", got.EarliestExitEpoch, want.EarliestExitEpoch)
-	report("consolidation_balance_to_consume", got.ConsolidationBalanceToConsume, want.ConsolidationBalanceToConsume)
-	report("earliest_consolidation_epoch", got.EarliestConsolidationEpoch, want.EarliestConsolidationEpoch)
-	report("len(pending_deposits)", len(got.PendingDeposits), len(want.PendingDeposits))
-	report("len(pending_partial_withdrawals)", len(got.PendingPartialWithdrawals), len(want.PendingPartialWithdrawals))
-	report("len(pending_consolidations)", len(got.PendingConsolidations), len(want.PendingConsolidations))
-	report("next_withdrawal_index", got.NextWithdrawalIndex, want.NextWithdrawalIndex)
-	report("next_withdrawal_validator_index", got.NextWithdrawalValidatorIndex, want.NextWithdrawalValidatorIndex)
-	report("finalized_checkpoint.epoch", checkpointEpoch(got.FinalizedCheckpoint), checkpointEpoch(want.FinalizedCheckpoint))
-	report("current_justified_checkpoint.epoch", checkpointEpoch(got.CurrentJustifiedCheckpoint), checkpointEpoch(want.CurrentJustifiedCheckpoint))
-	report("len(builders)", len(got.Builders), len(want.Builders))
-	report("current_sync_committee", syncCommitteeDigest(got.CurrentSyncCommittee), syncCommitteeDigest(want.CurrentSyncCommittee))
-	report("next_sync_committee", syncCommitteeDigest(got.NextSyncCommittee), syncCommitteeDigest(want.NextSyncCommittee))
-	report("len(builder_pending_withdrawals)", len(got.BuilderPendingWithdrawals), len(want.BuilderPendingWithdrawals))
+	for i := 0; i < gotValue.NumField(); i++ {
+		field := gotValue.Type().Field(i)
+		if !field.IsExported() {
+			continue
+		}
+
+		gotField := gotValue.Field(i).Interface()
+		wantField := wantValue.Field(i).Interface()
+		if reflect.DeepEqual(gotField, wantField) {
+			continue
+		}
+
+		// Validators and balances are compared per entry below, which points at
+		// the affected index instead of dumping the whole registry.
+		switch field.Name {
+		case "Validators", "Balances":
+			continue
+		}
+
+		diffs = append(diffs, fmt.Sprintf("  %v:\n    got  %v\n    want %v",
+			field.Name, renderField(gotField), renderField(wantField)))
+	}
 
 	for i := range got.Validators {
 		if i >= len(want.Validators) {
@@ -471,6 +576,10 @@ func describeStateDiff(got, want *all.BeaconState) string {
 			diffs = append(diffs, "  ...")
 			break
 		}
+	}
+
+	if len(got.Validators) != len(want.Validators) {
+		diffs = append(diffs, fmt.Sprintf("  len(validators): got %d, want %d", len(got.Validators), len(want.Validators)))
 	}
 
 	for i := range got.Balances {
@@ -494,6 +603,42 @@ func describeStateDiff(got, want *all.BeaconState) string {
 	return strings.Join(diffs, "\n")
 }
 
+// renderField renders one state field for the diff output. Slices are rendered
+// element by element so a long list points at the entry that differs, and every
+// rendering is capped so a mismatch in a large field stays readable.
+func renderField(value any) string {
+	const maxLen = 400
+
+	rendered := ""
+	switch typed := value.(type) {
+	case *altair.SyncCommittee:
+		rendered = syncCommitteeDigest(typed)
+	case []byte:
+		rendered = fmt.Sprintf("%#x", typed)
+	default:
+		reflected := reflect.ValueOf(value)
+		if reflected.Kind() == reflect.Slice {
+			entries := make([]string, 0, reflected.Len())
+			for i := 0; i < reflected.Len(); i++ {
+				entry := reflected.Index(i)
+				if entry.Kind() == reflect.Pointer && !entry.IsNil() {
+					entry = entry.Elem()
+				}
+				entries = append(entries, fmt.Sprintf("[%d] %+v", i, entry.Interface()))
+			}
+			rendered = fmt.Sprintf("(%d) %v", reflected.Len(), strings.Join(entries, " "))
+		} else {
+			rendered = fmt.Sprintf("%+v", value)
+		}
+	}
+
+	if len(rendered) > maxLen {
+		rendered = rendered[:maxLen] + "..."
+	}
+
+	return rendered
+}
+
 // syncCommitteeDigest renders a sync committee compactly enough to compare.
 func syncCommitteeDigest(committee *altair.SyncCommittee) string {
 	if committee == nil {
@@ -506,13 +651,6 @@ func syncCommitteeDigest(committee *altair.SyncCommittee) string {
 	}
 
 	return fmt.Sprintf("%d pubkeys, first %v, aggregate %#x", len(committee.Pubkeys), first, committee.AggregatePubkey[:4])
-}
-
-func checkpointEpoch(checkpoint *phase0.Checkpoint) phase0.Epoch {
-	if checkpoint == nil {
-		return 0
-	}
-	return checkpoint.Epoch
 }
 
 // wrapBody puts a block body into the block envelope the process functions take.
@@ -559,38 +697,40 @@ func (tc *specTestCase) loadState(t *testing.T, name string) *all.BeaconState {
 	return state
 }
 
-// metaInt reads a numeric key from meta.yaml, which is a flat one-line mapping.
-func (tc *specTestCase) metaInt(t *testing.T, key string) int {
+// metaValue reads a key from meta.yaml, which is a flat one-line mapping, and
+// reports whether the case carries it at all.
+func (tc *specTestCase) metaValue(t *testing.T, key string) (string, bool) {
 	if !tc.hasFile("meta.yaml") {
+		return "", false
+	}
+
+	value, found := parseFlatYaml(tc.readFile(t, "meta.yaml"))[key]
+
+	return value, found
+}
+
+// metaInt reads a numeric key from meta.yaml, defaulting to 0 when absent.
+func (tc *specTestCase) metaInt(t *testing.T, key string) int {
+	raw, found := tc.metaValue(t, key)
+	if !found {
 		return 0
 	}
 
-	for k, v := range parseFlatYaml(tc.readFile(t, "meta.yaml")) {
-		if k != key {
-			continue
-		}
-		value, err := strconv.Atoi(v)
-		if err != nil {
-			t.Fatalf("failed to parse meta.yaml %v: %v", key, err)
-		}
-		return value
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		t.Fatalf("failed to parse meta.yaml %v: %v", key, err)
 	}
 
-	return 0
+	return value
 }
 
 func (tc *specTestCase) metaBool(t *testing.T, key string, fallback bool) bool {
-	if !tc.hasFile("meta.yaml") {
+	value, found := tc.metaValue(t, key)
+	if !found {
 		return fallback
 	}
 
-	for k, v := range parseFlatYaml(tc.readFile(t, "meta.yaml")) {
-		if k == key {
-			return v == "true"
-		}
-	}
-
-	return fallback
+	return value == "true"
 }
 
 // loadSpecConfig builds the chain spec for a preset from the spec repository's
@@ -683,6 +823,37 @@ func parseFlatYaml(content string) map[string]string {
 	}
 
 	return values
+}
+
+// resolveSpecTestDirs works out where the vectors and the spec constants live.
+//
+// A release laid out by .github/scripts/fetch-spec-tests.sh holds both under one root,
+// so SPEC_TESTS_DIR alone is enough; pointing it straight at a tests/ directory
+// still works as long as SPEC_CONFIGS_DIR names the presets/configs root.
+func resolveSpecTestDirs(testsDir, configsDir string) (string, string, error) {
+	if testsDir == "" {
+		return "", "", fmt.Errorf("set SPEC_TESTS_DIR to a consensus-specs release laid out by .github/scripts/fetch-spec-tests.sh to run the spec vectors")
+	}
+
+	// A release root holds the vectors one level down, next to the constants.
+	if info, err := os.Stat(filepath.Join(testsDir, "tests")); err == nil && info.IsDir() {
+		if configsDir == "" {
+			configsDir = testsDir
+		}
+		testsDir = filepath.Join(testsDir, "tests")
+	}
+
+	if configsDir == "" {
+		return "", "", fmt.Errorf("SPEC_TESTS_DIR %v holds no tests/ directory: set SPEC_CONFIGS_DIR to the presets/ and configs/ of the release the vectors came from", testsDir)
+	}
+
+	for _, dir := range []string{filepath.Join(configsDir, "presets"), filepath.Join(configsDir, "configs")} {
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			return "", "", fmt.Errorf("%v is missing: the spec constants are part of the fixture and must come from the same release as the vectors", dir)
+		}
+	}
+
+	return testsDir, configsDir, nil
 }
 
 // listDirs returns the sorted subdirectories of dir, optionally filtered to one name.
