@@ -62,6 +62,17 @@ type APIEpochInfo struct {
 	ConsolidationRequests uint64  `json:"consolidation_requests,omitempty"`
 }
 
+// epochSlotRange returns the inclusive slot bounds for an epoch. GetDbBlocksForSlots
+// walks backwards from its first argument, so callers must start at the upper bound.
+func epochSlotRange(epoch uint64, slotsPerEpoch uint64) (uint64, uint64) {
+	firstSlot := epoch * slotsPerEpoch
+	if slotsPerEpoch == 0 {
+		return firstSlot, firstSlot
+	}
+
+	return firstSlot, firstSlot + slotsPerEpoch - 1
+}
+
 // APIEpochs returns a list of epochs with filters
 // @Summary Get epochs list
 // @Description Returns a list of epochs with detailed information and statistics
@@ -152,15 +163,15 @@ func APIEpochsV1(w http.ResponseWriter, r *http.Request) {
 
 		// Get deposits, slashings, exits, etc. from blocks in epoch
 		specs := chainState.GetSpecs()
-		firstSlot := epoch * specs.SlotsPerEpoch
+		firstSlot, lastSlot := epochSlotRange(epoch, specs.SlotsPerEpoch)
 
 		// Pre-ePBS the execution payload is bundled inside the beacon block, so every
-		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are revealed
-		// separately and may be missing.
+		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are delivered
+		// separately and may be missing or arrive too late for canonical inclusion.
 		gloasActive := chainState.IsEip7732Enabled(phase0.Epoch(epoch))
 
 		// Get blocks for this epoch
-		blocks := services.GlobalBeaconService.GetDbBlocksForSlots(r.Context(), firstSlot, uint32(specs.SlotsPerEpoch), true, true)
+		blocks := services.GlobalBeaconService.GetDbBlocksForSlots(r.Context(), lastSlot, uint32(lastSlot-firstSlot), true, true)
 
 		for _, slot := range blocks {
 			if slot.Status == dbtypes.Missing {
@@ -176,7 +187,8 @@ func APIEpochsV1(w http.ResponseWriter, r *http.Request) {
 			if !gloasActive || slot.PayloadStatus == dbtypes.PayloadStatusCanonical {
 				epochInfo.ProposedPayloads++
 			} else {
-				// proposed block whose payload was not revealed (ePBS-specific failure)
+				// Proposed block whose payload was not included in the canonical
+				// execution chain (missing or late/orphaned).
 				epochInfo.MissedPayloads++
 			}
 			epochInfo.Attestations += slot.AttestationCount

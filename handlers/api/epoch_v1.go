@@ -122,15 +122,17 @@ func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 		data.ProposedBlocks = uint64(dbEpoch.BlockCount)
 
 		// Pre-ePBS the execution payload is bundled inside the beacon block, so every
-		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are revealed
-		// separately and may be missing, so use the dedicated payload count.
+		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are delivered
+		// separately and may be missing or arrive too late for canonical inclusion, so use
+		// the dedicated payload count.
 		proposedPayloads := uint64(dbEpoch.BlockCount)
 		if chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
 			proposedPayloads = dbEpoch.PayloadCount
 		}
 		data.ProposedPayloads = proposedPayloads
-		// MissedPayloads counts canonical blocks that were proposed but whose payload was
-		// not revealed (an ePBS-specific failure, distinct from MissedBlocks). Always 0 pre-ePBS.
+		// MissedPayloads counts canonical blocks whose committed payload was not included
+		// in the canonical execution chain (an ePBS-specific failure, distinct from
+		// MissedBlocks). Always 0 pre-ePBS.
 		data.MissedPayloads = uint64(dbEpoch.BlockCount) - proposedPayloads
 	}
 

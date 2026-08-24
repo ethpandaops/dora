@@ -57,6 +57,20 @@ type dbWriter struct {
 	indexer *Indexer
 }
 
+// payloadStatusForBlock resolves the persisted status of a separately revealed
+// execution payload. Receiving an envelope is not enough for it to be canonical:
+// a late payload is orphaned when the next canonical beacon block skips its hash.
+func payloadStatusForBlock(hasPayload bool, isPayloadOrphaned bool) dbtypes.PayloadStatus {
+	switch {
+	case !hasPayload:
+		return dbtypes.PayloadStatusMissing
+	case isPayloadOrphaned:
+		return dbtypes.PayloadStatusOrphaned
+	default:
+		return dbtypes.PayloadStatusCanonical
+	}
+}
+
 func newDbWriter(indexer *Indexer) *dbWriter {
 	return &dbWriter{
 		indexer: indexer,
@@ -106,11 +120,6 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 
 	if orphaned {
 		dbBlock.Status = dbtypes.Orphaned
-	}
-
-	// Apply payload orphaned status from block flag (set during finalization/sync)
-	if block.isPayloadOrphaned && dbBlock.PayloadStatus == dbtypes.PayloadStatusCanonical {
-		dbBlock.PayloadStatus = dbtypes.PayloadStatusOrphaned
 	}
 
 	err := db.InsertSlot(dbw.indexer.ctx, tx, dbBlock)
@@ -380,6 +389,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 		blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
+		payloadStatus = payloadStatusForBlock(blockPayload != nil, block.isPayloadOrphaned)
 		if blockPayload != nil {
 			executionBlockHash = blockPayload.Message.Payload.BlockHash
 			executionBlockNumber = blockPayload.Message.Payload.BlockNumber
@@ -387,9 +397,6 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			executionExtraData = blockPayload.Message.Payload.ExtraData
 			executionTransactions = blockPayload.Message.Payload.Transactions
 			executionWithdrawals = blockPayload.Message.Payload.Withdrawals
-			payloadStatus = dbtypes.PayloadStatusCanonical
-		} else {
-			payloadStatus = dbtypes.PayloadStatusMissing
 		}
 	} else {
 		payloadStatus = dbtypes.PayloadStatusCanonical
@@ -668,8 +675,13 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 
 			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
-				if blockPayload != nil {
+				// A late reveal remains available for inspection, but does not count
+				// as proposed when the canonical execution chain skipped its hash.
+				payloadStatus := payloadStatusForBlock(blockPayload != nil, block.isPayloadOrphaned)
+				if payloadStatus == dbtypes.PayloadStatusCanonical {
 					dbEpoch.PayloadCount++
+				}
+				if blockPayload != nil {
 					executionTransactions = blockPayload.Message.Payload.Transactions
 					executionWithdrawals = blockPayload.Message.Payload.Withdrawals
 				} else {

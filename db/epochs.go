@@ -57,6 +57,55 @@ func InsertEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Epoch) error {
 	return nil
 }
 
+type epochPayloadCountRepair struct {
+	Epoch          uint64 `db:"epoch"`
+	StoredCount    uint64 `db:"stored_count"`
+	CanonicalCount uint64 `db:"canonical_count"`
+}
+
+// RepairEpochPayloadCounts recalculates finalized post-Gloas epoch payload counts
+// from the canonical slot rows. Older Dora versions counted every envelope they
+// eventually received, including late payloads skipped by the successor chain.
+func RepairEpochPayloadCounts(ctx context.Context, tx *sqlx.Tx, slotsPerEpoch uint64, firstEpoch uint64) (uint64, error) {
+	if slotsPerEpoch == 0 {
+		return 0, nil
+	}
+
+	counts := []epochPayloadCountRepair{}
+	err := tx.SelectContext(ctx, &counts, `
+		SELECT
+			epochs.epoch AS epoch,
+			epochs.payload_count AS stored_count,
+			COUNT(DISTINCT slots.slot) AS canonical_count
+		FROM epochs
+		LEFT JOIN slots ON
+			slots.status = $1 AND
+			slots.payload_status = $2 AND
+			slots.slot >= epochs.epoch * $3 AND
+			slots.slot < (epochs.epoch + 1) * $4
+		WHERE epochs.epoch >= $5
+		GROUP BY epochs.epoch, epochs.payload_count`,
+		dbtypes.Canonical, dbtypes.PayloadStatusCanonical,
+		slotsPerEpoch, slotsPerEpoch, firstEpoch)
+	if err != nil {
+		return 0, err
+	}
+
+	var repaired uint64
+	for _, count := range counts {
+		if count.StoredCount == count.CanonicalCount {
+			continue
+		}
+
+		if _, err := tx.ExecContext(ctx, `UPDATE epochs SET payload_count = $1 WHERE epoch = $2`, count.CanonicalCount, count.Epoch); err != nil {
+			return repaired, err
+		}
+		repaired++
+	}
+
+	return repaired, nil
+}
+
 // UpdateEpochDutiesSize records the stored size of an epoch's duties object.
 func UpdateEpochDutiesSize(ctx context.Context, epoch uint64, size uint64) error {
 	return RunDBTransaction(func(tx *sqlx.Tx) error {

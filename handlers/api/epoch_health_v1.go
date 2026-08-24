@@ -35,7 +35,7 @@ type APIEpochHealthResponseV1 struct {
 // ApiEpochHealthV1 godoc
 // @Summary Get epoch health by number, latest, finalized
 // @Tags Epoch
-// @Description Returns the vote, proposal and payload participation rates for an epoch. The chain is only fully healthy when all three reach 100%. Post-ePBS (EIP-7732) payloads are revealed separately from beacon blocks and may be missing.
+// @Description Returns the vote, proposal and payload participation rates for an epoch. The chain is only fully healthy when all three reach 100%. Post-ePBS (EIP-7732) payloads are delivered separately from beacon blocks and may be missing or arrive too late for canonical inclusion.
 // @Produce  json
 // @Param  epoch path string true "Epoch number, the string latest or the string finalized"
 // @Success 200 {object} ApiResponse{data=APIEpochHealthResponseV1} "Success"
@@ -95,8 +95,9 @@ func ApiEpochHealthV1(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Pre-ePBS the execution payload is bundled inside the beacon block, so every
-		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are revealed
-		// separately and may be missing, so use the dedicated payload count.
+		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are delivered
+		// separately and may be missing or arrive too late for canonical inclusion, so use
+		// the dedicated payload count.
 		proposedPayloads := uint64(dbEpoch.BlockCount)
 		if chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
 			proposedPayloads = dbEpoch.PayloadCount
@@ -117,7 +118,7 @@ func ApiEpochHealthV1(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// The chain is fully healthy for the epoch only when every eligible validator
-		// voted, every passed slot produced a block, and every block revealed its payload.
+		// voted, every passed slot produced a block, and every block's payload was included.
 		const healthyThreshold = 100.0 - 1e-9
 		data.Healthy = passedSlotCount > 0 &&
 			data.VoteParticipation >= healthyThreshold &&
