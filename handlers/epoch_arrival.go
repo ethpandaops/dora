@@ -185,7 +185,7 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	for slot, values := range slotValues {
 		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
 		response.Slots[uint64(slot)] = &models.EpochArrivalSlot{
-			Nodes: len(values),
+			Nodes: uint32(len(values)),
 			MinMs: values[0],
 			P90Ms: values[len(values)*9/10],
 		}

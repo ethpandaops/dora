@@ -135,10 +135,10 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot strin
 	response := &models.SlotArrivalResponse{
 		Slot:             uint64(slot),
 		Settled:          settled,
-		Observations:     apiObservations,
-		P2PObservations:  p2pObservations,
-		HeadObservations: headObservations,
-		NPObservations:   npObservations,
+		Observations:     uint32(apiObservations),  //nolint:gosec // observation counts are small
+		P2PObservations:  uint32(p2pObservations),  //nolint:gosec // observation counts are small
+		HeadObservations: uint32(headObservations), //nolint:gosec // observation counts are small
+		NPObservations:   uint32(npObservations),   //nolint:gosec // observation counts are small
 	}
 
 	if len(nodes) > 0 {
@@ -477,7 +477,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 			NPMs:           node.npMs,
 			NPDurMs:        node.npDurMs,
 			NPStatus:       node.npStatus,
-			Observations:   node.observations,
+			Observations:   uint32(node.observations), //nolint:gosec // observation counts are small
 		}
 
 		if minMs > lateThresholdMs {
@@ -515,18 +515,18 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 
 	if len(nodeList) == 0 {
 		response.Nodes = lateList
-		response.Stats = &models.SlotArrivalStats{LateNodes: len(lateList)}
+		response.Stats = &models.SlotArrivalStats{LateNodes: uint32(len(lateList))}
 
 		return
 	}
 
 	response.Stats = &models.SlotArrivalStats{
-		UniqueNodes: len(nodeList),
+		UniqueNodes: uint32(len(nodeList)),
 		MinMs:       nodeList[0].MinMs,
 		P50Ms:       nodeList[len(nodeList)/2].MinMs,
 		P90Ms:       nodeList[len(nodeList)*9/10].MinMs,
 		MaxMs:       nodeList[len(nodeList)-1].MinMs,
-		LateNodes:   len(lateList),
+		LateNodes:   uint32(len(lateList)),
 	}
 	response.Nodes = append(nodeList, lateList...)
 
@@ -554,7 +554,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
 		groupList = append(groupList, &models.SlotArrivalGroup{
 			Name:  name,
-			Nodes: len(values),
+			Nodes: uint32(len(values)),
 			P50Ms: values[len(values)/2],
 		})
 	}

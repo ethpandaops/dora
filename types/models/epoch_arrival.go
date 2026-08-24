@@ -13,7 +13,7 @@ type EpochArrivalResponse struct {
 // EpochArrivalSlot summarizes one slot's block arrival across observing
 // nodes, using each node's earliest observation.
 type EpochArrivalSlot struct {
-	Nodes int    `json:"nodes"`
+	Nodes uint32 `json:"nodes"`
 	MinMs uint32 `json:"min_ms"`
 	P90Ms uint32 `json:"p90_ms"`
 }

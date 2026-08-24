@@ -8,10 +8,10 @@ type SlotArrivalResponse struct {
 	// Settled is false while the Xatu ingest pipeline may still be receiving
 	// events for this slot; such responses are never cached.
 	Settled          bool                    `json:"settled"`
-	Observations     int                     `json:"observations"`
-	P2PObservations  int                     `json:"p2p_observations"`
-	HeadObservations int                     `json:"head_observations"`
-	NPObservations   int                     `json:"np_observations"`
+	Observations     uint32                  `json:"observations"`
+	P2PObservations  uint32                  `json:"p2p_observations"`
+	HeadObservations uint32                  `json:"head_observations"`
+	NPObservations   uint32                  `json:"np_observations"`
 	Stats            *SlotArrivalStats       `json:"stats,omitempty"`
 	Nodes            []*SlotArrivalNode      `json:"nodes,omitempty"`
 	Continents       []*SlotArrivalContinent `json:"continents,omitempty"`
@@ -21,7 +21,7 @@ type SlotArrivalResponse struct {
 // SlotArrivalStats summarizes block propagation across observing nodes, using
 // each node's earliest observation from either series.
 type SlotArrivalStats struct {
-	UniqueNodes int    `json:"unique_nodes"`
+	UniqueNodes uint32 `json:"unique_nodes"`
 	MinMs       uint32 `json:"min_ms"`
 	P50Ms       uint32 `json:"p50_ms"`
 	P90Ms       uint32 `json:"p90_ms"`
@@ -29,7 +29,7 @@ type SlotArrivalStats struct {
 	// LateNodes counts nodes whose earliest observation came more than a full
 	// slot after slot start (syncing or stalled nodes); they are excluded
 	// from the timing stats.
-	LateNodes int `json:"late_nodes"`
+	LateNodes uint32 `json:"late_nodes"`
 }
 
 // SlotArrivalNode is one observing node with its earliest observation per
@@ -51,13 +51,13 @@ type SlotArrivalNode struct {
 	NPDurMs        *uint32 `json:"np_dur_ms,omitempty"`
 	NPStatus       string  `json:"np_status,omitempty"`
 	Late           bool    `json:"late,omitempty"`
-	Observations   int     `json:"observations"`
+	Observations   uint32  `json:"observations"`
 }
 
 // SlotArrivalContinent aggregates earliest observations per continent.
 type SlotArrivalContinent struct {
 	Code  string `json:"code"`
-	Nodes int    `json:"nodes"`
+	Nodes uint32 `json:"nodes"`
 	MinMs uint32 `json:"min_ms"`
 	P50Ms uint32 `json:"p50_ms"`
 	P90Ms uint32 `json:"p90_ms"`
@@ -67,6 +67,6 @@ type SlotArrivalContinent struct {
 // SlotArrivalGroup aggregates earliest observations per node group.
 type SlotArrivalGroup struct {
 	Name  string `json:"name"`
-	Nodes int    `json:"nodes"`
+	Nodes uint32 `json:"nodes"`
 	P50Ms uint32 `json:"p50_ms"`
 }
