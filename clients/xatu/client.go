@@ -22,7 +22,10 @@ const (
 	// maxQueryPageSize is the page_size ceiling the generated builders enforce.
 	maxQueryPageSize = 10000
 	// maxQueryPages bounds a paged read so a bad filter cannot walk a table
-	// forever. 10 pages is far above any single epoch's event count.
+	// forever. The widest caller reduces one epoch of a single event series, so
+	// 10 pages allows 100k rows there, about 3000 observing nodes per slot
+	// across 32 slots. Exceeding it fails loudly rather than truncating,
+	// because a short read yields plausible-looking wrong percentiles.
 	maxQueryPages           = 10
 	defaultSettleDelay      = 30 * time.Second
 	defaultConcurrencyLimit = 2

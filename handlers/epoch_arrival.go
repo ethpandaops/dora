@@ -109,6 +109,10 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 		Max: wrapperspb.UInt32(uint32(lastTime.Unix())), //nolint:gosec // unix timestamps fit
 	}}}
 	networkFilter := &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}}
+	// late observations are dropped below, so leave them in ClickHouse rather
+	// than paging them across the wire only to discard them
+	lateMs := lateThreshold(chainState)
+	freshFilter := &xch.UInt32Filter{Filter: &xch.UInt32Filter_Lte{Lte: lateMs}}
 
 	pageSize := xatu.MaxQueryPageSize()
 
@@ -117,7 +121,8 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	err := client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
 		return xch.BuildListBeaconApiEthV1EventsBlockQuery(&xch.ListBeaconApiEthV1EventsBlockRequest{
 			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
-			PageSize: pageSize, PageToken: pageToken,
+			PropagationSlotStartDiff: freshFilter,
+			PageSize:                 pageSize, PageToken: pageToken,
 		})
 	}, func(rows driver.Rows) error {
 		var row xch.BeaconApiEthV1EventsBlockRow
@@ -136,7 +141,8 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	err = client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
 		return xch.BuildListLibp2PGossipsubBeaconBlockQuery(&xch.ListLibp2PGossipsubBeaconBlockRequest{
 			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
-			PageSize: pageSize, PageToken: pageToken,
+			PropagationSlotStartDiff: freshFilter,
+			PageSize:                 pageSize, PageToken: pageToken,
 		})
 	}, func(rows driver.Rows) error {
 		var row xch.Libp2PGossipsubBeaconBlockRow
@@ -155,7 +161,8 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	err = client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
 		return xch.BuildListBeaconApiEthV1EventsHeadQuery(&xch.ListBeaconApiEthV1EventsHeadRequest{
 			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
-			PageSize: pageSize, PageToken: pageToken,
+			PropagationSlotStartDiff: freshFilter,
+			PageSize:                 pageSize, PageToken: pageToken,
 		})
 	}, func(rows driver.Rows) error {
 		var row xch.BeaconApiEthV1EventsHeadRow
@@ -174,13 +181,7 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	// per-slot values, late observations excluded as on the slot page
 	slotValues := map[uint32][]uint32{}
 
-	lateMs := lateThreshold(chainState)
-
 	for key, ms := range earliest {
-		if ms > lateMs {
-			continue
-		}
-
 		slotValues[key.slot] = append(slotValues[key.slot], ms)
 	}
 
