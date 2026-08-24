@@ -93,13 +93,15 @@ func main() {
 	if cfg.Xatu.Enabled {
 		specs := services.GlobalBeaconService.GetChainState().GetSpecs()
 
-		xatuClient, err := xatu.NewClient(&cfg.Xatu, specs.ConfigName)
+		// Only invalid configuration fails here; reachability is checked in the
+		// background so a ClickHouse outage cannot block startup.
+		xatuClient, err := xatu.NewClient(&cfg.Xatu, specs.ConfigName, logger)
 		if err != nil {
-			logger.Fatalf("error connecting to xatu clickhouse: %v", err)
+			logger.Fatalf("invalid xatu configuration: %v", err)
 		}
 
 		xatu.GlobalClient = xatuClient
-		logger.WithField("module", "xatu").Infof("connected to xatu clickhouse (network: %v)", xatuClient.Network())
+		logger.WithField("module", "xatu").Infof("xatu clickhouse configured (network: %v)", xatuClient.Network())
 	}
 
 	if cfg.RateLimit.Enabled {

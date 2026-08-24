@@ -11,6 +11,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/types"
 	xch "github.com/ethpandaops/xatu/pkg/proto/clickhouse"
@@ -30,6 +31,7 @@ var GlobalClient *Client
 // slots are routed to the cached endpoint when one is configured, so a
 // response-caching proxy can absorb repeated queries across instances.
 type Client struct {
+	logger      *logrus.Entry
 	conn        driver.Conn
 	cachedConn  driver.Conn
 	database    string
@@ -40,25 +42,26 @@ type Client struct {
 
 // NewClient connects to the configured ClickHouse endpoints. defaultNetwork is
 // used as the meta_network_name filter when the config does not set one.
-func NewClient(cfg *types.XatuConfig, defaultNetwork string) (*Client, error) {
-	if cfg.ClickhouseDsn == "" {
+func NewClient(cfg *types.XatuConfig, defaultNetwork string, logger logrus.FieldLogger) (*Client, error) {
+	if cfg.Raw.ClickhouseDsn == "" {
 		return nil, fmt.Errorf("xatu clickhouse dsn is required")
 	}
 
-	conn, err := connect(cfg.ClickhouseDsn, cfg.Database)
+	conn, err := connect(cfg.Raw.ClickhouseDsn, cfg.Raw.Database)
 	if err != nil {
 		return nil, fmt.Errorf("xatu clickhouse: %w", err)
 	}
 
 	client := &Client{
+		logger:      logger.WithField("module", "xatu"),
 		conn:        conn,
-		database:    cfg.Database,
+		database:    cfg.Raw.Database,
 		network:     cfg.NetworkName,
 		settleDelay: cfg.SettleDelay,
 	}
 
-	if cfg.ClickhouseCachedDsn != "" {
-		cachedConn, err := connect(cfg.ClickhouseCachedDsn, cfg.Database)
+	if cfg.Raw.ClickhouseCachedDsn != "" {
+		cachedConn, err := connect(cfg.Raw.ClickhouseCachedDsn, cfg.Raw.Database)
 		if err != nil {
 			return nil, fmt.Errorf("xatu cached clickhouse: %w", err)
 		}
@@ -85,7 +88,40 @@ func NewClient(cfg *types.XatuConfig, defaultNetwork string) (*Client, error) {
 
 	client.sem = make(chan struct{}, concurrency)
 
+	go client.logReachability()
+
 	return client, nil
+}
+
+// logReachability pings the configured endpoints once and logs the outcome.
+// A failure is logged rather than returned: queries recover on their own when
+// ClickHouse comes back, so refusing to boot would turn an outage in an
+// optional dependency into downtime for the whole explorer.
+func (c *Client) logReachability() {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	endpoints := []struct {
+		name string
+		conn driver.Conn
+	}{
+		{"primary", c.conn},
+		{"cached", c.cachedConn},
+	}
+
+	for _, endpoint := range endpoints {
+		if endpoint.conn == nil {
+			continue
+		}
+
+		if err := endpoint.conn.Ping(ctx); err != nil {
+			c.logger.WithError(err).Errorf("xatu clickhouse %s endpoint unreachable, propagation data stays unavailable until it recovers", endpoint.name)
+
+			continue
+		}
+
+		c.logger.Infof("xatu clickhouse %s endpoint reachable", endpoint.name)
+	}
 }
 
 // Database returns the ClickHouse database queries run against.
@@ -178,17 +214,7 @@ func connect(dsn, database string) (driver.Conn, error) {
 
 	options.Addr = []string{host + ":" + port}
 
-	conn, err := clickhouse.Open(options)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	if err := conn.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("ping failed: %w", err)
-	}
-
-	return conn, nil
+	// Open validates the options without dialing. Reachability is checked in
+	// the background so an unreachable ClickHouse cannot stop dora booting.
+	return clickhouse.Open(options)
 }

@@ -282,21 +282,30 @@ type MevRelayConfig struct {
 
 // XatuConfig configures the optional Xatu ClickHouse data source.
 type XatuConfig struct {
-	Enabled bool `yaml:"enabled" envconfig:"XATU_ENABLED"`
+	Enabled bool `yaml:"enabled" envconfig:"ENABLED"`
+	// NetworkName filters rows by meta_network_name; defaults to the chain name.
+	NetworkName string `yaml:"networkName" envconfig:"NETWORK_NAME"`
+	// SettleDelay is how long after slot start the ingest pipeline is assumed to
+	// still be receiving events. Responses for younger slots are never cached.
+	SettleDelay      time.Duration `yaml:"settleDelay" envconfig:"SETTLE_DELAY"`
+	ConcurrencyLimit int           `yaml:"concurrencyLimit" envconfig:"CONCURRENCY_LIMIT"`
+	// Raw holds the connection to xatu's raw event tables. xatu-cbt's
+	// transformed models live on a different cluster, so a cbt source slots in
+	// alongside this one rather than sharing its connection.
+	Raw XatuSourceConfig `yaml:"raw" envconfig:"RAW"`
+}
+
+// XatuSourceConfig is the connection to one ClickHouse instance holding xatu
+// data.
+type XatuSourceConfig struct {
 	// ClickhouseDsn is the ClickHouse endpoint, e.g. "https://user:pass@clickhouse.example.com"
 	// (HTTP protocol) or "clickhouse://user:pass@host:9000" (native protocol).
-	ClickhouseDsn string `yaml:"clickhouseDsn" envconfig:"XATU_CLICKHOUSE_DSN"`
+	ClickhouseDsn string `yaml:"clickhouseDsn" envconfig:"CLICKHOUSE_DSN"`
 	// ClickhouseCachedDsn optionally points at a response-caching proxy (e.g. chproxy).
 	// Queries for settled slots are routed here so identical queries across
 	// instances and page loads share one cached response.
-	ClickhouseCachedDsn string `yaml:"clickhouseCachedDsn" envconfig:"XATU_CLICKHOUSE_CACHED_DSN"`
-	Database            string `yaml:"database" envconfig:"XATU_DATABASE"`
-	// NetworkName filters rows by meta_network_name; defaults to the chain name.
-	NetworkName string `yaml:"networkName" envconfig:"XATU_NETWORK_NAME"`
-	// SettleDelay is how long after slot start the ingest pipeline is assumed to
-	// still be receiving events. Responses for younger slots are never cached.
-	SettleDelay      time.Duration `yaml:"settleDelay" envconfig:"XATU_SETTLE_DELAY"`
-	ConcurrencyLimit int           `yaml:"concurrencyLimit" envconfig:"XATU_CONCURRENCY_LIMIT"`
+	ClickhouseCachedDsn string `yaml:"clickhouseCachedDsn" envconfig:"CLICKHOUSE_CACHED_DSN"`
+	Database            string `yaml:"database" envconfig:"DATABASE"`
 }
 
 type DatabaseConfig struct {

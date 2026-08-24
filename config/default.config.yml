@@ -211,3 +211,29 @@ ensResolver:
   queueSize: 50000     # capped in-memory queue of pending addresses
   cacheSize: 50000     # in-memory LRU name cache size
 
+
+# Xatu provides the block propagation view on the slot page and the arrival
+# columns on the epoch page, read from a Xatu ClickHouse instance. Disabled by
+# default: it needs credentials for a ClickHouse holding xatu data, and the
+# explorer works fully without it.
+xatu:
+  enabled: false
+  # Filters rows by meta_network_name. Defaults to the indexed chain's name.
+  networkName: ""
+  # How long after slot start the ingest pipeline is assumed to still be
+  # receiving events. Responses for younger slots are never cached, so a
+  # partially ingested slot does not get frozen into the page cache.
+  settleDelay: 30s
+  # Maximum concurrent ClickHouse queries across all page loads.
+  concurrencyLimit: 2
+  # Xatu's raw event tables (beacon_api_*, libp2p_*, canonical_beacon_*).
+  raw:
+    # "https://user:pass@host" / "http://user:pass@host" use the HTTP protocol
+    # and work through chproxy. "clickhouse://user:pass@host:9000" uses the
+    # native protocol.
+    clickhouseDsn: ""
+    # Optional response-caching proxy. Queries for settled slots are routed
+    # here, so identical queries across page loads and instances share one
+    # cached response.
+    clickhouseCachedDsn: ""
+    database: "default"
