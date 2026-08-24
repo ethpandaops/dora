@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -40,13 +41,14 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Keyed by slot, not block root: the observation tables are queried by slot
-	// alone, so a slot with competing blocks reports every node's earliest
-	// sighting of any of them. Viewing an orphaned block therefore shows the
-	// slot's propagation, not that block's.
-	cacheKey := fmt.Sprintf("slotarrival:%d", slot)
+	// Scope to the block being viewed, so a slot with competing blocks reports
+	// each block's own propagation rather than merging them. Requests without a
+	// usable root fall back to the whole slot.
+	blockRoot := normalizeBlockRoot(r.URL.Query().Get("root"))
+
+	cacheKey := fmt.Sprintf("slotarrival:%d:%s", slot, blockRoot)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
-		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot))
+		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot)
 		if buildErr != nil {
 			logrus.WithError(buildErr).Error("error loading slot arrival data from xatu")
 			pageCall.CacheTimeout = -1
@@ -97,7 +99,7 @@ type arrivalNode struct {
 // per observing node. It returns the response and the cache timeout: no
 // caching while the ingest pipeline may still receive events for the slot, a
 // short timeout for recent slots and a long one for historic slots.
-func buildSlotArrivalData(ctx context.Context, slot phase0.Slot) (*models.SlotArrivalResponse, time.Duration, error) {
+func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot string) (*models.SlotArrivalResponse, time.Duration, error) {
 	client := xatu.GlobalClient
 	chainState := services.GlobalBeaconService.GetChainState()
 	slotTime := chainState.SlotToTime(slot)
@@ -109,22 +111,22 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot) (*models.SlotAr
 
 	nodes := map[string]*arrivalNode{}
 
-	apiObservations, err := loadAPIArrivals(queryCtx, client, slot, slotTime, settled, nodes)
+	apiObservations, err := loadAPIArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
 	if err != nil {
 		return nil, -1, err
 	}
 
-	p2pObservations, err := loadP2PArrivals(queryCtx, client, slot, slotTime, settled, nodes)
+	p2pObservations, err := loadP2PArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
 	if err != nil {
 		return nil, -1, err
 	}
 
-	headObservations, err := loadHeadArrivals(queryCtx, client, slot, slotTime, settled, nodes)
+	headObservations, err := loadHeadArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
 	if err != nil {
 		return nil, -1, err
 	}
 
-	npObservations, err := loadEngineTimings(queryCtx, client, slot, slotTime, settled, nodes)
+	npObservations, err := loadEngineTimings(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
 	if err != nil {
 		return nil, -1, err
 	}
@@ -158,7 +160,7 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot) (*models.SlotAr
 }
 
 // loadAPIArrivals loads the beacon API block event series into nodes.
-func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
 	req := &xch.ListBeaconApiEthV1EventsBlockRequest{
 		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
 		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
@@ -167,6 +169,10 @@ func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 		}},
 		OrderBy:  "propagation_slot_start_diff",
 		PageSize: xatu.MaxQueryPageSize(),
+	}
+
+	if blockRoot != "" {
+		req.Block = &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: blockRoot}}
 	}
 
 	observations := 0
@@ -212,7 +218,7 @@ func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 }
 
 // loadP2PArrivals loads the libp2p gossipsub block series into nodes.
-func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
 	req := &xch.ListLibp2PGossipsubBeaconBlockRequest{
 		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
 		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
@@ -221,6 +227,10 @@ func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 		}},
 		OrderBy:  "propagation_slot_start_diff",
 		PageSize: xatu.MaxQueryPageSize(),
+	}
+
+	if blockRoot != "" {
+		req.Block = &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: blockRoot}}
 	}
 
 	observations := 0
@@ -284,7 +294,7 @@ func reduceSidecarName(name string) string {
 // loadHeadArrivals loads the beacon API head event series into nodes. A head
 // event marks the node adopting the block as its head via fork choice, a
 // stronger signal than merely having seen the block.
-func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
 	req := &xch.ListBeaconApiEthV1EventsHeadRequest{
 		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
 		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
@@ -293,6 +303,10 @@ func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot
 		}},
 		OrderBy:  "propagation_slot_start_diff",
 		PageSize: xatu.MaxQueryPageSize(),
+	}
+
+	if blockRoot != "" {
+		req.Block = &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: blockRoot}}
 	}
 
 	observations := 0
@@ -350,7 +364,7 @@ const lateThresholdMs = 12000
 // snooper into nodes: when the consensus client handed the payload to its
 // execution client (derived from the observed completion minus the call
 // duration), and how long the execution client took to import it.
-func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
 	req := &xch.ListConsensusEngineApiNewPayloadRequest{
 		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
 		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
@@ -359,6 +373,10 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 		}},
 		OrderBy:  "event_date_time",
 		PageSize: xatu.MaxQueryPageSize(),
+	}
+
+	if blockRoot != "" {
+		req.BlockRoot = &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: blockRoot}}
 	}
 
 	slotStartMs := slotTime.UnixMilli()
@@ -543,6 +561,22 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 	})
 
 	response.Groups = groupList
+}
+
+// normalizeBlockRoot returns a lowercase 0x-prefixed 32 byte root, or "" when
+// the input is not one. Anything unparseable degrades to a slot-wide query
+// rather than being rejected, so a stale link still renders.
+func normalizeBlockRoot(root string) string {
+	root = strings.ToLower(strings.TrimSpace(root))
+	if len(root) != 66 || !strings.HasPrefix(root, "0x") {
+		return ""
+	}
+
+	if _, err := hex.DecodeString(root[2:]); err != nil {
+		return ""
+	}
+
+	return root
 }
 
 // parseSentryName splits a xatu sentry name of the form

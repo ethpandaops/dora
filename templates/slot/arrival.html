@@ -215,6 +215,9 @@
   <script type="text/javascript">
     (function() {
       var arrivalSlot = {{ .Slot }};
+      // Scopes the query to this block, so a slot with competing blocks shows
+      // each block's own propagation instead of both merged together.
+      var arrivalBlockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
       var arrivalLoaded = false;
       var arrivalData = null;
       var sortState = { key: 'min', dir: 1 };
@@ -557,7 +560,7 @@
       function loadArrival() {
         if (arrivalLoaded) return;
         arrivalLoaded = true;
-        fetch('/slot/' + arrivalSlot + '/arrival')
+        fetch('/slot/' + arrivalSlot + '/arrival?root=' + encodeURIComponent(arrivalBlockRoot))
           .then(function(r) {
             if (!r.ok) throw new Error('status ' + r.status);
             return r.json();
