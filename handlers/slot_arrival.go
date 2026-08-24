@@ -564,7 +564,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 }
 
 // normalizeBlockRoot returns a lowercase 0x-prefixed 32 byte root, or "" when
-// the input is not one. Anything unparseable degrades to a slot-wide query
+// the input is not one. Anything unparsable degrades to a slot-wide query
 // rather than being rejected, so a stale link still renders.
 func normalizeBlockRoot(root string) string {
 	root = strings.ToLower(strings.TrimSpace(root))
