@@ -195,7 +195,7 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 
 	switch {
 	case !settled:
-		cacheTimeout = -1
+		cacheTimeout = unsettledCacheTimeout(chainState)
 	case time.Since(lastTime) < 30*time.Minute:
 		cacheTimeout = 30 * time.Second
 	default:

@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types/models"
@@ -148,8 +149,10 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot strin
 
 	switch {
 	case !settled:
-		// The pipeline may still be receiving events for this slot; never cache.
-		cacheTimeout = -1
+		// The pipeline may still be receiving events, so hold the result only
+		// briefly. Not caching at all would re-query on every tab open, and
+		// nothing upstream of this endpoint throttles that.
+		cacheTimeout = unsettledCacheTimeout(chainState)
 	case time.Since(slotTime) < 30*time.Minute:
 		cacheTimeout = 30 * time.Second
 	default:
@@ -561,6 +564,18 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 	})
 
 	response.Groups = groupList
+}
+
+// unsettledCacheTimeout bounds how stale a pre-settle result can be to one
+// slot, which decouples ClickHouse load from request volume without hiding
+// events that are still arriving for longer than the slot they belong to.
+func unsettledCacheTimeout(chainState *consensus.ChainState) time.Duration {
+	slotDuration := time.Duration(chainState.GetSpecs().SlotDurationMs) * time.Millisecond
+	if slotDuration <= 0 {
+		return 12 * time.Second
+	}
+
+	return slotDuration
 }
 
 // normalizeBlockRoot returns a lowercase 0x-prefixed 32 byte root, or "" when
