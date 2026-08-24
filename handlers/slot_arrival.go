@@ -38,6 +38,10 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Keyed by slot, not block root: the observation tables are queried by slot
+	// alone, so a slot with competing blocks reports every node's earliest
+	// sighting of any of them. Viewing an orphaned block therefore shows the
+	// slot's propagation, not that block's.
 	cacheKey := fmt.Sprintf("slotarrival:%d", slot)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
 		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot))
@@ -160,7 +164,7 @@ func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 			Eq: uint32(slotTime.Unix()),
 		}},
 		OrderBy:  "propagation_slot_start_diff",
-		PageSize: 10000,
+		PageSize: xatu.MaxQueryPageSize(),
 	}
 
 	query, err := xch.BuildListBeaconApiEthV1EventsBlockQuery(req)
@@ -216,7 +220,7 @@ func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 			Eq: uint32(slotTime.Unix()),
 		}},
 		OrderBy:  "propagation_slot_start_diff",
-		PageSize: 10000,
+		PageSize: xatu.MaxQueryPageSize(),
 	}
 
 	query, err := xch.BuildListLibp2PGossipsubBeaconBlockQuery(req)
@@ -290,7 +294,7 @@ func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot
 			Eq: uint32(slotTime.Unix()),
 		}},
 		OrderBy:  "propagation_slot_start_diff",
-		PageSize: 10000,
+		PageSize: xatu.MaxQueryPageSize(),
 	}
 
 	query, err := xch.BuildListBeaconApiEthV1EventsHeadQuery(req)
@@ -358,7 +362,7 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 			Eq: uint32(slotTime.Unix()),
 		}},
 		OrderBy:  "event_date_time",
-		PageSize: 10000,
+		PageSize: xatu.MaxQueryPageSize(),
 	}
 
 	query, err := xch.BuildListConsensusEngineApiNewPayloadQuery(req)
@@ -412,7 +416,7 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 	return observations, rows.Err()
 }
 
-// buildArrivalAggregates fills the response's nodes, stats, histogram and
+// buildArrivalAggregates fills the response's nodes, stats and
 // per-continent/group summaries from the accumulated per-node observations.
 // Late nodes are listed after on-time nodes and excluded from all summaries.
 func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[string]*arrivalNode) {
@@ -509,7 +513,6 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 		MaxMs:       nodeList[len(nodeList)-1].MinMs,
 		LateNodes:   len(lateList),
 	}
-	response.Histogram = buildArrivalHistogram(nodeList)
 	response.Nodes = append(nodeList, lateList...)
 
 	continentList := make([]*models.SlotArrivalContinent, 0, len(continents))
@@ -546,45 +549,6 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 	})
 
 	response.Groups = groupList
-}
-
-// buildArrivalHistogram buckets each node's earliest observation into a
-// small fixed number of bars with a friendly bucket width.
-func buildArrivalHistogram(nodes []*models.SlotArrivalNode) []*models.SlotArrivalBucket {
-	if len(nodes) == 0 {
-		return nil
-	}
-
-	maxMs := nodes[len(nodes)-1].MinMs
-	if maxMs == 0 {
-		maxMs = 1
-	}
-
-	// Pick the smallest friendly bucket width that keeps the bar count <= 24.
-	widths := []uint32{50, 100, 200, 250, 500, 1000, 2000, 5000, 10000}
-	width := widths[len(widths)-1]
-
-	for _, w := range widths {
-		if maxMs/w < 24 {
-			width = w
-			break
-		}
-	}
-
-	buckets := make([]*models.SlotArrivalBucket, maxMs/width+1)
-
-	for i := range buckets {
-		buckets[i] = &models.SlotArrivalBucket{
-			FromMs: uint32(i) * width,     //nolint:gosec // bounded by bucket count
-			ToMs:   uint32(i+1)*width - 1, //nolint:gosec // bounded by bucket count
-		}
-	}
-
-	for _, node := range nodes {
-		buckets[node.MinMs/width].Count++
-	}
-
-	return buckets
 }
 
 // parseSentryName splits a xatu sentry name of the form

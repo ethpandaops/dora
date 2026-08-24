@@ -13,7 +13,6 @@ type SlotArrivalResponse struct {
 	HeadObservations int                     `json:"head_observations"`
 	NPObservations   int                     `json:"np_observations"`
 	Stats            *SlotArrivalStats       `json:"stats,omitempty"`
-	Histogram        []*SlotArrivalBucket    `json:"histogram,omitempty"`
 	Nodes            []*SlotArrivalNode      `json:"nodes,omitempty"`
 	Continents       []*SlotArrivalContinent `json:"continents,omitempty"`
 	Groups           []*SlotArrivalGroup     `json:"groups,omitempty"`
@@ -29,15 +28,8 @@ type SlotArrivalStats struct {
 	MaxMs       uint32 `json:"max_ms"`
 	// LateNodes counts nodes whose earliest observation came more than a full
 	// slot after slot start (syncing or stalled nodes); they are excluded
-	// from the timing stats and the histogram.
+	// from the timing stats.
 	LateNodes int `json:"late_nodes"`
-}
-
-// SlotArrivalBucket is one bar of the arrival time histogram.
-type SlotArrivalBucket struct {
-	FromMs uint32 `json:"from_ms"`
-	ToMs   uint32 `json:"to_ms"`
-	Count  int    `json:"count"`
 }
 
 // SlotArrivalNode is one observing node with its earliest observation per

@@ -18,7 +18,12 @@ import (
 )
 
 const (
-	defaultDatabase         = "default"
+	defaultDatabase = "default"
+	// maxQueryPageSize is the page_size ceiling the generated builders enforce.
+	maxQueryPageSize = 10000
+	// maxQueryPages bounds a paged read so a bad filter cannot walk a table
+	// forever. 10 pages is far above any single epoch's event count.
+	maxQueryPages           = 10
 	defaultSettleDelay      = 30 * time.Second
 	defaultConcurrencyLimit = 2
 )
@@ -124,11 +129,6 @@ func (c *Client) logReachability() {
 	}
 }
 
-// Database returns the ClickHouse database queries run against.
-func (c *Client) Database() string {
-	return c.database
-}
-
 // Network returns the meta_network_name filter value.
 func (c *Client) Network() string {
 	return c.network
@@ -157,6 +157,74 @@ func (c *Client) Query(ctx context.Context, settled bool, query xch.SQLQuery) (d
 	}
 
 	return conn.Query(ctx, query.Query, query.Args...)
+}
+
+// QueryPaged runs a query across every result page, calling scan for each row.
+//
+// The generated builders cap page_size at maxQueryPageSize and cannot express
+// aggregates, so a caller reducing a whole epoch has to pull the rows and
+// follow the page tokens. Reading only the first page loses rows silently,
+// which is worse than being slow. build receives the token for the page to
+// fetch, empty for the first.
+func (c *Client) QueryPaged(
+	ctx context.Context,
+	settled bool,
+	build func(pageToken string) (xch.SQLQuery, error),
+	scan func(rows driver.Rows) error,
+) error {
+	offset := uint32(0)
+
+	for page := 0; page < maxQueryPages; page++ {
+		pageToken := ""
+		if offset > 0 {
+			pageToken = xch.EncodePageToken(offset)
+		}
+
+		query, err := build(pageToken)
+		if err != nil {
+			return err
+		}
+
+		rows, err := c.Query(ctx, settled, query)
+		if err != nil {
+			return err
+		}
+
+		count := 0
+
+		for rows.Next() {
+			count++
+
+			if err := scan(rows); err != nil {
+				rows.Close()
+
+				return err
+			}
+		}
+
+		// a mid-stream failure would otherwise look like a short final page
+		if err := rows.Err(); err != nil {
+			rows.Close()
+
+			return err
+		}
+
+		rows.Close()
+
+		if count < maxQueryPageSize {
+			return nil
+		}
+
+		offset += maxQueryPageSize
+	}
+
+	return fmt.Errorf("query exceeded %d pages of %d rows", maxQueryPages, maxQueryPageSize)
+}
+
+// MaxQueryPageSize is the page size callers should request so QueryPaged can
+// tell a full page from the last one.
+func MaxQueryPageSize() int32 {
+	return maxQueryPageSize
 }
 
 // connect opens a ClickHouse connection from a DSN. https/http DSNs use the

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -17,6 +19,10 @@ import (
 	"github.com/ethpandaops/dora/types/models"
 	xch "github.com/ethpandaops/xatu/pkg/proto/clickhouse"
 )
+
+// errorCacheTimeout is how long a failed lookup is remembered, so an outage
+// costs one query per epoch per interval instead of one per page build.
+const errorCacheTimeout = 30 * time.Second
 
 // getEpochArrivalData returns the epoch's per-slot arrival summaries through
 // the frontend cache, so the epoch page renders them inline without paying a
@@ -32,7 +38,10 @@ func getEpochArrivalData(epoch phase0.Epoch) *models.EpochArrivalResponse {
 		data, cacheTimeout, buildErr := buildEpochArrivalData(pageCall.CallCtx, epoch)
 		if buildErr != nil {
 			logrus.WithError(buildErr).Error("error loading epoch arrival data from xatu")
-			pageCall.CacheTimeout = -1
+			// brief negative cache: with ClickHouse down the epoch page rebuilds
+			// every slot, and each rebuild would otherwise spend the full query
+			// budget failing
+			pageCall.CacheTimeout = errorCacheTimeout
 
 			return nil
 		}
@@ -58,10 +67,9 @@ func getEpochArrivalData(epoch phase0.Epoch) *models.EpochArrivalResponse {
 func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.EpochArrivalResponse, time.Duration, error) {
 	client := xatu.GlobalClient
 	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
 
-	firstSlot := phase0.Slot(uint64(epoch) * specs.SlotsPerEpoch)
-	lastSlot := firstSlot + phase0.Slot(specs.SlotsPerEpoch) - 1
+	firstSlot := chainState.EpochToSlot(epoch)
+	lastSlot := chainState.EpochToSlot(epoch+1) - 1
 	firstTime := chainState.SlotToTime(firstSlot)
 	lastTime := chainState.SlotToTime(lastSlot)
 
@@ -96,77 +104,66 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	}}}
 	networkFilter := &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}}
 
-	apiQuery, err := xch.BuildListBeaconApiEthV1EventsBlockQuery(&xch.ListBeaconApiEthV1EventsBlockRequest{
-		MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter, PageSize: 10000,
-	})
-	if err != nil {
-		return nil, -1, fmt.Errorf("build api query: %w", err)
-	}
+	pageSize := xatu.MaxQueryPageSize()
 
-	rows, err := client.Query(queryCtx, settled, apiQuery)
+	// Every observation in the epoch has to be reduced here: the generated
+	// builders cannot aggregate, so min/p90 cannot be pushed into ClickHouse.
+	err := client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
+		return xch.BuildListBeaconApiEthV1EventsBlockQuery(&xch.ListBeaconApiEthV1EventsBlockRequest{
+			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
+			PageSize: pageSize, PageToken: pageToken,
+		})
+	}, func(rows driver.Rows) error {
+		var row xch.BeaconApiEthV1EventsBlockRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return err
+		}
+
+		record(row.Slot, row.MetaClientName, row.PropagationSlotStartDiff)
+
+		return nil
+	})
 	if err != nil {
 		return nil, -1, fmt.Errorf("api query: %w", err)
 	}
 
-	for rows.Next() {
-		var row xch.BeaconApiEthV1EventsBlockRow
+	err = client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
+		return xch.BuildListLibp2PGossipsubBeaconBlockQuery(&xch.ListLibp2PGossipsubBeaconBlockRequest{
+			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
+			PageSize: pageSize, PageToken: pageToken,
+		})
+	}, func(rows driver.Rows) error {
+		var row xch.Libp2PGossipsubBeaconBlockRow
 		if err := rows.ScanStruct(&row); err != nil {
-			rows.Close()
-			return nil, -1, fmt.Errorf("api scan: %w", err)
+			return err
 		}
 
 		record(row.Slot, row.MetaClientName, row.PropagationSlotStartDiff)
-	}
 
-	rows.Close()
-
-	p2pQuery, err := xch.BuildListLibp2PGossipsubBeaconBlockQuery(&xch.ListLibp2PGossipsubBeaconBlockRequest{
-		MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter, PageSize: 10000,
+		return nil
 	})
-	if err != nil {
-		return nil, -1, fmt.Errorf("build p2p query: %w", err)
-	}
-
-	rows, err = client.Query(queryCtx, settled, p2pQuery)
 	if err != nil {
 		return nil, -1, fmt.Errorf("p2p query: %w", err)
 	}
 
-	for rows.Next() {
-		var row xch.Libp2PGossipsubBeaconBlockRow
+	err = client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
+		return xch.BuildListBeaconApiEthV1EventsHeadQuery(&xch.ListBeaconApiEthV1EventsHeadRequest{
+			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
+			PageSize: pageSize, PageToken: pageToken,
+		})
+	}, func(rows driver.Rows) error {
+		var row xch.BeaconApiEthV1EventsHeadRow
 		if err := rows.ScanStruct(&row); err != nil {
-			rows.Close()
-			return nil, -1, fmt.Errorf("p2p scan: %w", err)
+			return err
 		}
 
 		record(row.Slot, row.MetaClientName, row.PropagationSlotStartDiff)
-	}
 
-	rows.Close()
-
-	headQuery, err := xch.BuildListBeaconApiEthV1EventsHeadQuery(&xch.ListBeaconApiEthV1EventsHeadRequest{
-		MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter, PageSize: 10000,
+		return nil
 	})
-	if err != nil {
-		return nil, -1, fmt.Errorf("build head query: %w", err)
-	}
-
-	rows, err = client.Query(queryCtx, settled, headQuery)
 	if err != nil {
 		return nil, -1, fmt.Errorf("head query: %w", err)
 	}
-
-	for rows.Next() {
-		var row xch.BeaconApiEthV1EventsHeadRow
-		if err := rows.ScanStruct(&row); err != nil {
-			rows.Close()
-			return nil, -1, fmt.Errorf("head scan: %w", err)
-		}
-
-		record(row.Slot, row.MetaClientName, row.PropagationSlotStartDiff)
-	}
-
-	rows.Close()
 
 	// per-slot values, late observations excluded as on the slot page
 	slotValues := map[uint32][]uint32{}
