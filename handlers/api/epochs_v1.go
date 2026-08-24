@@ -153,6 +153,7 @@ func APIEpochsV1(w http.ResponseWriter, r *http.Request) {
 		// Get deposits, slashings, exits, etc. from blocks in epoch
 		specs := chainState.GetSpecs()
 		firstSlot := epoch * specs.SlotsPerEpoch
+		lastSlot := firstSlot + specs.SlotsPerEpoch - 1
 
 		// Pre-ePBS the execution payload is bundled inside the beacon block, so every
 		// canonical block carries a payload. Post-ePBS (EIP-7732) payloads are revealed
@@ -160,9 +161,13 @@ func APIEpochsV1(w http.ResponseWriter, r *http.Request) {
 		gloasActive := chainState.IsEip7732Enabled(phase0.Epoch(epoch))
 
 		// Get blocks for this epoch
-		blocks := services.GlobalBeaconService.GetDbBlocksForSlots(r.Context(), firstSlot, uint32(specs.SlotsPerEpoch), true, true)
+		blocks := services.GlobalBeaconService.GetDbBlocksForSlots(r.Context(), lastSlot, uint32(specs.SlotsPerEpoch), true, true)
 
 		for _, slot := range blocks {
+			if slot.Slot < firstSlot || slot.Slot > lastSlot {
+				continue
+			}
+
 			if slot.Status == dbtypes.Missing {
 				epochInfo.MissedBlocks++
 				continue

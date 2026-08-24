@@ -669,7 +669,9 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 				if blockPayload != nil {
-					dbEpoch.PayloadCount++
+					if !block.isPayloadOrphaned {
+						dbEpoch.PayloadCount++
+					}
 					executionTransactions = blockPayload.Message.Payload.Transactions
 					executionWithdrawals = blockPayload.Message.Payload.Withdrawals
 				} else {
