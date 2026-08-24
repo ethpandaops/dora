@@ -2,14 +2,10 @@ package db
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
-
-const epochPayloadCountRepairStateKey = "maintenance.epoch_payload_count.v1"
 
 func InsertEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Epoch) error {
 	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -59,90 +55,6 @@ func InsertEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Epoch) error {
 		return err
 	}
 	return nil
-}
-
-type epochPayloadCountRepair struct {
-	Epoch          uint64 `db:"epoch"`
-	StoredCount    uint64 `db:"stored_count"`
-	CanonicalCount uint64 `db:"canonical_count"`
-}
-
-// RepairEpochPayloadCounts recalculates finalized post-Gloas epoch payload counts
-// from the canonical slot rows in [firstEpoch, lastEpochExclusive). Older Dora
-// versions counted every envelope they eventually received, including late payloads
-// skipped by the successor chain.
-func RepairEpochPayloadCounts(ctx context.Context, tx *sqlx.Tx, slotsPerEpoch uint64, firstEpoch uint64, lastEpochExclusive uint64) (uint64, error) {
-	if slotsPerEpoch == 0 || firstEpoch >= lastEpochExclusive {
-		return 0, nil
-	}
-
-	counts := []epochPayloadCountRepair{}
-	err := tx.SelectContext(ctx, &counts, `
-		SELECT
-			epochs.epoch AS epoch,
-			epochs.payload_count AS stored_count,
-			COUNT(DISTINCT slots.slot) AS canonical_count
-		FROM epochs
-		LEFT JOIN slots ON
-			slots.status = $1 AND
-			slots.payload_status = $2 AND
-			slots.slot >= epochs.epoch * $3 AND
-			slots.slot < (epochs.epoch + 1) * $4
-		WHERE epochs.epoch >= $5 AND epochs.epoch < $6
-		GROUP BY epochs.epoch, epochs.payload_count`,
-		dbtypes.Canonical, dbtypes.PayloadStatusCanonical,
-		slotsPerEpoch, slotsPerEpoch, firstEpoch, lastEpochExclusive)
-	if err != nil {
-		return 0, err
-	}
-
-	var repaired uint64
-	for _, count := range counts {
-		if count.StoredCount == count.CanonicalCount {
-			continue
-		}
-
-		if _, err := tx.ExecContext(ctx, `UPDATE epochs SET payload_count = $1 WHERE epoch = $2`, count.CanonicalCount, count.Epoch); err != nil {
-			return repaired, err
-		}
-		repaired++
-	}
-
-	return repaired, nil
-}
-
-// RepairEpochPayloadCountsOnce applies the bounded payload count repair once per
-// database. The completion marker is stored in the same transaction as the updates,
-// so a failed repair is retried on the next start.
-func RepairEpochPayloadCountsOnce(ctx context.Context, slotsPerEpoch uint64, firstEpoch uint64, lastEpochExclusive uint64) (uint64, error) {
-	if slotsPerEpoch == 0 || firstEpoch >= lastEpochExclusive {
-		return 0, nil
-	}
-
-	var completed bool
-	if _, err := GetExplorerState(ctx, epochPayloadCountRepairStateKey, &completed); err == nil {
-		if completed {
-			return 0, nil
-		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
-	}
-
-	var repaired uint64
-	err := RunDBTransaction(func(tx *sqlx.Tx) error {
-		var err error
-		repaired, err = RepairEpochPayloadCounts(ctx, tx, slotsPerEpoch, firstEpoch, lastEpochExclusive)
-		if err != nil {
-			return err
-		}
-
-		return SetExplorerState(ctx, tx, epochPayloadCountRepairStateKey, true)
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	return repaired, nil
 }
 
 // UpdateEpochDutiesSize records the stored size of an epoch's duties object.

@@ -2669,8 +2669,8 @@ paths:
     get:
       description: Returns the vote, proposal and payload participation rates for
         an epoch. The chain is only fully healthy when all three reach 100%. Post-ePBS
-        (EIP-7732) payloads are delivered separately from beacon blocks and may be
-        missing or arrive too late for canonical inclusion.
+        (EIP-7732) payloads are revealed separately from beacon blocks and may be
+        missing.
       operationId: getEpochHealth
       parameters:
       - description: Epoch number, the string latest or the string finalized

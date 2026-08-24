@@ -120,7 +120,7 @@ type Epoch struct {
 	EthGasUsed            uint64  `db:"eth_gas_used"`
 	EthGasLimit           uint64  `db:"eth_gas_limit"`
 	SyncParticipation     float32 `db:"sync_participation"`
-	PayloadCount          uint64  `db:"payload_count"` // Canonical execution payloads included by the successor chain.
+	PayloadCount          uint64  `db:"payload_count"`
 }
 
 type OrphanedBlock struct {

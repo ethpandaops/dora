@@ -369,8 +369,7 @@ func buildIndexPageRecentEpochsData(ctx context.Context, pageData *models.IndexP
 
 		// Pre-ePBS the execution payload is bundled inside the beacon block, so every
 		// canonical block implicitly carries a payload. Post-ePBS (EIP-7732) payloads are
-		// delivered separately and may be missing or arrive too late for canonical
-		// inclusion, so use the dedicated payload count.
+		// revealed separately and may be missing, so use the dedicated payload count.
 		payloadCount := uint64(epochData.BlockCount)
 		if chainState.IsEip7732Enabled(phase0.Epoch(epochData.Epoch)) {
 			payloadCount = epochData.PayloadCount
