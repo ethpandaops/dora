@@ -253,21 +253,17 @@ func (indexer *Indexer) StartIndexer() {
 	dynssz.SetGlobalSpecs(staticSpec)
 	indexer.dynSsz = dynssz.NewDynSsz(staticSpec, dynssz.WithAsyncHashing(4))
 	indexer.stateCache = statecache.New(utils.Config, indexer.dynSsz)
+	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 
 	// Repair payload counts written by versions that treated any eventually received
 	// envelope as proposed, even when the successor chain classified it as late/orphaned.
-	// Slot payload statuses are already canonicalized during finalization, so they are
-	// the authoritative source for existing finalized epochs.
+	// Only finalized slot payload statuses are authoritative. A transactional completion
+	// marker ensures this historical scan is not repeated on every startup.
 	if specs := chainState.GetSpecs(); specs.GloasForkEpoch != nil &&
-		uint64(chainState.CurrentEpoch()) >= *specs.GloasForkEpoch {
-		var repairedEpochs uint64
-		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			var repairErr error
-			repairedEpochs, repairErr = db.RepairEpochPayloadCounts(
-				indexer.ctx, tx, specs.SlotsPerEpoch, *specs.GloasForkEpoch,
-			)
-			return repairErr
-		})
+		phase0.Epoch(*specs.GloasForkEpoch) < finalizedEpoch {
+		repairedEpochs, err := db.RepairEpochPayloadCountsOnce(
+			indexer.ctx, specs.SlotsPerEpoch, *specs.GloasForkEpoch, uint64(finalizedEpoch),
+		)
 		if err != nil {
 			indexer.logger.WithError(err).Error("failed repairing epoch payload counts")
 		} else if repairedEpochs > 0 {
@@ -278,7 +274,6 @@ func (indexer *Indexer) StartIndexer() {
 	// initialize synchronizer & restore state
 	indexer.synchronizer = newSynchronizer(indexer, indexer.logger.WithField("service", "synchronizer"))
 	finalizedSlot := chainState.GetFinalizedSlot()
-	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	indexer.lastFinalizedEpoch = finalizedEpoch
 	indexer.lastPrecalcRunEpoch = chainState.CurrentEpoch()
 

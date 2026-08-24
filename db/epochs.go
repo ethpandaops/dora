@@ -2,10 +2,14 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
+
+const epochPayloadCountRepairStateKey = "maintenance.epoch_payload_count.v1"
 
 func InsertEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Epoch) error {
 	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -64,10 +68,11 @@ type epochPayloadCountRepair struct {
 }
 
 // RepairEpochPayloadCounts recalculates finalized post-Gloas epoch payload counts
-// from the canonical slot rows. Older Dora versions counted every envelope they
-// eventually received, including late payloads skipped by the successor chain.
-func RepairEpochPayloadCounts(ctx context.Context, tx *sqlx.Tx, slotsPerEpoch uint64, firstEpoch uint64) (uint64, error) {
-	if slotsPerEpoch == 0 {
+// from the canonical slot rows in [firstEpoch, lastEpochExclusive). Older Dora
+// versions counted every envelope they eventually received, including late payloads
+// skipped by the successor chain.
+func RepairEpochPayloadCounts(ctx context.Context, tx *sqlx.Tx, slotsPerEpoch uint64, firstEpoch uint64, lastEpochExclusive uint64) (uint64, error) {
+	if slotsPerEpoch == 0 || firstEpoch >= lastEpochExclusive {
 		return 0, nil
 	}
 
@@ -83,10 +88,10 @@ func RepairEpochPayloadCounts(ctx context.Context, tx *sqlx.Tx, slotsPerEpoch ui
 			slots.payload_status = $2 AND
 			slots.slot >= epochs.epoch * $3 AND
 			slots.slot < (epochs.epoch + 1) * $4
-		WHERE epochs.epoch >= $5
+		WHERE epochs.epoch >= $5 AND epochs.epoch < $6
 		GROUP BY epochs.epoch, epochs.payload_count`,
 		dbtypes.Canonical, dbtypes.PayloadStatusCanonical,
-		slotsPerEpoch, slotsPerEpoch, firstEpoch)
+		slotsPerEpoch, slotsPerEpoch, firstEpoch, lastEpochExclusive)
 	if err != nil {
 		return 0, err
 	}
@@ -101,6 +106,40 @@ func RepairEpochPayloadCounts(ctx context.Context, tx *sqlx.Tx, slotsPerEpoch ui
 			return repaired, err
 		}
 		repaired++
+	}
+
+	return repaired, nil
+}
+
+// RepairEpochPayloadCountsOnce applies the bounded payload count repair once per
+// database. The completion marker is stored in the same transaction as the updates,
+// so a failed repair is retried on the next start.
+func RepairEpochPayloadCountsOnce(ctx context.Context, slotsPerEpoch uint64, firstEpoch uint64, lastEpochExclusive uint64) (uint64, error) {
+	if slotsPerEpoch == 0 || firstEpoch >= lastEpochExclusive {
+		return 0, nil
+	}
+
+	var completed bool
+	if _, err := GetExplorerState(ctx, epochPayloadCountRepairStateKey, &completed); err == nil {
+		if completed {
+			return 0, nil
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+
+	var repaired uint64
+	err := RunDBTransaction(func(tx *sqlx.Tx) error {
+		var err error
+		repaired, err = RepairEpochPayloadCounts(ctx, tx, slotsPerEpoch, firstEpoch, lastEpochExclusive)
+		if err != nil {
+			return err
+		}
+
+		return SetExplorerState(ctx, tx, epochPayloadCountRepairStateKey, true)
+	})
+	if err != nil {
+		return 0, err
 	}
 
 	return repaired, nil

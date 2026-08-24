@@ -8,7 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func TestRepairEpochPayloadCounts(t *testing.T) {
+func TestRepairEpochPayloadCountsOnce(t *testing.T) {
 	newTestDB(t)
 
 	ctx := context.Background()
@@ -16,7 +16,7 @@ func TestRepairEpochPayloadCounts(t *testing.T) {
 		for _, epoch := range []*dbtypes.Epoch{
 			{Epoch: 0, PayloadCount: 7},  // pre-Gloas: must remain untouched
 			{Epoch: 1, PayloadCount: 32}, // stale: counted a late envelope
-			{Epoch: 2, PayloadCount: 1},  // already correct
+			{Epoch: 2, PayloadCount: 32}, // not finalized: must remain untouched
 		} {
 			if err := InsertEpoch(ctx, tx, epoch); err != nil {
 				return err
@@ -42,12 +42,7 @@ func TestRepairEpochPayloadCounts(t *testing.T) {
 		t.Fatalf("seed database: %v", err)
 	}
 
-	var repaired uint64
-	err = RunDBTransaction(func(tx *sqlx.Tx) error {
-		var repairErr error
-		repaired, repairErr = RepairEpochPayloadCounts(ctx, tx, 32, 1)
-		return repairErr
-	})
+	repaired, err := RepairEpochPayloadCountsOnce(ctx, 32, 1, 2)
 	if err != nil {
 		t.Fatalf("repair payload counts: %v", err)
 	}
@@ -61,7 +56,7 @@ func TestRepairEpochPayloadCounts(t *testing.T) {
 	}{
 		{epoch: 0, want: 7},
 		{epoch: 1, want: 1},
-		{epoch: 2, want: 1},
+		{epoch: 2, want: 32},
 	}
 	for _, tt := range tests {
 		var got uint64
@@ -73,15 +68,29 @@ func TestRepairEpochPayloadCounts(t *testing.T) {
 		}
 	}
 
+	// Corrupt the repaired row again to prove the versioned completion marker skips
+	// the historical scan after the first successful run.
 	err = RunDBTransaction(func(tx *sqlx.Tx) error {
-		var repairErr error
-		repaired, repairErr = RepairEpochPayloadCounts(ctx, tx, 32, 1)
-		return repairErr
+		_, updateErr := tx.ExecContext(ctx, `UPDATE epochs SET payload_count = $1 WHERE epoch = $2`, 32, 1)
+		return updateErr
 	})
+	if err != nil {
+		t.Fatalf("re-corrupt repaired epoch: %v", err)
+	}
+
+	repaired, err = RepairEpochPayloadCountsOnce(ctx, 32, 1, 2)
 	if err != nil {
 		t.Fatalf("repeat payload count repair: %v", err)
 	}
 	if repaired != 0 {
 		t.Fatalf("repeated repair changed %d epochs, want 0", repaired)
+	}
+
+	var payloadCount uint64
+	if err := ReaderDb.GetContext(ctx, &payloadCount, `SELECT payload_count FROM epochs WHERE epoch = $1`, 1); err != nil {
+		t.Fatalf("read epoch after repeated repair: %v", err)
+	}
+	if payloadCount != 32 {
+		t.Fatalf("epoch changed after completed repair: payload count = %d, want 32", payloadCount)
 	}
 }
