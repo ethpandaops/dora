@@ -13,6 +13,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/clients/xatu"
@@ -137,7 +139,7 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot) (*models.SlotAr
 	}
 
 	if len(nodes) > 0 {
-		buildArrivalAggregates(response, nodes)
+		buildArrivalAggregates(response, nodes, client.Network())
 	}
 
 	cacheTimeout := time.Duration(-1)
@@ -167,23 +169,16 @@ func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 		PageSize: xatu.MaxQueryPageSize(),
 	}
 
-	query, err := xch.BuildListBeaconApiEthV1EventsBlockQuery(req)
-	if err != nil {
-		return 0, fmt.Errorf("build api query: %w", err)
-	}
-
-	rows, err := client.Query(ctx, settled, query)
-	if err != nil {
-		return 0, fmt.Errorf("api query: %w", err)
-	}
-	defer rows.Close()
-
 	observations := 0
 
-	for rows.Next() {
+	err := client.QueryPaged(ctx, settled, func(pageToken string) (xch.SQLQuery, error) {
+		req.PageToken = pageToken
+
+		return xch.BuildListBeaconApiEthV1EventsBlockQuery(req)
+	}, func(rows driver.Rows) error {
 		var row xch.BeaconApiEthV1EventsBlockRow
 		if err := rows.ScanStruct(&row); err != nil {
-			return 0, fmt.Errorf("api scan: %w", err)
+			return fmt.Errorf("api scan: %w", err)
 		}
 
 		observations++
@@ -206,9 +201,14 @@ func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 			ms := row.PropagationSlotStartDiff
 			node.apiMs = &ms
 		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("api query: %w", err)
 	}
 
-	return observations, rows.Err()
+	return observations, nil
 }
 
 // loadP2PArrivals loads the libp2p gossipsub block series into nodes.
@@ -223,23 +223,16 @@ func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 		PageSize: xatu.MaxQueryPageSize(),
 	}
 
-	query, err := xch.BuildListLibp2PGossipsubBeaconBlockQuery(req)
-	if err != nil {
-		return 0, fmt.Errorf("build p2p query: %w", err)
-	}
-
-	rows, err := client.Query(ctx, settled, query)
-	if err != nil {
-		return 0, fmt.Errorf("p2p query: %w", err)
-	}
-	defer rows.Close()
-
 	observations := 0
 
-	for rows.Next() {
+	err := client.QueryPaged(ctx, settled, func(pageToken string) (xch.SQLQuery, error) {
+		req.PageToken = pageToken
+
+		return xch.BuildListLibp2PGossipsubBeaconBlockQuery(req)
+	}, func(rows driver.Rows) error {
 		var row xch.Libp2PGossipsubBeaconBlockRow
 		if err := rows.ScanStruct(&row); err != nil {
-			return 0, fmt.Errorf("p2p scan: %w", err)
+			return fmt.Errorf("p2p scan: %w", err)
 		}
 
 		observations++
@@ -266,9 +259,14 @@ func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 			ms := row.PropagationSlotStartDiff
 			node.p2pMs = &ms
 		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("p2p query: %w", err)
 	}
 
-	return observations, rows.Err()
+	return observations, nil
 }
 
 // reduceSidecarName shortens gossip listener implementation names like
@@ -297,23 +295,16 @@ func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot
 		PageSize: xatu.MaxQueryPageSize(),
 	}
 
-	query, err := xch.BuildListBeaconApiEthV1EventsHeadQuery(req)
-	if err != nil {
-		return 0, fmt.Errorf("build head query: %w", err)
-	}
-
-	rows, err := client.Query(ctx, settled, query)
-	if err != nil {
-		return 0, fmt.Errorf("head query: %w", err)
-	}
-	defer rows.Close()
-
 	observations := 0
 
-	for rows.Next() {
+	err := client.QueryPaged(ctx, settled, func(pageToken string) (xch.SQLQuery, error) {
+		req.PageToken = pageToken
+
+		return xch.BuildListBeaconApiEthV1EventsHeadQuery(req)
+	}, func(rows driver.Rows) error {
 		var row xch.BeaconApiEthV1EventsHeadRow
 		if err := rows.ScanStruct(&row); err != nil {
-			return 0, fmt.Errorf("head scan: %w", err)
+			return fmt.Errorf("head scan: %w", err)
 		}
 
 		observations++
@@ -340,9 +331,14 @@ func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot
 			ms := row.PropagationSlotStartDiff
 			node.headMs = &ms
 		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("head query: %w", err)
 	}
 
-	return observations, rows.Err()
+	return observations, nil
 }
 
 // lateThresholdMs marks observations arriving more than a full slot after
@@ -365,24 +361,17 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 		PageSize: xatu.MaxQueryPageSize(),
 	}
 
-	query, err := xch.BuildListConsensusEngineApiNewPayloadQuery(req)
-	if err != nil {
-		return 0, fmt.Errorf("build newpayload query: %w", err)
-	}
-
-	rows, err := client.Query(ctx, settled, query)
-	if err != nil {
-		return 0, fmt.Errorf("newpayload query: %w", err)
-	}
-	defer rows.Close()
-
 	slotStartMs := slotTime.UnixMilli()
 	observations := 0
 
-	for rows.Next() {
+	err := client.QueryPaged(ctx, settled, func(pageToken string) (xch.SQLQuery, error) {
+		req.PageToken = pageToken
+
+		return xch.BuildListConsensusEngineApiNewPayloadQuery(req)
+	}, func(rows driver.Rows) error {
 		var row xch.ConsensusEngineApiNewPayloadRow
 		if err := rows.ScanStruct(&row); err != nil {
-			return 0, fmt.Errorf("newpayload scan: %w", err)
+			return fmt.Errorf("newpayload scan: %w", err)
 		}
 
 		observations++
@@ -411,15 +400,20 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 			node.npDurMs = &dur
 			node.npStatus = row.Status
 		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("newpayload query: %w", err)
 	}
 
-	return observations, rows.Err()
+	return observations, nil
 }
 
 // buildArrivalAggregates fills the response's nodes, stats and
 // per-continent/group summaries from the accumulated per-node observations.
 // Late nodes are listed after on-time nodes and excluded from all summaries.
-func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[string]*arrivalNode) {
+func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[string]*arrivalNode, network string) {
 	nodeList := make([]*models.SlotArrivalNode, 0, len(nodes))
 	lateList := make([]*models.SlotArrivalNode, 0)
 	continents := map[string]*models.SlotArrivalContinent{}
@@ -444,7 +438,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 			minMs = *node.npMs
 		}
 
-		group, operator, display := parseSentryName(node.fullName, xatu.GlobalClient.Network())
+		group, operator, display := parseSentryName(node.fullName, network)
 
 		entry := &models.SlotArrivalNode{
 			Name:           display,

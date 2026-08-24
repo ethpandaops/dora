@@ -248,6 +248,9 @@
         if (ms < 1000) return ms + 'ms';
         return String(+(ms / 1000).toFixed(2)) + 's';
       }
+      // Thresholds and colors are duplicated in FormatArrivalMs in
+      // utils/format.go, which colors the same values server side for the
+      // epoch page; change both together.
       function timeColor(ms) {
         if (ms < 1000) return '#34c38f';
         if (ms < 2000) return '#7bc96f';

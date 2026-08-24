@@ -1011,8 +1011,10 @@ func FormatRecentTimeShort(ts time.Time) template.HTML {
 	}
 }
 
-// FormatArrivalMs renders a block arrival time colorized by speed, matching
-// the propagation tab's thresholds.
+// FormatArrivalMs renders a block arrival time colorized by speed. The
+// thresholds and colors are duplicated in timeColor() in
+// templates/slot/arrival.html, which colors the same values client side;
+// change both together.
 func FormatArrivalMs(msPtr *uint32) template.HTML {
 	if msPtr == nil {
 		return template.HTML("<span class=\"text-muted\">&mdash;</span>")
