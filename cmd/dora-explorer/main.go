@@ -63,6 +63,14 @@ func main() {
 
 	services.InitChainService(ctx, logger)
 
+	if cfg.Replay.Enabled {
+		chainState := services.GlobalBeaconService.GetChainState()
+		err = chainState.EnableReplayClock(ctx, logger.WithField("service", "replay-clock"), cfg.Replay.ControlUrl, cfg.Replay.PollInterval)
+		if err != nil {
+			logger.Fatalf("error connecting to replay control server: %v", err)
+		}
+	}
+
 	var webserver *http.Server
 	if cfg.Frontend.Enabled || cfg.Api.Enabled {
 		websrv, err := startWebserver(logger)

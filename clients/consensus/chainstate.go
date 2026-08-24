@@ -2,16 +2,19 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/sirupsen/logrus"
 )
 
 type ChainState struct {
@@ -22,8 +25,13 @@ type ChainState struct {
 	genesisMutex sync.Mutex
 	genesis      *v1.Genesis
 
-	wallclockMutex sync.Mutex
-	wallclock      *ethwallclock.EthereumBeaconChain
+	wallclockMutex   sync.Mutex
+	wallclockStarted bool
+	wallclock        *ethwallclock.EthereumBeaconChain
+
+	// replayClock replaces the wall clock with the virtual clock of a dora-replay
+	// control server, so a past slot range can be stepped through as if it were live.
+	replayClock atomic.Pointer[replayClock]
 
 	finalityMutex sync.RWMutex
 	finality      *v1.Finality
@@ -198,11 +206,20 @@ func (cs *ChainState) initWallclock() {
 	cs.wallclockMutex.Lock()
 	defer cs.wallclockMutex.Unlock()
 
-	if cs.wallclock != nil {
+	if cs.wallclockStarted {
 		return
 	}
 
 	if cs.specs == nil || cs.genesis == nil {
+		return
+	}
+
+	cs.wallclockStarted = true
+
+	// ethwallclock reads time.Now() internally and cannot be paused, so a replay run
+	// drives the slot/epoch dispatchers off the virtual clock instead.
+	if clock := cs.replayClock.Load(); clock != nil {
+		go cs.runReplayWallclock(clock)
 		return
 	}
 
@@ -213,6 +230,105 @@ func (cs *ChainState) initWallclock() {
 	cs.wallclock.OnSlotChanged(func(current ethwallclock.Slot) {
 		cs.wallclockSlotDispatcher.Fire(&current)
 	})
+}
+
+// EnableReplayClock points the chain state at a dora-replay control server, so every
+// "now" in the explorer (current slot, wallclock ticks, page timestamps) follows the
+// replayed slot range instead of the real wall clock. It blocks until the control
+// server has answered once.
+func (cs *ChainState) EnableReplayClock(ctx context.Context, logger logrus.FieldLogger, controlURL string, pollInterval time.Duration) error {
+	clock, err := newReplayClock(ctx, logger, controlURL, pollInterval)
+	if err != nil {
+		return err
+	}
+
+	cs.replayClock.Store(clock)
+
+	logger.WithField("now", clock.now().UTC().Format(time.RFC3339)).Info("replay clock enabled")
+
+	return nil
+}
+
+// IsReplaying reports whether the chain state is driven by a replay clock.
+func (cs *ChainState) IsReplaying() bool {
+	return cs.replayClock.Load() != nil
+}
+
+// Now returns the current time as the chain sees it: the real wall clock normally,
+// or the virtual replay time while a replay is running.
+func (cs *ChainState) Now() time.Time {
+	if clock := cs.replayClock.Load(); clock != nil {
+		return clock.now()
+	}
+
+	return time.Now()
+}
+
+// maxReplayWallclockCatchup bounds how many slot ticks are replayed in one go after
+// the virtual clock jumped, so a large seek does not flood the dispatchers.
+const maxReplayWallclockCatchup = 16
+
+// runReplayWallclock fires the slot and epoch dispatchers from the virtual clock,
+// standing in for ethwallclock while a replay is running.
+func (cs *ChainState) runReplayWallclock(clock *replayClock) {
+	defer utils.HandleSubroutinePanic("clients.consensus.ChainState.runReplayWallclock", func() {
+		cs.runReplayWallclock(clock)
+	})
+
+	genesis := cs.genesis.GenesisTime
+	slotDuration := time.Duration(cs.specs.SlotDurationMs) * time.Millisecond
+	slotsPerEpoch := cs.specs.SlotsPerEpoch
+
+	interval := slotDuration / 20
+	if interval < 50*time.Millisecond {
+		interval = 50 * time.Millisecond
+	} else if interval > 250*time.Millisecond {
+		interval = 250 * time.Millisecond
+	}
+
+	lastSlot := uint64(cs.CurrentSlot())
+	lastEpoch := lastSlot / slotsPerEpoch
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-clock.ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		slot := uint64(cs.CurrentSlot())
+		if slot <= lastSlot {
+			// the replay was rewound; resync without firing anything
+			lastSlot = slot
+			lastEpoch = slot / slotsPerEpoch
+
+			continue
+		}
+
+		firstSlot := lastSlot + 1
+		if slot-lastSlot > maxReplayWallclockCatchup {
+			firstSlot = slot
+		}
+
+		for tickSlot := firstSlot; tickSlot <= slot; tickSlot++ {
+			slotStart := genesis.Add(time.Duration(tickSlot) * slotDuration)
+
+			if epoch := tickSlot / slotsPerEpoch; epoch != lastEpoch {
+				epochStart := genesis.Add(time.Duration(epoch*slotsPerEpoch) * slotDuration)
+				wallclockEpoch := ethwallclock.NewEpoch(epoch, epochStart, epochStart.Add(slotDuration*time.Duration(slotsPerEpoch)))
+				cs.wallclockEpochDispatcher.Fire(&wallclockEpoch)
+				lastEpoch = epoch
+			}
+
+			wallclockSlot := ethwallclock.NewSlot(tickSlot, slotStart, slotStart.Add(slotDuration))
+			cs.wallclockSlotDispatcher.Fire(&wallclockSlot)
+		}
+
+		lastSlot = slot
+	}
 }
 
 func (cs *ChainState) setFinalizedCheckpoint(finality *v1.Finality) {
@@ -300,7 +416,7 @@ func (cs *ChainState) GetFinalizedSlot() phase0.Slot {
 }
 
 func (cs *ChainState) CurrentSlot() phase0.Slot {
-	return cs.TimeToSlot(time.Now())
+	return cs.TimeToSlot(cs.Now())
 }
 
 func (cs *ChainState) CurrentEpoch() phase0.Epoch {

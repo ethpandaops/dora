@@ -60,6 +60,10 @@
       <script src="/js/clipboard.min.js?v={{ assetVersion }}"></script>
       <script type="application/json" class="ens-names">{{ ensNamesJson .Data }}</script>
       <script src="/js/explorer.js?v={{ assetVersion }}"></script>
+      {{ if .ReplayControlUrl }}
+      <script>window.doraReplayApi = "{{ .ReplayControlUrl }}";</script>
+      <script src="{{ .ReplayControlUrl }}/replay/ui.js" defer></script>
+      {{ end }}
       {{ template "js" .Data }}
     </body>
   </html>

@@ -144,8 +144,9 @@ func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 
 	pendingStats := make([]*EpochStats, 0)
 	for _, stats := range cache.statsMap {
-		if stats.dependentState != nil && stats.dependentState.loadingStatus == 0 {
-			if loadingRoots[stats.dependentState.slotRoot] {
+		dependentState := stats.dependentState
+		if dependentState != nil && dependentState.loadingStatus == 0 {
+			if loadingRoots[dependentState.slotRoot] {
 				continue // another epochState with same root is already loading
 			}
 			pendingStats = append(pendingStats, stats)
@@ -238,9 +239,9 @@ func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
 
 	delete(cache.statsMap, statsKey)
 
-	if epochStats.dependentState != nil {
+	if dependentState := epochStats.dependentState; dependentState != nil {
 		stateKey := getEpochStatsKey(epochStats.epoch, epochStats.dependentRoot)
-		epochStats.dependentState.dispose()
+		dependentState.dispose()
 		delete(cache.stateMap, stateKey)
 	}
 }
@@ -393,6 +394,14 @@ func (cache *epochCache) runLoaderLoop() {
 func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 	defer utils.HandleSubroutinePanic("indexer.beacon.epochCache.loadEpochStats", nil)
 
+	// pruning clears dependentState on epochs that leave the in-memory window, and it
+	// can do so while this load is in flight. Work from one read of the field so a
+	// prune halfway through cannot turn a later use into a nil dereference.
+	dependentState := epochStats.dependentState
+	if dependentState == nil {
+		return false
+	}
+
 	clients := []*Client{}
 	preferArchive := epochStats.epoch < cache.indexer.lastFinalizedEpoch
 	for _, client := range cache.indexer.GetReadyClientsByBlockRoot(epochStats.dependentRoot, preferArchive) {
@@ -427,7 +436,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 
 	if len(clients) == 0 {
 		cache.indexer.logger.Debugf("no clients available to load epoch %v stats (dep: %v)", epochStats.epoch, epochStats.dependentRoot.String())
-		epochStats.dependentState.retryCount++
+		dependentState.retryCount++
 		return false
 	}
 
@@ -456,25 +465,25 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 		return bytes.Compare(hashA[:], hashB[:]) < 0
 	})
 
-	client := clients[int(epochStats.dependentState.retryCount)%len(clients)]
+	client := clients[int(dependentState.retryCount)%len(clients)]
 	log := cache.indexer.logger.WithField("client", client.client.GetName())
-	if epochStats.dependentState.retryCount > 0 {
-		log = log.WithField("retry", epochStats.dependentState.retryCount)
+	if dependentState.retryCount > 0 {
+		log = log.WithField("retry", dependentState.retryCount)
 	}
 
 	log.Infof("loading epoch %v stats (dep: %v, req: %v)", epochStats.epoch, epochStats.dependentRoot.String(), len(epochStats.requestedBy))
 
 	t1 := time.Now()
-	state, err := epochStats.dependentState.loadState(client.getContext(), client, cache)
-	if err != nil && epochStats.dependentState.loadingStatus == 0 {
+	state, err := dependentState.loadState(client.getContext(), client, cache)
+	if err != nil && dependentState.loadingStatus == 0 {
 		client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
 	}
 
 	loadDuration := time.Since(t1)
 
-	if epochStats.dependentState.loadingStatus != 2 {
+	if dependentState.loadingStatus != 2 {
 		// epoch state could not be loaded
-		epochStats.dependentState.retryCount++
+		dependentState.retryCount++
 		return false
 	}
 
@@ -501,14 +510,16 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 			if stats == epochStats {
 				continue
 			}
-			if stats.dependentState == nil || stats.dependentState.loadingStatus != 0 {
+			// same read-once rule as above: pruning may clear this concurrently
+			pendingState := stats.dependentState
+			if pendingState == nil || pendingState.loadingStatus != 0 {
 				continue
 			}
-			if stats.dependentState.slotRoot != epochStats.dependentState.slotRoot {
+			if pendingState.slotRoot != dependentState.slotRoot {
 				continue
 			}
 			pendingOthers = append(pendingOthers, pendingEntry{
-				epochState: stats.dependentState,
+				epochState: pendingState,
 				stats:      stats,
 			})
 		}

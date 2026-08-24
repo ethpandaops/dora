@@ -214,6 +214,16 @@ type Config struct {
 		AllowedMethods    []string      `yaml:"allowedMethods" envconfig:"RPC_PROXY_ALLOWED_METHODS"`
 	} `yaml:"rpcProxy"`
 
+	// Replay drives the explorer off the virtual clock of a dora-replay control
+	// server instead of the real wall clock, so a past slot range can be stepped
+	// through as if it were happening live. Only meaningful when the beacon and
+	// execution endpoints point at the matching dora-replay proxies.
+	Replay struct {
+		Enabled      bool          `yaml:"enabled" envconfig:"REPLAY_ENABLED"`
+		ControlUrl   string        `yaml:"controlUrl" envconfig:"REPLAY_CONTROL_URL"`
+		PollInterval time.Duration `yaml:"pollInterval" envconfig:"REPLAY_POLL_INTERVAL"`
+	} `yaml:"replay"`
+
 	// EnsResolver optionally resolves execution addresses to their primary ENS name.
 	// Names are resolved on the local network (the chain this explorer indexes, via
 	// the main execution pool) and on every configured remote network (each with its
