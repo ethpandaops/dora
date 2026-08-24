@@ -118,9 +118,14 @@ func buildBuildersPageData(ctx context.Context, pageNumber uint64, pageSize uint
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
+	pageOffset := uint64(0)
+	if pageNumber > 1 {
+		pageOffset = (pageNumber - 1) * pageSize
+	}
+
 	builderFilter := dbtypes.BuilderFilter{
 		Limit:  pageSize,
-		Offset: (pageNumber - 1) * pageSize,
+		Offset: pageOffset,
 	}
 
 	filterArgs := url.Values{}
@@ -275,7 +280,9 @@ func buildBuildersPageData(ctx context.Context, pageNumber uint64, pageSize uint
 		pageData.Builders = append(pageData.Builders, builderData)
 	}
 	pageData.BuilderCount = builderSetLen
-	pageData.FirstBuilder = pageNumber * pageSize
+	// the label describes the rows actually fetched, so it follows the query offset rather
+	// than the (possibly clamped) page number
+	pageData.FirstBuilder = pageOffset
 	pageData.LastBuilder = pageData.FirstBuilder + uint64(len(pageData.Builders))
 
 	ensAddrs := make([][]byte, 0, len(pageData.Builders))

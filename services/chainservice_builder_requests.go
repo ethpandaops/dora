@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"fmt"
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -98,7 +99,94 @@ func (bs *ChainService) GetBuilderDepositsByFilter(ctx context.Context, filter *
 		}
 	}
 
+	bs.matchBuilderDepositTxsByContent(ctx, combinedResults, canonicalForkIds)
+
 	return combinedResults, totalPendingTxResults, totalReqResults
+}
+
+// builderDepositContentKey identifies a builder deposit by what it contains rather than where it
+// sits. Pubkey, amount and signature together are unique per deposit, so the same key can be
+// derived from the consensus request and from the execution transaction that produced it.
+func builderDepositContentKey(pubkey []byte, amount uint64, signature []byte) string {
+	return fmt.Sprintf("%x-%d-%x", pubkey, amount, signature)
+}
+
+// matchBuilderDepositTxsByContent links included builder deposits to the request txs they came
+// from, pairing them by content rather than by position in the block.
+//
+// It covers two cases the dequeue-block pairing cannot:
+//
+//   - Requests enqueued before the activation fork keep the dequeue-block sentinel (0) until the
+//     fork boundary is finalized and the dequeue rebase runs, so there is no dequeue block to
+//     pair on at all.
+//   - A block that mixes those sentinel requests with normally dequeued ones breaks positional
+//     pairing outright: the deposit's SlotIndex counts every request in the block, while the
+//     dequeued transactions are only the subset enqueued after the fork. The first blocks after
+//     activation are exactly that mix.
+//
+// Candidates are consumed in queue order, so repeated identical top-ups pair one to one.
+func (bs *ChainService) matchBuilderDepositTxsByContent(ctx context.Context, results []*CombinedBuilderDeposit, canonicalForkIds []uint64) {
+	pubkeys := make([][]byte, 0, len(results))
+	minBlock, maxBlock, haveBlocks := uint64(0), uint64(0), false
+
+	for _, result := range results {
+		if result.Request == nil || result.Transaction != nil {
+			continue
+		}
+
+		pubkeys = append(pubkeys, result.Request.PublicKey)
+
+		if blockNumber := result.Request.BlockNumber; blockNumber > 0 {
+			if !haveBlocks || blockNumber < minBlock {
+				minBlock = blockNumber
+			}
+			if !haveBlocks || blockNumber > maxBlock {
+				maxBlock = blockNumber
+			}
+			haveBlocks = true
+		}
+	}
+
+	if len(pubkeys) == 0 {
+		return
+	}
+
+	candidates := make(map[string][]*dbtypes.BuilderDepositTx)
+	addCandidate := func(depositTx *dbtypes.BuilderDepositTx) {
+		key := builderDepositContentKey(depositTx.PublicKey, depositTx.Amount, depositTx.Signature)
+		candidates[key] = append(candidates[key], depositTx)
+	}
+
+	for _, depositTx := range db.GetBuilderDepositTxsWithSentinelDequeue(ctx, pubkeys) {
+		addCandidate(depositTx)
+	}
+
+	if haveBlocks {
+		for _, depositTx := range db.GetBuilderDepositTxsByDequeueRange(ctx, minBlock, maxBlock) {
+			addCandidate(depositTx)
+		}
+	}
+
+	if len(candidates) == 0 {
+		return
+	}
+
+	for _, result := range results {
+		if result.Request == nil || result.Transaction != nil {
+			continue
+		}
+
+		key := builderDepositContentKey(result.Request.PublicKey, result.Request.Amount, result.Request.Signature)
+
+		matches := candidates[key]
+		if len(matches) == 0 {
+			continue
+		}
+
+		result.Transaction = matches[0]
+		result.TransactionOrphaned = !bs.isCanonicalForkId(matches[0].ForkId, canonicalForkIds)
+		candidates[key] = matches[1:]
+	}
 }
 
 // GetQueuedBuilderDepositTxs returns builder deposit request txs that are still queued in the
@@ -122,11 +210,33 @@ func (bs *ChainService) GetQueuedBuilderDepositTxs(ctx context.Context, filter *
 	return results, totalRows
 }
 
+// matchBuilderDepositTxOnTheFly pairs a single included deposit with the request tx dequeued at
+// its execution block, for deposits the persistent transaction matcher has not reached yet.
+//
+// The pairing is positional — the n-th request in the block is the n-th transaction dequeued at
+// that block — which only holds while every request in the block came through the dequeue. It
+// does not hold in the blocks right after activation, where requests enqueued before the fork are
+// mixed in carrying the dequeue-block sentinel instead. So the positional pick is only accepted
+// when the transaction it lands on actually contains this deposit; otherwise it is left for
+// matchBuilderDepositTxsByContent, which pairs by content and does not care about position.
+// Returning nothing is right here — returning the wrong transaction would be worse than showing
+// none at all.
 func (bs *ChainService) matchBuilderDepositTxOnTheFly(ctx context.Context, dbOperation *dbtypes.BuilderDeposit, canonicalForkIds []uint64) (*dbtypes.BuilderDepositTx, bool) {
+	depositKey := builderDepositContentKey(dbOperation.PublicKey, dbOperation.Amount, dbOperation.Signature)
+
+	accept := func(tx *dbtypes.BuilderDepositTx) (*dbtypes.BuilderDepositTx, bool) {
+		if builderDepositContentKey(tx.PublicKey, tx.Amount, tx.Signature) != depositKey {
+			return nil, false
+		}
+
+		return tx, !bs.isCanonicalForkId(tx.ForkId, canonicalForkIds)
+	}
+
 	requestTxs := db.GetBuilderDepositTxsByDequeueRange(ctx, dbOperation.BlockNumber, dbOperation.BlockNumber)
 	if len(requestTxs) == 1 {
-		return requestTxs[0], !bs.isCanonicalForkId(requestTxs[0].ForkId, canonicalForkIds)
+		return accept(requestTxs[0])
 	}
+
 	if len(requestTxs) > 1 {
 		forkIds := bs.GetParentForkIds(beacon.ForkKey(dbOperation.ForkId))
 		isParentFork := func(forkId uint64) bool {
@@ -146,8 +256,7 @@ func (bs *ChainService) matchBuilderDepositTxOnTheFly(ctx context.Context, dbOpe
 		}
 
 		if len(matchingTxs) >= int(dbOperation.SlotIndex)+1 {
-			tx := matchingTxs[dbOperation.SlotIndex]
-			return tx, !bs.isCanonicalForkId(tx.ForkId, canonicalForkIds)
+			return accept(matchingTxs[dbOperation.SlotIndex])
 		}
 	}
 

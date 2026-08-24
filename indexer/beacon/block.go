@@ -775,7 +775,7 @@ func (block *Block) GetDbBuilderDeposits(indexer *Indexer, isCanonical bool) []*
 		return nil
 	}
 
-	return indexer.dbWriter.buildDbBuilderDeposits(block, !isCanonical, nil)
+	return indexer.dbWriter.buildDbBuilderDeposits(block, !isCanonical, nil, nil)
 }
 
 // GetDbBuilderExits returns the database representation of the builder exit requests in this block.

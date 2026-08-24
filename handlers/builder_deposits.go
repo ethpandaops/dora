@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -295,6 +296,12 @@ func buildBuilderDepositsPageData(ctx context.Context, pageIdx uint64, pageSize 
 	return pageData
 }
 
+// queuedRegularFetchCap bounds how many queued builder-contract request txs the pre-Gloas
+// projection page enumerates. The whole set is needed at once: the projected builder index of
+// each deposit depends on its position in the contract queue, so the list cannot be paginated
+// at the db level.
+const queuedRegularFetchCap = 10000
+
 // buildBuilderDepositsProjectionPageData builds the pre-Gloas projection view of the builder
 // deposits page: the builders projected to be onboarded from the pending deposit queue at the Gloas
 // fork transition, plus the "is it safe to deposit right now" indicator. It applies the slot, pubkey
@@ -365,10 +372,9 @@ func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64,
 
 	// Regular builder deposits already queued in the builder deposit contract: they can be
 	// submitted before the fork, but stay locked in the queue until dequeuing starts with the
-	// first Gloas payload, so no builder index is assigned yet (builders onboarded at the fork
-	// transition are registered first). Listed before the projected onboarding deposits, like
-	// pending request txs on the post-fork page.
-	pageOffset := (pageIdx - 1) * pageSize
+	// first Gloas payload. The fork transition onboards the validator-contract deposits first,
+	// so these continue the builder index sequence behind them - which is also why they are
+	// listed after the onboarding group.
 	queuedFilter := &dbtypes.BuilderDepositTxFilter{
 		PublicKey: common.FromHex(pubkey),
 	}
@@ -379,22 +385,45 @@ func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64,
 		queuedFilter.MaxAmount = &maxAmount
 	}
 
-	queuedTxs, totalTxRows := services.GlobalBeaconService.GetQueuedBuilderDepositTxs(ctx, queuedFilter, pageOffset, uint32(pageSize))
+	queuedTxs, totalTxRows := services.GlobalBeaconService.GetQueuedBuilderDepositTxs(ctx, queuedFilter, 0, queuedRegularFetchCap)
 	pageData.QueuedRegularCount = totalTxRows
+	if totalTxRows > queuedRegularFetchCap {
+		pageData.ProjectionTruncated = true
+		logrus.Warnf("builder deposits projection truncated: %v of %v queued builder contract deposits enumerated", queuedRegularFetchCap, totalTxRows)
+	}
 
+	// GetQueuedBuilderDepositTxs returns newest first; the contract dequeues in enqueue order,
+	// so the builder index sequence is assigned over the reversed (oldest first) list.
 	queuedRows := make([]*models.BuilderDepositsPageDataDeposit, 0, len(queuedTxs))
-	for _, queuedTx := range queuedTxs {
+	nextBuilderIndex := uint64(0)
+	if projection != nil {
+		nextBuilderIndex = projection.NextBuilderIndex
+	}
+	queuedBuilderIndexes := make(map[string]uint64, len(queuedTxs))
+
+	for i := len(queuedTxs) - 1; i >= 0; i-- {
+		queuedTx := queuedTxs[i]
 		depositTx := queuedTx.Transaction
+
+		builderIndex, isKnown := queuedBuilderIndexes[string(depositTx.PublicKey)]
+		if !isKnown {
+			builderIndex = nextBuilderIndex
+			queuedBuilderIndexes[string(depositTx.PublicKey)] = builderIndex
+			nextBuilderIndex++
+		}
+
 		queuedRows = append(queuedRows, &models.BuilderDepositsPageDataDeposit{
-			IsQueuedRegular:       true,
-			Time:                  time.Unix(int64(depositTx.BlockTime), 0),
-			PublicKey:             depositTx.PublicKey,
-			WithdrawalCredentials: depositTx.WithdrawalCredentials,
-			Amount:                depositTx.Amount,
-			BlockNumber:           depositTx.BlockNumber,
-			HasTransaction:        true,
-			TransactionHash:       depositTx.TxHash,
-			TransactionOrphaned:   queuedTx.TransactionOrphaned,
+			IsQueuedRegular:          true,
+			HasProjectedBuilderIndex: projection != nil,
+			ProjectedBuilderIndex:    builderIndex,
+			Time:                     time.Unix(int64(depositTx.BlockTime), 0),
+			PublicKey:                depositTx.PublicKey,
+			WithdrawalCredentials:    depositTx.WithdrawalCredentials,
+			Amount:                   depositTx.Amount,
+			BlockNumber:              depositTx.BlockNumber,
+			HasTransaction:           true,
+			TransactionHash:          depositTx.TxHash,
+			TransactionOrphaned:      queuedTx.TransactionOrphaned,
 			TransactionDetails: &models.BuilderPageDataDepositTxDetails{
 				BlockNumber: depositTx.BlockNumber,
 				BlockHash:   fmt.Sprintf("%#x", depositTx.BlockRoot),
@@ -405,6 +434,9 @@ func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64,
 			},
 		})
 	}
+
+	// back to newest first for display
+	slices.Reverse(queuedRows)
 
 	// Map and filter the projected deposits (slot / pubkey / amount; builder-index filter ignored).
 	pubkeyFilter := common.FromHex(pubkey)
@@ -444,6 +476,8 @@ func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64,
 				Result:                    pd.Result,
 				IsQueued:                  pd.IsQueued,
 				QueuePosition:             pd.QueuePos,
+				HasProjectedBuilderIndex:  pd.HasProjectedBuilderIndex,
+				ProjectedBuilderIndex:     pd.ProjectedBuilderIndex,
 				ProjectedOnboarded:        pd.Onboarded(),
 				ProjectedTooEarly:         pd.TooEarly,
 				ProjectedAlreadyProcessed: pd.AlreadyProcessed,
@@ -485,28 +519,29 @@ func buildBuilderDepositsProjectionPageData(ctx context.Context, pageIdx uint64,
 		}
 	}
 
-	// combined pagination: queued request txs first, then the projected onboarding deposits
-	totalRows := totalTxRows + uint64(len(matched))
+	// The onboarding deposits are classified in ascending deposit-index order (the order the
+	// chain onboards them in) but displayed newest first, like every other deposit list.
+	slices.Reverse(matched)
 
-	deposits := queuedRows
-	if uint64(len(deposits)) < pageSize {
-		matchedOffset := uint64(0)
-		if pageOffset > totalTxRows {
-			matchedOffset = pageOffset - totalTxRows
-		}
-		if matchedOffset > uint64(len(matched)) {
-			matchedOffset = uint64(len(matched))
-		}
+	// The fork onboards the validator-contract deposits before the builder deposit contract
+	// queue is dequeued, so the onboarding group comes first and the queued regular deposits
+	// follow it - mirroring the builder index order both groups end up with.
+	combined := make([]*models.BuilderDepositsPageDataDeposit, 0, len(matched)+len(queuedRows))
+	combined = append(combined, matched...)
+	combined = append(combined, queuedRows...)
 
-		matchedEnd := matchedOffset + pageSize - uint64(len(deposits))
-		if matchedEnd > uint64(len(matched)) {
-			matchedEnd = uint64(len(matched))
-		}
+	totalRows := uint64(len(combined))
 
-		deposits = append(deposits, matched[matchedOffset:matchedEnd]...)
+	pageOffset := (pageIdx - 1) * pageSize
+	pageEnd := pageOffset + pageSize
+	if pageOffset > totalRows {
+		pageOffset = totalRows
+	}
+	if pageEnd > totalRows {
+		pageEnd = totalRows
 	}
 
-	pageData.Deposits = deposits
+	pageData.Deposits = combined[pageOffset:pageEnd]
 	pageData.DepositCount = uint64(len(pageData.Deposits))
 
 	if pageData.DepositCount > 0 {

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -15,8 +14,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
-	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
@@ -199,57 +196,27 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 			IsBuilder:             isBuilder,
 		}
 
-		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey)); !found {
-			depositTxData.ValidatorStatus = "Deposited"
-			depositTxData.ValidatorExists = false
-		} else if uint64(validatorIdx)&services.BuilderIndexFlag != 0 {
-			builderIndex := uint64(validatorIdx) &^ services.BuilderIndexFlag
-			depositTxData.IsBuilder = true
+		owner := resolveDepositPubkeyOwner(phase0.BLSPubKey(depositTx.PublicKey))
+		switch {
+		case owner.Validator != nil:
 			depositTxData.ValidatorExists = true
-			depositTxData.ValidatorIndex = builderIndex
-			depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
-
-			builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
-			if builder == nil {
-				depositTxData.ValidatorStatus = "Deposited"
-			} else if builder.WithdrawableEpoch <= services.GlobalBeaconService.GetChainState().CurrentEpoch() {
-				depositTxData.ValidatorStatus = "Exited"
-			} else {
-				depositTxData.ValidatorStatus = "Active"
-			}
-		} else {
-			depositTxData.ValidatorExists = true
-			depositTxData.ValidatorIndex = uint64(validatorIdx)
-			depositTxData.ProjectedIndex = services.GlobalBeaconService.IsProjectedValidatorIndex(validatorIdx)
+			depositTxData.ValidatorIndex = uint64(owner.ValidatorIndex)
+			depositTxData.ProjectedIndex = owner.IsProjected
 			depositTxData.IsBuilder = false
-			depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAtTime(uint64(validatorIdx), int64(depositTx.BlockTime))
-
-			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
-			if validator == nil {
-				depositTxData.ValidatorStatus = "Deposited"
-			} else if strings.HasPrefix(validator.Status.String(), "pending") {
-				depositTxData.ValidatorStatus = "Pending"
-			} else if validator.Status == v1.ValidatorStateActiveOngoing {
-				depositTxData.ValidatorStatus = "Active"
-				depositTxData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateActiveExiting {
-				depositTxData.ValidatorStatus = "Exiting"
-				depositTxData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateActiveSlashed {
-				depositTxData.ValidatorStatus = "Slashed"
-				depositTxData.ShowUpcheck = true
-			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-				depositTxData.ValidatorStatus = "Exited"
-			} else if validator.Status == v1.ValidatorStateExitedSlashed {
-				depositTxData.ValidatorStatus = "Slashed"
-			} else {
-				depositTxData.ValidatorStatus = validator.Status.String()
-			}
+			depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorNameAtTime(uint64(owner.ValidatorIndex), int64(depositTx.BlockTime))
+			depositTxData.ValidatorStatus, depositTxData.ShowUpcheck = depositValidatorStatus(owner.Validator)
 
 			if depositTxData.ShowUpcheck {
-				depositTxData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+				depositTxData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(owner.Validator.Index, 3))
 				depositTxData.UpcheckMaximum = uint8(3)
 			}
+		case owner.Builder != nil:
+			depositTxData.IsBuilder = true
+			depositTxData.ValidatorExists = true
+			depositTxData.ValidatorIndex = uint64(owner.BuilderIndex)
+			depositTxData.ValidatorStatus = depositBuilderStatus(owner.Builder, services.GlobalBeaconService.GetChainState().CurrentEpoch())
+		default:
+			depositTxData.ValidatorStatus = "Deposited"
 		}
 
 		pageData.Deposits = append(pageData.Deposits, depositTxData)

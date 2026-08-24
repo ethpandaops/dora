@@ -12,6 +12,7 @@ import (
 //
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_pending_deposits
 // New in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-process_pending_deposits
+// [Modified in Gloas:EIP8061] deposits consume the activation-only churn budget.
 func processPendingDeposits(s *stateAccessor) error {
 	nextEpoch := s.currentEpoch() + 1
 	availableForProcessing := s.DepositBalanceToConsume + s.getActivationChurnLimit()

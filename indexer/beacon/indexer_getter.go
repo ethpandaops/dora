@@ -385,8 +385,16 @@ func (indexer *Indexer) GetActivationExitQueueLengths(epoch phase0.Epoch, overri
 // GetValidatorIndexByPubkey returns the validator index for a given pubkey.
 // Builders live in a separate index space (see GetBuilderIndexByPubkey) and are
 // never returned here, even if they share a pubkey with a validator.
+//
+// Validators projected from the pending_deposits queue resolve too, from a separate
+// in-memory map: their index is an estimate that changes as the queue drains, so it must
+// never be written to the persistent pubkey cache.
 func (indexer *Indexer) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
-	return indexer.pubkeyCache.Get(pubkey)
+	if index, found := indexer.pubkeyCache.Get(pubkey); found {
+		return index, true
+	}
+
+	return indexer.validatorCache.getProjectedIndexByPubkey(pubkey)
 }
 
 // GetBuilderIndexByPubkey returns the builder index for a given pubkey (EIP-8282).

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
@@ -54,6 +55,12 @@ type stateSimulatorState struct {
 	pendingConsolidationCount uint64
 	validatorMap              map[phase0.ValidatorIndex]*phase0.Validator
 	blockResults              [][]uint8
+
+	// registeredBuilders holds the pubkeys that builder deposit requests registered during this
+	// replay. The builder set the replay starts from is read from the cache, but builders added
+	// within the replayed epoch only exist here, and they turn every later deposit for the same
+	// pubkey into a top-up.
+	registeredBuilders map[phase0.BLSPubKey]bool
 }
 
 func newStateSimulator(indexer *Indexer, epochStats *EpochStats) *stateSimulator {
@@ -884,18 +891,20 @@ func (sim *stateSimulator) applyBlock(block *Block, applyPayload bool) [][]uint8
 	return results
 }
 
-// applyExecutionRequests simulates the withdrawal and consolidation requests of a block and
-// returns the per-request results ([0] = withdrawal requests, [1] = consolidation requests).
-// When process is false the requests are not applied to the simulated state (their results
-// stay unknown), but the result slices are still sized so callers can index them per request.
+// applyExecutionRequests simulates the execution requests of a block and returns the
+// per-request results ([0] = withdrawal requests, [1] = consolidation requests,
+// [2] = builder deposit requests). When process is false the requests are not applied to the
+// simulated state (their results stay unknown), but the result slices are still sized so
+// callers can index them per request.
 func (sim *stateSimulator) applyExecutionRequests(requests *all.ExecutionRequests, process bool) [][]uint8 {
 	if requests == nil {
 		return nil
 	}
 
-	results := make([][]uint8, 2)
+	results := make([][]uint8, 3)
 	results[0] = make([]uint8, len(requests.Withdrawals))
 	results[1] = make([]uint8, len(requests.Consolidations))
+	results[2] = make([]uint8, len(requests.BuilderDeposits))
 
 	if !process {
 		return results
@@ -909,7 +918,99 @@ func (sim *stateSimulator) applyExecutionRequests(requests *all.ExecutionRequest
 		results[1][i] = sim.applyConsolidation(consolidation)
 	}
 
+	sim.applyBuilderDeposits(requests.BuilderDeposits, results[2])
+
 	return results
+}
+
+// applyBuilderDeposits classifies the builder deposit requests of a block, mirroring
+// process_builder_deposit_request (Gloas/EIP-8282): a deposit for a pubkey that already owns a
+// builder slot tops up its balance, a deposit for a new pubkey registers a builder only if it
+// carries a valid proof-of-possession under DOMAIN_BUILDER_DEPOSIT, and is dropped otherwise.
+//
+// The signatures of the registration candidates are verified as one aggregated batch, which
+// resolves in a single check while they are all valid - a block can carry up to
+// MAX_BUILDER_DEPOSIT_REQUESTS_PER_PAYLOAD of them.
+func (sim *stateSimulator) applyBuilderDeposits(deposits []*gloas.BuilderDepositRequest, results []uint8) {
+	if len(deposits) == 0 {
+		return
+	}
+
+	if sim.prevState.registeredBuilders == nil {
+		sim.prevState.registeredBuilders = make(map[phase0.BLSPubKey]bool)
+	}
+
+	isTopUp := make([]bool, len(deposits))
+	toVerify := make([]depositsig.Input, 0, len(deposits))
+	toVerifyIdx := make([]int, 0, len(deposits))
+
+	for i, deposit := range deposits {
+		if deposit == nil {
+			continue
+		}
+
+		if sim.prevState.registeredBuilders[deposit.Pubkey] || sim.isRegisteredBuilder(deposit.Pubkey) {
+			isTopUp[i] = true
+			continue
+		}
+
+		toVerify = append(toVerify, depositsig.Input{
+			Pubkey:                deposit.Pubkey,
+			WithdrawalCredentials: deposit.WithdrawalCredentials,
+			Amount:                deposit.Amount,
+			Signature:             deposit.Signature,
+		})
+		toVerifyIdx = append(toVerifyIdx, i)
+	}
+
+	sigValid := make([]bool, len(deposits))
+	if len(toVerify) > 0 {
+		chainSpec := sim.indexer.consensusPool.GetChainState().GetSpecs()
+		domain := depositsig.BuilderDomain(chainSpec.GenesisForkVersion)
+		for j, valid := range depositsig.VerifyBatch(toVerify, domain) {
+			sigValid[toVerifyIdx[j]] = valid
+		}
+	}
+
+	// Sequential pass: a registration mutates the builder set, so a later deposit for the same
+	// pubkey in the same block is a top-up - and a dropped invalid-signature deposit leaves the
+	// pubkey unregistered, so a later one can still register it.
+	for i, deposit := range deposits {
+		if deposit == nil {
+			continue
+		}
+
+		switch {
+		case isTopUp[i] || sim.prevState.registeredBuilders[deposit.Pubkey]:
+			results[i] = dbtypes.BuilderDepositRequestResultTopUp
+		case !sigValid[i]:
+			results[i] = dbtypes.BuilderDepositRequestResultInvalidSignature
+		default:
+			results[i] = dbtypes.BuilderDepositRequestResultNewBuilder
+			sim.prevState.registeredBuilders[deposit.Pubkey] = true
+		}
+	}
+}
+
+// isRegisteredBuilder reports whether the pubkey already owns a builder slot in the builder set
+// the replay starts from.
+//
+// Builders registered within the epoch being replayed are deliberately excluded: the cached set
+// tracks the chain head, so it would already contain a builder that one of the requests in this
+// very replay creates, and that deposit would be misread as a top-up.
+func (sim *stateSimulator) isRegisteredBuilder(pubkey phase0.BLSPubKey) bool {
+	index, found := sim.indexer.builderPubkeyCache.Get(pubkey)
+	if !found {
+		return false
+	}
+
+	builder := sim.indexer.builderCache.getBuilderByIndexAndRoot(gloas.BuilderIndex(index), sim.epochStats.dependentRoot)
+	if builder == nil || builder.PublicKey != pubkey {
+		// no builder at that index on this branch, or the index was reused by another pubkey
+		return false
+	}
+
+	return builder.DepositEpoch < sim.epochStats.epoch
 }
 
 func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {

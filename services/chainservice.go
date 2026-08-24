@@ -50,6 +50,8 @@ type ChainService struct {
 	txIndexer             *txindexer.TxIndexer
 	ensResolver           *EnsResolver
 	started               bool
+
+	depositQueueIndexes depositQueueIndexCache
 }
 
 var GlobalBeaconService *ChainService

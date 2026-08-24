@@ -260,39 +260,43 @@ func APIDepositsQueueV1(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 
-					// Get validator information
+					// Get validator information. The index is only reported when the entry it
+					// points at can actually be loaded — GetValidatorIndexByPubkey also resolves
+					// validators that are merely projected from this very queue, and an index
+					// whose projection has gone away must not be reported as a real validator.
 					validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(queueEntry.PendingDeposit.Pubkey[:]))
-					if !found {
+					validator := (*v1.Validator)(nil)
+					if found {
+						validator = services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
+					}
+
+					if validator == nil {
 						depositInfo.ValidatorIndex = -1
 						depositInfo.ValidatorStatus = "Deposited"
 					} else {
 						depositInfo.ValidatorIndex = int64(validatorIndex)
 						depositInfo.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
 
-						// Get validator status and liveness
-						validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), false)
-						if validator != nil {
-							if strings.HasPrefix(validator.Status.String(), "pending") {
-								depositInfo.ValidatorStatus = "Pending"
-							} else if validator.Status == v1.ValidatorStateActiveOngoing {
-								depositInfo.ValidatorStatus = "Active"
-								depositInfo.ValidatorLiveness = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
-								depositInfo.ValidatorLivenessMax = 3
-							} else if validator.Status == v1.ValidatorStateActiveExiting {
-								depositInfo.ValidatorStatus = "Exiting"
-								depositInfo.ValidatorLiveness = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
-								depositInfo.ValidatorLivenessMax = 3
-							} else if validator.Status == v1.ValidatorStateActiveSlashed {
-								depositInfo.ValidatorStatus = "Slashed"
-								depositInfo.ValidatorLiveness = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
-								depositInfo.ValidatorLivenessMax = 3
-							} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-								depositInfo.ValidatorStatus = "Exited"
-							} else if validator.Status == v1.ValidatorStateExitedSlashed {
-								depositInfo.ValidatorStatus = "Slashed"
-							} else {
-								depositInfo.ValidatorStatus = validator.Status.String()
-							}
+						if strings.HasPrefix(validator.Status.String(), "pending") {
+							depositInfo.ValidatorStatus = "Pending"
+						} else if validator.Status == v1.ValidatorStateActiveOngoing {
+							depositInfo.ValidatorStatus = "Active"
+							depositInfo.ValidatorLiveness = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+							depositInfo.ValidatorLivenessMax = 3
+						} else if validator.Status == v1.ValidatorStateActiveExiting {
+							depositInfo.ValidatorStatus = "Exiting"
+							depositInfo.ValidatorLiveness = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+							depositInfo.ValidatorLivenessMax = 3
+						} else if validator.Status == v1.ValidatorStateActiveSlashed {
+							depositInfo.ValidatorStatus = "Slashed"
+							depositInfo.ValidatorLiveness = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+							depositInfo.ValidatorLivenessMax = 3
+						} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+							depositInfo.ValidatorStatus = "Exited"
+						} else if validator.Status == v1.ValidatorStateExitedSlashed {
+							depositInfo.ValidatorStatus = "Slashed"
+						} else {
+							depositInfo.ValidatorStatus = validator.Status.String()
 						}
 					}
 
