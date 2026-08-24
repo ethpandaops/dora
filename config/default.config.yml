@@ -221,7 +221,7 @@ xatu:
   # Filters rows by meta_network_name. Defaults to the indexed chain's name.
   networkName: ""
   # How long after slot start the ingest pipeline is assumed to still be
-  # receiving events. Responses for younger slots are never cached, so a
+  # receiving events. Responses for younger slots are held for one slot only, so a
   # partially ingested slot does not get frozen into the page cache.
   settleDelay: 30s
   # Maximum concurrent ClickHouse queries across all page loads.

@@ -225,7 +225,7 @@
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
                     {{ if $epoch.XatuEnabled }}
                       <td class="d-none d-md-table-cell text-end text-nowrap">
-                        {{ if $slot.ArrivalMinMs }}{{ formatArrivalMs $slot.ArrivalMinMs }} <span class="text-muted">/</span> {{ formatArrivalMs $slot.ArrivalP90Ms }}{{ else }}<span class="text-muted">&mdash;</span>{{ end }}
+                        {{ if $slot.ArrivalNodes }}{{ formatArrivalMs $slot.ArrivalMinMs }} <span class="text-muted">/</span> {{ formatArrivalMs $slot.ArrivalP90Ms }}{{ else }}<span class="text-muted">&mdash;</span>{{ end }}
                       </td>
                     {{ end }}
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>

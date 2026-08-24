@@ -286,7 +286,8 @@ type XatuConfig struct {
 	// NetworkName filters rows by meta_network_name; defaults to the chain name.
 	NetworkName string `yaml:"networkName" envconfig:"XATU_NETWORK_NAME"`
 	// SettleDelay is how long after slot start the ingest pipeline is assumed to
-	// still be receiving events. Responses for younger slots are never cached.
+	// still be receiving events. Responses for younger slots are cached for one
+	// slot only, rather than not at all, so repeat views cannot each re-query.
 	SettleDelay      time.Duration `yaml:"settleDelay" envconfig:"XATU_SETTLE_DELAY"`
 	ConcurrencyLimit int           `yaml:"concurrencyLimit" envconfig:"XATU_CONCURRENCY_LIMIT"`
 	// Raw holds the connection to xatu's raw event tables. xatu-cbt's

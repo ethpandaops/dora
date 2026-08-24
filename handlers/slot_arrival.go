@@ -135,14 +135,14 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot strin
 	response := &models.SlotArrivalResponse{
 		Slot:             uint64(slot),
 		Settled:          settled,
-		Observations:     uint32(apiObservations),  //nolint:gosec // observation counts are small
-		P2PObservations:  uint32(p2pObservations),  //nolint:gosec // observation counts are small
-		HeadObservations: uint32(headObservations), //nolint:gosec // observation counts are small
-		NPObservations:   uint32(npObservations),   //nolint:gosec // observation counts are small
+		Observations:     apiObservations,
+		P2PObservations:  p2pObservations,
+		HeadObservations: headObservations,
+		NPObservations:   npObservations,
 	}
 
 	if len(nodes) > 0 {
-		buildArrivalAggregates(response, nodes, client.Network())
+		buildArrivalAggregates(response, nodes, client.Network(), lateThreshold(chainState))
 	}
 
 	cacheTimeout := time.Duration(-1)
@@ -358,10 +358,18 @@ func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot
 	return observations, nil
 }
 
-// lateThresholdMs marks observations arriving more than a full slot after
-// slot start as late: typically syncing or stalled nodes whose event times
-// say nothing about propagation.
-const lateThresholdMs = 12000
+// lateThreshold returns the point after slot start beyond which an observation
+// is treated as late: typically a syncing or stalled node whose event times say
+// nothing about propagation. Derived from the chain's slot length, so it stays
+// one slot on chains that do not use twelve second slots.
+func lateThreshold(chainState *consensus.ChainState) uint32 {
+	slotMs := chainState.GetSpecs().SlotDurationMs
+	if slotMs == 0 {
+		slotMs = 12000
+	}
+
+	return uint32(slotMs) //nolint:gosec // slot lengths are small
+}
 
 // loadEngineTimings loads engine API newPayload calls observed by the
 // snooper into nodes: when the consensus client handed the payload to its
@@ -434,7 +442,7 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 // buildArrivalAggregates fills the response's nodes, stats and
 // per-continent/group summaries from the accumulated per-node observations.
 // Late nodes are listed after on-time nodes and excluded from all summaries.
-func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[string]*arrivalNode, network string) {
+func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[string]*arrivalNode, network string, lateMs uint32) {
 	nodeList := make([]*models.SlotArrivalNode, 0, len(nodes))
 	lateList := make([]*models.SlotArrivalNode, 0)
 	continents := map[string]*models.SlotArrivalContinent{}
@@ -477,10 +485,10 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 			NPMs:           node.npMs,
 			NPDurMs:        node.npDurMs,
 			NPStatus:       node.npStatus,
-			Observations:   uint32(node.observations), //nolint:gosec // observation counts are small
+			Observations:   node.observations,
 		}
 
-		if minMs > lateThresholdMs {
+		if minMs > lateMs {
 			entry.Late = true
 
 			lateList = append(lateList, entry)
@@ -515,18 +523,18 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 
 	if len(nodeList) == 0 {
 		response.Nodes = lateList
-		response.Stats = &models.SlotArrivalStats{LateNodes: uint32(len(lateList))}
+		response.Stats = &models.SlotArrivalStats{LateNodes: len(lateList)}
 
 		return
 	}
 
 	response.Stats = &models.SlotArrivalStats{
-		UniqueNodes: uint32(len(nodeList)),
+		UniqueNodes: len(nodeList),
 		MinMs:       nodeList[0].MinMs,
 		P50Ms:       nodeList[len(nodeList)/2].MinMs,
 		P90Ms:       nodeList[len(nodeList)*9/10].MinMs,
 		MaxMs:       nodeList[len(nodeList)-1].MinMs,
-		LateNodes:   uint32(len(lateList)),
+		LateNodes:   len(lateList),
 	}
 	response.Nodes = append(nodeList, lateList...)
 
@@ -554,7 +562,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
 		groupList = append(groupList, &models.SlotArrivalGroup{
 			Name:  name,
-			Nodes: uint32(len(values)),
+			Nodes: len(values),
 			P50Ms: values[len(values)/2],
 		})
 	}

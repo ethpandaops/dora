@@ -73,6 +73,11 @@ type EpochPageDataSlot struct {
 	WithEthBlock          bool      `json:"with_eth_block"`
 	Graffiti              []byte    `json:"graffiti"`
 	BlockRoot             []byte    `json:"block_root" ssz-size:"32"`
-	ArrivalMinMs          *uint32   `json:"arrival_min_ms,omitempty"`
-	ArrivalP90Ms          *uint32   `json:"arrival_p90_ms,omitempty"`
+	// ArrivalNodes is the number of nodes behind the arrival figures, and zero
+	// when there is no data for the slot. This page model is cached as SSZ,
+	// which has no optionals, so a pointer would come back as a pointer to
+	// zero and render as a real 0ms measurement.
+	ArrivalNodes uint32 `json:"arrival_nodes"`
+	ArrivalMinMs uint32 `json:"arrival_min_ms"`
+	ArrivalP90Ms uint32 `json:"arrival_p90_ms"`
 }

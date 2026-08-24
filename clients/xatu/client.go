@@ -39,7 +39,6 @@ type Client struct {
 	logger      *logrus.Entry
 	conn        driver.Conn
 	cachedConn  driver.Conn
-	database    string
 	network     string
 	settleDelay time.Duration
 	sem         chan struct{}
@@ -60,7 +59,6 @@ func NewClient(cfg *types.XatuConfig, defaultNetwork string, logger logrus.Field
 	client := &Client{
 		logger:      logger.WithField("module", "xatu"),
 		conn:        conn,
-		database:    cfg.Raw.Database,
 		network:     cfg.NetworkName,
 		settleDelay: cfg.SettleDelay,
 	}
@@ -72,10 +70,6 @@ func NewClient(cfg *types.XatuConfig, defaultNetwork string, logger logrus.Field
 		}
 
 		client.cachedConn = cachedConn
-	}
-
-	if client.database == "" {
-		client.database = defaultDatabase
 	}
 
 	if client.network == "" {

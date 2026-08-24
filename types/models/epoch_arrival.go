@@ -5,7 +5,7 @@ package models
 type EpochArrivalResponse struct {
 	Epoch uint64 `json:"epoch"`
 	// Settled is false while the Xatu ingest pipeline may still be receiving
-	// events for slots in this epoch; such responses are never cached.
+	// events for slots in this epoch; such responses are cached for one slot only.
 	Settled bool                         `json:"settled"`
 	Slots   map[uint64]*EpochArrivalSlot `json:"slots"`
 }

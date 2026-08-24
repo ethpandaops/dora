@@ -43,7 +43,10 @@ func getEpochArrivalData(epoch phase0.Epoch) *models.EpochArrivalResponse {
 			// budget failing
 			pageCall.CacheTimeout = errorCacheTimeout
 
-			return nil
+			// an empty response, not nil: the cache marshals whatever the build
+			// returns, and a nil value panics there, which would leave the
+			// negative cache above doing nothing at all
+			return &models.EpochArrivalResponse{Epoch: uint64(epoch)}
 		}
 
 		pageCall.CacheTimeout = cacheTimeout
@@ -56,6 +59,9 @@ func getEpochArrivalData(epoch phase0.Epoch) *models.EpochArrivalResponse {
 	}
 
 	result, _ := pageRes.(*models.EpochArrivalResponse)
+	if result == nil || len(result.Slots) == 0 {
+		return nil
+	}
 
 	return result
 }
@@ -168,8 +174,10 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	// per-slot values, late observations excluded as on the slot page
 	slotValues := map[uint32][]uint32{}
 
+	lateMs := lateThreshold(chainState)
+
 	for key, ms := range earliest {
-		if ms > lateThresholdMs {
+		if ms > lateMs {
 			continue
 		}
 
@@ -185,7 +193,7 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	for slot, values := range slotValues {
 		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
 		response.Slots[uint64(slot)] = &models.EpochArrivalSlot{
-			Nodes: uint32(len(values)),
+			Nodes: uint32(len(values)), //nolint:gosec // node counts are small
 			MinMs: values[0],
 			P90Ms: values[len(values)*9/10],
 		}

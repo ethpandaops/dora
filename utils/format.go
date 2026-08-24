@@ -1015,13 +1015,7 @@ func FormatRecentTimeShort(ts time.Time) template.HTML {
 // thresholds and colors are duplicated in timeColor() in
 // templates/slot/arrival.html, which colors the same values client side;
 // change both together.
-func FormatArrivalMs(msPtr *uint32) template.HTML {
-	if msPtr == nil {
-		return template.HTML("<span class=\"text-muted\">&mdash;</span>")
-	}
-
-	ms := *msPtr
-
+func FormatArrivalMs(ms uint32) template.HTML {
 	color := "#f46a6a"
 
 	switch {
