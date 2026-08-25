@@ -68,6 +68,9 @@ type CallTraceResult struct {
 }
 
 // CallTraceCall is a single call frame in the callTracer output.
+//
+// Input, Output and RevertReason are pruned while the response is read, see
+// decodeCallTraceResults, so they hold at most the payload limit plus one byte.
 type CallTraceCall struct {
 	Type    string          `json:"type"`
 	From    common.Address  `json:"from"`
@@ -115,11 +118,16 @@ func CallTraceCallValue(c *CallTraceCall) uint256.Int {
 
 // TraceBlockByHash calls debug_traceBlockByHash with the callTracer configuration.
 // Returns one CallTraceResult per transaction in the block.
-// Uses streaming JSON decoding to avoid buffering the entire (potentially
-// hundreds of MB) response as an intermediate json.RawMessage.
+//
+// The response is decoded as it arrives and every call frame payload is pruned
+// to payloadLimit bytes (plus the one byte that marks it as truncated) on the
+// way in, so neither the raw JSON nor the decoded frames of a transaction that
+// deliberately inflates its trace are ever held in full. A payloadLimit of zero
+// or less keeps payloads intact.
 func (ec *ExecutionClient) TraceBlockByHash(
 	ctx context.Context,
 	blockHash common.Hash,
+	payloadLimit int,
 ) ([]CallTraceResult, error) {
 	tracerConfig := CallTracerConfig{
 		Tracer: "callTracer",
@@ -128,7 +136,7 @@ func (ec *ExecutionClient) TraceBlockByHash(
 	var results []CallTraceResult
 
 	err := ec.streamRPCCall(ctx, "debug_traceBlockByHash",
-		streamDecodeArray(&results),
+		decodeCallTraceResults(&results, payloadLimit),
 		blockHash, tracerConfig,
 	)
 	if err != nil {
