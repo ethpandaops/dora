@@ -102,6 +102,16 @@ func main() {
 
 		xatu.GlobalClient = xatuClient
 		logger.WithField("module", "xatu").Infof("xatu clickhouse configured (network: %v)", xatuClient.Network())
+
+		if cfg.Xatu.Cbt.ClickhouseDsn != "" {
+			cbtClient, err := xatu.NewCbtClient(&cfg.Xatu, specs.ConfigName, logger)
+			if err != nil {
+				logger.Fatalf("invalid xatu cbt configuration: %v", err)
+			}
+
+			xatu.GlobalCbtClient = cbtClient
+			logger.WithField("module", "xatu-cbt").Infof("xatu cbt clickhouse configured (network: %v)", cbtClient.Network())
+		}
 	}
 
 	if cfg.RateLimit.Enabled {
@@ -215,6 +225,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/slot/{slotOrHash}/duties", handlers.SlotDuties).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/bidseen", handlers.SlotBidSeen).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/arrival", handlers.SlotArrival).Methods("GET")
+	router.HandleFunc("/slot/{slotOrHash}/waves", handlers.SlotWaves).Methods("GET")
 	router.HandleFunc("/slot/{root}/blob/{index}", handlers.SlotBlob).Methods("GET")
 	router.HandleFunc("/blocks", handlers.Blocks).Methods("GET")
 	router.HandleFunc("/blocks/filtered", handlers.BlocksFiltered).Methods("GET")

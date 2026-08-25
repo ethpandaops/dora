@@ -294,6 +294,9 @@ type XatuConfig struct {
 	// transformed models live on a different cluster, so a cbt source slots in
 	// alongside this one rather than sharing its connection.
 	Raw XatuSourceConfig `yaml:"raw"`
+	// Cbt holds the connection to the xatu-cbt transformed models. Optional;
+	// features backed by cbt tables stay hidden when no DSN is set.
+	Cbt XatuCbtSourceConfig `yaml:"cbt"`
 }
 
 // XatuSourceConfig is the connection to one ClickHouse instance holding xatu
@@ -307,6 +310,17 @@ type XatuSourceConfig struct {
 	// instances and page loads share one cached response.
 	ClickhouseCachedDsn string `yaml:"clickhouseCachedDsn" envconfig:"XATU_RAW_CLICKHOUSE_CACHED_DSN"`
 	Database            string `yaml:"database" envconfig:"XATU_RAW_DATABASE"`
+}
+
+// XatuCbtSourceConfig is the connection to a ClickHouse instance holding
+// xatu-cbt transformed models. It mirrors XatuSourceConfig; the envconfig tags
+// carry the source name, so each source needs its own struct.
+type XatuCbtSourceConfig struct {
+	ClickhouseDsn       string `yaml:"clickhouseDsn" envconfig:"XATU_CBT_CLICKHOUSE_DSN"`
+	ClickhouseCachedDsn string `yaml:"clickhouseCachedDsn" envconfig:"XATU_CBT_CLICKHOUSE_CACHED_DSN"`
+	// Database names the per-network database holding the cbt models; defaults
+	// to the network name.
+	Database string `yaml:"database" envconfig:"XATU_CBT_DATABASE"`
 }
 
 type DatabaseConfig struct {

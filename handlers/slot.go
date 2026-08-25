@@ -269,6 +269,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		Badges:         []*models.SlotPageBlockBadge{},
 		TracoorUrl:     utils.Config.Frontend.TracoorUrl,
 		XatuEnabled:    xatu.GlobalClient != nil,
+		XatuCbtEnabled: xatu.GlobalCbtClient != nil,
 	}
 
 	var epochStatsValues *beacon.EpochStatsValues

@@ -237,3 +237,11 @@ xatu:
     # cached response.
     clickhouseCachedDsn: ""
     database: "default"
+  # xatu-cbt's transformed models (fct_*), which live on a separate cluster
+  # with one database per network. Optional: features backed by cbt tables
+  # (attestation wave, data column panels) stay hidden when no DSN is set.
+  cbt:
+    clickhouseDsn: ""
+    clickhouseCachedDsn: ""
+    # Defaults to the network name (e.g. "mainnet").
+    database: ""

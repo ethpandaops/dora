@@ -14,7 +14,10 @@ func TestXatuEnvNamesAreNamespaced(t *testing.T) {
 	bare := map[string]func(*types.Config) bool{
 		"ENABLED":        func(c *types.Config) bool { return c.Xatu.Enabled },
 		"CLICKHOUSE_DSN": func(c *types.Config) bool { return c.Xatu.Raw.ClickhouseDsn != "" },
-		"DATABASE":       func(c *types.Config) bool { return c.Xatu.Raw.Database != "" },
+		"DATABASE":       func(c *types.Config) bool { return c.Xatu.Raw.Database != "" || c.Xatu.Cbt.Database != "" },
+		"CLICKHOUSE_CACHED_DSN": func(c *types.Config) bool {
+			return c.Xatu.Raw.ClickhouseCachedDsn != "" || c.Xatu.Cbt.ClickhouseCachedDsn != ""
+		},
 	}
 
 	for name, bound := range bare {
@@ -37,6 +40,8 @@ func TestXatuEnvNamesAreNamespaced(t *testing.T) {
 		{"XATU_ENABLED", func(c *types.Config) bool { return c.Xatu.Enabled }},
 		{"XATU_RAW_CLICKHOUSE_DSN", func(c *types.Config) bool { return c.Xatu.Raw.ClickhouseDsn == "v" }},
 		{"XATU_RAW_DATABASE", func(c *types.Config) bool { return c.Xatu.Raw.Database == "v" }},
+		{"XATU_CBT_CLICKHOUSE_DSN", func(c *types.Config) bool { return c.Xatu.Cbt.ClickhouseDsn == "v" }},
+		{"XATU_CBT_DATABASE", func(c *types.Config) bool { return c.Xatu.Cbt.Database == "v" }},
 		{"XATU_NETWORK_NAME", func(c *types.Config) bool { return c.Xatu.NetworkName == "v" }},
 	} {
 		value := "v"

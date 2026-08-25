@@ -118,12 +118,14 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 
 	// Every observation in the epoch has to be reduced here: the generated
 	// builders cannot aggregate, so min/p90 cannot be pushed into ClickHouse.
-	err := client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
-		return xch.BuildListBeaconApiEthV1EventsBlockQuery(&xch.ListBeaconApiEthV1EventsBlockRequest{
+	err := client.QueryPaged(queryCtx, settled, func(pageOffset uint32) (string, []any, error) {
+		query, err := xch.BuildListBeaconApiEthV1EventsBlockQuery(&xch.ListBeaconApiEthV1EventsBlockRequest{
 			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
 			PropagationSlotStartDiff: freshFilter,
-			PageSize:                 pageSize, PageToken: pageToken,
+			PageSize:                 pageSize, PageToken: xatuPageToken(pageOffset),
 		})
+
+		return query.Query, query.Args, err
 	}, func(rows driver.Rows) error {
 		var row xch.BeaconApiEthV1EventsBlockRow
 		if err := rows.ScanStruct(&row); err != nil {
@@ -138,12 +140,14 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 		return nil, -1, fmt.Errorf("api query: %w", err)
 	}
 
-	err = client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
-		return xch.BuildListLibp2PGossipsubBeaconBlockQuery(&xch.ListLibp2PGossipsubBeaconBlockRequest{
+	err = client.QueryPaged(queryCtx, settled, func(pageOffset uint32) (string, []any, error) {
+		query, err := xch.BuildListLibp2PGossipsubBeaconBlockQuery(&xch.ListLibp2PGossipsubBeaconBlockRequest{
 			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
 			PropagationSlotStartDiff: freshFilter,
-			PageSize:                 pageSize, PageToken: pageToken,
+			PageSize:                 pageSize, PageToken: xatuPageToken(pageOffset),
 		})
+
+		return query.Query, query.Args, err
 	}, func(rows driver.Rows) error {
 		var row xch.Libp2PGossipsubBeaconBlockRow
 		if err := rows.ScanStruct(&row); err != nil {
@@ -158,12 +162,14 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 		return nil, -1, fmt.Errorf("p2p query: %w", err)
 	}
 
-	err = client.QueryPaged(queryCtx, settled, func(pageToken string) (xch.SQLQuery, error) {
-		return xch.BuildListBeaconApiEthV1EventsHeadQuery(&xch.ListBeaconApiEthV1EventsHeadRequest{
+	err = client.QueryPaged(queryCtx, settled, func(pageOffset uint32) (string, []any, error) {
+		query, err := xch.BuildListBeaconApiEthV1EventsHeadQuery(&xch.ListBeaconApiEthV1EventsHeadRequest{
 			MetaNetworkName: networkFilter, Slot: slotFilter, SlotStartDateTime: timeFilter,
 			PropagationSlotStartDiff: freshFilter,
-			PageSize:                 pageSize, PageToken: pageToken,
+			PageSize:                 pageSize, PageToken: xatuPageToken(pageOffset),
 		})
+
+		return query.Query, query.Args, err
 	}, func(rows driver.Rows) error {
 		var row xch.BeaconApiEthV1EventsHeadRow
 		if err := rows.ScanStruct(&row); err != nil {

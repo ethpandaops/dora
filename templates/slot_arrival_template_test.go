@@ -38,3 +38,45 @@ func TestArrivalTemplateExecutes(t *testing.T) {
 		}
 	}
 }
+
+// The cbt panels are gated on XatuCbtEnabled: their markup and fetch must
+// only render when a cbt source is configured.
+func TestArrivalTemplateGatesCbtPanels(t *testing.T) {
+	body, err := Files.ReadFile("slot/arrival.html")
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	tmpl, err := template.New("t").Funcs(template.FuncMap(templateFuncs)).Parse(string(body))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	render := func(cbt bool) string {
+		data := &models.SlotPageData{
+			Slot:           12345,
+			XatuCbtEnabled: cbt,
+			Block:          &models.SlotPageBlockData{BlockRoot: []byte{0xab, 0xcd}},
+		}
+
+		var out bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&out, "block_arrival", data); err != nil {
+			t.Fatalf("execute (cbt=%v): %v", cbt, err)
+		}
+
+		return out.String()
+	}
+
+	with := render(true)
+	for _, want := range []string{`id="waves-att"`, `id="waves-cols"`} {
+		if !bytes.Contains([]byte(with), []byte(want)) {
+			t.Errorf("cbt-enabled output missing %q", want)
+		}
+	}
+
+	without := render(false)
+	if bytes.Contains([]byte(without), []byte(`id="waves-att"`)) {
+		t.Error("cbt panels rendered without a cbt source")
+	}
+	// the fetch guards on the panel's existence, so the JS may ship either way
+}

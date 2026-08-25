@@ -180,10 +180,12 @@ func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 
 	observations := 0
 
-	err := client.QueryPaged(ctx, settled, func(pageToken string) (xch.SQLQuery, error) {
-		req.PageToken = pageToken
+	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
+		req.PageToken = xatuPageToken(pageOffset)
 
-		return xch.BuildListBeaconApiEthV1EventsBlockQuery(req)
+		query, err := xch.BuildListBeaconApiEthV1EventsBlockQuery(req)
+
+		return query.Query, query.Args, err
 	}, func(rows driver.Rows) error {
 		var row xch.BeaconApiEthV1EventsBlockRow
 		if err := rows.ScanStruct(&row); err != nil {
@@ -238,10 +240,12 @@ func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 
 	observations := 0
 
-	err := client.QueryPaged(ctx, settled, func(pageToken string) (xch.SQLQuery, error) {
-		req.PageToken = pageToken
+	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
+		req.PageToken = xatuPageToken(pageOffset)
 
-		return xch.BuildListLibp2PGossipsubBeaconBlockQuery(req)
+		query, err := xch.BuildListLibp2PGossipsubBeaconBlockQuery(req)
+
+		return query.Query, query.Args, err
 	}, func(rows driver.Rows) error {
 		var row xch.Libp2PGossipsubBeaconBlockRow
 		if err := rows.ScanStruct(&row); err != nil {
@@ -314,10 +318,12 @@ func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot
 
 	observations := 0
 
-	err := client.QueryPaged(ctx, settled, func(pageToken string) (xch.SQLQuery, error) {
-		req.PageToken = pageToken
+	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
+		req.PageToken = xatuPageToken(pageOffset)
 
-		return xch.BuildListBeaconApiEthV1EventsHeadQuery(req)
+		query, err := xch.BuildListBeaconApiEthV1EventsHeadQuery(req)
+
+		return query.Query, query.Args, err
 	}, func(rows driver.Rows) error {
 		var row xch.BeaconApiEthV1EventsHeadRow
 		if err := rows.ScanStruct(&row); err != nil {
@@ -393,10 +399,12 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 	slotStartMs := slotTime.UnixMilli()
 	observations := 0
 
-	err := client.QueryPaged(ctx, settled, func(pageToken string) (xch.SQLQuery, error) {
-		req.PageToken = pageToken
+	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
+		req.PageToken = xatuPageToken(pageOffset)
 
-		return xch.BuildListConsensusEngineApiNewPayloadQuery(req)
+		query, err := xch.BuildListConsensusEngineApiNewPayloadQuery(req)
+
+		return query.Query, query.Args, err
 	}, func(rows driver.Rows) error {
 		var row xch.ConsensusEngineApiNewPayloadRow
 		if err := rows.ScanStruct(&row); err != nil {

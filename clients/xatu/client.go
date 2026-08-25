@@ -14,7 +14,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/types"
-	xch "github.com/ethpandaops/xatu/pkg/proto/clickhouse"
 )
 
 const (
@@ -29,11 +28,21 @@ const (
 	maxQueryPages           = 10
 	defaultSettleDelay      = 30 * time.Second
 	defaultConcurrencyLimit = 2
+	// cbtSettleDelay is how long after slot start the cbt transformations are
+	// assumed to still be rewriting a slot's rows. The attestation chunk window
+	// extends 12s past slot start, availability probes run within the probed
+	// slot itself, and the transformation batches lag under a minute, so two
+	// minutes covers all three with room.
+	cbtSettleDelay = 2 * time.Minute
 )
 
 // GlobalClient is the process-wide xatu client. It is nil when xatu is not
 // configured; all xatu-backed features must treat that as disabled.
 var GlobalClient *Client
+
+// GlobalCbtClient is the process-wide xatu-cbt client. It is nil when no cbt
+// source is configured; all cbt-backed features must treat that as disabled.
+var GlobalCbtClient *Client
 
 // Client wraps ClickHouse connections to a Xatu instance. Queries for settled
 // slots are routed to the cached endpoint when one is configured, so a
@@ -47,43 +56,97 @@ type Client struct {
 	sem         chan struct{}
 }
 
-// NewClient connects to the configured ClickHouse endpoints. defaultNetwork is
-// used as the meta_network_name filter when the config does not set one.
+// NewClient connects to the configured raw ClickHouse endpoints.
+// defaultNetwork is used as the meta_network_name filter when the config does
+// not set one.
 func NewClient(cfg *types.XatuConfig, defaultNetwork string, logger logrus.FieldLogger) (*Client, error) {
-	if cfg.Raw.ClickhouseDsn == "" {
-		return nil, fmt.Errorf("xatu clickhouse dsn is required")
+	network := cfg.NetworkName
+	if network == "" {
+		network = defaultNetwork
 	}
 
-	conn, err := connect(cfg.Raw.ClickhouseDsn, cfg.Raw.Database)
+	settleDelay := cfg.SettleDelay
+	if settleDelay <= 0 {
+		settleDelay = defaultSettleDelay
+	}
+
+	return newClient(clientParams{
+		module:      "xatu",
+		dsn:         cfg.Raw.ClickhouseDsn,
+		cachedDsn:   cfg.Raw.ClickhouseCachedDsn,
+		database:    cfg.Raw.Database,
+		network:     network,
+		settleDelay: settleDelay,
+		concurrency: cfg.ConcurrencyLimit,
+	}, logger)
+}
+
+// NewCbtClient connects to the configured xatu-cbt ClickHouse endpoints. The
+// cbt models live in one database per network, so the database defaults to
+// the network name instead of a fixed schema. The settle delay is fixed: it
+// covers the transformation pipeline, not the raw ingest lag the configured
+// SettleDelay describes.
+func NewCbtClient(cfg *types.XatuConfig, defaultNetwork string, logger logrus.FieldLogger) (*Client, error) {
+	network := cfg.NetworkName
+	if network == "" {
+		network = defaultNetwork
+	}
+
+	database := cfg.Cbt.Database
+	if database == "" {
+		database = network
+	}
+
+	return newClient(clientParams{
+		module:      "xatu-cbt",
+		dsn:         cfg.Cbt.ClickhouseDsn,
+		cachedDsn:   cfg.Cbt.ClickhouseCachedDsn,
+		database:    database,
+		network:     network,
+		settleDelay: cbtSettleDelay,
+		concurrency: cfg.ConcurrencyLimit,
+	}, logger)
+}
+
+// clientParams carries one source's resolved connection settings into
+// newClient.
+type clientParams struct {
+	module      string
+	dsn         string
+	cachedDsn   string
+	database    string
+	network     string
+	settleDelay time.Duration
+	concurrency int
+}
+
+func newClient(params clientParams, logger logrus.FieldLogger) (*Client, error) {
+	if params.dsn == "" {
+		return nil, fmt.Errorf("%s clickhouse dsn is required", params.module)
+	}
+
+	conn, err := connect(params.dsn, params.database)
 	if err != nil {
-		return nil, fmt.Errorf("xatu clickhouse: %w", err)
+		return nil, fmt.Errorf("%s clickhouse: %w", params.module, err)
 	}
 
 	client := &Client{
-		logger:      logger.WithField("module", "xatu"),
+		logger:      logger.WithField("module", params.module),
 		conn:        conn,
-		network:     cfg.NetworkName,
-		settleDelay: cfg.SettleDelay,
+		network:     params.network,
+		settleDelay: params.settleDelay,
 	}
 
-	if cfg.Raw.ClickhouseCachedDsn != "" {
-		cachedConn, err := connect(cfg.Raw.ClickhouseCachedDsn, cfg.Raw.Database)
+	if params.cachedDsn != "" {
+		cachedConn, err := connect(params.cachedDsn, params.database)
 		if err != nil {
-			return nil, fmt.Errorf("xatu cached clickhouse: %w", err)
+			return nil, fmt.Errorf("%s cached clickhouse: %w", params.module, err)
 		}
 
 		client.cachedConn = cachedConn
 	}
 
-	if client.network == "" {
-		client.network = defaultNetwork
-	}
-
-	if client.settleDelay <= 0 {
-		client.settleDelay = defaultSettleDelay
-	}
-
-	concurrency := cfg.ConcurrencyLimit
+	concurrency := params.concurrency
 	if concurrency <= 0 {
 		concurrency = defaultConcurrencyLimit
 	}
@@ -140,7 +203,7 @@ func (c *Client) SettleDelay() time.Duration {
 // Query runs a built query. Settled queries use the cached endpoint when one
 // is configured; unsettled queries always bypass it so a pre-settle response
 // never gets frozen into a shared response cache.
-func (c *Client) Query(ctx context.Context, settled bool, query xch.SQLQuery) (driver.Rows, error) {
+func (c *Client) Query(ctx context.Context, settled bool, query string, args ...any) (driver.Rows, error) {
 	select {
 	case c.sem <- struct{}{}:
 	case <-ctx.Done():
@@ -153,7 +216,7 @@ func (c *Client) Query(ctx context.Context, settled bool, query xch.SQLQuery) (d
 		conn = c.cachedConn
 	}
 
-	return conn.Query(ctx, query.Query, query.Args...)
+	return conn.Query(ctx, query, args...)
 }
 
 // QueryPaged runs a query across every result page, calling scan for each row.
@@ -161,28 +224,25 @@ func (c *Client) Query(ctx context.Context, settled bool, query xch.SQLQuery) (d
 // The generated builders cap page_size at maxQueryPageSize and cannot express
 // aggregates, so a caller reducing a whole epoch has to pull the rows and
 // follow the page tokens. Reading only the first page loses rows silently,
-// which is worse than being slow. build receives the token for the page to
-// fetch, empty for the first.
+// which is worse than being slow. build receives the row offset of the page
+// to fetch, zero for the first; it encodes the offset into a page token with
+// its own table's generated helper, which keeps this client independent of
+// which generated package (xatu or xatu-cbt) produced the query.
 func (c *Client) QueryPaged(
 	ctx context.Context,
 	settled bool,
-	build func(pageToken string) (xch.SQLQuery, error),
+	build func(pageOffset uint32) (query string, args []any, err error),
 	scan func(rows driver.Rows) error,
 ) error {
 	offset := uint32(0)
 
 	for page := 0; page < maxQueryPages; page++ {
-		pageToken := ""
-		if offset > 0 {
-			pageToken = xch.EncodePageToken(offset)
-		}
-
-		query, err := build(pageToken)
+		query, args, err := build(offset)
 		if err != nil {
 			return err
 		}
 
-		rows, err := c.Query(ctx, settled, query)
+		rows, err := c.Query(ctx, settled, query, args...)
 		if err != nil {
 			return err
 		}
