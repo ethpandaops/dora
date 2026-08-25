@@ -114,6 +114,7 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 	response := &models.SlotWavesResponse{
 		Slot:         uint64(slot),
 		Settled:      settled,
+		SlotMs:       lateThreshold(chainState),
 		Attestations: attestations,
 		Columns:      columns,
 	}

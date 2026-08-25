@@ -199,7 +199,6 @@
     .arrival-hist {
       position: relative;
       height: 110px;
-      max-width: 820px;
       margin-top: 8px;
       border-left: 1px solid var(--bs-border-color);
       border-bottom: 1px solid var(--bs-border-color);
@@ -225,7 +224,6 @@
     }
     .arrival-hist-axis {
       position: relative;
-      max-width: 820px;
       height: 0.95rem;
       font-size: 0.63rem;
       color: var(--bs-secondary-color);
@@ -691,7 +689,7 @@
         var step = steps[steps.length - 1];
 
         for (var i = 0; i < steps.length; i++) {
-          if (span / steps[i] <= 7) { step = steps[i]; break; }
+          if (span / steps[i] <= 13) { step = steps[i]; break; }
         }
 
         var lines = [];
@@ -700,6 +698,23 @@
         }
 
         return { lo: axLo, hi: axHi, span: span, lines: lines };
+      }
+
+      // waveDomain spans the whole slot, so every slot's charts share one
+      // axis and the two rows line up vertically; data past the slot end
+      // stretches it rather than being cut off.
+      function waveDomain(slotMs, dataHi, binMs) {
+        return Math.max(slotMs || 12000, dataHi + binMs * 2);
+      }
+
+      function waveBin(domain) {
+        var sizes = [50, 100, 250, 500, 1000];
+
+        for (var i = 0; i < sizes.length; i++) {
+          if (domain / sizes[i] <= 130) return sizes[i];
+        }
+
+        return sizes[sizes.length - 1];
       }
 
       // renderHist draws chunky bars with gaps into the histogram block:
@@ -754,12 +769,13 @@
         ax.lines.forEach(function(t) {
           labels += '<span style="left:' + pos(t) + '%">' + fmtAxis(t) + '</span>';
         });
+        labels += '<span style="left:100%">' + fmtAxis(ax.hi) + '</span>';
 
         return '<div class="arrival-hist' + (small ? ' hist-sm' : '') + '">' + html + '</div>' +
           '<div class="arrival-hist-axis">' + labels + '</div>';
       }
 
-      function renderAttWave(att, settled) {
+      function renderAttWave(att, settled, slotMs) {
         if (!att.total_count) return;
 
         var viewed = null;
@@ -783,13 +799,8 @@
         if (lo == null) return;
 
         // rebin the 50ms chunks until the bars are chunky enough to read
-        var binMs = 50;
-        var sizes = [50, 100, 250, 500, 1000];
-
-        for (var i = 0; i < sizes.length; i++) {
-          binMs = sizes[i];
-          if ((hi - lo) / binMs <= 64) break;
-        }
+        // across the whole slot
+        var binMs = waveBin(waveDomain(slotMs, hi, 50));
 
         var binned = {};
 
@@ -808,7 +819,7 @@
           return b;
         });
 
-        var ax = histAxis(Math.max(0, lo - binMs), hi + binMs * 2);
+        var ax = histAxis(0, waveDomain(slotMs, hi, binMs));
         var hist = renderHist(ax, bins, binMs, att.deadline_ms, false);
         if (!hist) return;
 
@@ -827,7 +838,7 @@
         document.getElementById('waves-att-body').innerHTML = stats + liveBadge(settled) + hist;
       }
 
-      function renderColWave(cols, settled) {
+      function renderColWave(cols, settled, slotMs) {
         var entries = cols.columns || [];
         if (!entries.length || !cols.blob_count) return;
 
@@ -852,20 +863,10 @@
         var hist = '';
 
         if (seen.length) {
-          // the burst is tight, so the window gets a floor: bars cluster
-          // against calm space instead of being stretched to fill the width
-          var spread = seen[seen.length - 1] - seen[0];
-          var window = Math.max(spread * 1.4, 250);
-          var axLo = Math.max(0, seen[0] - (window - spread) / 2);
-
-          var binMs = 5;
-          var sizes = [5, 10, 20, 50, 100];
-
-          for (var i = 0; i < sizes.length; i++) {
-            binMs = sizes[i];
-            if (window / binMs <= 56) break;
-          }
-
+          // same full-slot domain and bins as the attestation chart above,
+          // so the two rows line up vertically and read as one story
+          var dataHi = seen[seen.length - 1];
+          var binMs = waveBin(waveDomain(slotMs, dataHi, 50));
           var binned = {};
 
           seen.forEach(function(ms) {
@@ -882,7 +883,7 @@
             };
           });
 
-          var ax = histAxis(axLo, axLo + window);
+          var ax = histAxis(0, waveDomain(slotMs, dataHi, binMs));
           hist = renderHist(ax, bins, binMs, null, true) || '';
         }
 
@@ -891,8 +892,9 @@
       }
 
       function renderWaves(data) {
-        if (data.attestations) renderAttWave(data.attestations, data.settled);
-        if (data.columns) renderColWave(data.columns, data.settled);
+        var slotMs = data.slot_ms || (data.attestations ? data.attestations.deadline_ms * 3 : 0);
+        if (data.attestations) renderAttWave(data.attestations, data.settled, slotMs);
+        if (data.columns) renderColWave(data.columns, data.settled, slotMs);
       }
 
       var wavesLoaded = false;

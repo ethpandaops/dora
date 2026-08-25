@@ -10,7 +10,10 @@ type SlotWavesResponse struct {
 	Slot uint64 `json:"slot"`
 	// Settled is false while the cbt transformations may still be rewriting
 	// this slot's rows; such responses are cached for one slot only.
-	Settled      bool                 `json:"settled"`
+	Settled bool `json:"settled"`
+	// SlotMs is the slot duration, so the charts can span the whole slot
+	// instead of stopping wherever the data does.
+	SlotMs       uint32               `json:"slot_ms"`
 	Attestations *SlotAttestationWave `json:"attestations,omitempty"`
 	Columns      *SlotColumnWave      `json:"columns,omitempty"`
 }
