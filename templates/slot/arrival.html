@@ -170,30 +170,23 @@
     @media (max-width: 991.98px) {
       .arrival-scroll { overflow-x: auto; }
     }
-    /* keeps the marker key and the time axis in view while reading down a
-       long node list. Offset clears dora's fixed header bar. */
-    .arrival-scroll thead th {
+    /* Keeps the marker key and the time axis in view while reading down a
+       long node list. The whole thead sticks as one unit: pinning each row
+       separately meant computing where the first row ends, and any error
+       there, including measuring before webfonts settle, leaves a seam that
+       table rows scroll through. */
+    .arrival-scroll thead {
       position: sticky;
-      /* offsets come from the measured header bar: its height changes with
-         viewport width and zoom, and a hardcoded value leaves either a seam
-         for rows to scroll through or a header hidden behind the bar. 1px of
-         overlap absorbs fractional-zoom rounding. */
       top: calc(var(--arrival-nav-h, 4.5rem) - 1px);
       /* above dora's header bar, whose drop shadow would otherwise paint a
-         grey gradient across the pinned header and read as a gap. The bar's
-         own dropdowns still render over this. */
+         grey gradient across the pinned header. Its dropdowns still win. */
       z-index: 1001;
+    }
+    .arrival-scroll thead th {
       background: var(--bs-body-bg);
+    }
+    .arrival-scroll thead tr:last-child th {
       box-shadow: inset 0 -1px 0 var(--bs-border-color);
-    }
-    .arrival-scroll thead tr.group-row th {
-      top: calc(var(--arrival-nav-h, 4.5rem) - 1px);
-    }
-    /* the second row sits directly under the first; the exact offset depends on
-       the rendered group-row height, so it is measured rather than guessed and
-       a stale value would leave a seam for rows to scroll through */
-    .arrival-scroll thead tr:not(.group-row) th {
-      top: calc(var(--arrival-nav-h, 4.5rem) - 1px + var(--arrival-group-h, 20px));
     }
     .arrival-node-name {
       max-width: 15rem; overflow: hidden; text-overflow: ellipsis;
@@ -552,22 +545,19 @@
       // table rows scroll through behind the header.
       function syncStickyOffsets() {
         var wrap = document.querySelector('.arrival-scroll');
-        if (!wrap) return;
-
         var bar = document.querySelector('.header-bar');
-        if (bar) {
-          var navH = Math.round(bar.getBoundingClientRect().height);
-          if (navH > 0) wrap.style.setProperty('--arrival-nav-h', navH + 'px');
-        }
+        if (!wrap || !bar) return;
 
-        var groupRow = document.querySelector('.arrival-table thead tr.group-row');
-        if (groupRow) {
-          var h = Math.round(groupRow.getBoundingClientRect().height);
-          if (h > 0) wrap.style.setProperty('--arrival-group-h', h + 'px');
-        }
+        var navH = Math.round(bar.getBoundingClientRect().height);
+        if (navH > 0) wrap.style.setProperty('--arrival-nav-h', navH + 'px');
       }
 
       window.addEventListener('resize', syncStickyOffsets);
+
+      // the header bar's height is not final until its webfonts land
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(syncStickyOffsets);
+      }
 
       function render(data) {
         arrivalData = data;
@@ -630,7 +620,7 @@
         }).join('');
 
         document.getElementById('arrival-body').innerHTML = renderTable(data);
-        syncStickyOffsets();
+        requestAnimationFrame(syncStickyOffsets);
       }
 
       function loadArrival() {
@@ -659,7 +649,7 @@
           sortState.dir = 1;
         }
         document.getElementById('arrival-body').innerHTML = renderTable(arrivalData);
-        syncStickyOffsets();
+        requestAnimationFrame(syncStickyOffsets);
       });
 
       var tab = document.getElementById('arrival-tab');
