@@ -174,16 +174,21 @@
        long node list. Offset clears dora's fixed header bar. */
     .arrival-scroll thead th {
       position: sticky;
-      top: 4.5rem;
+      /* 1px of overlap: at fractional zoom levels an exact match rounds to a
+         sliver that table rows show through */
+      top: calc(4.5rem - 1px);
       z-index: 2;
       background: var(--bs-body-bg);
       box-shadow: inset 0 -1px 0 var(--bs-border-color);
     }
     .arrival-scroll thead tr.group-row th {
-      top: 4.5rem;
+      top: calc(4.5rem - 1px);
     }
+    /* the second row sits directly under the first; the exact offset depends on
+       the rendered group-row height, so it is measured rather than guessed and
+       a stale value would leave a seam for rows to scroll through */
     .arrival-scroll thead tr:not(.group-row) th {
-      top: 6rem;
+      top: calc(4.5rem - 1px + var(--arrival-group-h, 20px));
     }
     .arrival-node-name {
       max-width: 15rem; overflow: hidden; text-overflow: ellipsis;
@@ -517,6 +522,17 @@
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
 
+      // Keeps the two sticky header rows flush: any mismatch leaves a gap that
+      // table rows scroll through behind the header.
+      function syncStickyOffsets() {
+        var groupRow = document.querySelector('.arrival-table thead tr.group-row');
+        var wrap = document.querySelector('.arrival-scroll');
+        if (!groupRow || !wrap) return;
+
+        var h = Math.round(groupRow.getBoundingClientRect().height);
+        if (h > 0) wrap.style.setProperty('--arrival-group-h', h + 'px');
+      }
+
       function render(data) {
         arrivalData = data;
         document.getElementById('arrival-loading').style.display = 'none';
@@ -578,6 +594,7 @@
         }).join('');
 
         document.getElementById('arrival-body').innerHTML = renderTable(data);
+        syncStickyOffsets();
       }
 
       function loadArrival() {
@@ -606,6 +623,7 @@
           sortState.dir = 1;
         }
         document.getElementById('arrival-body').innerHTML = renderTable(arrivalData);
+        syncStickyOffsets();
       });
 
       var tab = document.getElementById('arrival-tab');
