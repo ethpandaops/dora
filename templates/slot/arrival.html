@@ -196,43 +196,46 @@
     .arrival-table th.sortable { cursor: pointer; user-select: none; }
     .arrival-table th.sortable:hover { color: var(--bs-emphasis-color); }
 
-    .arrival-wave-mini {
+    .arrival-hist {
       position: relative;
-      height: 40px;
-      max-width: 520px;
-      margin-top: 6px;
+      height: 110px;
+      max-width: 820px;
+      margin-top: 8px;
+      border-left: 1px solid var(--bs-border-color);
       border-bottom: 1px solid var(--bs-border-color);
     }
-    .arrival-wave-mini svg {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
+    .arrival-hist.hist-sm { height: 72px; }
+    .arrival-hist .grid {
+      position: absolute; top: 0; bottom: 0; width: 1px;
+      background: var(--bs-border-color);
+      opacity: 0.45;
     }
-    .arrival-wave-mini .hover {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-    }
-    .arrival-wave-mini .deadline {
+    .arrival-hist .bar { position: absolute; bottom: 0; }
+    .arrival-hist .deadline {
       position: absolute; top: 0; bottom: 0; width: 0;
       border-left: 1px dashed var(--bs-secondary-color);
     }
-    .arrival-wave-mini .deadline-flag {
+    .arrival-hist .deadline .note {
       position: absolute;
-      top: -3px;
+      top: 1px;
       padding-left: 5px;
       font-size: 0.63rem;
       color: var(--bs-secondary-color);
       white-space: nowrap;
     }
-    .arrival-wave-axis {
-      display: flex;
-      justify-content: space-between;
-      max-width: 520px;
+    .arrival-hist-axis {
+      position: relative;
+      max-width: 820px;
+      height: 0.95rem;
       font-size: 0.63rem;
       color: var(--bs-secondary-color);
       font-variant-numeric: tabular-nums;
+    }
+    .arrival-hist-axis > span {
+      position: absolute;
+      top: 2px;
+      transform: translateX(-50%);
+      white-space: nowrap;
     }
   </style>
 
@@ -672,14 +675,89 @@
         requestAnimationFrame(syncStickyOffsets);
       }
 
-      // The wave rows join the summary block above the table, so they follow
-      // its grammar: numbers first, one small muted visual under them.
+      // The wave rows join the summary block above the table: bold numbers
+      // first, then a proper histogram on the same gridline-and-label grammar
+      // as the table's timeline header.
       function liveBadge(settled) {
         if (settled) return '';
         return ' <span class="badge rounded-pill text-bg-info ms-1" style="font-size: 11px;">live &mdash; data may still be arriving</span>';
       }
 
       var sep = '<span class="text-muted px-2">&middot;</span>';
+
+      function histAxis(axLo, axHi) {
+        var span = Math.max(1, axHi - axLo);
+        var steps = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+        var step = steps[steps.length - 1];
+
+        for (var i = 0; i < steps.length; i++) {
+          if (span / steps[i] <= 7) { step = steps[i]; break; }
+        }
+
+        var lines = [];
+        for (var t = Math.ceil(axLo / step) * step; t < axHi; t += step) {
+          if (t > axLo) lines.push(t);
+        }
+
+        return { lo: axLo, hi: axHi, span: span, lines: lines };
+      }
+
+      // renderHist draws chunky bars with gaps into the histogram block:
+      // bins = [{ms, green, red, tip}], stacked red on green, scaled to the
+      // tallest bin. Returns null when there is nothing to draw.
+      function renderHist(ax, bins, binMs, deadlineMs, small) {
+        var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
+        var peak = 0;
+
+        bins.forEach(function(b) {
+          if (b.green + b.red > peak) peak = b.green + b.red;
+        });
+        if (!peak) return null;
+
+        var html = '';
+
+        ax.lines.forEach(function(t) {
+          html += '<div class="grid" style="left:' + pos(t) + '%"></div>';
+        });
+
+        if (deadlineMs != null && deadlineMs > ax.lo && deadlineMs < ax.hi) {
+          html += '<div class="deadline" style="left:' + pos(deadlineMs) + '%">' +
+            '<span class="note" title="One third into the slot: validators attest now even without a block in hand">deadline</span></div>';
+        }
+
+        var slotW = binMs / ax.span * 100;
+        var barW = slotW * 0.7;
+        var off = (slotW - barW) / 2;
+
+        bins.forEach(function(b) {
+          var total = b.green + b.red;
+          if (!total) return;
+
+          var left = (pos(b.ms) + off).toFixed(3) + '%';
+          var width = barW.toFixed(3) + '%';
+          var greenH = b.green ? Math.max(2, b.green / peak * 100) : 0;
+
+          if (b.green) {
+            html += '<div class="bar" style="left:' + left + ';width:' + width + ';height:' + greenH +
+              '%;background:#34c38f;border-radius:' + (b.red ? '0' : '2px 2px 0 0') + '" title="' + b.tip + '"></div>';
+          }
+
+          if (b.red) {
+            html += '<div class="bar" style="left:' + left + ';width:' + width + ';bottom:' + greenH +
+              '%;height:' + Math.max(2, b.red / peak * 100) +
+              '%;background:#f46a6a;border-radius:2px 2px 0 0" title="' + b.tip + '"></div>';
+          }
+        });
+
+        var labels = '';
+
+        ax.lines.forEach(function(t) {
+          labels += '<span style="left:' + pos(t) + '%">' + fmtAxis(t) + '</span>';
+        });
+
+        return '<div class="arrival-hist' + (small ? ' hist-sm' : '') + '">' + html + '</div>' +
+          '<div class="arrival-hist-axis">' + labels + '</div>';
+      }
 
       function renderAttWave(att, settled) {
         if (!att.total_count) return;
@@ -694,19 +772,45 @@
           otherRoots.push(r.root ? r.root.slice(0, 10) + '\u2026' : 'smaller roots');
         });
 
-        var chunks = {};
-        var lo = null, hi = null, peak = 0;
+        var lo = null, hi = null;
 
         (att.roots || []).forEach(function(r) {
           (r.buckets || []).forEach(function(b) {
-            var c = chunks[b.ms] || (chunks[b.ms] = { viewed: 0, other: 0 });
-            c[r.viewed ? 'viewed' : 'other'] += b.count;
             if (lo == null || b.ms < lo) lo = b.ms;
             if (hi == null || b.ms > hi) hi = b.ms;
-            if (c.viewed + c.other > peak) peak = c.viewed + c.other;
           });
         });
-        if (lo == null || !peak) return;
+        if (lo == null) return;
+
+        // rebin the 50ms chunks until the bars are chunky enough to read
+        var binMs = 50;
+        var sizes = [50, 100, 250, 500, 1000];
+
+        for (var i = 0; i < sizes.length; i++) {
+          binMs = sizes[i];
+          if ((hi - lo) / binMs <= 64) break;
+        }
+
+        var binned = {};
+
+        (att.roots || []).forEach(function(r) {
+          (r.buckets || []).forEach(function(b) {
+            var ms = Math.floor(b.ms / binMs) * binMs;
+            var bin = binned[ms] || (binned[ms] = { ms: ms, green: 0, red: 0 });
+            bin[r.viewed || !viewed ? 'green' : 'red'] += b.count;
+          });
+        });
+
+        var bins = Object.keys(binned).map(function(ms) {
+          var b = binned[ms];
+          b.tip = fmtStr(b.ms) + '\u2013' + fmtStr(b.ms + binMs) + ': ' + (b.green + b.red).toLocaleString() +
+            ' attestations' + (b.red ? ' (' + b.red.toLocaleString() + ' for other roots)' : '');
+          return b;
+        });
+
+        var ax = histAxis(Math.max(0, lo - binMs), hi + binMs * 2);
+        var hist = renderHist(ax, bins, binMs, att.deadline_ms, false);
+        if (!hist) return;
 
         document.getElementById('waves-att').style.display = '';
 
@@ -720,68 +824,12 @@
             otherCount.toLocaleString() + '</b></span> <span class="text-muted">vote other roots</span>';
         }
 
-        var axLo = Math.max(0, lo - 100);
-        var axHi = hi + 150;
-        var span = Math.max(1, axHi - axLo);
-        var pos = function(ms) { return (ms - axLo) / span * 100; };
-
-        // the silhouette is one smooth area rather than 50ms picket bars: a
-        // polygon through the bucket midpoints, with zero buckets pinned just
-        // under the viewBox so quiet stretches show no line at all
-        var W = 100, H = 40;
-        var px = function(ms) { return (pos(ms + 25)).toFixed(2); };
-        var py = function(v) {
-          if (!v) return (H + 1.5).toFixed(2);
-          return (H - Math.max(1, v / peak * (H - 4))).toFixed(2);
-        };
-
-        var viewedPts = [], totalPts = [], hovers = '';
-        for (var ms = lo; ms <= hi; ms += 50) {
-          var c = chunks[ms] || { viewed: 0, other: 0 };
-          viewedPts.push(px(ms) + ',' + py(c.viewed));
-          totalPts.push(px(ms) + ',' + py(c.viewed + c.other));
-
-          if (c.viewed + c.other > 0) {
-            hovers += '<div class="hover" style="left:' + pos(ms) + '%;width:' + (50 / span * 100) +
-              '%" title="' + fmtStr(ms) + '\u2013' + fmtStr(ms + 50) + ': ' + (c.viewed + c.other).toLocaleString() +
-              ' attestations' + (c.other ? ' (' + c.other.toLocaleString() + ' for other roots)' : '') + '"></div>';
-          }
-        }
-
-        var area = function(pts, fill, stroke) {
-          var edge = (H + 2).toFixed(2);
-          return '<polygon points="' + pts[0].split(',')[0] + ',' + edge + ' ' + pts.join(' ') + ' ' +
-            pts[pts.length - 1].split(',')[0] + ',' + edge + '" fill="' + fill + '"/>' +
-            '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + stroke +
-            '" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
-        };
-
-        var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">';
-        if (otherCount > 0) {
-          // wrong-head votes fill only the band between the two lines, so the
-          // fills never stack into a muddy overlap
-          svg += '<polygon points="' + totalPts.join(' ') + ' ' + viewedPts.slice().reverse().join(' ') +
-            '" fill="rgba(244,106,106,0.55)"/>';
-        }
-        svg += area(viewedPts, 'rgba(52,195,143,0.25)', '#34c38f') + '</svg>';
-
-        var deadline = '';
-        if (att.deadline_ms > axLo && att.deadline_ms < axHi) {
-          deadline = '<div class="deadline" style="left:' + pos(att.deadline_ms) +
-            '%" title="One third into the slot: validators attest now even without a block in hand">' +
-            '<span class="deadline-flag">' + fmtAxis(att.deadline_ms) + ' deadline</span></div>';
-        }
-
-        document.getElementById('waves-att-body').innerHTML = stats + liveBadge(settled) +
-          '<div class="arrival-wave-mini">' + svg + deadline + hovers + '</div>' +
-          '<div class="arrival-wave-axis"><span>' + fmtAxis(axLo) + '</span><span>' + fmtAxis(axHi) + '</span></div>';
+        document.getElementById('waves-att-body').innerHTML = stats + liveBadge(settled) + hist;
       }
 
       function renderColWave(cols, settled) {
         var entries = cols.columns || [];
         if (!entries.length || !cols.blob_count) return;
-
-        document.getElementById('waves-cols').style.display = '';
 
         var stats = '<b>' + cols.blob_count + '</b> blob' + (cols.blob_count > 1 ? 's' : '') +
           sep + '<b>' + cols.seen_columns + '</b><span class="text-muted">/' + entries.length + ' columns seen</span>';
@@ -800,51 +848,46 @@
         var seen = entries.map(function(c) { return c.first_seen_ms; })
           .filter(function(v) { return v != null; })
           .sort(function(a, b) { return a - b; });
-        if (!seen.length) {
-          document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled);
-          return;
+
+        var hist = '';
+
+        if (seen.length) {
+          // the burst is tight, so the window gets a floor: bars cluster
+          // against calm space instead of being stretched to fill the width
+          var spread = seen[seen.length - 1] - seen[0];
+          var window = Math.max(spread * 1.4, 250);
+          var axLo = Math.max(0, seen[0] - (window - spread) / 2);
+
+          var binMs = 5;
+          var sizes = [5, 10, 20, 50, 100];
+
+          for (var i = 0; i < sizes.length; i++) {
+            binMs = sizes[i];
+            if (window / binMs <= 56) break;
+          }
+
+          var binned = {};
+
+          seen.forEach(function(ms) {
+            var key = Math.floor(ms / binMs) * binMs;
+            binned[key] = (binned[key] || 0) + 1;
+          });
+
+          var bins = Object.keys(binned).map(function(ms) {
+            ms = +ms;
+            return {
+              ms: ms, green: binned[ms], red: 0,
+              tip: binned[ms] + ' column' + (binned[ms] > 1 ? 's' : '') + ' first seen ' +
+                fmtStr(ms) + '\u2013' + fmtStr(ms + binMs),
+            };
+          });
+
+          var ax = histAxis(axLo, axLo + window);
+          hist = renderHist(ax, bins, binMs, null, true) || '';
         }
 
-        // cumulative columns-seen-over-time, zoomed to the burst. The y scale
-        // is all columns, so an incomplete set visibly plateaus below the top.
-        var total = entries.length;
-        var spread = Math.max(40, seen[seen.length - 1] - seen[0]);
-        var axLo = Math.max(0, seen[0] - spread * 0.06);
-        var axHi = seen[seen.length - 1] + spread * 0.12;
-        var span = Math.max(1, axHi - axLo);
-        var pos = function(ms) { return (ms - axLo) / span * 100; };
-
-        var W = 100, H = 40;
-        var px = function(ms) { return pos(ms).toFixed(2); };
-        var py = function(v) { return (H - Math.max(0, v / total * (H - 4))).toFixed(2); };
-
-        var pts = [px(seen[0]) + ',' + py(0)];
-        seen.forEach(function(ms, i) {
-          pts.push(px(ms) + ',' + py(i + 1));
-        });
-        pts.push(px(axHi) + ',' + py(seen.length));
-
-        var edge = (H + 2).toFixed(2);
-        var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
-          '<polygon points="' + px(seen[0]) + ',' + edge + ' ' + pts.join(' ') + ' ' + px(axHi) + ',' + edge +
-          '" fill="rgba(52,195,143,0.25)"/>' +
-          '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#34c38f"' +
-          ' stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>';
-
-        // hover bins report how much of the set had spread by each moment
-        var hovers = '';
-        var bins = 24;
-        for (var b = 0; b < bins; b++) {
-          var upto = axLo + span * (b + 1) / bins;
-          var count = 0;
-          while (count < seen.length && seen[count] <= upto) count++;
-          hovers += '<div class="hover" style="left:' + (b / bins * 100) + '%;width:' + (100 / bins) +
-            '%" title="' + count + '/' + total + ' columns seen by ' + fmtStr(Math.round(upto)) + '"></div>';
-        }
-
-        document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) +
-          '<div class="arrival-wave-mini">' + svg + hovers + '</div>' +
-          '<div class="arrival-wave-axis"><span>' + fmtAxis(Math.round(axLo)) + '</span><span>' + fmtAxis(Math.round(axHi)) + '</span></div>';
+        document.getElementById('waves-cols').style.display = '';
+        document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) + hist;
       }
 
       function renderWaves(data) {
