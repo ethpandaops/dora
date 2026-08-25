@@ -159,14 +159,31 @@
     }
     .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
     /* the page scrolls, not the table: a nested vertical scroller traps the
-       wheel and hides how many nodes there are. Horizontal overflow still
-       scrolls here, as it does elsewhere in dora. */
+       wheel and hides how many nodes there are. Horizontal overflow is only
+       enabled where it is needed, because overflow-x forces overflow-y to
+       auto, and that scroll container would stop the header sticking to the
+       page. */
     .arrival-scroll {
       border-bottom: 1px solid var(--bs-border-color);
       margin-bottom: 0.5rem;
     }
+    @media (max-width: 991.98px) {
+      .arrival-scroll { overflow-x: auto; }
+    }
+    /* keeps the marker key and the time axis in view while reading down a
+       long node list. Offset clears dora's fixed header bar. */
     .arrival-scroll thead th {
-      position: sticky; top: 0; z-index: 1; background: var(--bs-body-bg);
+      position: sticky;
+      top: 4.5rem;
+      z-index: 2;
+      background: var(--bs-body-bg);
+      box-shadow: inset 0 -1px 0 var(--bs-border-color);
+    }
+    .arrival-scroll thead tr.group-row th {
+      top: 4.5rem;
+    }
+    .arrival-scroll thead tr:not(.group-row) th {
+      top: 6rem;
     }
     .arrival-node-name {
       max-width: 15rem; overflow: hidden; text-overflow: ellipsis;
@@ -424,8 +441,14 @@
         var labels = '<span style="left:0">' + fmtAxis(ax.lo) + '</span>';
 
         ax.lines.forEach(function(t) {
-          ticks += '<i style="left:' + pos(t) + '%"></i>';
-          labels += '<span style="left:' + pos(t) + '%;transform:translateX(-50%)">' + fmtAxis(t) + '</span>';
+          var at = pos(t);
+          ticks += '<i style="left:' + at + '%"></i>';
+
+          // the window hugs the data, so the first gridline can sit almost on
+          // top of the start label; leave the tick, drop the crowded label
+          if (at > 12 && at < 88) {
+            labels += '<span style="left:' + at + '%;transform:translateX(-50%)">' + fmtAxis(t) + '</span>';
+          }
         });
 
         return '<div class="arrival-axis-header"><div class="axis-line">' + ticks + '</div>' +
@@ -467,7 +490,7 @@
             last + '</tr>';
         }).join('');
 
-        return '<div class="table-responsive arrival-scroll">' +
+        return '<div class="arrival-scroll">' +
           '<table class="table table-sm arrival-table text-left mb-1' + (data.np_observations ? '' : ' arrival-hide-np') + '">' +
           '<thead>' +
           '<tr class="group-row">' +
