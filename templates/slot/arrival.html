@@ -198,42 +198,53 @@
 
     .arrival-wave-mini {
       position: relative;
-      height: 30px;
-      max-width: 460px;
-      margin-top: 5px;
+      height: 40px;
+      max-width: 520px;
+      margin-top: 6px;
       border-bottom: 1px solid var(--bs-border-color);
     }
-    .arrival-wave-mini .bar { position: absolute; bottom: 0; }
+    .arrival-wave-mini svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .arrival-wave-mini .hover {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+    }
     .arrival-wave-mini .deadline {
       position: absolute; top: 0; bottom: 0; width: 0;
       border-left: 1px dashed var(--bs-secondary-color);
     }
+    .arrival-wave-mini .deadline-flag {
+      position: absolute;
+      top: -3px;
+      padding-left: 5px;
+      font-size: 0.63rem;
+      color: var(--bs-secondary-color);
+      white-space: nowrap;
+    }
     .arrival-wave-axis {
-      position: relative;
-      max-width: 460px;
       display: flex;
       justify-content: space-between;
+      max-width: 520px;
       font-size: 0.63rem;
       color: var(--bs-secondary-color);
       font-variant-numeric: tabular-nums;
     }
-    .arrival-wave-axis .dl {
-      position: absolute;
-      transform: translateX(-50%);
-      white-space: nowrap;
-    }
+    /* same pill as the sources bar, one seamless segment per column */
     .arrival-col-strip {
       display: flex;
-      gap: 1px;
-      height: 12px;
-      max-width: 460px;
-      margin-top: 5px;
-    }
-    .arrival-col-strip > div {
-      flex: 1 1 auto;
-      border-radius: 1px;
+      height: 10px;
+      max-width: 520px;
+      margin-top: 6px;
+      border-radius: 5px;
+      overflow: hidden;
       background: var(--bs-secondary-bg);
     }
+    .arrival-col-strip > div { flex: 1 1 auto; }
   </style>
 
   <div id="arrival-content" class="card-body px-0 py-1">
@@ -724,44 +735,63 @@
         var axHi = hi + 150;
         var span = Math.max(1, axHi - axLo);
         var pos = function(ms) { return (ms - axLo) / span * 100; };
-        var width = Math.max(0.3, 50 / span * 100);
 
-        var bars = '';
-        Object.keys(chunks).forEach(function(ms) {
-          ms = +ms;
-          var c = chunks[ms];
-          var tip = fmtStr(ms) + '\u2013' + fmtStr(ms + 50) + ': ' + (c.viewed + c.other).toLocaleString() + ' attestations' +
-            (c.other ? ' (' + c.other.toLocaleString() + ' for other roots)' : '');
-          var vh = c.viewed / peak * 100;
+        // the silhouette is one smooth area rather than 50ms picket bars: a
+        // polygon through the bucket midpoints, with zero buckets pinned just
+        // under the viewBox so quiet stretches show no line at all
+        var W = 100, H = 40;
+        var px = function(ms) { return (pos(ms + 25)).toFixed(2); };
+        var py = function(v) {
+          if (!v) return (H + 1.5).toFixed(2);
+          return (H - Math.max(1, v / peak * (H - 4))).toFixed(2);
+        };
 
-          if (c.viewed) {
-            bars += '<div class="bar" style="left:' + pos(ms) + '%;width:' + width + '%;height:' + Math.max(1.5, vh) +
-              '%;background:#34c38f" title="' + tip + '"></div>';
+        var viewedPts = [], totalPts = [], hovers = '';
+        for (var ms = lo; ms <= hi; ms += 50) {
+          var c = chunks[ms] || { viewed: 0, other: 0 };
+          viewedPts.push(px(ms) + ',' + py(c.viewed));
+          totalPts.push(px(ms) + ',' + py(c.viewed + c.other));
+
+          if (c.viewed + c.other > 0) {
+            hovers += '<div class="hover" style="left:' + pos(ms) + '%;width:' + (50 / span * 100) +
+              '%" title="' + fmtStr(ms) + '\u2013' + fmtStr(ms + 50) + ': ' + (c.viewed + c.other).toLocaleString() +
+              ' attestations' + (c.other ? ' (' + c.other.toLocaleString() + ' for other roots)' : '') + '"></div>';
           }
+        }
 
-          if (c.other) {
-            bars += '<div class="bar" style="left:' + pos(ms) + '%;width:' + width + '%;bottom:' + (c.viewed ? Math.max(1.5, vh) : 0) +
-              '%;height:' + Math.max(1.5, c.other / peak * 100) + '%;background:#f46a6a" title="' + tip + '"></div>';
-          }
-        });
+        var area = function(pts, fill, stroke) {
+          var edge = (H + 2).toFixed(2);
+          return '<polygon points="' + pts[0].split(',')[0] + ',' + edge + ' ' + pts.join(' ') + ' ' +
+            pts[pts.length - 1].split(',')[0] + ',' + edge + '" fill="' + fill + '"/>' +
+            '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + stroke +
+            '" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+        };
+
+        var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">';
+        if (otherCount > 0) {
+          // wrong-head votes fill only the band between the two lines, so the
+          // fills never stack into a muddy overlap
+          svg += '<polygon points="' + totalPts.join(' ') + ' ' + viewedPts.slice().reverse().join(' ') +
+            '" fill="rgba(244,106,106,0.55)"/>';
+        }
+        svg += area(viewedPts, 'rgba(52,195,143,0.25)', '#34c38f') + '</svg>';
 
         var deadline = '';
-        var deadlineLabel = '';
         if (att.deadline_ms > axLo && att.deadline_ms < axHi) {
           deadline = '<div class="deadline" style="left:' + pos(att.deadline_ms) +
-            '%" title="One third into the slot: validators attest now even without a block in hand"></div>';
-          deadlineLabel = '<span class="dl" style="left:' + pos(att.deadline_ms) + '%">' + fmtAxis(att.deadline_ms) + ' deadline</span>';
+            '%" title="One third into the slot: validators attest now even without a block in hand">' +
+            '<span class="deadline-flag">' + fmtAxis(att.deadline_ms) + ' deadline</span></div>';
         }
 
         document.getElementById('waves-att-body').innerHTML = stats + liveBadge(settled) +
-          '<div class="arrival-wave-mini">' + deadline + bars + '</div>' +
-          '<div class="arrival-wave-axis"><span>' + fmtAxis(axLo) + '</span>' + deadlineLabel + '<span>' + fmtAxis(axHi) + '</span></div>';
+          '<div class="arrival-wave-mini">' + svg + deadline + hovers + '</div>' +
+          '<div class="arrival-wave-axis"><span>' + fmtAxis(axLo) + '</span><span>' + fmtAxis(axHi) + '</span></div>';
       }
 
       // heat maps 0..1 onto green..red for the column strip. The range is the
       // strip's own spread with a floor: a healthy tight spread (a few tens of
-      // ms) renders uniformly green, and red is reserved for columns that lag
-      // by real fractions of a second.
+      // ms) renders as one even green pill, and red is reserved for columns
+      // that lag by real fractions of a second.
       function heat(t) {
         return 'hsl(' + Math.round(145 - t * 145) + ' 62% 44%)';
       }
@@ -793,7 +823,7 @@
         var rHi = seen.length ? seen[Math.floor((seen.length - 1) * 0.95)] : 1;
         var rSpan = Math.max(400, rHi - rLo);
 
-        var slivers = entries.map(function(c) {
+        var segments = entries.map(function(c) {
           var style = '';
           var tip = 'column ' + c.index;
 
@@ -825,8 +855,7 @@
         }).join('');
 
         document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) +
-          '<div class="arrival-col-strip">' + slivers + '</div>' +
-          '<div class="arrival-wave-axis"><span>column 0</span><span>' + (entries.length - 1) + '</span></div>';
+          '<div class="arrival-col-strip">' + segments + '</div>';
       }
 
       function renderWaves(data) {
