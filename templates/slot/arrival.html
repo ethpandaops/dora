@@ -235,6 +235,26 @@
       transform: translateX(-50%);
       white-space: nowrap;
     }
+    .arrival-col-heat {
+      display: grid;
+      grid-template-columns: repeat(64, 1fr);
+      gap: 2px;
+      margin-top: 8px;
+    }
+    .arrival-col-heat > div {
+      height: 13px;
+      border-radius: 2px;
+      background: var(--bs-secondary-bg);
+    }
+    .arrival-col-heat > div.low { box-shadow: inset 0 0 0 2px #f46a6a; }
+    .arrival-heat-key {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      vertical-align: middle;
+      background: var(--bs-secondary-bg);
+    }
   </style>
 
   <div id="arrival-content" class="card-body px-0 py-1">
@@ -838,7 +858,7 @@
         document.getElementById('waves-att-body').innerHTML = stats + liveBadge(settled) + hist;
       }
 
-      function renderColWave(cols, settled, slotMs) {
+      function renderColWave(cols, settled) {
         var entries = cols.columns || [];
         if (!entries.length || !cols.blob_count) return;
 
@@ -856,45 +876,63 @@
           }
         }
 
-        var seen = entries.map(function(c) { return c.first_seen_ms; })
-          .filter(function(v) { return v != null; })
-          .sort(function(a, b) { return a - b; });
+        // one cell per column index, colored on the page's arrival-time
+        // scale. An absolute scale keeps a healthy slot one even green and
+        // saves the warm colors for columns that were genuinely late.
+        var unseen = 0;
+        var failed = 0;
 
-        var hist = '';
+        var cells = entries.map(function(c) {
+          var style = '';
+          var cls = '';
+          var tip = 'column ' + c.index;
 
-        if (seen.length) {
-          // same full-slot domain and bins as the attestation chart above,
-          // so the two rows line up vertically and read as one story
-          var dataHi = seen[seen.length - 1];
-          var binMs = waveBin(waveDomain(slotMs, dataHi, 50));
-          var binned = {};
+          if (c.first_seen_ms != null) {
+            style = 'background:' + timeColor(c.first_seen_ms);
+            tip += ' \u00b7 first seen ' + fmtStr(c.first_seen_ms);
+            if (c.first_seen_by) {
+              tip += ' by ' + c.first_seen_by;
+              var extra = [c.implementation, (c.country_code || '').toUpperCase()].filter(Boolean).join(', ');
+              if (extra) tip += ' (' + extra + ')';
+            }
+          } else {
+            unseen++;
+            tip += ' \u00b7 not seen';
+          }
 
-          seen.forEach(function(ms) {
-            var key = Math.floor(ms / binMs) * binMs;
-            binned[key] = (binned[key] || 0) + 1;
-          });
+          if (c.availability_pct != null) {
+            tip += ' \u00b7 availability ' + c.availability_pct.toFixed(1) + '% (' + c.probes + ' probes' +
+              (c.p50_response_ms ? ', p50 ' + c.p50_response_ms + 'ms' : '') + ')';
+            if (c.availability_pct < 100) {
+              failed++;
+              cls = ' class="low"';
+            }
+          }
 
-          var bins = Object.keys(binned).map(function(ms) {
-            ms = +ms;
-            return {
-              ms: ms, green: binned[ms], red: 0,
-              tip: binned[ms] + ' column' + (binned[ms] > 1 ? 's' : '') + ' first seen ' +
-                fmtStr(ms) + '\u2013' + fmtStr(ms + binMs),
-            };
-          });
+          return '<div' + cls + ' style="' + style + '" title="' + esc(tip) + '"></div>';
+        }).join('');
 
-          var ax = histAxis(0, waveDomain(slotMs, dataHi, binMs));
-          hist = renderHist(ax, bins, binMs, null, true) || '';
+        var legend = '<div class="text-muted small pt-1">columns 0\u2013' + (entries.length - 1) + ', first seen: ';
+        [[0, '&lt;1s'], [1000, '1\u20132s'], [2000, '2\u20133s'], [3000, '3\u20134s'], [4000, '&ge;4s']].forEach(function(k) {
+          legend += '<span class="arrival-heat-key" style="background:' + timeColor(k[0]) + '"></span> ' + k[1] + ' ';
+        });
+        if (unseen > 0) {
+          legend += sep + '<span class="arrival-heat-key"></span> not seen (' + unseen + ')';
         }
+        if (failed > 0) {
+          legend += sep + '<span class="arrival-heat-key low" style="box-shadow: inset 0 0 0 2px #f46a6a"></span> failed probes (' + failed + ')';
+        }
+        legend += '</div>';
 
         document.getElementById('waves-cols').style.display = '';
-        document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) + hist;
+        document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) +
+          '<div class="arrival-col-heat">' + cells + '</div>' + legend;
       }
 
       function renderWaves(data) {
         var slotMs = data.slot_ms || (data.attestations ? data.attestations.deadline_ms * 3 : 0);
         if (data.attestations) renderAttWave(data.attestations, data.settled, slotMs);
-        if (data.columns) renderColWave(data.columns, data.settled, slotMs);
+        if (data.columns) renderColWave(data.columns, data.settled);
       }
 
       var wavesLoaded = false;
