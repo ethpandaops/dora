@@ -76,41 +76,38 @@
       background: var(--bs-border-color);
       opacity: 0.5;
     }
-    /* the bar starts at slot start, so its length is the node's time-to-block;
-       it is coloured for the event it ends on, with the gossip leg overlaid */
-    .lane-track .bar {
-      position: absolute; left: 0; top: 2px; height: 9px;
-      min-width: 2px;
-      border-radius: 4px;
-      overflow: hidden;
-      background: #5b8def;
+    /* connector from a node's first observation to its last, so the row shows
+       how long the node's own pipeline took, not just when it started */
+    .lane-track .span {
+      position: absolute; top: 50%; height: 2px; margin-top: -1px;
+      background: var(--bs-secondary-color);
+      opacity: 0.45;
+      border-radius: 1px;
     }
-    .lane-track .bar .flight {
-      position: absolute; top: 0; bottom: 0; left: 0;
-      background: #9775fa;
+    .lane-track .mark {
+      position: absolute; top: 50%; width: 7px; height: 7px;
+      margin: -3.5px 0 0 -3.5px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 1.5px var(--bs-body-bg);
     }
-    /* no gossip observation, so the time cannot be attributed to either leg */
-    .lane-track .bar.unsplit {
-      background: repeating-linear-gradient(135deg,
-        var(--bs-secondary-bg) 0 4px, var(--bs-tertiary-bg) 4px 8px);
-      box-shadow: inset 0 0 0 1px var(--bs-border-color);
+    .lane-track .mark.p2p { background: #9775fa; }
+    .lane-track .mark.api { background: #5b8def; }
+    .lane-track .tick-head {
+      position: absolute; top: 50%; width: 2px; height: 11px;
+      margin: -5.5px 0 0 -1px;
+      background: #20c997;
+      border-radius: 1px;
+      box-shadow: 0 0 0 1.5px var(--bs-body-bg);
     }
     .lane-track .np {
-      position: absolute; top: 13px; height: 3px;
+      position: absolute; top: 50%; margin-top: 4px; height: 3px;
       min-width: 2px;
       background: #f1b44c;
       border-radius: 2px;
     }
-    .lane-track .tick-head {
-      position: absolute; top: 0; height: 13px; width: 2px; margin-left: -1px;
-      background: #20c997;
-      border-radius: 1px;
-      box-shadow: 0 0 0 1px var(--bs-body-bg);
-    }
     .lane-track .overflow {
-      position: absolute; right: -2px; top: 2px;
-      font-size: 0.7rem;
-      line-height: 9px;
+      position: absolute; right: -2px; top: 50%; transform: translateY(-50%);
+      font-size: 0.7rem; line-height: 1;
       color: var(--bs-secondary-color);
     }
     .arrival-axis-header {
@@ -161,9 +158,10 @@
       padding-left: 1.4rem;
     }
     .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
+    /* the page scrolls, not the table: a nested vertical scroller traps the
+       wheel and hides how many nodes there are. Horizontal overflow still
+       scrolls here, as it does elsewhere in dora. */
     .arrival-scroll {
-      max-height: 34rem;
-      overflow-y: auto;
       border-bottom: 1px solid var(--bs-border-color);
       margin-bottom: 0.5rem;
     }
@@ -303,24 +301,30 @@
         return '<div class="arrival-dist"><div class="dist-bar">' + bar + '</div>' + entries + '</div>';
       }
 
-      // Shared time axis for the per-row lanes. Anchored at slot start so a
-      // bar's length is the node's time-to-block, and stepped in round numbers
-      // so the gridlines can be read without consulting the labels.
+      // Shared time axis for the per-row lanes. Zoomed to where the
+      // observations actually sit rather than anchored at slot start: real
+      // arrivals cluster inside a few hundred milliseconds, and starting at
+      // zero renders every row the same length. The window hugs the data and
+      // only the gridlines snap to round values, so no width is spent on an
+      // empty run-up.
       function axis(s) {
-        var steps = [100, 250, 500, 1000, 2500, 5000];
-        var target = Math.max(s.p90_ms * 1.05, s.min_ms + 150, 250);
+        var spread = Math.max(40, s.p90_ms - s.min_ms);
+        var lo = Math.max(0, s.min_ms - spread * 0.08);
+        var hi = s.p90_ms + spread * 0.3;
+        var span = Math.max(1, hi - lo);
+        var steps = [10, 25, 50, 100, 250, 500, 1000, 2500];
         var step = steps[steps.length - 1];
 
         for (var i = 0; i < steps.length; i++) {
-          if (Math.ceil(target / steps[i]) <= 5) { step = steps[i]; break; }
+          if (span / steps[i] <= 6) { step = steps[i]; break; }
         }
 
-        var hi = Math.max(step, Math.ceil(target / step) * step);
         var lines = [];
+        for (var t = Math.ceil(lo / step) * step; t < hi; t += step) {
+          if (t > lo) lines.push(t);
+        }
 
-        for (var t = step; t < hi - 1; t += step) lines.push(t);
-
-        return { lo: 0, hi: hi, span: hi, step: step, lines: lines };
+        return { lo: lo, hi: hi, span: span, step: step, lines: lines };
       }
 
       function sortInd(key) {
@@ -356,48 +360,48 @@
         return arr;
       }
 
-      function laneMarks(n, pos, ax, splittable) {
+      function laneMarks(n, pos, ax) {
         var html = '';
 
         ax.lines.forEach(function(t) {
           html += '<div class="grid" style="left:' + pos(t) + '%"></div>';
         });
 
-        // one bar per row, always from slot start to the last block sighting, so
-        // every lane has the same shape whichever events the node reported
-        var barEnd = n.api_ms;
-        if (n.p2p_ms != null && (barEnd == null || n.p2p_ms > barEnd)) barEnd = n.p2p_ms;
+        var times = nodeTimes(n);
+        if (!times.length) return html;
 
-        if (barEnd != null) {
-          var end = Math.max(0.6, pos(barEnd));
-          var split = n.api_ms != null && n.p2p_ms != null && n.api_ms > n.p2p_ms;
-          var inner = '';
-          var tip;
+        // one grammar for every row: a connector across the node's own events,
+        // with a mark per event. A node reporting a single event is a single
+        // mark, which is the normal case for a beacon-API-only sentry.
+        var first = Math.min.apply(null, times);
+        var last = Math.max.apply(null, times);
 
-          if (split) {
-            inner = '<div class="flight" style="width:' + Math.max(2, pos(n.p2p_ms) / end * 100) + '%"></div>';
-            tip = 'in flight ' + fmtStr(n.p2p_ms) + ' &middot; verify +' + (n.api_ms - n.p2p_ms) +
-              'ms &rarr; block event ' + fmtStr(n.api_ms);
-          } else if (n.p2p_ms != null) {
-            inner = '<div class="flight" style="width:100%"></div>';
-            tip = 'block gossip ' + fmtStr(n.p2p_ms) + ' &middot; no block event observed';
-          } else {
-            tip = 'block event ' + fmtStr(n.api_ms) + (splittable
-              ? ' &middot; no gossip observed, so the in-flight and verify legs cannot be split'
-              : '');
-          }
-
-          html += '<div class="bar' + (splittable && n.p2p_ms == null ? ' unsplit' : '') +
-            '" style="width:' + end + '%" title="' + tip + '">' + inner + '</div>';
+        if (last > first) {
+          var a = pos(first);
+          var b = pos(last);
+          html += '<div class="span" style="left:' + a + '%;width:' + Math.max(0, b - a) + '%"></div>';
         }
 
         if (n.np_ms != null) {
           var npLo = pos(n.np_ms);
-          var npHi = Math.max(npLo + 0.5, pos(n.np_ms + (n.np_dur_ms || 0)));
+          var npHi = Math.max(npLo + 0.4, pos(n.np_ms + (n.np_dur_ms || 0)));
           html += '<div class="np" style="left:' + npLo + '%;width:' + (npHi - npLo) +
             '%" title="engine newPayload ' + fmtStr(n.np_ms) + ' &rarr; ' +
             fmtStr(n.np_ms + (n.np_dur_ms || 0)) + ' (' + (n.np_dur_ms || 0) + 'ms, ' +
             esc(n.np_status || '') + ')"></div>';
+        }
+
+        if (n.p2p_ms != null) {
+          html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) +
+            '%" title="libp2p block gossip ' + fmtStr(n.p2p_ms) + '"></div>';
+        }
+
+        if (n.api_ms != null) {
+          var tip = 'beacon api block event ' + fmtStr(n.api_ms);
+          if (n.p2p_ms != null && n.api_ms > n.p2p_ms) {
+            tip += ' &middot; verify +' + (n.api_ms - n.p2p_ms) + 'ms after gossip';
+          }
+          html += '<div class="mark api" style="left:' + pos(n.api_ms) + '%" title="' + tip + '"></div>';
         }
 
         if (n.head_ms != null) {
@@ -415,9 +419,9 @@
 
       // Ruler above the lanes; ticks line up with the per-row gridlines.
       function axisHeader(ax, ind) {
-        var pos = function(ms) { return ms / ax.span * 100; };
+        var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
         var ticks = '';
-        var labels = '<span style="left:0">0</span>';
+        var labels = '<span style="left:0">' + fmtAxis(ax.lo) + '</span>';
 
         ax.lines.forEach(function(t) {
           ticks += '<i style="left:' + pos(t) + '%"></i>';
@@ -433,10 +437,6 @@
         var s = data.stats;
         var ax = axis(s);
         var pos = function(ms) { return Math.min(100, Math.max(0, (ms - ax.lo) / ax.span * 100)); };
-        // flagging a missing gossip leg only says something when gossip is
-        // covered broadly enough that its absence is about this node
-        var withGossip = data.nodes.filter(function(n) { return n.p2p_ms != null; }).length;
-        var splittable = withGossip * 4 > data.nodes.length;
 
         var rows = sortedNodes(data.nodes).map(function(n) {
           var cc = (n.country_code || '').toUpperCase();
@@ -451,7 +451,7 @@
           var last = n.late
             ? '<td class="grp-start"><span class="badge rounded-pill text-bg-danger" style="font-size: 11px;" title="Earliest observation ' + fmtStr(n.min_ms) +
               ' after slot start — likely a syncing or stalled node">late &middot; ' + fmtStr(n.min_ms) + '</span></td>'
-            : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 16rem">' + laneMarks(n, pos, ax, splittable) +
+            : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 16rem">' + laneMarks(n, pos, ax) +
               (laneOverflows(n, ax) ? '<span class="overflow" title="continues past the axis">&raquo;</span>' : '') + '</div></td>';
 
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
