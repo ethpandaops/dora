@@ -79,8 +79,10 @@ type BuilderDepositsPageDataDeposit struct {
 
 	// Pre-Gloas projection fields (set when the parent page is in projection mode).
 	IsProjected               bool      `json:"is_projected"`
-	IsQueuedRegular           bool      `json:"is_queued_regular"` // regular deposit queued in the builder deposit contract until the fork; no builder index assigned yet
-	HasDepositIndex           bool      `json:"has_deposit_index"` // EL deposit index of the deposit
+	IsQueuedRegular           bool      `json:"is_queued_regular"` // regular deposit queued in the builder deposit contract until the fork
+	HasProjectedBuilderIndex  bool      `json:"has_projected_builder_index"`
+	ProjectedBuilderIndex     uint64    `json:"projected_builder_index"` // builder index this deposit is projected to register or top up
+	HasDepositIndex           bool      `json:"has_deposit_index"`       // EL deposit index of the deposit
 	DepositIndex              uint64    `json:"deposit_index"`
 	EstimatedTime             time.Time `json:"estimated_time"`              // when the deposit is projected to be processed
 	IsQueued                  bool      `json:"is_queued"`                   // found in the current pending deposit queue snapshot

@@ -443,6 +443,7 @@ func processAttestation(s *stateAccessor, att *all.Attestation, cc *committeeCac
 			continue
 		}
 
+		hadNoParticipation := participation[index] == 0
 		willSetNewFlag := false
 		for fi := 0; fi < 3; fi++ {
 			if !participationFlags[fi] {
@@ -456,10 +457,11 @@ func processAttestation(s *stateAccessor, att *all.Attestation, cc *committeeCac
 		}
 
 		// Gloas: each validator contributes its effective balance to the
-		// builder payment weight at most once per slot, when it first sets a
-		// new flag on a same-slot attestation. Only counted when the slot
-		// actually has a builder payment with non-zero amount.
-		if willSetNewFlag && sameSlot && builderPayment != nil &&
+		// builder payment weight at most once per slot, when it sets a new flag
+		// on a same-slot attestation while holding no prior flags for that
+		// epoch. Only counted when the slot actually has a builder payment with
+		// non-zero amount.
+		if willSetNewFlag && hadNoParticipation && sameSlot && builderPayment != nil &&
 			builderPayment.Withdrawal != nil && builderPayment.Withdrawal.Amount > 0 {
 			builderPayment.Weight += s.Validators[index].EffectiveBalance
 		}

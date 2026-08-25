@@ -5,6 +5,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/deneb"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -87,20 +88,29 @@ func upgradeToGloas(s *stateAccessor) []*electra.PendingDeposit {
 	s.BuilderPendingPayments = payments
 	s.BuilderPendingWithdrawals = make([]*gloas.BuilderPendingWithdrawal, 0)
 
-	// [New in Gloas:EIP7732] latest_execution_payload_bid seeded from the header, with the root of
-	// an empty ExecutionRequests. A HTR failure leaves a zero root (best effort; only affects the
-	// state root used to short-circuit later replays, never the extracted field values).
+	// [New in Gloas:EIP7732] latest_execution_payload_bid seeded from the pre-state's execution
+	// payload header and block header, marked as a self-build, with the root of an empty
+	// ExecutionRequests. A HTR failure leaves a zero root (best effort; only affects the state root
+	// used to short-circuit later replays, never the extracted field values).
 	var execRequestsRoot phase0.Root
 	if root, err := s.dynSsz.HashTreeRoot(&all.ExecutionRequests{Version: spec.DataVersionGloas}); err == nil {
 		execRequestsRoot = phase0.Root(root)
 	}
 	bid := &all.ExecutionPayloadBid{
 		Version:               spec.DataVersionGloas,
+		BuilderIndex:          BuilderIndexSelfBuild,
+		BlobKZGCommitments:    make([]deneb.KZGCommitment, 0),
 		ExecutionRequestsRoot: execRequestsRoot,
 	}
 	if header != nil {
+		bid.ParentBlockHash = header.ParentHash
 		bid.BlockHash = header.BlockHash
+		bid.PrevRandao = phase0.Root(header.PrevRandao)
 		bid.GasLimit = header.GasLimit
+	}
+	if s.LatestBlockHeader != nil {
+		bid.ParentBlockRoot = s.LatestBlockHeader.ParentRoot
+		bid.Slot = s.LatestBlockHeader.Slot
 	}
 	s.LatestExecutionPayloadBid = bid
 	s.PayloadExpectedWithdrawals = make([]*capella.Withdrawal, 0)

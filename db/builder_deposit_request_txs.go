@@ -9,7 +9,19 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// builderDepositTxFieldCount is the number of columns written per row; it must match the column list
+// below and is what bounds the chunk size in InsertBuilderDepositTxs.
+const builderDepositTxFieldCount = 14
+
 func InsertBuilderDepositTxs(ctx context.Context, tx *sqlx.Tx, depositTxs []*dbtypes.BuilderDepositTx) error {
+	return insertChunks(depositTxs, builderDepositTxFieldCount, func(chunk []*dbtypes.BuilderDepositTx) error {
+		return insertBuilderDepositTxsChunk(ctx, tx, chunk)
+	})
+}
+
+// insertBuilderDepositTxsChunk inserts a single statement worth of rows; callers must go through
+// InsertBuilderDepositTxs so the bind-parameter limit is respected.
+func insertBuilderDepositTxsChunk(ctx context.Context, tx *sqlx.Tx, depositTxs []*dbtypes.BuilderDepositTx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -20,7 +32,7 @@ func InsertBuilderDepositTxs(ctx context.Context, tx *sqlx.Tx, depositTxs []*dbt
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 14
+	fieldCount := builderDepositTxFieldCount
 
 	args := make([]any, len(depositTxs)*fieldCount)
 	for i, depositTx := range depositTxs {
@@ -145,9 +157,18 @@ func GetBuilderDepositTxsFiltered(ctx context.Context, offset uint64, limit uint
 
 	filterOp := "WHERE"
 	if filter.MinDequeue > 0 {
-		// dequeue block 0 = queued before dequeue activation, not determinable yet - still pending
+		// dequeue block 0 = queued before dequeue activation, so its real dequeue block is not
+		// determinable yet. Such a request counts as pending until it shows up as an included
+		// builder deposit on the consensus side: the dequeue block only gets rebased once the
+		// activation fork boundary is finalized, and until then a sentinel row would otherwise
+		// be listed as pending next to the very deposit it produced.
 		args = append(args, filter.MinDequeue)
-		fmt.Fprintf(&sql, " %v (dequeue_block >= $%v OR dequeue_block = 0)", filterOp, len(args))
+		fmt.Fprintf(&sql, ` %v (dequeue_block >= $%v OR (dequeue_block = 0 AND NOT EXISTS (
+			SELECT 1 FROM builder_deposits
+			WHERE builder_deposits.public_key = builder_deposit_request_txs.public_key
+			AND builder_deposits.amount = builder_deposit_request_txs.amount
+			AND builder_deposits.signature = builder_deposit_request_txs.signature
+		)))`, filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxDequeue > 0 {
@@ -218,4 +239,49 @@ func GetBuilderDepositTxsFiltered(ctx context.Context, offset uint64, limit uint
 	}
 
 	return depositTxs[1:], depositTxs[0].BlockNumber, nil
+}
+
+// GetBuilderDepositTxsWithSentinelDequeue returns the request txs of the given public keys that
+// are still stored with the dequeue-block sentinel (0).
+//
+// Requests enqueued before their activation fork have no determinable dequeue block until that
+// fork boundary is finalized, so the transaction matcher - which pairs consensus-side deposits
+// with request txs by dequeue block - cannot link them. Matching them to their deposit by
+// content is what surfaces their transaction in the meantime.
+func GetBuilderDepositTxsWithSentinelDequeue(ctx context.Context, publicKeys [][]byte) []*dbtypes.BuilderDepositTx {
+	depositTxs := []*dbtypes.BuilderDepositTx{}
+	if len(publicKeys) == 0 {
+		return depositTxs
+	}
+
+	err := insertChunks(publicKeys, 1, func(chunk [][]byte) error {
+		var sql strings.Builder
+		args := make([]any, 0, len(chunk))
+
+		fmt.Fprint(&sql, `SELECT builder_deposit_request_txs.*
+			FROM builder_deposit_request_txs
+			WHERE dequeue_block = 0 AND public_key IN (
+		`)
+
+		for _, publicKey := range chunk {
+			args = append(args, publicKey)
+		}
+		appendDollarPlaceholders(&sql, 1, len(chunk), ", ")
+		fmt.Fprint(&sql, ") ORDER BY block_number ASC, block_index ASC")
+
+		var chunkResult []*dbtypes.BuilderDepositTx
+		if err := ReaderDb.SelectContext(ctx, &chunkResult, sql.String(), args...); err != nil {
+			return err
+		}
+
+		depositTxs = append(depositTxs, chunkResult...)
+
+		return nil
+	})
+	if err != nil {
+		logger.Errorf("Error while fetching sentinel builder deposit txs: %v", err)
+		return nil
+	}
+
+	return depositTxs
 }

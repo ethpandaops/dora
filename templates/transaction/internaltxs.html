@@ -179,8 +179,9 @@
             {{ if gt (len $itx.Input) 0 }}
             <div class="mb-2">
               <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
-                <span class="text-muted small me-1">Input ({{ len $itx.Input }} bytes):</span>
-                <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy input data" data-clipboard-text="{{ formatHexBytes $itx.Input }}" style="font-size: 0.75rem;"></i>
+                <span class="text-muted small me-1">Input ({{ len $itx.Input }}{{ if $itx.InputPruned }}+{{ end }} bytes):</span>
+                {{ if $itx.InputPruned }}<span class="badge text-bg-warning" data-bs-toggle="tooltip" title="This call carried more than {{ len $itx.Input }} bytes of input. Only the leading bytes were kept when the trace was indexed.">pruned</span>{{ end }}
+                <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy input data{{ if $itx.InputPruned }} (pruned){{ end }}" data-clipboard-text="{{ formatHexBytes $itx.Input }}" style="font-size: 0.75rem;"></i>
                 <div class="btn-group btn-group-sm ms-auto" role="group">
                   {{ if $itx.DecodedCalldata }}
                   <button type="button" class="btn btn-outline-secondary btn-xs active" onclick="showItxInputView({{ $idx }}, 'decoded'); event.stopPropagation();">Decoded</button>
@@ -203,18 +204,19 @@
                   </tbody>
                 </table>
               </div>
-              <div id="itx-input-hex-{{ $idx }}" class="itx-data-box" style="display:none;">{{ formatHexBytes $itx.Input }}</div>
+              <div id="itx-input-hex-{{ $idx }}" class="itx-data-box" style="display:none;"{{ if $itx.InputPruned }} data-pruned="1"{{ end }}><span class="itx-hex-data">{{ formatHexBytes $itx.Input }}</span>{{ if $itx.InputPruned }}<span class="text-muted"> … (pruned)</span>{{ end }}</div>
               {{ else }}
-              <div id="itx-input-hex-{{ $idx }}" class="itx-data-box">{{ formatHexBytes $itx.Input }}</div>
+              <div id="itx-input-hex-{{ $idx }}" class="itx-data-box"{{ if $itx.InputPruned }} data-pruned="1"{{ end }}><span class="itx-hex-data">{{ formatHexBytes $itx.Input }}</span>{{ if $itx.InputPruned }}<span class="text-muted"> … (pruned)</span>{{ end }}</div>
               {{ end }}
               <div id="itx-input-ascii-{{ $idx }}" class="itx-data-box" style="display:none; white-space:pre-wrap;"></div>
             </div>
             {{ end }}
             {{ if gt (len $itx.Output) 0 }}
             <div>
-              <span class="text-muted small me-1">Output ({{ len $itx.Output }} bytes):</span>
-              <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy output data" data-clipboard-text="{{ formatHexBytes $itx.Output }}" style="font-size: 0.75rem;"></i>
-              <div class="itx-data-box">{{ formatHexBytes $itx.Output }}</div>
+              <span class="text-muted small me-1">Output ({{ len $itx.Output }}{{ if $itx.OutputPruned }}+{{ end }} bytes):</span>
+              {{ if $itx.OutputPruned }}<span class="badge text-bg-warning" data-bs-toggle="tooltip" title="This call returned more than {{ len $itx.Output }} bytes. Only the leading bytes were kept when the trace was indexed.">pruned</span>{{ end }}
+              <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy output data{{ if $itx.OutputPruned }} (pruned){{ end }}" data-clipboard-text="{{ formatHexBytes $itx.Output }}" style="font-size: 0.75rem;"></i>
+              <div class="itx-data-box"><span class="itx-hex-data">{{ formatHexBytes $itx.Output }}</span>{{ if $itx.OutputPruned }}<span class="text-muted"> … (pruned)</span>{{ end }}</div>
             </div>
             {{ end }}
           </div>
@@ -268,8 +270,12 @@
         if (view === 'ascii' && !itxAsciiCache[idx]) {
           var hexEl = document.getElementById('itx-input-hex-' + idx);
           if (hexEl) {
-            itxAsciiCache[idx] = itxHexToAscii(hexEl.textContent.trim());
-            target.textContent = itxAsciiCache[idx];
+            // The box may carry a "pruned" marker next to the hex payload.
+            var hexData = hexEl.querySelector('.itx-hex-data') || hexEl;
+            var ascii = itxHexToAscii(hexData.textContent.trim());
+            if (hexEl.dataset.pruned === '1') ascii += ' … (pruned)';
+            itxAsciiCache[idx] = ascii;
+            target.textContent = ascii;
           }
         }
         target.style.display = 'block';

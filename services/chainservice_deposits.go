@@ -459,6 +459,61 @@ func (q *IndexedDepositQueue) EstimateAppendedDepositEpoch(amount phase0.Gwei) p
 	return queueEpoch
 }
 
+// depositQueueIndexCache memoizes the EL deposit index resolution of pending-deposit queue
+// snapshots. Resolving costs a db round trip covering every slot present in the queue, while
+// the snapshot itself only changes once per epoch — without the cache every page render (and
+// every page of a paginated render) would repeat it. It also keeps a paginated walk
+// consistent, as all pages then resolve against the same snapshot.
+type depositQueueIndexCache struct {
+	mutex   sync.Mutex
+	entries map[phase0.Root]*resolvedDepositQueueIndexes
+	order   []phase0.Root
+}
+
+// resolvedDepositQueueIndexes is one snapshot's resolution result, keyed by the block root
+// the snapshot was taken at.
+type resolvedDepositQueueIndexes struct {
+	queueLen  int
+	indexes   []*uint64
+	postponed []bool
+}
+
+// depositQueueIndexCacheSize is the number of queue snapshots kept. A handful covers the
+// canonical chain plus the sibling forks that are live at any moment.
+const depositQueueIndexCacheSize = 4
+
+func (c *depositQueueIndexCache) get(root phase0.Root, queueLen int) *resolvedDepositQueueIndexes {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	cached := c.entries[root]
+	if cached == nil || cached.queueLen != queueLen {
+		// A different length means the snapshot advanced under the same root; recompute.
+		return nil
+	}
+
+	return cached
+}
+
+func (c *depositQueueIndexCache) put(root phase0.Root, resolved *resolvedDepositQueueIndexes) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.entries == nil {
+		c.entries = make(map[phase0.Root]*resolvedDepositQueueIndexes, depositQueueIndexCacheSize)
+	}
+
+	if _, exists := c.entries[root]; !exists {
+		c.order = append(c.order, root)
+		for len(c.order) > depositQueueIndexCacheSize {
+			delete(c.entries, c.order[0])
+			c.order = c.order[1:]
+		}
+	}
+
+	c.entries[root] = resolved
+}
+
 func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *beacon.Block) *IndexedDepositQueue {
 	if headBlock == nil {
 		return nil
@@ -486,19 +541,30 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	// The churn-simulation residual below is still populated for an empty queue (so the
 	// safety estimate for a newly appended deposit works), hence no early return here.
 	if len(queue) > 0 {
-		// Assign EL deposit indexes by position, flagging postponed (reordered) entries
-		// that must instead be resolved by slot.
-		indexes, postponed := resolveQueueDepositIndexes(queue, lastIncludedDeposit)
-		for idx := range indexedQueue.Queue {
-			indexedQueue.Queue[idx].DepositIndex = indexes[idx]
+		resolved := bs.depositQueueIndexes.get(queueBlockRoot, len(queue))
+		if resolved == nil {
+			// The positional (anchor + backward count) shortcut is only valid while the queue is
+			// a contiguous suffix of the deposit stream. Gloas breaks that for good, so from the
+			// fork onwards every entry is resolved by slot.
+			chainState := bs.consensusPool.GetChainState()
+			allowPositional := !chainState.IsEip7732Enabled(chainState.EpochOfSlot(queueSlot))
+
+			indexes, postponed, resolveBySlot := resolveQueueDepositIndexes(queue, lastIncludedDeposit, allowPositional)
+
+			// Resolve the remaining entries by slot (one batched query).
+			for idx, depositIndex := range bs.resolveDepositIndexesBySlot(ctx, queue, resolveBySlot) {
+				if depositIndex != nil {
+					indexes[idx] = depositIndex
+				}
+			}
+
+			resolved = &resolvedDepositQueueIndexes{queueLen: len(queue), indexes: indexes, postponed: postponed}
+			bs.depositQueueIndexes.put(queueBlockRoot, resolved)
 		}
 
-		// Resolve postponed entries by slot (one batched query) and flag them for rendering.
-		bs.resolvePostponedDepositIndexes(ctx, queue, indexedQueue.Queue, postponed)
 		for idx := range indexedQueue.Queue {
-			if postponed[idx] {
-				indexedQueue.Queue[idx].Postponed = true
-			}
+			indexedQueue.Queue[idx].DepositIndex = resolved.indexes[idx]
+			indexedQueue.Queue[idx].Postponed = resolved.postponed[idx]
 		}
 	}
 
@@ -554,8 +620,9 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	chainState := bs.consensusPool.GetChainState()
 	specs := chainState.GetSpecs()
 
-	activationExitChurnLimit := phase0.Gwei(chainState.GetActivationExitChurnLimit(uint64(totalActiveBalance)))
 	queueEpoch := chainState.EpochOfSlot(queueSlot)
+	// Deposits consume the activation-only churn budget from Gloas on (EIP-8061).
+	activationExitChurnLimit := phase0.Gwei(chainState.GetActivationChurnLimit(queueEpoch, uint64(totalActiveBalance)))
 
 	maxPendingDepositsPerEpoch := specs.MaxPendingDepositsPerEpoch
 	if maxPendingDepositsPerEpoch == 0 {
@@ -647,30 +714,36 @@ func (bs *ChainService) postponedDepositEpoch(pubkey phase0.BLSPubKey) phase0.Ep
 	return validator.Validator.WithdrawableEpoch
 }
 
-// resolveQueueDepositIndexes assigns an EL deposit index to each queue entry by position
-// and flags the postponed (reordered) entries. It returns, per entry, the resolved index
-// (nil where it must be resolved by slot) and whether the entry is postponed.
+// resolveQueueDepositIndexes assigns an EL deposit index to each queue entry and reports,
+// per entry, the resolved index (nil where it must be resolved by slot), whether the entry
+// is postponed, and whether it needs slot-based resolution.
 //
 // pending_deposits comes verbatim from the beacon state but carries no EL deposit index.
-// Regular deposits sit in the queue in strict slot<->index order, so their indexes are
-// derived by anchoring the tail to the last included deposit and counting backwards.
+// Before Gloas the queue is a contiguous suffix of the deposit stream, so indexes can be
+// derived by anchoring the tail to the last included deposit and counting backwards; this
+// is what allowPositional enables.
 //
-// process_pending_deposits moves deposits of an exiting validator to the back of the
-// queue, breaking that order. Such postponed entries surface as a slot that dips below
-// the running maximum; they are excluded from the backward count (left nil) and resolved
-// individually by slot afterwards. Detection is purely slot-based (independent of the
-// possibly-delayed validator set) so the assigned index is always correct.
+// Gloas breaks that assumption permanently, so allowPositional must be false once the fork
+// is active: onboard_builders_from_pending_deposits drops entries out of the middle of the
+// queue at the fork, and process_deposit_request applies builder deposits straight to the
+// builder registry without ever queueing them. Both leave gaps in the index sequence and
+// make the last included deposit an unreliable anchor.
 //
-// 0x01->0x02 compounding-switch deposits are synthesized in the queue with no EL deposit
-// at all; they are skipped entirely. Every other queue entry maps to a real EL deposit in
-// contiguous index order (post-Gloas builder deposits arrive via the separate builder
-// deposit contract and never appear in the regular deposit stream), so each non-postponed
-// entry simply takes the next index below the anchor.
-func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes.Deposit) (indexes []*uint64, postponed []bool) {
+// process_pending_deposits additionally moves deposits of an exiting validator to the back
+// of the queue. Such postponed entries surface as a slot that dips below the running
+// maximum. Being postponed is a chain fact (it changes how the deposit is processed and is
+// rendered as such), which is why it is reported separately from needing slot-based
+// resolution — a failed anchor check means only the latter.
+//
+// 0x01->0x02 compounding-switch deposits are synthesized in the queue with no EL deposit at
+// all; they are skipped entirely.
+func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes.Deposit, allowPositional bool) (indexes []*uint64, postponed, resolveBySlot []bool) {
 	indexes = make([]*uint64, len(queue))
 	postponed = make([]bool, len(queue))
+	resolveBySlot = make([]bool, len(queue))
 
-	// Forward pass: flag entries whose slot dips below the running maximum.
+	// Forward pass: flag entries whose slot dips below the running maximum. Postponed entries
+	// no longer follow the queue's slot<->index order, so they always need slot resolution.
 	prevRegularSlot := phase0.Slot(0)
 	for idx, deposit := range queue {
 		if isSyntheticPendingDeposit(deposit) {
@@ -678,9 +751,21 @@ func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes
 		}
 		if deposit.Slot < prevRegularSlot {
 			postponed[idx] = true
+			resolveBySlot[idx] = true
 			continue
 		}
 		prevRegularSlot = deposit.Slot
+	}
+
+	if !allowPositional {
+		for idx, deposit := range queue {
+			if isSyntheticPendingDeposit(deposit) {
+				continue
+			}
+			resolveBySlot[idx] = true
+		}
+
+		return indexes, postponed, resolveBySlot
 	}
 
 	// Backward pass: assign indexes to the regular (in-order) entries.
@@ -705,10 +790,10 @@ func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes
 	}
 
 	// Anchor verification. The tail-most regular entry must align with the anchor's slot.
-	// If it doesn't (a degenerate queue whose most recent deposits are all postponed or
-	// builder deposits, so the anchor is not the real tail), the positional assignment
-	// cannot be trusted and every non-synthetic entry is resolved by slot instead. This
-	// recovers the "queue is nothing but postponed deposits" case, which has no slot dip.
+	// If it doesn't (a degenerate queue whose most recent deposits are all postponed, so the
+	// anchor is not the real tail), the positional assignment cannot be trusted and every
+	// non-synthetic entry is resolved by slot instead. This recovers the "queue is nothing
+	// but postponed deposits" case, which has no slot dip.
 	anchorVerified := tailRegularIdx >= 0 && anchor != nil &&
 		queue[tailRegularIdx].Slot == phase0.Slot(anchor.SlotNumber)
 	if !anchorVerified {
@@ -716,30 +801,27 @@ func resolveQueueDepositIndexes(queue []*electra.PendingDeposit, anchor *dbtypes
 			if isSyntheticPendingDeposit(deposit) {
 				continue
 			}
-			postponed[idx] = true
+			resolveBySlot[idx] = true
 			indexes[idx] = nil
 		}
 	}
 
-	return indexes, postponed
+	return indexes, postponed, resolveBySlot
 }
 
-// resolvePostponedDepositIndexes fills in the EL deposit index of queue entries flagged
-// as postponed. These were reordered out of the queue's slot<->index sequence, so they
-// can't be aligned by position; instead they are looked up in a single batched query by
-// their slot (which equals the beacon state's PendingDeposit.slot) and matched on
-// (slot, pubkey, amount, withdrawal_credentials). Byte-identical deposits sharing a slot
-// are consumed in slot_index order, matching their queue order. Entries with no DB match
-// are left without an index rather than wrongly assigned.
-func (bs *ChainService) resolvePostponedDepositIndexes(ctx context.Context, queue []*electra.PendingDeposit, entries []*IndexedDepositQueueEntry, postponed []bool) {
+// resolveDepositIndexesBySlot resolves the EL deposit index of the queue entries that cannot
+// be aligned by position (postponed entries, and every entry once Gloas is active) with a
+// single batched query over the slots they were included in, and returns the indexes per
+// queue position (nil where nothing was resolved).
+func (bs *ChainService) resolveDepositIndexesBySlot(ctx context.Context, queue []*electra.PendingDeposit, resolveBySlot []bool) []*uint64 {
 	slotSet := make(map[uint64]struct{})
-	for idx, isPostponed := range postponed {
-		if isPostponed {
+	for idx, needsSlot := range resolveBySlot {
+		if needsSlot {
 			slotSet[uint64(queue[idx].Slot)] = struct{}{}
 		}
 	}
 	if len(slotSet) == 0 {
-		return
+		return nil
 	}
 
 	slots := make([]uint64, 0, len(slotSet))
@@ -749,16 +831,24 @@ func (bs *ChainService) resolvePostponedDepositIndexes(ctx context.Context, queu
 
 	rows, err := db.GetDepositRequestsBySlots(ctx, slots, bs.GetCanonicalForkIds())
 	if err != nil {
-		logrus.Warnf("ChainService.resolvePostponedDepositIndexes error: %v", err)
-		return
+		logrus.Warnf("ChainService.resolveDepositIndexesBySlot error: %v", err)
+		return nil
 	}
+
+	return assignDepositIndexesBySlot(queue, resolveBySlot, rows)
+}
+
+// assignDepositIndexesBySlot pairs the flagged queue entries with the deposits included in
+// their slot, matched on (slot, pubkey, amount, withdrawal_credentials). rows must be ordered
+// by (slot_number, slot_index), i.e. in inclusion order. Entries that are not flagged, or have
+// no matching deposit, get a nil index.
+func assignDepositIndexesBySlot(queue []*electra.PendingDeposit, resolveBySlot []bool, rows []*dbtypes.Deposit) []*uint64 {
+	indexes := make([]*uint64, len(queue))
 
 	depositKey := func(slot, amount uint64, pubkey, wdcreds []byte) string {
 		return fmt.Sprintf("%d-%x-%d-%x", slot, pubkey, amount, wdcreds)
 	}
 
-	// Rows arrive ordered by (slot_number, slot_index), so identical deposits keep their
-	// inclusion order within each key.
 	indexesByKey := make(map[string][]uint64, len(rows))
 	for _, row := range rows {
 		if row.Index == nil {
@@ -768,27 +858,44 @@ func (bs *ChainService) resolvePostponedDepositIndexes(ctx context.Context, queu
 		indexesByKey[key] = append(indexesByKey[key], *row.Index)
 	}
 
-	for idx, isPostponed := range postponed {
-		if !isPostponed {
+	// Walk back to front and hand out the highest index first: the chain drains the queue from
+	// the front in index order, so what a slot still has queued is its tail. Front-to-back
+	// assignment would give the queue's head slot - the only partially drained one - the
+	// indexes of deposits that were already applied, and with them the wrong transactions.
+	for idx := len(resolveBySlot) - 1; idx >= 0; idx-- {
+		if !resolveBySlot[idx] {
 			continue
 		}
+
 		deposit := queue[idx]
 		key := depositKey(uint64(deposit.Slot), uint64(deposit.Amount), deposit.Pubkey[:], deposit.WithdrawalCredentials)
-		indexes := indexesByKey[key]
-		if len(indexes) == 0 {
+		candidates := indexesByKey[key]
+		if len(candidates) == 0 {
 			continue
 		}
-		depositIndexCopy := indexes[0]
-		indexesByKey[key] = indexes[1:]
-		entries[idx].DepositIndex = &depositIndexCopy
+
+		depositIndexCopy := candidates[len(candidates)-1]
+		indexesByKey[key] = candidates[:len(candidates)-1]
+		indexes[idx] = &depositIndexCopy
 	}
+
+	return indexes
 }
 
 // isSyntheticPendingDeposit reports whether a pending deposit was synthesized during
 // state transition (queue_excess_active_balance, e.g. a 0x01->0x02 compounding switch)
-// rather than created from an EL deposit. Such deposits carry the G2 point-at-infinity
-// signature (0xc0 followed by zeros) and have no corresponding EL deposit index.
+// rather than created from an EL deposit. Such deposits have no corresponding EL deposit
+// index.
+//
+// The spec uses two markers together: the G2 point-at-infinity signature as a placeholder
+// "and GENESIS_SLOT to distinguish from a pending deposit request"
+// (specs/electra/beacon-chain.md, queue_excess_active_balance). Both are required — the
+// deposit contract happily accepts a real deposit carrying the point-at-infinity signature,
+// and treating those as synthetic would drop their EL index and transaction link.
 func isSyntheticPendingDeposit(deposit *electra.PendingDeposit) bool {
+	if deposit.Slot != 0 {
+		return false
+	}
 	if deposit.Signature[0] != 0xc0 {
 		return false
 	}

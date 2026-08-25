@@ -37,7 +37,22 @@ type validatorCache struct {
 	lastFinalized            phase0.Epoch      // last finalized epoch
 	lastFinalizedActiveCount uint64
 	triggerDbUpdate          chan bool
+
+	// projectedPubkeys maps the pubkeys of the validators projected from the pending_deposits
+	// queue to their estimated index. It is replaced wholesale on every set update, so a
+	// projection that disappears (or moves) can never leave a stale mapping behind — unlike
+	// the persistent pubkeyCache, which projections must never be written to.
+	projectedPubkeys map[phase0.BLSPubKey]phase0.ValidatorIndex
 }
+
+// validatorEntryProjected marks an entry whose finalValidator is a placeholder for a validator
+// the chain has not created yet, derived from the pending_deposits queue. Such entries
+// deliberately carry no diffs, must never be promoted by setFinalizedEpoch and must never reach
+// the validators table: their index is an estimate that shifts as the queue drains.
+//
+// The flag rides in the padding after statusFlags rather than in a second validator pointer -
+// the cache holds one entry per validator, so an extra word costs megabytes on a large chain.
+const validatorEntryProjected uint8 = 1 << 0
 
 // validatorEntry represents a single validator's state in the cache
 type validatorEntry struct {
@@ -46,6 +61,13 @@ type validatorEntry struct {
 	finalValidator *phase0.Validator
 	activeData     *ValidatorData
 	statusFlags    uint16
+	entryFlags     uint8
+}
+
+// isProjected reports whether finalValidator holds a projection rather than a finalized
+// on-chain validator.
+func (e *validatorEntry) isProjected() bool {
+	return e.entryFlags&validatorEntryProjected != 0
 }
 
 // latestPubkey returns the pubkey of the most recently known state for this entry
@@ -100,7 +122,10 @@ func (v *ValidatorData) EffectiveBalance() phase0.Gwei {
 //   - validators: Full validator set for this epoch, optionally extended with
 //     validators projected from the pending_deposits queue (those carry a zero
 //     effective balance and unset activation-eligibility epoch)
-func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot phase0.Root, validators []*phase0.Validator) {
+//   - realCount: number of entries in validators that are actually on chain; everything
+//     from this index on is a projection and is cached separately (never diffed, never
+//     finalized, never persisted, never written to the pubkey cache)
+func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot phase0.Root, validators []*phase0.Validator, realCount int) {
 	chainState := cache.indexer.consensusPool.GetChainState()
 	epoch := chainState.EpochOfSlot(slot)
 	currentEpoch := chainState.CurrentEpoch()
@@ -146,25 +171,45 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 			cache.valsetCache = cache.valsetCache[:len(validators)]
 		}
 	} else if len(cache.valsetCache) > len(validators) {
-		// The validator set shrank. Real validators only ever grow, so every entry
-		// beyond the new length is a projected (pending-deposit) validator that is no
-		// longer projected — e.g. builder deposits that get onboarded as builders at
-		// the Gloas fork, or a projection that simply produced fewer entries than a
-		// previous one. Drop the excess so stale projected validators don't linger in
-		// the set (and point past the balances array). Their pubkey-cache entries are
-		// left dangling but resolve to nil via the index bound check in
-		// getValidatorByIndex.
+		// The validator set shrank. Real validators only ever grow, so every entry beyond
+		// the new length is a projected (pending-deposit) validator that is no longer
+		// projected — e.g. builder deposits that get onboarded as builders at the Gloas
+		// fork, or a projection that simply produced fewer entries than a previous one.
+		// Drop the excess so stale projected validators don't linger in the set (and point
+		// past the balances array); their pubkey mappings live in projectedPubkeys, which
+		// is replaced below, so nothing dangles.
 		for i := len(validators); i < len(cache.valsetCache); i++ {
 			cache.valsetCache[i] = nil
 		}
 		cache.valsetCache = cache.valsetCache[:len(validators)]
 	}
 
+	// Rebuilt from scratch on every update: a projected index is an estimate that shifts as
+	// the queue ahead of it drains, so a mapping must never outlive the update that made it.
+	projectedPubkeys := make(map[phase0.BLSPubKey]phase0.ValidatorIndex, len(validators)-min(realCount, len(validators)))
+
 	isParentMap := map[phase0.Root]bool{}
 	isAheadMap := map[phase0.Root]bool{}
 	updatedCount := uint64(0)
 
 	for i := range validators {
+		if i >= realCount {
+			// Projected validator: cached for display only, kept out of the diff/finalization
+			// machinery entirely.
+			cachedValidator := cache.valsetCache[i]
+			if cachedValidator == nil {
+				cachedValidator = &validatorEntry{}
+				cache.valsetCache[i] = cachedValidator
+			}
+
+			cachedValidator.finalValidator = validators[i]
+			cachedValidator.entryFlags |= validatorEntryProjected
+			cachedValidator.statusFlags = GetValidatorStatusFlags(validators[i])
+			projectedPubkeys[validators[i].PublicKey] = phase0.ValidatorIndex(i)
+
+			continue
+		}
+
 		var parentChecksum uint64
 		var parentValidator *phase0.Validator
 		parentEpoch := phase0.Epoch(0)
@@ -180,15 +225,26 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 
 			cache.indexer.pubkeyCache.Add(validators[i].PublicKey, phase0.ValidatorIndex(i))
 		} else {
+			if cachedValidator.isProjected() {
+				// The chain caught up with a projection: this index is now occupied by a real
+				// validator, so the placeholder goes away (and with it the checksum derived from
+				// it, which must not be mistaken for a finalized parent state) and the pubkey
+				// becomes a permanent mapping. Losing that mapping here would leave the validator
+				// unresolvable by pubkey until the next restart, so the failure is worth reporting.
+				cachedValidator.entryFlags &^= validatorEntryProjected
+				cachedValidator.finalValidator = nil
+				cachedValidator.finalChecksum = 0
+				if err := cache.indexer.pubkeyCache.Add(validators[i].PublicKey, phase0.ValidatorIndex(i)); err != nil {
+					cache.indexer.logger.WithError(err).Warnf("could not add pubkey cache entry for validator %v", i)
+				}
+			}
+
 			parentValidator = cachedValidator.finalValidator
 			parentChecksum = cachedValidator.finalChecksum
 
 			// Reconcile the pubkey→index map when the pubkey occupying this index changes.
-			// Real validators never change pubkey, but a projected (pending-deposit)
-			// validator's estimated index shifts as the queue ahead of it is processed or
-			// builder deposits are dropped at the Gloas fork. Without this the pubkey cache
-			// keeps a stale mapping and GetValidatorIndexByPubkey misses the validator, so
-			// it appears "not projected".
+			// Real validators never change pubkey, so this only guards against a cache entry
+			// left over from an earlier, differently-shaped set.
 			if existingPubkey, ok := cachedValidator.latestPubkey(); ok && existingPubkey != validators[i].PublicKey {
 				cache.indexer.pubkeyCache.Add(validators[i].PublicKey, phase0.ValidatorIndex(i))
 			}
@@ -304,6 +360,8 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 		}
 	}
 
+	cache.projectedPubkeys = projectedPubkeys
+
 	if updatedCount > 0 {
 		select {
 		case cache.triggerDbUpdate <- true:
@@ -370,6 +428,17 @@ func (cache *validatorCache) getValidatorSetSize() uint64 {
 	return uint64(len(cache.valsetCache))
 }
 
+// getProjectedIndexByPubkey resolves a pubkey to the index its validator is projected to
+// get once the chain processes its pending deposit.
+func (cache *validatorCache) getProjectedIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	index, found := cache.projectedPubkeys[pubkey]
+
+	return index, found
+}
+
 // getValidatorFlags returns the status flags for a specific validator
 // Returns 0 if validator index is invalid or not found
 func (cache *validatorCache) getValidatorFlags(validatorIndex phase0.ValidatorIndex) uint16 {
@@ -395,6 +464,12 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, dependentRoot
 
 	for _, cachedValidator := range cache.valsetCache {
 		if cachedValidator == nil {
+			continue
+		}
+
+		if cachedValidator.isProjected() {
+			// A projection has no on-chain state to finalize; promoting a diff onto it would
+			// turn the placeholder into a row persistValidators writes to the db.
 			continue
 		}
 
@@ -468,6 +543,26 @@ func (cache *validatorCache) streamValidatorSetForRoot(blockRoot phase0.Root, on
 
 	for index, cachedValidator := range cache.valsetCache {
 		if cachedValidator == nil {
+			continue
+		}
+
+		if cachedValidator.isProjected() {
+			projected := cachedValidator.finalValidator
+			// Projected entries carry no diffs and no finalized state; stream the placeholder
+			// itself so the validator set stays contiguous.
+			projectedData := &ValidatorData{
+				ActivationEligibilityEpoch: projected.ActivationEligibilityEpoch,
+				ActivationEpoch:            projected.ActivationEpoch,
+				ExitEpoch:                  projected.ExitEpoch,
+				EffectiveBalanceEth:        uint32(projected.EffectiveBalance / EtherGweiFactor),
+			}
+			if onlyActive && (epoch != nil && (projectedData.ActivationEpoch > *epoch || projectedData.ExitEpoch < *epoch)) {
+				continue
+			}
+			if err := cb(phase0.ValidatorIndex(index), GetValidatorStatusFlags(projected), projectedData, projected); err != nil {
+				return err
+			}
+
 			continue
 		}
 
@@ -649,6 +744,12 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 		return nil
 	}
 
+	if cachedValidator.isProjected() {
+		// copied like the cached values below, so callers can't mutate the cache entry
+		projectedCopy := *cachedValidator.finalValidator
+		return &projectedCopy
+	}
+
 	validator := cachedValidator.finalValidator
 	validatorEpoch := cache.lastFinalized
 
@@ -730,10 +831,18 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 	activeCount := uint64(0)
 	restoreCount := uint64(0)
 
-	// Load validators in batches
+	// Projected validators were persisted by earlier versions (setFinalizedEpoch promoted their
+	// cache diffs like any other). Restoring them would recreate a validator that does not exist
+	// on chain and re-register its pubkey in the persistent cache, so they are dropped here and
+	// removed from the db instead.
+	staleProjections := make([]uint64, 0)
+	staleProjectionPubkeys := make([]phase0.BLSPubKey, 0)
+
+	// Load validators in batches. The range query is inclusive on both ends, so the end index
+	// must stop one short of the next batch's start.
 	batchSize := uint64(10000)
 	for start := uint64(0); start <= maxIndex; start += batchSize {
-		end := start + batchSize
+		end := start + batchSize - 1
 		if end > maxIndex {
 			end = maxIndex
 		}
@@ -742,6 +851,13 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 		for _, dbVal := range validators {
 			// Convert db validator to phase0.Validator
 			val := UnwrapDbValidator(dbVal)
+			if IsProjectedValidator(val) {
+				staleProjections = append(staleProjections, dbVal.ValidatorIndex)
+				staleProjectionPubkeys = append(staleProjectionPubkeys, val.PublicKey)
+
+				continue
+			}
+
 			valEntry := &validatorEntry{
 				finalChecksum: calculateValidatorChecksum(val),
 			}
@@ -768,6 +884,23 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 	}
 
 	cache.lastFinalizedActiveCount = activeCount
+
+	if len(staleProjections) > 0 {
+		for _, pubkey := range staleProjectionPubkeys {
+			if err := cache.indexer.pubkeyCache.Remove(pubkey); err != nil {
+				cache.indexer.logger.WithError(err).Warnf("could not drop pubkey cache entry of stale projected validator")
+			}
+		}
+
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return db.DeleteValidators(cache.indexer.ctx, tx, staleProjections)
+		})
+		if err != nil {
+			cache.indexer.logger.WithError(err).Errorf("error deleting %v stale projected validators from db", len(staleProjections))
+		} else {
+			cache.indexer.logger.Infof("dropped %v stale projected validators from db (indexes %v-%v)", len(staleProjections), staleProjections[0], staleProjections[len(staleProjections)-1])
+		}
+	}
 
 	return restoreCount, nil
 }
@@ -815,7 +948,7 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) (bool, error) {
 	hasMore := false
 
 	for index, entry := range cache.valsetCache {
-		if entry == nil || entry.finalValidator == nil {
+		if entry == nil || entry.finalValidator == nil || entry.isProjected() {
 			continue
 		}
 

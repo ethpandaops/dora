@@ -1,6 +1,8 @@
 package statetransition
 
 import (
+	"math"
+
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -16,6 +18,10 @@ const (
 	// preset/config), so this value is not network-configurable.
 	BuilderPaymentQuorumPercent = 100.0 * BuilderPaymentThresholdNumerator / BuilderPaymentThresholdDenominator
 )
+
+// BuilderIndexSelfBuild is BUILDER_INDEX_SELF_BUILD: the sentinel builder index marking a bid that
+// the proposer built itself rather than buying from a builder.
+const BuilderIndexSelfBuild = gloas.BuilderIndex(math.MaxUint64)
 
 // processBuilderPendingPayments implements process_builder_pending_payments (Gloas).
 // Evaluates the first SLOTS_PER_EPOCH entries of BuilderPendingPayments against

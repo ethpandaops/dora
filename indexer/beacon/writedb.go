@@ -171,7 +171,7 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 	}
 
 	// insert builder deposit requests (gloas)
-	err = dbw.persistBlockBuilderDeposits(tx, block, orphaned, overrideForkId)
+	err = dbw.persistBlockBuilderDeposits(tx, block, orphaned, overrideForkId, sim)
 	if err != nil {
 		return err
 	}
@@ -669,7 +669,9 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 				if blockPayload != nil {
-					dbEpoch.PayloadCount++
+					if !block.isPayloadOrphaned {
+						dbEpoch.PayloadCount++
+					}
 					executionTransactions = blockPayload.Message.Payload.Transactions
 					executionWithdrawals = blockPayload.Message.Payload.Withdrawals
 				} else {
@@ -965,8 +967,8 @@ func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrid
 
 // persistBlockBuilderDeposits persists the block's builder deposit requests
 // (Gloas/EIP-8282) to the builder_deposits table. Pre-Gloas blocks carry none.
-func (dbw *dbWriter) persistBlockBuilderDeposits(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
-	dbDeposits := dbw.buildDbBuilderDeposits(block, orphaned, overrideForkId)
+func (dbw *dbWriter) persistBlockBuilderDeposits(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) error {
+	dbDeposits := dbw.buildDbBuilderDeposits(block, orphaned, overrideForkId, sim)
 	if len(dbDeposits) > 0 {
 		err := db.InsertBuilderDeposits(dbw.indexer.ctx, tx, dbDeposits)
 		if err != nil {
@@ -977,10 +979,15 @@ func (dbw *dbWriter) persistBlockBuilderDeposits(tx *sqlx.Tx, block *Block, orph
 	return nil
 }
 
-func (dbw *dbWriter) buildDbBuilderDeposits(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.BuilderDeposit {
+func (dbw *dbWriter) buildDbBuilderDeposits(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.BuilderDeposit {
 	requests, blockNumber := dbw.getProcessedExecutionRequests(block)
 	if requests == nil || len(requests.BuilderDeposits) == 0 {
 		return []*dbtypes.BuilderDeposit{}
+	}
+
+	var blockResults [][]uint8
+	if sim != nil {
+		blockResults = sim.replayBlockResults(block)
 	}
 
 	dbDeposits := make([]*dbtypes.BuilderDeposit, len(requests.BuilderDeposits))
@@ -1003,6 +1010,9 @@ func (dbw *dbWriter) buildDbBuilderDeposits(block *Block, orphaned bool, overrid
 		}
 		if overrideForkId != nil {
 			dbDeposit.ForkId = uint64(*overrideForkId)
+		}
+		if len(blockResults) > 2 && idx < len(blockResults[2]) {
+			dbDeposit.Result = blockResults[2][idx]
 		}
 
 		dbDeposits[idx] = dbDeposit

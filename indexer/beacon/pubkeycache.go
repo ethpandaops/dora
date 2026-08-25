@@ -84,6 +84,22 @@ func (c *pubkeyCache) Add(pubkey phase0.BLSPubKey, index phase0.ValidatorIndex) 
 	return nil
 }
 
+// Remove drops a pubkey mapping. The cache is persistent, so an entry that was written by
+// mistake (e.g. a projected validator restored from a stale db row) survives restarts and
+// keeps resolving to an index that does not exist; Remove is how such an entry is cleaned up.
+func (c *pubkeyCache) Remove(pubkey phase0.BLSPubKey) error {
+	c.pubkeyMutex.Lock()
+	defer c.pubkeyMutex.Unlock()
+
+	if c.pubkeyDb != nil {
+		return c.pubkeyDb.Delete(c.dbKey(pubkey), nil)
+	}
+
+	delete(c.pubkeyMap, pubkey)
+
+	return nil
+}
+
 func (c *pubkeyCache) Get(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
 	if c.pubkeyDb != nil {
 		data, err := c.pubkeyDb.Get(c.dbKey(pubkey), nil)
