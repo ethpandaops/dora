@@ -235,20 +235,29 @@
       transform: translateX(-50%);
       white-space: nowrap;
     }
-    /* the sources bar's shape, subdivided per column: gapless segments in
-       one slim pill, so a healthy slot reads as a single solid bar and only
-       deviant columns surface as slivers */
-    .arrival-col-heat {
-      display: flex;
-      height: 12px;
-      margin-top: 8px;
-      border-radius: 6px;
-      overflow: hidden;
-      background: var(--bs-secondary-bg);
+    .arrival-hist svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
     }
-    .arrival-col-heat > div { flex: 1 1 auto; }
-    .arrival-col-heat > div.low {
-      background-image: repeating-linear-gradient(135deg, #f46a6a 0 3px, transparent 3px 6px);
+    .arrival-hist .hover {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+    }
+    .arrival-hist .hgrid {
+      position: absolute; left: 0; right: 0; height: 1px;
+      background: var(--bs-border-color);
+      opacity: 0.45;
+    }
+    .arrival-hist .ylab {
+      position: absolute;
+      left: 4px;
+      transform: translateY(-55%);
+      font-size: 0.63rem;
+      color: var(--bs-secondary-color);
+      font-variant-numeric: tabular-nums;
     }
     .arrival-heat-key {
       display: inline-block;
@@ -861,14 +870,18 @@
         document.getElementById('waves-att-body').innerHTML = stats + liveBadge(settled) + hist;
       }
 
+      // The column chart follows the lab's data column propagation view:
+      // column index across, arrival time up, with each column's min, median
+      // and p90 reduced from every observing node's sighting.
       function renderColWave(cols, settled) {
         var entries = cols.columns || [];
         if (!entries.length || !cols.blob_count) return;
 
         var stats = '<b>' + cols.blob_count + '</b> blob' + (cols.blob_count > 1 ? 's' : '') +
           sep + '<b>' + cols.seen_columns + '</b><span class="text-muted">/' + entries.length + ' columns seen</span>';
-        if (cols.seen_columns > 0) {
-          stats += sep + fmtMsColored(cols.first_ms) + ' <span class="text-muted">&rarr;</span> ' + fmtMsColored(cols.last_ms);
+        if (cols.median_ms) {
+          stats += sep + '<span class="text-muted">median</span> ' + fmtMsColored(cols.median_ms) +
+            ' <span class="text-muted small">of ' + (cols.observations || 0).toLocaleString() + ' sightings</span>';
         }
         if (cols.probed_columns > 0) {
           var availColor = cols.min_availability < 100 ? '#f1b44c' : '#34c38f';
@@ -879,75 +892,120 @@
           }
         }
 
-        // one cell per column index, colored on the page's arrival-time
-        // scale. An absolute scale keeps a healthy slot one even green and
-        // saves the warm colors for columns that were genuinely late.
-        var unseen = 0;
-        var failed = 0;
+        var count = entries.length;
+        var maxT = 0;
 
-        var cells = entries.map(function(c) {
-          var style = '';
-          var cls = '';
+        entries.forEach(function(c) {
+          var top = c.p90_ms || c.p50_ms || c.first_seen_ms;
+          if (top != null && top > maxT) maxT = top;
+        });
+
+        document.getElementById('waves-cols').style.display = '';
+
+        if (!maxT) {
+          document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled);
+          return;
+        }
+
+        var yMax = Math.max(500, Math.ceil(maxT * 1.15 / 500) * 500);
+        var ySteps = [250, 500, 1000, 2500, 5000];
+        var yStep = ySteps[ySteps.length - 1];
+
+        for (var i = 0; i < ySteps.length; i++) {
+          if (yMax / ySteps[i] <= 4) { yStep = ySteps[i]; break; }
+        }
+
+        var X = function(i) { return ((i + 0.5) / count * 100).toFixed(2); };
+        var Y = function(ms) { return (100 - ms / yMax * 100).toFixed(2); };
+
+        // unseen columns break the lines rather than being interpolated over
+        var segs = [];
+        var cur = null;
+
+        entries.forEach(function(c, i) {
+          if (c.first_seen_ms == null) { cur = null; return; }
+
+          if (!cur) {
+            cur = { min: [], p50: [], p90: [] };
+            segs.push(cur);
+          }
+
+          var x = X(i);
+          cur.min.push(x + ',' + Y(c.first_seen_ms));
+          cur.p50.push(x + ',' + Y(c.p50_ms || c.first_seen_ms));
+          cur.p90.push(x + ',' + Y(c.p90_ms || c.p50_ms || c.first_seen_ms));
+        });
+
+        var svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none">';
+
+        segs.forEach(function(seg) {
+          if (seg.min.length === 1) {
+            // a lone column between gaps still deserves a visible dash
+            ['min', 'p50', 'p90'].forEach(function(k) {
+              var pt = seg[k][0].split(',');
+              seg[k] = [(+pt[0] - 0.3).toFixed(2) + ',' + pt[1], (+pt[0] + 0.3).toFixed(2) + ',' + pt[1]];
+            });
+          }
+
+          svg += '<polygon points="' + seg.p90.join(' ') + ' ' + seg.min.slice().reverse().join(' ') +
+            '" fill="rgba(115,128,141,0.16)"/>';
+          svg += '<polyline points="' + seg.p90.join(' ') + '" fill="none" stroke="#f1b44c" stroke-width="1.2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+          svg += '<polyline points="' + seg.p50.join(' ') + '" fill="none" stroke="#5b8def" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+          svg += '<polyline points="' + seg.min.join(' ') + '" fill="none" stroke="#34c38f" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+        });
+
+        svg += '</svg>';
+
+        var chart = '';
+
+        for (var ms = yStep; ms < yMax; ms += yStep) {
+          var top = (100 - ms / yMax * 100) + '%';
+          chart += '<div class="hgrid" style="top:' + top + '"></div>' +
+            '<span class="ylab" style="top:' + top + '">' + fmtAxis(ms) + '</span>';
+        }
+
+        for (var t = 16; t < count; t += 16) {
+          chart += '<div class="grid" style="left:' + (t / count * 100) + '%"></div>';
+        }
+
+        chart += svg;
+
+        entries.forEach(function(c, i) {
           var tip = 'column ' + c.index;
 
           if (c.first_seen_ms != null) {
-            style = 'background:' + timeColor(c.first_seen_ms);
-            tip += ' \u00b7 first seen ' + fmtStr(c.first_seen_ms);
-            if (c.first_seen_by) {
-              tip += ' by ' + c.first_seen_by;
-              var extra = [c.implementation, (c.country_code || '').toUpperCase()].filter(Boolean).join(', ');
-              if (extra) tip += ' (' + extra + ')';
-            }
+            tip += ' \u00b7 first ' + fmtStr(c.first_seen_ms);
+            if (c.first_seen_by) tip += ' by ' + c.first_seen_by;
+            if (c.p50_ms) tip += ' \u00b7 median ' + fmtStr(c.p50_ms);
+            if (c.p90_ms) tip += ' \u00b7 p90 ' + fmtStr(c.p90_ms);
+            if (c.observations) tip += ' \u00b7 ' + c.observations + ' sightings';
           } else {
-            unseen++;
             tip += ' \u00b7 not seen';
           }
 
           if (c.availability_pct != null) {
-            tip += ' \u00b7 availability ' + c.availability_pct.toFixed(1) + '% (' + c.probes + ' probes' +
-              (c.p50_response_ms ? ', p50 ' + c.p50_response_ms + 'ms' : '') + ')';
-            if (c.availability_pct < 100) {
-              failed++;
-              cls = ' class="low"';
-            }
+            tip += ' \u00b7 availability ' + c.availability_pct.toFixed(1) + '% (' + c.probes + ' probes)';
           }
 
-          return '<div' + cls + ' style="' + style + '" title="' + esc(tip) + '"></div>';
-        }).join('');
-
-        // one color for every column needs no key; explain only the states
-        // this slot actually has
-        var shades = {};
-
-        entries.forEach(function(c) {
-          if (c.first_seen_ms != null) shades[timeColor(c.first_seen_ms)] = true;
+          chart += '<div class="hover" style="left:' + (i / count * 100) + '%;width:' + (100 / count) +
+            '%" title="' + esc(tip) + '"></div>';
         });
 
-        var legendParts = [];
-
-        if (Object.keys(shades).length > 1) {
-          var chips = '';
-          [[0, '&lt;1s'], [1000, '1\u20132s'], [2000, '2\u20133s'], [3000, '3\u20134s'], [4000, '&ge;4s']].forEach(function(k) {
-            if (shades[timeColor(k[0])]) {
-              chips += '<span class="arrival-heat-key" style="background:' + timeColor(k[0]) + '"></span> ' + k[1] + ' ';
-            }
-          });
-          legendParts.push('first seen: ' + chips);
+        var labels = '<span style="left:0;transform:none">0</span>';
+        for (var lt = 16; lt < count; lt += 16) {
+          labels += '<span style="left:' + (lt / count * 100) + '%">' + lt + '</span>';
         }
-        if (unseen > 0) {
-          legendParts.push('<span class="arrival-heat-key"></span> not seen (' + unseen + ')');
-        }
-        if (failed > 0) {
-          legendParts.push('<span class="arrival-heat-key" style="background-image: repeating-linear-gradient(135deg, #f46a6a 0 3px, transparent 3px 6px)"></span> failed probes (' + failed + ')');
-        }
+        labels += '<span style="left:100%;transform:translateX(-100%)">' + (count - 1) + '</span>';
 
-        var legend = legendParts.length
-          ? '<div class="text-muted small pt-1">' + legendParts.join(sep) + '</div>'
-          : '';
+        var legend = '<div class="text-muted small pt-1">per column, across ' +
+          '<b>' + (cols.observations || 0).toLocaleString() + '</b> node sightings: ' +
+          '<span class="arrival-heat-key" style="background:#34c38f"></span> first ' +
+          '<span class="arrival-heat-key" style="background:#5b8def"></span> median ' +
+          '<span class="arrival-heat-key" style="background:#f1b44c"></span> p90</div>';
 
-        document.getElementById('waves-cols').style.display = '';
         document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) +
-          '<div class="arrival-col-heat">' + cells + '</div>' + legend;
+          '<div class="arrival-hist hist-sm">' + chart + '</div>' +
+          '<div class="arrival-hist-axis">' + labels + '</div>' + legend;
       }
 
       function renderWaves(data) {

@@ -49,10 +49,16 @@ type SlotAttestationBucket struct {
 }
 
 // SlotColumnWave describes how the slot's data column sidecars spread and how
-// available they measured afterwards, one entry per column index.
+// available they measured afterwards, one entry per column index. Timings are
+// reduced from every observing node's sighting, so each column carries its
+// own percentiles rather than one network-first value.
 type SlotColumnWave struct {
 	BlobCount   int `json:"blob_count"`
 	SeenColumns int `json:"seen_columns"`
+	// Observations counts every node-column sighting behind the percentiles.
+	Observations int `json:"observations"`
+	// MedianMs is the median of all sightings across all columns.
+	MedianMs uint32 `json:"median_ms"`
 	// FirstMs and LastMs span the per-column first-seen times.
 	FirstMs uint32 `json:"first_ms"`
 	LastMs  uint32 `json:"last_ms"`
@@ -72,6 +78,11 @@ type SlotColumnWave struct {
 type SlotColumn struct {
 	Index       uint32  `json:"index"`
 	FirstSeenMs *uint32 `json:"first_seen_ms,omitempty"`
+	// P50Ms and P90Ms are percentiles of when each observing node saw this
+	// column; FirstSeenMs is their minimum.
+	P50Ms        uint32 `json:"p50_ms,omitempty"`
+	P90Ms        uint32 `json:"p90_ms,omitempty"`
+	Observations int    `json:"observations,omitempty"`
 	// FirstSeenBy is the display name of the node that saw the column first.
 	FirstSeenBy     string   `json:"first_seen_by,omitempty"`
 	Implementation  string   `json:"implementation,omitempty"`

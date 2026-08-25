@@ -247,12 +247,14 @@ func assembleWaveRoots(roots map[string]*waveRoot, total int, blockRoot string) 
 	return wave
 }
 
-// loadColumnWave loads the per-column first-seen times and availability
-// probes for the slot and merges them into one entry per column index. It
-// returns nil when neither table has rows, and also for a blobless slot,
-// where there are no columns to spread.
+// loadColumnWave loads every node's first sighting of each data column and
+// the availability probes for the slot, and reduces them into one entry per
+// column index with min/p50/p90 timings. It returns nil when neither table
+// has rows, and also for a blobless slot, where there are no columns to
+// spread.
 func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (*models.SlotColumnWave, error) {
 	columns := map[uint32]*models.SlotColumn{}
+	sightings := map[uint32][]uint32{}
 
 	column := func(index uint32) *models.SlotColumn {
 		entry := columns[index]
@@ -264,7 +266,7 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 		return entry
 	}
 
-	seenReq := &cbtch.ListFctBlockDataColumnSidecarFirstSeenRequest{
+	seenReq := &cbtch.ListFctBlockDataColumnSidecarFirstSeenByNodeRequest{
 		Slot: &cbtch.UInt32Filter{Filter: &cbtch.UInt32Filter_Eq{Eq: uint32(slot)}},
 		SlotStartDateTime: &cbtch.UInt32Filter{Filter: &cbtch.UInt32Filter_Eq{
 			Eq: uint32(slotTime.Unix()),
@@ -282,19 +284,18 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
 		seenReq.PageToken = cbtPageToken(pageOffset)
 
-		query, err := cbtch.BuildListFctBlockDataColumnSidecarFirstSeenQuery(seenReq)
+		query, err := cbtch.BuildListFctBlockDataColumnSidecarFirstSeenByNodeQuery(seenReq)
 
 		return query.Query, query.Args, err
 	}, func(rows driver.Rows) error {
-		var row cbtch.FctBlockDataColumnSidecarFirstSeenRow
+		var row cbtch.FctBlockDataColumnSidecarFirstSeenByNodeRow
 		if err := rows.ScanStruct(&row); err != nil {
-			return fmt.Errorf("column first seen scan: %w", err)
+			return fmt.Errorf("column sightings scan: %w", err)
 		}
 
 		entry := column(row.ColumnIndex)
+		sightings[row.ColumnIndex] = append(sightings[row.ColumnIndex], row.SeenSlotStartDiff)
 
-		// Without a root filter a reorged slot yields one row per root and
-		// column; keep the earliest.
 		if entry.FirstSeenMs == nil || row.SeenSlotStartDiff < *entry.FirstSeenMs {
 			ms := row.SeenSlotStartDiff
 			entry.FirstSeenMs = &ms
@@ -316,7 +317,7 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("column first seen query: %w", err)
+		return nil, fmt.Errorf("column sightings query: %w", err)
 	}
 
 	// Availability is probed per slot and column, not per block root, so it
@@ -370,9 +371,20 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 	}
 
 	availabilitySum := float64(0)
+	allSightings := []uint32{}
 
 	for _, entry := range columns {
 		wave.Columns = append(wave.Columns, entry)
+
+		if times := sightings[entry.Index]; len(times) > 0 {
+			sort.Slice(times, func(a, b int) bool { return times[a] < times[b] })
+			entry.P50Ms = times[len(times)/2]
+			entry.P90Ms = times[len(times)*9/10]
+			entry.Observations = len(times)
+
+			wave.Observations += len(times)
+			allSightings = append(allSightings, times...)
+		}
 
 		if entry.FirstSeenMs != nil {
 			wave.SeenColumns++
@@ -401,6 +413,11 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 				wave.WorstP50Ms = entry.P50ResponseMs
 			}
 		}
+	}
+
+	if len(allSightings) > 0 {
+		sort.Slice(allSightings, func(a, b int) bool { return allSightings[a] < allSightings[b] })
+		wave.MedianMs = allSightings[len(allSightings)/2]
 	}
 
 	if wave.ProbedColumns > 0 {
