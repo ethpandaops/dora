@@ -196,36 +196,44 @@
     .arrival-table th.sortable { cursor: pointer; user-select: none; }
     .arrival-table th.sortable:hover { color: var(--bs-emphasis-color); }
 
-    .arrival-wave-track { position: relative; height: 96px; }
-    .arrival-wave-track .grid {
-      position: absolute; top: 0; bottom: 0; width: 1px;
-      background: var(--bs-border-color);
-      opacity: 0.5;
+    .arrival-wave-mini {
+      position: relative;
+      height: 30px;
+      max-width: 460px;
+      margin-top: 5px;
+      border-bottom: 1px solid var(--bs-border-color);
     }
-    .arrival-wave-track .bar { position: absolute; bottom: 0; }
-    .arrival-wave-track .deadline {
+    .arrival-wave-mini .bar { position: absolute; bottom: 0; }
+    .arrival-wave-mini .deadline {
       position: absolute; top: 0; bottom: 0; width: 0;
       border-left: 1px dashed var(--bs-secondary-color);
     }
-    .arrival-wave-track .deadline-label {
-      position: absolute; bottom: 2px; transform: translateX(4px);
+    .arrival-wave-axis {
+      position: relative;
+      max-width: 460px;
+      display: flex;
+      justify-content: space-between;
       font-size: 0.63rem;
       color: var(--bs-secondary-color);
+      font-variant-numeric: tabular-nums;
+    }
+    .arrival-wave-axis .dl {
+      position: absolute;
+      transform: translateX(-50%);
       white-space: nowrap;
     }
-    .arrival-wave-legend {
-      display: flex; flex-wrap: wrap;
-      gap: 0.3rem 1.2rem;
-      font-size: 0.8rem;
-      padding-top: 0.4rem;
+    .arrival-col-strip {
+      display: flex;
+      gap: 1px;
+      height: 12px;
+      max-width: 460px;
+      margin-top: 5px;
     }
-    .arrival-col-grid { display: flex; flex-wrap: wrap; gap: 3px; }
-    .arrival-col-cell {
-      width: 16px; height: 16px;
-      border-radius: 3px;
+    .arrival-col-strip > div {
+      flex: 1 1 auto;
+      border-radius: 1px;
       background: var(--bs-secondary-bg);
     }
-    .arrival-col-cell.low { box-shadow: inset 0 0 0 2px #f46a6a; }
   </style>
 
   <div id="arrival-content" class="card-body px-0 py-1">
@@ -252,25 +260,19 @@
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Observing nodes per continent, with the region's earliest observation">Regions:</span></div>
           <div class="col-md-10" id="arrival-regions"></div>
         </div>
+        {{ if .XatuCbtEnabled }}
+        <div class="row border-bottom p-2 mx-0" id="waves-att" style="display: none;">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When the network first saw this slot's attestations, in 50ms buckets. Votes for other roots mean those attesters had not imported this block in time.">Attestations:</span></div>
+          <div class="col-md-10" id="waves-att-body"></div>
+        </div>
+        <div class="row border-bottom p-2 mx-0" id="waves-cols" style="display: none;">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="PeerDAS data column sidecars: when each of the 128 columns of this block's blob data was first seen, and how available each measured under custody probing.">Data columns:</span></div>
+          <div class="col-md-10" id="waves-cols-body"></div>
+        </div>
+        {{ end }}
         <div id="arrival-body" class="px-2 pt-1"></div>
       </div>
     </div>
-    {{ if .XatuCbtEnabled }}
-    <div id="waves-att" style="display: none;">
-      <div class="row border-bottom p-2 mx-0">
-        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When the network first saw this slot's attestations, in 50ms buckets, split by the block root they vote for. Wrong-head votes mean those attesters had not imported this block in time.">Attestations:</span></div>
-        <div class="col-md-10" id="waves-att-stats"></div>
-      </div>
-      <div class="px-3 pt-2 pb-1 border-bottom" id="waves-att-chart"></div>
-    </div>
-    <div id="waves-cols" style="display: none;">
-      <div class="row border-bottom p-2 mx-0">
-        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="PeerDAS data column sidecars: when each of the 128 columns of this block's blob data was first seen on the network, and how available each column measured under active custody probing.">Data columns:</span></div>
-        <div class="col-md-10" id="waves-cols-stats"></div>
-      </div>
-      <div class="px-3 pt-2 pb-2 border-bottom" id="waves-cols-chart"></div>
-    </div>
-    {{ end }}
     <div class="text-muted small px-2 pb-2 d-flex align-items-center" style="gap: 6px;">
       <img src="/images/xatu.png" alt="Xatu" style="width: 18px; height: 18px;" />
       Data from <a href="https://github.com/ethpandaops/xatu" target="_blank" rel="noopener">Xatu</a>
@@ -670,188 +672,161 @@
         requestAnimationFrame(syncStickyOffsets);
       }
 
-      // The wave panels share the arrival table's ruler style but not its
-      // bounds: the attestation wave runs on the 50ms chunk grid.
-      function waveAxis(lo, hi) {
-        var span = Math.max(1, hi - lo);
-        var steps = [50, 100, 250, 500, 1000, 2500, 5000];
-        var step = steps[steps.length - 1];
-
-        for (var i = 0; i < steps.length; i++) {
-          if (span / steps[i] <= 8) { step = steps[i]; break; }
-        }
-
-        var lines = [];
-        for (var t = Math.ceil(lo / step) * step; t < hi; t += step) {
-          if (t > lo) lines.push(t);
-        }
-
-        return { lo: lo, hi: hi, span: span, step: step, lines: lines };
-      }
-
-      var waveRootColors = ['#f46a6a', '#f1b44c', '#a78bfa', '#6c757d', '#50c3e6'];
-
-      function waveRootLabel(root, viewed) {
-        if (viewed) return 'this block';
-        if (!root) return 'other roots';
-        return root.slice(0, 10) + '…' + root.slice(-4);
-      }
-
+      // The wave rows join the summary block above the table, so they follow
+      // its grammar: numbers first, one small muted visual under them.
       function liveBadge(settled) {
         if (settled) return '';
         return ' <span class="badge rounded-pill text-bg-info ms-1" style="font-size: 11px;">live &mdash; data may still be arriving</span>';
       }
 
-      function renderAttWave(att, settled) {
-        document.getElementById('waves-att').style.display = '';
+      var sep = '<span class="text-muted px-2">&middot;</span>';
 
-        // color per root: the viewed block green, competitors from the palette
-        var rootColor = {};
-        var next = 0;
+      function renderAttWave(att, settled) {
+        if (!att.total_count) return;
+
+        var viewed = null;
+        var otherCount = 0;
+        var otherRoots = [];
+
         (att.roots || []).forEach(function(r) {
-          rootColor[r.root] = r.viewed ? '#34c38f' : waveRootColors[next++ % waveRootColors.length];
+          if (r.viewed) { viewed = r; return; }
+          otherCount += r.count;
+          otherRoots.push(r.root ? r.root.slice(0, 10) + '\u2026' : 'smaller roots');
         });
 
         var chunks = {};
         var lo = null, hi = null, peak = 0;
+
         (att.roots || []).forEach(function(r) {
           (r.buckets || []).forEach(function(b) {
+            var c = chunks[b.ms] || (chunks[b.ms] = { viewed: 0, other: 0 });
+            c[r.viewed ? 'viewed' : 'other'] += b.count;
             if (lo == null || b.ms < lo) lo = b.ms;
             if (hi == null || b.ms > hi) hi = b.ms;
-            var c = chunks[b.ms] || (chunks[b.ms] = { total: 0, segs: [] });
-            c.total += b.count;
-            c.segs.push({ root: r.root, viewed: r.viewed, count: b.count });
-            if (c.total > peak) peak = c.total;
+            if (c.viewed + c.other > peak) peak = c.viewed + c.other;
           });
         });
         if (lo == null || !peak) return;
 
-        var viewed = null, otherCount = 0;
-        (att.roots || []).forEach(function(r) {
-          if (r.viewed) viewed = r; else otherCount += r.count;
-        });
+        document.getElementById('waves-att').style.display = '';
 
         var stats = '<b>' + att.total_count.toLocaleString() + '</b> attestations first seen';
         if (viewed) {
-          stats += ' <span class="text-muted px-2">&middot;</span><span class="num" style="color:#34c38f"><b>' +
+          stats += sep + '<span class="num" style="color:#34c38f"><b>' +
             (viewed.count / att.total_count * 100).toFixed(1) + '%</b></span> <span class="text-muted">vote this block</span>';
         }
         if (otherCount > 0) {
-          stats += ' <span class="text-muted px-2">&middot;</span><span class="num" style="color:#f46a6a"><b>' +
+          stats += sep + '<span class="num" style="color:#f46a6a" title="' + esc(otherRoots.join(', ')) + '"><b>' +
             otherCount.toLocaleString() + '</b></span> <span class="text-muted">vote other roots</span>';
         }
-        document.getElementById('waves-att-stats').innerHTML = stats + liveBadge(settled);
 
-        var ax = waveAxis(Math.max(0, lo - 100), hi + 150);
-        var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
-        var width = Math.max(0.2, 50 / ax.span * 100);
+        var axLo = Math.max(0, lo - 100);
+        var axHi = hi + 150;
+        var span = Math.max(1, axHi - axLo);
+        var pos = function(ms) { return (ms - axLo) / span * 100; };
+        var width = Math.max(0.3, 50 / span * 100);
 
-        var html = axisHeader(ax, '');
-        html += '<div class="arrival-wave-track">';
-        ax.lines.forEach(function(t) {
-          html += '<div class="grid" style="left:' + pos(t) + '%"></div>';
-        });
-        if (att.deadline_ms > ax.lo && att.deadline_ms < ax.hi) {
-          html += '<div class="deadline" style="left:' + pos(att.deadline_ms) + '%">' +
-            '<span class="deadline-label" title="One third into the slot: validators attest now even without a block in hand">attestation deadline</span></div>';
-        }
-
+        var bars = '';
         Object.keys(chunks).forEach(function(ms) {
           ms = +ms;
           var c = chunks[ms];
-          var bottom = 0;
-          // stack the viewed block's votes on the baseline, competitors on top
-          c.segs.sort(function(a, b) { return (b.viewed ? 1 : 0) - (a.viewed ? 1 : 0); });
-          c.segs.forEach(function(seg) {
-            var h = Math.max(2, seg.count / peak * 100);
-            html += '<div class="bar" style="left:' + pos(ms) + '%;width:' + width + '%;height:' + h +
-              '%;bottom:' + bottom + '%;background:' + rootColor[seg.root] +
-              '" title="' + fmtStr(ms) + '–' + fmtStr(ms + 50) + ': ' + seg.count.toLocaleString() +
-              ' attestations for ' + waveRootLabel(seg.root, seg.viewed) + '"></div>';
-            bottom += h;
-          });
+          var tip = fmtStr(ms) + '\u2013' + fmtStr(ms + 50) + ': ' + (c.viewed + c.other).toLocaleString() + ' attestations' +
+            (c.other ? ' (' + c.other.toLocaleString() + ' for other roots)' : '');
+          var vh = c.viewed / peak * 100;
+
+          if (c.viewed) {
+            bars += '<div class="bar" style="left:' + pos(ms) + '%;width:' + width + '%;height:' + Math.max(1.5, vh) +
+              '%;background:#34c38f" title="' + tip + '"></div>';
+          }
+
+          if (c.other) {
+            bars += '<div class="bar" style="left:' + pos(ms) + '%;width:' + width + '%;bottom:' + (c.viewed ? Math.max(1.5, vh) : 0) +
+              '%;height:' + Math.max(1.5, c.other / peak * 100) + '%;background:#f46a6a" title="' + tip + '"></div>';
+          }
         });
-        html += '</div>';
 
-        html += '<div class="arrival-wave-legend">' + (att.roots || []).map(function(r) {
-          return '<span><span class="arrival-dot me-1" style="background:' + rootColor[r.root] + '"></span>' +
-            (r.viewed ? '<b>this block</b>' : '<span class="text-muted" title="' + esc(r.root) + '">' + esc(waveRootLabel(r.root, false)) + '</span>') +
-            ' <span class="num">' + r.count.toLocaleString() + '</span>' +
-            ' <span class="text-muted small">(' + (r.count / att.total_count * 100).toFixed(1) + '%)</span></span>';
-        }).join('') + '</div>';
+        var deadline = '';
+        var deadlineLabel = '';
+        if (att.deadline_ms > axLo && att.deadline_ms < axHi) {
+          deadline = '<div class="deadline" style="left:' + pos(att.deadline_ms) +
+            '%" title="One third into the slot: validators attest now even without a block in hand"></div>';
+          deadlineLabel = '<span class="dl" style="left:' + pos(att.deadline_ms) + '%">' + fmtAxis(att.deadline_ms) + ' deadline</span>';
+        }
 
-        document.getElementById('waves-att-chart').innerHTML = html;
+        document.getElementById('waves-att-body').innerHTML = stats + liveBadge(settled) +
+          '<div class="arrival-wave-mini">' + deadline + bars + '</div>' +
+          '<div class="arrival-wave-axis"><span>' + fmtAxis(axLo) + '</span>' + deadlineLabel + '<span>' + fmtAxis(axHi) + '</span></div>';
       }
 
-      // heat maps 0..1 onto green..red for the column strip; the range is the
-      // strip's own spread, since all 128 columns land within a couple hundred
-      // milliseconds and the absolute-time palette would paint them all alike.
+      // heat maps 0..1 onto green..red for the column strip. The range is the
+      // strip's own spread with a floor: a healthy tight spread (a few tens of
+      // ms) renders uniformly green, and red is reserved for columns that lag
+      // by real fractions of a second.
       function heat(t) {
         return 'hsl(' + Math.round(145 - t * 145) + ' 62% 44%)';
       }
 
       function renderColWave(cols, settled) {
+        var entries = cols.columns || [];
+        if (!entries.length || !cols.blob_count) return;
+
         document.getElementById('waves-cols').style.display = '';
 
         var stats = '<b>' + cols.blob_count + '</b> blob' + (cols.blob_count > 1 ? 's' : '') +
-          ' <span class="text-muted px-2">&middot;</span><b>' + cols.seen_columns + '</b><span class="text-muted">/' + (cols.columns || []).length + ' columns seen</span>';
+          sep + '<b>' + cols.seen_columns + '</b><span class="text-muted">/' + entries.length + ' columns seen</span>';
         if (cols.seen_columns > 0) {
-          stats += ' <span class="text-muted px-2">&middot;</span><span class="text-muted">spread</span> ' +
-            fmtMsColored(cols.first_ms) + ' <span class="text-muted">&rarr;</span> ' + fmtMsColored(cols.last_ms);
+          stats += sep + fmtMsColored(cols.first_ms) + ' <span class="text-muted">&rarr;</span> ' + fmtMsColored(cols.last_ms);
         }
         if (cols.probed_columns > 0) {
-          var avgCls = cols.min_availability < 100 ? '#f1b44c' : '#34c38f';
-          stats += ' <span class="text-muted px-2">&middot;</span><span class="text-muted">availability</span> ' +
-            '<span class="num" style="color:' + avgCls + '"><b>' + cols.avg_availability.toFixed(1) + '%</b></span>' +
-            (cols.min_availability < 100 ? ' <span class="text-muted small">(worst column ' + cols.min_availability.toFixed(1) + '%)</span>' : '') +
-            ' <span class="text-muted small">from ' + cols.total_probes.toLocaleString() + ' probes</span>';
+          var availColor = cols.min_availability < 100 ? '#f1b44c' : '#34c38f';
+          stats += sep + '<span class="num" style="color:' + availColor + '"><b>' + cols.avg_availability.toFixed(1) +
+            '%</b></span> <span class="text-muted">available (' + cols.total_probes.toLocaleString() + ' probes)</span>';
+          if (cols.min_availability < 100) {
+            stats += ' <span class="text-muted small">worst column ' + cols.min_availability.toFixed(1) + '%</span>';
+          }
         }
-        document.getElementById('waves-cols-stats').innerHTML = stats + liveBadge(settled);
 
-        // relative color range: min to p95 of the seen times. The span has a
-        // floor so a healthy tight spread (a few tens of ms) renders uniformly
-        // green; red is reserved for columns that lag by real fractions of a
-        // second, not for the slow half of a 60ms window.
-        var seen = (cols.columns || []).map(function(c) { return c.first_seen_ms; })
+        var seen = entries.map(function(c) { return c.first_seen_ms; })
           .filter(function(v) { return v != null; })
           .sort(function(a, b) { return a - b; });
         var rLo = seen.length ? seen[0] : 0;
         var rHi = seen.length ? seen[Math.floor((seen.length - 1) * 0.95)] : 1;
         var rSpan = Math.max(400, rHi - rLo);
 
-        var cells = (cols.columns || []).map(function(c) {
-          var tip = 'column ' + c.index;
+        var slivers = entries.map(function(c) {
           var style = '';
-          var cls = 'arrival-col-cell';
+          var tip = 'column ' + c.index;
 
           if (c.first_seen_ms != null) {
-            var t = Math.min(1, Math.max(0, (c.first_seen_ms - rLo) / rSpan));
-            style = 'background:' + heat(t);
-            tip += ' · first seen ' + fmtStr(c.first_seen_ms);
+            tip += ' \u00b7 first seen ' + fmtStr(c.first_seen_ms);
             if (c.first_seen_by) {
               tip += ' by ' + c.first_seen_by;
               var extra = [c.implementation, (c.country_code || '').toUpperCase()].filter(Boolean).join(', ');
               if (extra) tip += ' (' + extra + ')';
             }
           } else {
-            tip += ' · not seen';
+            tip += ' \u00b7 not seen';
           }
 
           if (c.availability_pct != null) {
-            tip += ' · availability ' + c.availability_pct.toFixed(1) + '% (' + c.probes + ' probes' +
+            tip += ' \u00b7 availability ' + c.availability_pct.toFixed(1) + '% (' + c.probes + ' probes' +
               (c.p50_response_ms ? ', p50 ' + c.p50_response_ms + 'ms' : '') + ')';
-            if (c.availability_pct < 100) cls += ' low';
           }
 
-          return '<div class="' + cls + '" style="' + style + '" title="' + esc(tip) + '"></div>';
+          // red flags a column that failed probes; otherwise shade by first
+          // seen; a never-seen column keeps the muted background
+          if (c.availability_pct != null && c.availability_pct < 100) {
+            style = 'background:#f46a6a';
+          } else if (c.first_seen_ms != null) {
+            style = 'background:' + heat(Math.min(1, Math.max(0, (c.first_seen_ms - rLo) / rSpan)));
+          }
+
+          return '<div style="' + style + '" title="' + esc(tip) + '"></div>';
         }).join('');
 
-        document.getElementById('waves-cols-chart').innerHTML =
-          '<div class="arrival-col-grid">' + cells + '</div>' +
-          '<div class="text-muted small pt-2">first seen: ' +
-          '<span class="arrival-dot" style="background:' + heat(0) + '"></span> ' + fmtStr(rLo) +
-          ' &rarr; <span class="arrival-dot" style="background:' + heat(Math.min(1, (rHi - rLo) / rSpan)) + '"></span> ' + fmtStr(rHi) +
-          ' &middot; <span class="arrival-col-cell low d-inline-block align-middle" style="width:12px;height:12px"></span> availability below 100%</div>';
+        document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) +
+          '<div class="arrival-col-strip">' + slivers + '</div>' +
+          '<div class="arrival-wave-axis"><span>column 0</span><span>' + (entries.length - 1) + '</span></div>';
       }
 
       function renderWaves(data) {
