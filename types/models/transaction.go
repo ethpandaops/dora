@@ -291,9 +291,13 @@ type TransactionPageDataInternalTx struct {
 	Status    uint8  `json:"status"` // 0=success, 1=reverted, 2=error
 	ErrorText string `json:"error_text"`
 
-	// Input/Output (from blockdb call trace, empty for DB-only fallback)
+	// Input/Output (from blockdb call trace, empty for DB-only fallback).
+	// The *Pruned flags mark payloads that were truncated when the trace was
+	// captured, so the bytes here are only the retained prefix.
 	Input           []byte                        `json:"input"`
+	InputPruned     bool                          `json:"input_pruned"`
 	Output          []byte                        `json:"output"`
+	OutputPruned    bool                          `json:"output_pruned"`
 	MethodID        []byte                        `json:"method_id"`
 	MethodName      string                        `json:"method_name"`
 	MethodSignature string                        `json:"method_signature"`

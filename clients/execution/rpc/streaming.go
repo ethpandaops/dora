@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,46 @@ type jsonRPCError struct {
 
 func (e *jsonRPCError) Error() string {
 	return fmt.Sprintf("RPC error (code %d): %s", e.Code, e.Message)
+}
+
+// ResponseDecodeError marks a failure that happened while decoding a response
+// that was received in full. The shape of the payload rather than the
+// connection is the problem, so repeating the same call against another client
+// yields the same failure.
+type ResponseDecodeError struct {
+	Err error
+}
+
+func (e *ResponseDecodeError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *ResponseDecodeError) Unwrap() error {
+	return e.Err
+}
+
+// asDecodeError classifies a decoding failure. Structural JSON problems become
+// a ResponseDecodeError, while I/O and context failures pass through unchanged
+// so callers can still fail over to another client.
+func asDecodeError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var (
+		decodeErr *ResponseDecodeError
+		syntaxErr *json.SyntaxError
+		typeErr   *json.UnmarshalTypeError
+	)
+
+	switch {
+	case errors.As(err, &decodeErr):
+		return err
+	case errors.As(err, &syntaxErr), errors.As(err, &typeErr):
+		return &ResponseDecodeError{Err: err}
+	default:
+		return err
+	}
 }
 
 // streamRPCCall makes a JSON-RPC call and stream-decodes the "result"
@@ -117,11 +158,11 @@ func decodeStreamedJSONRPCResult(
 	// Read opening '{' of JSON-RPC envelope
 	t, err := dec.Token()
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return asDecodeError(fmt.Errorf("read response: %w", err))
 	}
 
 	if t != json.Delim('{') {
-		return fmt.Errorf("expected '{', got %v", t)
+		return &ResponseDecodeError{Err: fmt.Errorf("expected '{', got %v", t)}
 	}
 
 	var foundResult bool
@@ -129,19 +170,19 @@ func decodeStreamedJSONRPCResult(
 	for dec.More() {
 		keyTok, err := dec.Token()
 		if err != nil {
-			return fmt.Errorf("read key: %w", err)
+			return asDecodeError(fmt.Errorf("read key: %w", err))
 		}
 
 		key, ok := keyTok.(string)
 		if !ok {
-			return fmt.Errorf("expected string key, got %T", keyTok)
+			return &ResponseDecodeError{Err: fmt.Errorf("expected string key, got %T", keyTok)}
 		}
 
 		switch key {
 		case "error":
 			var rpcErr jsonRPCError
 			if err := dec.Decode(&rpcErr); err != nil {
-				return fmt.Errorf("decode error field: %w", err)
+				return asDecodeError(fmt.Errorf("decode error field: %w", err))
 			}
 
 			return &rpcErr
@@ -154,16 +195,15 @@ func decodeStreamedJSONRPCResult(
 			foundResult = true
 
 		default:
-			// Skip other fields (jsonrpc, id)
-			var skip json.RawMessage
-			if err := dec.Decode(&skip); err != nil {
+			// Skip other fields (jsonrpc, id) without materialising them.
+			if err := skipJSONValue(dec); err != nil {
 				return fmt.Errorf("skip field %q: %w", key, err)
 			}
 		}
 	}
 
 	if !foundResult {
-		return fmt.Errorf("no 'result' field in JSON-RPC response")
+		return &ResponseDecodeError{Err: fmt.Errorf("no 'result' field in JSON-RPC response")}
 	}
 
 	return nil
@@ -171,14 +211,17 @@ func decodeStreamedJSONRPCResult(
 
 // streamDecodeArray returns a decodeFn for streamRPCCall that
 // stream-decodes a JSON array one element at a time, appending each
-// to *results. Only one decoded element is in the json.Decoder's
-// internal buffer at a time, avoiding the need to buffer the entire
-// raw JSON array.
+// to *results, so the raw JSON of the whole array never has to be held
+// at once.
+//
+// The decoder still buffers each element in full before it is handed over.
+// Where a single element can be arbitrarily large - a call trace, for
+// instance - decode it field by field instead, as decodeCallTraceResults does.
 func streamDecodeArray[T any](results *[]T) func(*json.Decoder) error {
 	return func(dec *json.Decoder) error {
 		t, err := dec.Token()
 		if err != nil {
-			return fmt.Errorf("read array start: %w", err)
+			return asDecodeError(fmt.Errorf("read array start: %w", err))
 		}
 
 		// Handle null result
@@ -187,13 +230,13 @@ func streamDecodeArray[T any](results *[]T) func(*json.Decoder) error {
 		}
 
 		if t != json.Delim('[') {
-			return fmt.Errorf("expected '[', got %v", t)
+			return &ResponseDecodeError{Err: fmt.Errorf("expected '[', got %v", t)}
 		}
 
 		for dec.More() {
 			var elem T
 			if err := dec.Decode(&elem); err != nil {
-				return fmt.Errorf("decode element: %w", err)
+				return asDecodeError(fmt.Errorf("decode element: %w", err))
 			}
 
 			*results = append(*results, elem)
@@ -201,7 +244,7 @@ func streamDecodeArray[T any](results *[]T) func(*json.Decoder) error {
 
 		// Read closing ']'
 		if _, err := dec.Token(); err != nil {
-			return fmt.Errorf("read array end: %w", err)
+			return asDecodeError(fmt.Errorf("read array end: %w", err))
 		}
 
 		return nil
