@@ -234,17 +234,6 @@
       color: var(--bs-secondary-color);
       font-variant-numeric: tabular-nums;
     }
-    /* same pill as the sources bar, one seamless segment per column */
-    .arrival-col-strip {
-      display: flex;
-      height: 10px;
-      max-width: 520px;
-      margin-top: 6px;
-      border-radius: 5px;
-      overflow: hidden;
-      background: var(--bs-secondary-bg);
-    }
-    .arrival-col-strip > div { flex: 1 1 auto; }
   </style>
 
   <div id="arrival-content" class="card-body px-0 py-1">
@@ -788,14 +777,6 @@
           '<div class="arrival-wave-axis"><span>' + fmtAxis(axLo) + '</span><span>' + fmtAxis(axHi) + '</span></div>';
       }
 
-      // heat maps 0..1 onto green..red for the column strip. The range is the
-      // strip's own spread with a floor: a healthy tight spread (a few tens of
-      // ms) renders as one even green pill, and red is reserved for columns
-      // that lag by real fractions of a second.
-      function heat(t) {
-        return 'hsl(' + Math.round(145 - t * 145) + ' 62% 44%)';
-      }
-
       function renderColWave(cols, settled) {
         var entries = cols.columns || [];
         if (!entries.length || !cols.blob_count) return;
@@ -819,43 +800,51 @@
         var seen = entries.map(function(c) { return c.first_seen_ms; })
           .filter(function(v) { return v != null; })
           .sort(function(a, b) { return a - b; });
-        var rLo = seen.length ? seen[0] : 0;
-        var rHi = seen.length ? seen[Math.floor((seen.length - 1) * 0.95)] : 1;
-        var rSpan = Math.max(400, rHi - rLo);
+        if (!seen.length) {
+          document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled);
+          return;
+        }
 
-        var segments = entries.map(function(c) {
-          var style = '';
-          var tip = 'column ' + c.index;
+        // cumulative columns-seen-over-time, zoomed to the burst. The y scale
+        // is all columns, so an incomplete set visibly plateaus below the top.
+        var total = entries.length;
+        var spread = Math.max(40, seen[seen.length - 1] - seen[0]);
+        var axLo = Math.max(0, seen[0] - spread * 0.06);
+        var axHi = seen[seen.length - 1] + spread * 0.12;
+        var span = Math.max(1, axHi - axLo);
+        var pos = function(ms) { return (ms - axLo) / span * 100; };
 
-          if (c.first_seen_ms != null) {
-            tip += ' \u00b7 first seen ' + fmtStr(c.first_seen_ms);
-            if (c.first_seen_by) {
-              tip += ' by ' + c.first_seen_by;
-              var extra = [c.implementation, (c.country_code || '').toUpperCase()].filter(Boolean).join(', ');
-              if (extra) tip += ' (' + extra + ')';
-            }
-          } else {
-            tip += ' \u00b7 not seen';
-          }
+        var W = 100, H = 40;
+        var px = function(ms) { return pos(ms).toFixed(2); };
+        var py = function(v) { return (H - Math.max(0, v / total * (H - 4))).toFixed(2); };
 
-          if (c.availability_pct != null) {
-            tip += ' \u00b7 availability ' + c.availability_pct.toFixed(1) + '% (' + c.probes + ' probes' +
-              (c.p50_response_ms ? ', p50 ' + c.p50_response_ms + 'ms' : '') + ')';
-          }
+        var pts = [px(seen[0]) + ',' + py(0)];
+        seen.forEach(function(ms, i) {
+          pts.push(px(ms) + ',' + py(i + 1));
+        });
+        pts.push(px(axHi) + ',' + py(seen.length));
 
-          // red flags a column that failed probes; otherwise shade by first
-          // seen; a never-seen column keeps the muted background
-          if (c.availability_pct != null && c.availability_pct < 100) {
-            style = 'background:#f46a6a';
-          } else if (c.first_seen_ms != null) {
-            style = 'background:' + heat(Math.min(1, Math.max(0, (c.first_seen_ms - rLo) / rSpan)));
-          }
+        var edge = (H + 2).toFixed(2);
+        var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+          '<polygon points="' + px(seen[0]) + ',' + edge + ' ' + pts.join(' ') + ' ' + px(axHi) + ',' + edge +
+          '" fill="rgba(52,195,143,0.25)"/>' +
+          '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#34c38f"' +
+          ' stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>';
 
-          return '<div style="' + style + '" title="' + esc(tip) + '"></div>';
-        }).join('');
+        // hover bins report how much of the set had spread by each moment
+        var hovers = '';
+        var bins = 24;
+        for (var b = 0; b < bins; b++) {
+          var upto = axLo + span * (b + 1) / bins;
+          var count = 0;
+          while (count < seen.length && seen[count] <= upto) count++;
+          hovers += '<div class="hover" style="left:' + (b / bins * 100) + '%;width:' + (100 / bins) +
+            '%" title="' + count + '/' + total + ' columns seen by ' + fmtStr(Math.round(upto)) + '"></div>';
+        }
 
         document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) +
-          '<div class="arrival-col-strip">' + segments + '</div>';
+          '<div class="arrival-wave-mini">' + svg + hovers + '</div>' +
+          '<div class="arrival-wave-axis"><span>' + fmtAxis(Math.round(axLo)) + '</span><span>' + fmtAxis(Math.round(axHi)) + '</span></div>';
       }
 
       function renderWaves(data) {
