@@ -1,6 +1,7 @@
 package statetransition
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -129,9 +130,16 @@ type specTestStats struct {
 }
 
 func TestSpecVectors(t *testing.T) {
+	if os.Getenv("SPEC_TESTS_DIR") == "" {
+		t.Skip("set SPEC_TESTS_DIR to a consensus-specs release laid out by .github/scripts/fetch-spec-tests.sh to run the spec vectors")
+	}
+
+	// Past this point the vectors were asked for, so a layout this runner cannot
+	// read is a failure: skipping would report a run that covered nothing as a
+	// pass.
 	testsDir, configsDir, err := resolveSpecTestDirs(os.Getenv("SPEC_TESTS_DIR"), os.Getenv("SPEC_CONFIGS_DIR"))
 	if err != nil {
-		t.Skipf("%v", err)
+		t.Fatalf("%v", err)
 	}
 
 	stats := &specTestStats{unsupported: map[string]int{}}
@@ -160,6 +168,12 @@ func TestSpecVectors(t *testing.T) {
 				})
 			}
 		})
+	}
+
+	// A filter that matches nothing, or a release whose layout moved, would
+	// otherwise leave the run green without having checked anything.
+	if stats.passed+stats.failed+stats.expectedInvalid == 0 {
+		t.Fatalf("no vectors ran below %v: check SPEC_TESTS_PRESET/FORK/RUNNER/CASE and the release layout", testsDir)
 	}
 
 	t.Logf("spec vectors: %d passed, %d failed, %d expected-invalid (skipped)",
@@ -834,7 +848,7 @@ func parseFlatYaml(content string) map[string]string {
 // still works as long as SPEC_CONFIGS_DIR names the presets/configs root.
 func resolveSpecTestDirs(testsDir, configsDir string) (string, string, error) {
 	if testsDir == "" {
-		return "", "", fmt.Errorf("set SPEC_TESTS_DIR to a consensus-specs release laid out by .github/scripts/fetch-spec-tests.sh to run the spec vectors")
+		return "", "", errors.New("SPEC_TESTS_DIR is empty")
 	}
 
 	// A release root holds the vectors one level down, next to the constants.

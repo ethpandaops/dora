@@ -96,6 +96,8 @@ jobs:
 
     - name: Replay the vectors
       env:
-        SPEC_TESTS_DIR: .spec-tests/${{ steps.params.outputs.version }}
+        # go test runs a package with its own directory as the working directory,
+        # so this has to be absolute.
+        SPEC_TESTS_DIR: ${{ github.workspace }}/.spec-tests/${{ steps.params.outputs.version }}
         SPEC_TESTS_PRESET: ${{ steps.params.outputs.preset }}
       run: go test -vet=off -timeout 60m ./indexer/beacon/statetransition/ -run TestSpecVectors -v

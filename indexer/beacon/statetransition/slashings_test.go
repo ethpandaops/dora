@@ -208,11 +208,11 @@ func TestChurnLimits(t *testing.T) {
 	s.caches.invalidateBalanceCaches()
 
 	tests := []struct {
-		name    string
-		version spec.DataVersion
-		exit    phase0.Gwei
-		active  phase0.Gwei
-		consol  phase0.Gwei
+		name          string
+		version       spec.DataVersion
+		exit          phase0.Gwei
+		active        phase0.Gwei
+		consolidation phase0.Gwei
 	}{
 		// Electra: one shared churn, capped at 256 ETH, consolidations get the leftover.
 		{"electra", spec.DataVersionFulu, 256 * gwei, 256 * gwei, 0},
@@ -230,8 +230,8 @@ func TestChurnLimits(t *testing.T) {
 			if got := s.getActivationChurnLimit(); got != test.active {
 				t.Errorf("activation churn limit = %d, want %d", got, test.active)
 			}
-			if got := s.getConsolidationChurnLimit(); got != test.consol {
-				t.Errorf("consolidation churn limit = %d, want %d", got, test.consol)
+			if got := s.getConsolidationChurnLimit(); got != test.consolidation {
+				t.Errorf("consolidation churn limit = %d, want %d", got, test.consolidation)
 			}
 		})
 	}
