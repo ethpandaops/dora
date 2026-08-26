@@ -206,6 +206,15 @@
       border-bottom: 1px solid var(--bs-border-color);
     }
     .arrival-hist.hist-sm { height: 72px; }
+    .arrival-hist.hist-tall { height: 210px; }
+    .arrival-hist .endlab {
+      position: absolute;
+      right: 5px;
+      transform: translateY(-50%);
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-shadow: 0 0 3px var(--bs-body-bg), 0 0 3px var(--bs-body-bg);
+    }
     .arrival-hist .grid {
       position: absolute; top: 0; bottom: 0; width: 1px;
       background: var(--bs-border-color);
@@ -214,7 +223,8 @@
     .arrival-hist .bar { position: absolute; bottom: 0; }
     .arrival-hist .deadline {
       position: absolute; top: 0; bottom: 0; width: 0;
-      border-left: 1px dashed var(--bs-secondary-color);
+      border-left: 2px dashed #f46a6a;
+      opacity: 0.9;
     }
     .arrival-hist .deadline .note {
       position: absolute;
@@ -773,21 +783,25 @@
           if (!viewed) viewed = (att.roots || [])[0];
         }
 
+        // block phase first, then the payload phase, so the legend reads in
+        // the order the slot unfolds
+        if (data.head && data.head.total_count) {
+          series.push({
+            label: 'head adopted', color: '#20c997',
+            buckets: data.head.buckets || [],
+            count: data.head.total_count,
+            denom: data.head.total_count,
+            of: 'observing nodes',
+          });
+        }
+
         if (viewed) {
           series.push({
             label: 'attestations', color: '#5b8def',
             buckets: viewed.buckets || [],
             count: viewed.count,
             denom: att.expected_count || viewed.count,
-          });
-        }
-
-        if (data.ptc && data.ptc.total_count) {
-          series.push({
-            label: 'PTC votes', color: '#9775fa',
-            buckets: (data.ptc.buckets || []).map(function(b) { return { ms: b.ms, count: b.present + b.missing }; }),
-            count: data.ptc.total_count,
-            denom: data.ptc.expected_count || data.ptc.total_count,
+            of: 'expected attesters',
           });
         }
 
@@ -797,15 +811,27 @@
             buckets: data.payload.buckets || [],
             count: data.payload.total_count,
             denom: data.payload.total_count,
+            of: 'observing nodes',
           });
         }
 
-        if (data.head && data.head.total_count) {
+        if (data.executed && data.executed.total_count) {
           series.push({
-            label: 'head adopted', color: '#20c997',
-            buckets: data.head.buckets || [],
-            count: data.head.total_count,
-            denom: data.head.total_count,
+            label: 'executed', color: '#f1b44c',
+            buckets: data.executed.buckets || [],
+            count: data.executed.total_count,
+            denom: data.executed.total_count,
+            of: 'reporting execution clients',
+          });
+        }
+
+        if (data.ptc && data.ptc.total_count) {
+          series.push({
+            label: 'PTC votes', color: '#9775fa',
+            buckets: (data.ptc.buckets || []).map(function(b) { return { ms: b.ms, count: b.present + b.missing }; }),
+            count: data.ptc.total_count,
+            denom: data.ptc.expected_count || data.ptc.total_count,
+            of: 'the PTC',
           });
         }
 
@@ -818,6 +844,7 @@
 
         var chart = '';
 
+        chart += '<span class="ylab" style="top:0%">100%</span>';
         [25, 50, 75].forEach(function(pct) {
           chart += '<div class="hgrid" style="top:' + (100 - pct) + '%"></div>' +
             '<span class="ylab" style="top:' + (100 - pct) + '%">' + pct + '%</span>';
@@ -831,14 +858,14 @@
 
         if (att && att.deadline_ms > 0) {
           marks.push({
-            ms: att.deadline_ms, label: 'attestation deadline', color: 'var(--bs-secondary-color)',
+            ms: att.deadline_ms, label: 'attestation deadline', color: '#f46a6a',
             title: 'ATTESTATION_DUE_BPS into the slot: validators attest now even without a block in hand',
           });
         }
 
         if (data.ptc && data.ptc.deadline_ms > 0) {
           marks.push({
-            ms: data.ptc.deadline_ms, label: 'PTC deadline', color: 'var(--bs-secondary-color)',
+            ms: data.ptc.deadline_ms, label: 'PTC deadline', color: '#f46a6a',
             title: 'PAYLOAD_ATTESTATION_DUE_BPS into the slot: PTC votes are due by here',
           });
         }
@@ -887,9 +914,10 @@
             pts.push(x + ',' + (100 - cum / sr.denom * 100).toFixed(2));
           });
 
-          pts.push('100,' + (100 - cum / sr.denom * 100).toFixed(2));
+          sr.finalPct = cum / sr.denom * 100;
+          pts.push('100,' + (100 - sr.finalPct).toFixed(2));
           svg += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + sr.color +
-            '" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+            '" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
         });
 
         svg += '</svg>';
@@ -911,6 +939,25 @@
             '%" title="by ' + fmtStr(Math.round(upto)) + ': ' + parts.join(' \u00b7 ') + '"></div>';
         }
 
+        // name each line at its right end instead of asking the reader to map
+        // legend swatches; stacked labels get pushed apart when lines end at
+        // the same level
+        var slots = series.map(function(sr, i) { return { i: i, top: 100 - sr.finalPct }; });
+        slots.sort(function(a, b) { return a.top - b.top; });
+
+        var minGap = 7;
+        for (var li = 1; li < slots.length; li++) {
+          if (slots[li].top < slots[li - 1].top + minGap) slots[li].top = slots[li - 1].top + minGap;
+        }
+
+        var endlabs = '';
+        slots.forEach(function(sl) {
+          var sr = series[sl.i];
+          endlabs += '<span class="endlab" style="top:' + Math.min(93, Math.max(3, sl.top + 3)) +
+            '%;color:' + sr.color + '">' + sr.label + '</span>';
+        });
+        chart += endlabs;
+
         var labels = '';
 
         ax.lines.forEach(function(t) {
@@ -919,8 +966,9 @@
         labels += '<span style="left:100%">' + fmtAxis(ax.hi) + '</span>';
 
         var stats = series.map(function(sr) {
-          return '<span class="arrival-heat-key" style="background:' + sr.color + '"></span> ' + sr.label +
-            ' <b>' + sr.count.toLocaleString() + '</b>' +
+          return '<span style="color:' + sr.color + ';font-weight:600" title="of ' +
+            (sr.denom !== sr.count ? sr.denom.toLocaleString() + ' ' : '') + sr.of + '">' + sr.label + '</span> <b>' +
+            sr.count.toLocaleString() + '</b>' +
             (sr.denom !== sr.count ? '<span class="text-muted">/' + sr.denom.toLocaleString() + '</span>' : '');
         }).join(sep);
 
@@ -930,7 +978,7 @@
         }
 
         document.getElementById('waves-timeline-body').innerHTML = stats + liveBadge(data.settled) +
-          '<div class="arrival-hist">' + chart + svg + hovers + '</div>' +
+          '<div class="arrival-hist hist-tall">' + chart + svg + hovers + '</div>' +
           '<div class="arrival-hist-axis">' + labels + '</div>';
       }
 
@@ -1085,7 +1133,8 @@
       function loadWaves() {
         if (wavesLoaded || !document.getElementById('waves-timeline')) return;
         wavesLoaded = true;
-        fetch('/slot/' + arrivalSlot + '/waves?root=' + encodeURIComponent(arrivalBlockRoot))
+        fetch('/slot/' + arrivalSlot + '/waves?root=' + encodeURIComponent(arrivalBlockRoot) +
+          '&exec=' + encodeURIComponent(arrivalExecHash) + '&num=' + encodeURIComponent(arrivalExecNumber))
           .then(function(r) {
             if (!r.ok) throw new Error('status ' + r.status);
             return r.json();

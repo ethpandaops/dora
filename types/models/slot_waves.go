@@ -17,10 +17,12 @@ type SlotWavesResponse struct {
 	Attestations *SlotAttestationWave `json:"attestations,omitempty"`
 	Ptc          *SlotPtcWave         `json:"ptc,omitempty"`
 	// Payload and Head bucket when each observing node first saw the revealed
-	// execution payload and first adopted the block as head.
-	Payload *SlotSeenWave   `json:"payload,omitempty"`
-	Head    *SlotSeenWave   `json:"head,omitempty"`
-	Columns *SlotColumnWave `json:"columns,omitempty"`
+	// execution payload and first adopted the block as head; Executed buckets
+	// when each node's execution client finished importing the payload.
+	Payload  *SlotSeenWave   `json:"payload,omitempty"`
+	Head     *SlotSeenWave   `json:"head,omitempty"`
+	Executed *SlotSeenWave   `json:"executed,omitempty"`
+	Columns  *SlotColumnWave `json:"columns,omitempty"`
 }
 
 // SlotSeenWave buckets when observing nodes first saw one per-slot object,

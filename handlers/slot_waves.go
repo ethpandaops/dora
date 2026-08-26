@@ -53,9 +53,14 @@ func SlotWaves(w http.ResponseWriter, r *http.Request) {
 	// usable root fall back to the whole slot.
 	blockRoot := normalizeBlockRoot(r.URL.Query().Get("root"))
 
-	cacheKey := fmt.Sprintf("slotwaves:%d:%s", slot, blockRoot)
+	// the execution block identity comes from the page, like on the arrival
+	// endpoint; a bad value only misses the executed series
+	execHash := normalizeBlockRoot(r.URL.Query().Get("exec"))
+	execNumber, _ := strconv.ParseUint(r.URL.Query().Get("num"), 10, 64)
+
+	cacheKey := fmt.Sprintf("slotwaves:%d:%s:%s:%d", slot, blockRoot, execHash, execNumber)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotWavesResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
-		data, cacheTimeout, buildErr := buildSlotWavesData(pageCall.CallCtx, phase0.Slot(slot), blockRoot)
+		data, cacheTimeout, buildErr := buildSlotWavesData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
 		if buildErr != nil {
 			logrus.WithError(buildErr).Error("error loading slot waves data from xatu-cbt")
 			pageCall.CacheTimeout = -1
@@ -89,7 +94,7 @@ func SlotWaves(w http.ResponseWriter, r *http.Request) {
 // data column measurements. It returns the response and the cache timeout,
 // following the same ladder as the arrival endpoint: one slot while the cbt
 // transformations may still rewrite the slot's rows, then short, then long.
-func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string) (*models.SlotWavesResponse, time.Duration, error) {
+func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot, execHash string, execNumber uint64) (*models.SlotWavesResponse, time.Duration, error) {
 	client := xatu.GlobalCbtClient
 	chainState := services.GlobalBeaconService.GetChainState()
 	slotTime := chainState.SlotToTime(slot)
@@ -118,7 +123,7 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 
 	var ptc *models.SlotPtcWave
 
-	var payload, head *models.SlotSeenWave
+	var payload, head, executed *models.SlotSeenWave
 
 	if xatu.GlobalClient != nil {
 		slotMs := lateThreshold(chainState)
@@ -151,6 +156,13 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 
 			head = nil
 		}
+
+		executed, err = loadExecutedWave(queryCtx, xatu.GlobalClient, execHash, execNumber, slotTime, settled, slotMs)
+		if err != nil {
+			logrus.WithError(err).Warn("error loading executed wave from xatu")
+
+			executed = nil
+		}
 	}
 
 	response := &models.SlotWavesResponse{
@@ -161,6 +173,7 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 		Ptc:          ptc,
 		Payload:      payload,
 		Head:         head,
+		Executed:     executed,
 		Columns:      columns,
 	}
 
@@ -222,6 +235,68 @@ func voteThreshold(chainState *consensus.ChainState, expected int) int {
 	}
 
 	return int(uint64(expected) * numerator / denominator) //nolint:gosec // bounded by the validator set
+}
+
+// executedWaveQuery buckets when each node's execution client finished
+// importing the payload: the newPayload call start plus its duration, taken
+// from the execution-side captures, which are keyed by block rather than
+// slot. Bounded to the slot like the other waves.
+const executedWaveQuery = `SELECT toUInt32(intDiv(first_ms, 50) * 50) AS chunk, count() AS nodes
+FROM (
+    SELECT meta_client_name,
+           min(toUnixTimestamp64Milli(requested_date_time) + toInt64(duration_ms)) - ? AS first_ms
+    FROM execution_engine_new_payload
+    WHERE meta_network_name = ? AND block_number = ? AND block_hash = ?
+    GROUP BY meta_client_name
+    HAVING first_ms BETWEEN 0 AND ?
+)
+GROUP BY chunk
+ORDER BY chunk`
+
+// loadExecutedWave loads the per-node payload execution wave, or nil when the
+// page provided no execution block or the network lacks the capture table.
+func loadExecutedWave(ctx context.Context, client *xatu.Client, execHash string, execNumber uint64, slotTime time.Time, settled bool, slotMs uint32) (*models.SlotSeenWave, error) {
+	if execHash == "" || execNumber == 0 {
+		return nil, nil
+	}
+
+	args := []any{slotTime.UnixMilli(), client.Network(), execNumber, execHash, slotMs}
+
+	rows, err := client.Query(ctx, settled, executedWaveQuery, args...)
+	if err != nil {
+		if isMissingTableError(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("executed wave query: %w", err)
+	}
+	defer rows.Close()
+
+	wave := &models.SlotSeenWave{}
+
+	for rows.Next() {
+		var chunk uint32
+
+		var nodes uint64
+
+		if err := rows.Scan(&chunk, &nodes); err != nil {
+			return nil, fmt.Errorf("executed wave scan: %w", err)
+		}
+
+		count := int(nodes) //nolint:gosec // bounded by the node fleet
+		wave.TotalCount += count
+		wave.Buckets = append(wave.Buckets, &models.SlotAttestationBucket{Ms: chunk, Count: count})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("executed wave query: %w", err)
+	}
+
+	if wave.TotalCount == 0 {
+		return nil, nil
+	}
+
+	return wave, nil
 }
 
 // expectedAttesters is how many validators were due to attest in the slot:
