@@ -18,6 +18,7 @@ type SlotArrivalResponse struct {
 	P2PObservations  int                     `json:"p2p_observations"`
 	HeadObservations int                     `json:"head_observations"`
 	NPObservations   int                     `json:"np_observations"`
+	PLObservations   int                     `json:"pl_observations"`
 	Stats            *SlotArrivalStats       `json:"stats,omitempty"`
 	Nodes            []*SlotArrivalNode      `json:"nodes,omitempty"`
 	Continents       []*SlotArrivalContinent `json:"continents,omitempty"`
@@ -54,6 +55,7 @@ type SlotArrivalNode struct {
 	P2PMs          *uint32 `json:"p2p_ms,omitempty"`
 	HeadMs         *uint32 `json:"head_ms,omitempty"`
 	NPMs           *uint32 `json:"np_ms,omitempty"`
+	PLMs           *uint32 `json:"pl_ms,omitempty"`
 	NPDurMs        *uint32 `json:"np_dur_ms,omitempty"`
 	NPStatus       string  `json:"np_status,omitempty"`
 	Late           bool    `json:"late,omitempty"`

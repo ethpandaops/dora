@@ -92,6 +92,7 @@
     }
     .lane-track .mark.p2p { background: #9775fa; }
     .lane-track .mark.api { background: #5b8def; }
+    .lane-track .mark.pl { background: #e64980; }
     .lane-track .tick-head {
       position: absolute; top: 50%; width: 2px; height: 11px;
       margin: -5.5px 0 0 -1px;
@@ -193,6 +194,7 @@
       white-space: nowrap; display: inline-block; vertical-align: middle;
     }
     .arrival-hide-np [data-col="np"] { display: none; }
+    .arrival-hide-pl [data-col="pl"] { display: none; }
     .arrival-table th.sortable { cursor: pointer; user-select: none; }
     .arrival-table th.sortable:hover { color: var(--bs-emphasis-color); }
   </style>
@@ -298,7 +300,7 @@
       }
       function contColor(code) { return continentColors[code] || '#74788d'; }
       function nodeTimes(n) {
-        return [n.api_ms, n.p2p_ms, n.head_ms, n.np_ms].filter(function(v) { return v != null; });
+        return [n.api_ms, n.p2p_ms, n.head_ms, n.np_ms, n.pl_ms].filter(function(v) { return v != null; });
       }
       function groupBadge(g) {
         var st = groupStyles[g] || groupStyles.other;
@@ -385,6 +387,7 @@
           case 'dv': return (n.api_ms != null && n.p2p_ms != null) ? n.api_ms - n.p2p_ms : null;
           case 'head': return n.head_ms != null ? n.head_ms : null;
           case 'np': return n.np_ms != null ? n.np_ms : null;
+          case 'pl': return n.pl_ms != null ? n.pl_ms : null;
           default: return n.min_ms;
         }
       }
@@ -453,6 +456,11 @@
             '%" title="head event ' + fmtStr(n.head_ms) + '"></div>';
         }
 
+        if (n.pl_ms != null) {
+          html += '<div class="mark pl" style="left:' + pos(n.pl_ms) +
+            '%" title="execution payload gossip ' + fmtStr(n.pl_ms) + '"></div>';
+        }
+
         return html;
       }
 
@@ -519,17 +527,20 @@
             '<td class="text-end grp-start">' + fmtMsColored(n.api_ms) + '</td>' +
             '<td class="text-end num">' + fmtDelta(dVerify) + '</td>' +
             '<td class="text-end">' + fmtMsColored(n.head_ms) + '</td>' +
+            '<td class="text-end grp-start" data-col="pl">' + fmtMsColored(n.pl_ms) + '</td>' +
             '<td class="text-end grp-start" data-col="np">' + np + '</td>' +
             last + '</tr>';
         }).join('');
 
         return '<div class="arrival-scroll">' +
-          '<table class="table table-sm arrival-table text-left mb-1' + (data.np_observations ? '' : ' arrival-hide-np') + '">' +
+          '<table class="table table-sm arrival-table text-left mb-1' + (data.np_observations ? '' : ' arrival-hide-np') +
+          (data.pl_observations ? '' : ' arrival-hide-pl') + '">' +
           '<thead>' +
           '<tr class="group-row">' +
           '<th></th><th></th><th></th>' +
           '<th class="text-end layer grp-start" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
           '<th colspan="3" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
+          '<th class="text-end layer grp-start" data-col="pl" title="The gloas execution payload, gossiped separately from the block after the proposer reveals it">payload</th>' +
           '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
           '<th class="text-center layer grp-start">timeline</th></tr>' +
           '<tr>' +
@@ -543,6 +554,8 @@
           '<th class="text-end sortable" data-sort="dv" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify' + sortInd('dv') + '</th>' +
           '<th class="text-end sortable" data-sort="head" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">' +
           '<span class="mark-demo" style="width:2px;height:10px;background:#20c997;border-radius:1px"></span>Head event' + sortInd('head') + '</th>' +
+          '<th class="text-end grp-start sortable" data-sort="pl" data-col="pl" title="First execution_payload gossip message seen by the node — when the revealed payload reached it">' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#e64980;border-radius:2px"></span>Payload' + sortInd('pl') + '</th>' +
           '<th class="text-end grp-start sortable" data-sort="np" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
           '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload' + sortInd('np') + '</th>' +
           '<th class="grp-start sortable" data-sort="min" style="min-width: 16rem" title="Every node on one axis running from slot start, so bar length is the time the node took to have the block in hand">' +
@@ -591,7 +604,7 @@
 
         var obs = '<b>' + s.unique_nodes + '</b> nodes &mdash; ' +
           data.observations + ' block / ' + data.p2p_observations + ' block gossip / ' + data.head_observations + ' head / ' +
-          data.np_observations + ' engine observations';
+          data.np_observations + ' engine' + (data.pl_observations ? ' / ' + data.pl_observations + ' payload' : '') + ' observations';
         if (s.late_nodes > 0) {
           obs += ' <span class="badge rounded-pill text-bg-danger ms-1" style="font-size: 11px;" title="Nodes whose earliest observation came more than a slot after slot start; excluded from stats">' +
             s.late_nodes + ' late node' + (s.late_nodes > 1 ? 's' : '') + '</span>';
