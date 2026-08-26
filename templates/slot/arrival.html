@@ -1115,6 +1115,15 @@
           });
         }
 
+        if (ptc.deadline_ms > 0) {
+          marks.push({
+            ms: ptc.deadline_ms, label: 'PTC deadline', color: 'var(--bs-secondary-color)',
+            title: 'Votes are due within the first 75% of the slot; some clients vote as soon as they see the payload, others wait for the deadline',
+          });
+        }
+
+        marks.sort(function(a, b) { return a.ms - b.ms; });
+
         var ax = histAxis(0, waveDomain(slotMs, hi, binMs));
         var hist = renderHist(ax, bins, binMs, marks, true);
         if (!hist) return;

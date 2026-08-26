@@ -105,7 +105,7 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 	}
 
 	if attestations != nil {
-		attestations.DeadlineMs = lateThreshold(chainState) / 3
+		attestations.DeadlineMs = attestationDeadlineMs(chainState, slot)
 		attestations.ExpectedCount = expectedAttesters(queryCtx, chainState, slot)
 
 		if xatu.GlobalClient != nil {
@@ -136,6 +136,11 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 
 			ptc = nil
 		}
+
+		if ptc != nil {
+			// PAYLOAD_ATTESTATION_DUE_BPS: votes are due within 75% of the slot
+			ptc.DeadlineMs = lateThreshold(chainState) * 75 / 100
+		}
 	}
 
 	response := &models.SlotWavesResponse{
@@ -159,6 +164,20 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 	}
 
 	return response, cacheTimeout, nil
+}
+
+// attestationDeadlineMs is the point where validators attest without a block
+// in hand: a third of the slot, moved to a quarter by gloas
+// (ATTESTATION_DUE_BPS_GLOAS = 2500).
+func attestationDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) uint32 {
+	slotMs := lateThreshold(chainState)
+	specs := chainState.GetSpecs()
+
+	if specs.GloasForkEpoch != nil && chainState.EpochOfSlot(slot) >= phase0.Epoch(*specs.GloasForkEpoch) {
+		return slotMs * 25 / 100
+	}
+
+	return slotMs / 3
 }
 
 // expectedAttesters is how many validators were due to attest in the slot:

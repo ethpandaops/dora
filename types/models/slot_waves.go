@@ -23,9 +23,11 @@ type SlotWavesResponse struct {
 // networks: when each PTC member's vote was first seen, split by whether it
 // judged the payload present. Nil on networks without the gloas schema.
 type SlotPtcWave struct {
-	TotalCount   int              `json:"total_count"`
-	PresentCount int              `json:"present_count"`
-	Buckets      []*SlotPtcBucket `json:"buckets,omitempty"`
+	TotalCount   int `json:"total_count"`
+	PresentCount int `json:"present_count"`
+	// DeadlineMs is when PTC votes are due: 75% of the slot.
+	DeadlineMs uint32           `json:"deadline_ms"`
+	Buckets    []*SlotPtcBucket `json:"buckets,omitempty"`
 }
 
 // SlotPtcBucket is one 50ms chunk of PTC votes.
