@@ -155,20 +155,33 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	// Phase 2: Process transactions (pure computation, no I/O)
 	procCtx := newTxProcessingContext(t.ctx, client, t, ref, data)
 
-	receiptIdx := 0
-	dbCommitCallbacks := make([]dbCommitCallback, 0, len(data.Transactions))
-	for _, tx := range data.Transactions {
-		var receipt *types.Receipt
-		for receiptIdx < len(data.Receipts) {
-			receipt = data.Receipts[receiptIdx]
+	// Receipts are matched by transaction hash rather than by position: the transaction
+	// list can be sparse when a transaction fails to decode, and a receipt carries the
+	// authoritative transaction index that the tx UID is built from.
+	receiptMap := make(map[common.Hash]*types.Receipt, len(data.Receipts))
+	for _, receipt := range data.Receipts {
+		receiptMap[receipt.TxHash] = receipt
+	}
 
-			if receipt.TxHash == tx.Hash() {
-				break
-			}
-			receiptIdx++
-		}
+	unmatchedTxs := 0
+	dbCommitCallbacks := make([]dbCommitCallback, 0, len(data.Transactions))
+	for idx, tx := range data.Transactions {
+		// A transaction is only indexed together with its own receipt. Pairing it with any
+		// other receipt would file it under a foreign transaction index and attach foreign
+		// gas, status and event data to it.
+		receipt := receiptMap[tx.Hash()]
 		if receipt == nil {
-			break
+			unmatchedTxs++
+
+			t.logger.WithFields(logrus.Fields{
+				"blockNumber": data.BlockNumber,
+				"blockHash":   data.BlockHash.Hex(),
+				"txIndex":     idx,
+				"txHash":      tx.Hash().Hex(),
+				"client":      client.GetName(),
+			}).Warn("no receipt matches transaction, skipping transaction")
+
+			continue
 		}
 
 		// Look up trace for this transaction (may be nil)
@@ -182,6 +195,20 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		if dbCommitCallback != nil {
 			dbCommitCallbacks = append(dbCommitCallbacks, dbCommitCallback)
 		}
+	}
+
+	// An incomplete block is committed rather than dropped, so the indexer keeps making
+	// progress, but it must be visible: the block is stored short of transactions and
+	// nothing revisits it once it carries a status.
+	if unmatchedTxs > 0 || len(data.Transactions) != len(data.Receipts) {
+		t.logger.WithFields(logrus.Fields{
+			"blockNumber":  data.BlockNumber,
+			"blockHash":    data.BlockHash.Hex(),
+			"transactions": len(data.Transactions),
+			"receipts":     len(data.Receipts),
+			"unmatched":    unmatchedTxs,
+			"client":       client.GetName(),
+		}).Warn("block indexed with incomplete transaction set")
 	}
 
 	// Process fee recipient and withdrawals if beacon block data is available

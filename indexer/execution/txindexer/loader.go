@@ -61,10 +61,20 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 			txs, bn, bh, coinbase, wdt, err := t.fetchBlockTransactions(ctx, rpcClient, ref.BlockHash)
 			if err != nil {
 				lastErr = fmt.Errorf("fetch transactions from %s: %w", client.GetName(), err)
-				t.logger.WithError(err).WithFields(logrus.Fields{
+				entry := t.logger.WithError(err).WithFields(logrus.Fields{
 					"client": client.GetName(),
 					"retry":  retry + 1,
-				}).Debug("failed to fetch transactions, retrying")
+				})
+
+				// A fetch that simply failed is routine and retried quietly. A client that
+				// answered with a transaction it encodes differently from the canonical form
+				// is a defect in that client and stays hidden unless it is reported.
+				if errors.Is(err, errTxHashMismatch) {
+					entry.Warn("client returned a transaction that does not match its own hash, retrying with another client")
+				} else {
+					entry.Debug("failed to fetch transactions, retrying")
+				}
+
 				continue
 			}
 
@@ -162,10 +172,16 @@ func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*
 	}
 
 	transactions := make([]*types.Transaction, 0, len(payload.Transactions))
-	for _, txBytes := range payload.Transactions {
+	for idx, txBytes := range payload.Transactions {
 		tx := &types.Transaction{}
 		if err := tx.UnmarshalBinary(txBytes); err != nil {
-			t.logger.WithError(err).Debug("failed to unmarshal transaction from beacon block")
+			// The transaction stays out of the list and goes unindexed. Receipts are
+			// matched by hash, so the rest of the block is unaffected.
+			t.logger.WithError(err).WithFields(logrus.Fields{
+				"blockNumber": payload.BlockNumber,
+				"txIndex":     idx,
+			}).Warn("failed to unmarshal transaction from beacon block, skipping transaction")
+
 			continue
 		}
 		transactions = append(transactions, tx)
@@ -223,35 +239,24 @@ func (t *TxIndexer) fetchBlockTransactions(
 
 	transactions := make([]*types.Transaction, 0, len(block.Transactions))
 	for idx, rawTx := range block.Transactions {
-		// Check transaction type for compatibility
-		var txHeader struct {
-			Type hexutil.Uint64 `json:"type"`
-		}
-
-		isValid := false
-		if err := json.Unmarshal(rawTx, &txHeader); err == nil {
-			switch txHeader.Type {
-			case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType,
-				types.BlobTxType, types.SetCodeTxType:
-				isValid = true
+		tx, err := decodeBlockTransaction(rawTx)
+		if err != nil {
+			// A client whose transaction encoding disagrees with the canonical one cannot
+			// be trusted for the rest of the block either, so the whole response is
+			// rejected and the caller retries against another client.
+			if errors.Is(err, errTxHashMismatch) {
+				return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block %s transaction %d: %w", hash.Hex(), idx, err)
 			}
-		}
 
-		if !isValid {
-			t.logger.WithFields(logrus.Fields{
-				"txIndex": idx,
-				"txType":  txHeader.Type,
-			}).Debug("skipping unsupported transaction type")
+			t.logger.WithError(err).WithFields(logrus.Fields{
+				"blockHash": hash.Hex(),
+				"txIndex":   idx,
+			}).Debug("skipping transaction")
+
 			continue
 		}
 
-		var tx types.Transaction
-		if err := json.Unmarshal(rawTx, &tx); err != nil {
-			t.logger.WithError(err).WithField("txIndex", idx).Debug("failed to unmarshal transaction")
-			continue
-		}
-
-		transactions = append(transactions, &tx)
+		transactions = append(transactions, tx)
 	}
 
 	withdrawals := make([]WithdrawalData, 0, len(block.Withdrawals))
@@ -265,6 +270,54 @@ func (t *TxIndexer) fetchBlockTransactions(
 	}
 
 	return transactions, block.Number.ToInt().Uint64(), block.Hash, block.Coinbase, withdrawals, nil
+}
+
+var (
+	// errUnsupportedTxType marks a transaction of a type this indexer does not handle.
+	errUnsupportedTxType = errors.New("unsupported transaction type")
+
+	// errTxHashMismatch marks a transaction that does not survive the round trip through
+	// the client's JSON representation.
+	errTxHashMismatch = errors.New("transaction does not match the hash reported for it")
+)
+
+// decodeBlockTransaction rebuilds a transaction from one entry of an eth_getBlockBy*
+// response.
+//
+// The rebuilt transaction must hash to the hash the client reported alongside it. When it
+// does not, the client's encoding of the transaction disagrees with the canonical one and
+// everything derived from the decoded fields is wrong with it: the hash, the sender
+// recovered from the signature, and whether the transaction is a contract creation. Such a
+// transaction is rejected rather than indexed, because the corruption is silent otherwise
+// and produces plausible-looking rows that belong to no real transaction.
+func decodeBlockTransaction(rawTx json.RawMessage) (*types.Transaction, error) {
+	var txHeader struct {
+		Type hexutil.Uint64 `json:"type"`
+		Hash common.Hash    `json:"hash"`
+	}
+
+	if err := json.Unmarshal(rawTx, &txHeader); err != nil {
+		return nil, fmt.Errorf("unmarshal transaction header: %w", err)
+	}
+
+	switch txHeader.Type {
+	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType,
+		types.BlobTxType, types.SetCodeTxType:
+	default:
+		return nil, fmt.Errorf("%w: %d", errUnsupportedTxType, uint64(txHeader.Type))
+	}
+
+	tx := &types.Transaction{}
+	if err := json.Unmarshal(rawTx, tx); err != nil {
+		return nil, fmt.Errorf("unmarshal transaction: %w", err)
+	}
+
+	// Clients that omit the hash are taken at their word; there is nothing to check against.
+	if txHeader.Hash != (common.Hash{}) && tx.Hash() != txHeader.Hash {
+		return nil, fmt.Errorf("%w: reported %s, decodes to %s", errTxHashMismatch, txHeader.Hash.Hex(), tx.Hash().Hex())
+	}
+
+	return tx, nil
 }
 
 // fetchBlockReceipts fetches receipts for a block from an EL client.
