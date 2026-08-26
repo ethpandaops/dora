@@ -23,6 +23,8 @@ type SlotPageData struct {
 	Badges                 []*SlotPageBlockBadge   `json:"badges"`
 	SlotBlocks             []*SlotPageSlotBlock    `json:"slot_blocks"`
 	TracoorUrl             string                  `json:"tracoor_url"`
+	XatuEnabled            bool                    `json:"xatu_enabled"`
+	XatuCbtEnabled         bool                    `json:"xatu_cbt_enabled"`
 	SystemContracts        []*types.SystemContract `json:"system_contracts"`
 	TransactionDetails     []*SlotPageTransaction  `json:"transaction_details"`
 

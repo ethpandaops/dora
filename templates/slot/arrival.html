@@ -1,0 +1,1309 @@
+{{ define "block_arrival" }}
+  <style>
+    .arrival-group-badge {
+      font-size: 0.66rem;
+      padding: 0.12rem 0.4rem;
+      border-radius: 0.3rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .arrival-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      display: inline-block;
+      flex: none;
+      vertical-align: middle;
+    }
+    .arrival-table .mark-demo {
+      display: inline-block;
+      vertical-align: middle;
+      position: relative;
+      top: -1px;
+      margin-right: 4px;
+    }
+    .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .arrival-dist {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem 1.1rem;
+    }
+    .arrival-dist .dist-bar {
+      display: flex;
+      width: 220px;
+      height: 10px;
+      border-radius: 5px;
+      overflow: hidden;
+      flex: none;
+      background: var(--bs-secondary-bg);
+    }
+    .arrival-dist .dist-bar > div { height: 100%; }
+    .arrival-dist .entry { font-size: 0.85rem; white-space: nowrap; }
+
+    .arrival-region-line {
+      gap: 0.9rem;
+      font-size: 0.85rem;
+      padding: 0.1rem 0;
+    }
+    .arrival-region-line .region-name {
+      flex: 0 1 8.5rem;
+      min-width: 5rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .arrival-region-line .region-bar-track {
+      display: inline-block;
+      width: 160px;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--bs-secondary-bg);
+      overflow: hidden;
+    }
+    .arrival-region-line .region-bar {
+      display: block;
+      height: 100%;
+      border-radius: 4px;
+    }
+    /* fixed-width group of three time columns, so the caption above can
+       span exactly the visible ones at every breakpoint */
+    .arrival-region-line .region-times {
+      display: flex;
+      gap: 0.9rem;
+      flex: none;
+      width: 5.5rem;
+    }
+    @media (min-width: 576px) { .arrival-region-line .region-times { width: 11.9rem; } }
+    @media (min-width: 768px) { .arrival-region-line .region-times { width: 18.3rem; } }
+    .arrival-region-line .region-cap {
+      flex: 1 1 auto;
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--bs-secondary-color);
+      font-weight: 600;
+      text-align: center;
+      border-bottom: 1px solid var(--bs-border-color);
+      padding-bottom: 0.15rem;
+    }
+
+    .lane-track { position: relative; }
+    /* shared gridlines: let arrival times be compared straight down the column */
+    .lane-track .grid {
+      position: absolute; top: 0; bottom: 0; width: 1px;
+      background: var(--bs-border-color);
+      opacity: 0.5;
+    }
+    /* connector from a node's first observation to its last, so the row shows
+       how long the node's own pipeline took, not just when it started */
+    .lane-track .span {
+      position: absolute; top: 50%; height: 2px; margin-top: -1px;
+      background: var(--bs-secondary-color);
+      opacity: 0.45;
+      border-radius: 1px;
+    }
+    .lane-track .mark {
+      position: absolute; top: 50%; width: 7px; height: 7px;
+      margin: -3.5px 0 0 -3.5px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 1.5px var(--bs-body-bg);
+    }
+    .lane-track .mark.p2p { background: #9775fa; }
+    .lane-track .mark.api { background: #5b8def; }
+    .lane-track .mark.pl { background: #e64980; }
+    .lane-track .tick-head {
+      position: absolute; top: 50%; width: 2px; height: 11px;
+      margin: -5.5px 0 0 -1px;
+      background: #20c997;
+      border-radius: 1px;
+      box-shadow: 0 0 0 1.5px var(--bs-body-bg);
+    }
+    .lane-track .np {
+      position: absolute; top: 50%; margin-top: 4px; height: 3px;
+      min-width: 2px;
+      background: #f1b44c;
+      border-radius: 2px;
+    }
+    .lane-track .overflow {
+      position: absolute; right: -2px; top: 50%; transform: translateY(-50%);
+      font-size: 0.7rem; line-height: 1;
+      color: var(--bs-secondary-color);
+    }
+    .arrival-axis-header {
+      font-weight: 400;
+      font-size: 0.63rem;
+      color: var(--bs-secondary-color);
+      font-variant-numeric: tabular-nums;
+    }
+    .arrival-axis-header .axis-line {
+      height: 4px;
+      position: relative;
+      border-bottom: 1px solid var(--bs-border-color);
+    }
+    .arrival-axis-header .axis-line i {
+      position: absolute; bottom: 0; width: 1px; height: 4px;
+      background: var(--bs-border-color);
+    }
+    .arrival-axis-header .axis-labels {
+      position: relative;
+      height: 0.85rem;
+      margin-top: 1px;
+    }
+    .arrival-axis-header .axis-labels > span {
+      position: absolute; top: 0;
+      white-space: nowrap;
+    }
+
+    .arrival-table td, .arrival-table th {
+      vertical-align: middle;
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+    .arrival-table thead th { vertical-align: bottom; }
+    .arrival-table thead .group-row th {
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--bs-secondary-color);
+      font-weight: 600;
+      border-bottom: none;
+      padding-bottom: 0.15rem;
+    }
+    .arrival-table thead .group-row th.layer {
+      border-bottom: 1px solid var(--bs-border-color);
+    }
+    .arrival-table th.grp-start,
+    .arrival-table td.grp-start {
+      padding-left: 1.4rem;
+    }
+    .arrival-table tbody tr:nth-child(even) { background: var(--bs-tertiary-bg); }
+    /* the page scrolls, not the table: a nested vertical scroller traps the
+       wheel and hides how many nodes there are. Horizontal overflow is only
+       enabled where it is needed, because overflow-x forces overflow-y to
+       auto, and that scroll container would stop the header sticking to the
+       page. */
+    .arrival-scroll {
+      border-bottom: 1px solid var(--bs-border-color);
+      margin-bottom: 0.5rem;
+    }
+    @media (max-width: 991.98px) {
+      .arrival-scroll { overflow-x: auto; }
+    }
+    /* Keeps the marker key and the time axis in view while reading down a
+       long node list. The whole thead sticks as one unit: pinning each row
+       separately meant computing where the first row ends, and any error
+       there, including measuring before webfonts settle, leaves a seam that
+       table rows scroll through. */
+    .arrival-scroll thead {
+      position: sticky;
+      top: calc(var(--arrival-nav-h, 4.5rem) - 1px);
+      /* above dora's header bar, whose drop shadow would otherwise paint a
+         grey gradient across the pinned header. Its dropdowns still win. */
+      z-index: 1001;
+    }
+    .arrival-scroll thead th {
+      background: var(--bs-body-bg);
+    }
+    .arrival-scroll thead tr:last-child th {
+      box-shadow: inset 0 -1px 0 var(--bs-border-color);
+    }
+    .arrival-node-name {
+      max-width: 15rem; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; display: inline-block; vertical-align: middle;
+    }
+    .arrival-hide-np [data-col="np"] { display: none; }
+    .arrival-hide-pl [data-col="pl"] { display: none; }
+    .arrival-table th.sortable { cursor: pointer; user-select: none; }
+    .arrival-table th.sortable:hover { color: var(--bs-emphasis-color); }
+    .arrival-table .group-row span[data-sort] { cursor: pointer; user-select: none; }
+    .arrival-table .group-row span[data-sort]:hover { color: var(--bs-emphasis-color); }
+
+    .arrival-hist {
+      position: relative;
+      height: 110px;
+      margin-top: 8px;
+      border-left: 1px solid var(--bs-border-color);
+      border-bottom: 1px solid var(--bs-border-color);
+    }
+    .arrival-hist.hist-sm { height: 72px; }
+    .arrival-hist.hist-tall { height: 210px; }
+    /* y axis labels live in a gutter left of the plot, not inside it */
+    .tl-flex { display: flex; align-items: stretch; }
+    .tl-y {
+      position: relative;
+      width: 2.6rem;
+      flex: none;
+    }
+    .tl-y > span {
+      position: absolute;
+      right: 8px;
+      transform: translateY(-50%);
+      font-size: 0.63rem;
+      color: var(--bs-secondary-color);
+      font-variant-numeric: tabular-nums;
+    }
+    /* legend entries double as series filters */
+    .tl-toggle { cursor: pointer; }
+    .tl-toggle:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+    .tl-toggle.off { opacity: 0.35; }
+    .arrival-hist .grid {
+      position: absolute; top: 0; bottom: 0; width: 1px;
+      background: var(--bs-border-color);
+      opacity: 0.45;
+    }
+    .arrival-hist .bar { position: absolute; bottom: 0; }
+    .arrival-hist .deadline {
+      position: absolute; top: 0; bottom: 0; width: 0;
+      border-left: 2px dashed #f46a6a;
+      opacity: 0.9;
+    }
+    .arrival-hist .deadline .note {
+      position: absolute;
+      top: 1px;
+      padding-left: 5px;
+      font-size: 0.63rem;
+      color: var(--bs-secondary-color);
+      white-space: nowrap;
+      text-shadow: 0 0 3px var(--bs-body-bg), 0 0 3px var(--bs-body-bg), 0 0 3px var(--bs-body-bg);
+    }
+    .arrival-hist-axis {
+      position: relative;
+      height: 0.95rem;
+      font-size: 0.63rem;
+      color: var(--bs-secondary-color);
+      font-variant-numeric: tabular-nums;
+    }
+    .arrival-hist-axis > span {
+      position: absolute;
+      top: 2px;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+    .arrival-hist svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .arrival-hist .hover {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+    }
+    .arrival-hist .hgrid {
+      position: absolute; left: 0; right: 0; height: 1px;
+      background: var(--bs-border-color);
+      opacity: 0.45;
+    }
+    .arrival-hist .ylab {
+      position: absolute;
+      left: 4px;
+      transform: translateY(-55%);
+      font-size: 0.63rem;
+      color: var(--bs-secondary-color);
+      font-variant-numeric: tabular-nums;
+    }
+    .arrival-heat-key {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      vertical-align: middle;
+      background: var(--bs-secondary-bg);
+    }
+  </style>
+
+  <div id="arrival-content" class="card-body px-0 py-1">
+    <div class="text-center p-4" id="arrival-loading">
+      <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+      Loading propagation data from Xatu...
+    </div>
+    <div id="arrival-loaded" style="display: none;">
+      <div id="arrival-empty" class="p-3 text-muted" style="display: none;"></div>
+      <div id="arrival-rows-wrap" style="display: none;">
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When nodes first observed this block, relative to slot start. Each node counts once with its earliest observation across all layers.">Arrival:</span></div>
+          <div class="col-md-10" id="arrival-stats"></div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Raw observation counts per source layer">Observations:</span></div>
+          <div class="col-md-10" id="arrival-observations"></div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Who runs the observing nodes">Sources:</span></div>
+          <div class="col-md-10" id="arrival-sources"></div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The arrival stats above split by continent: where the observing nodes sit and when the block reached each region">Regions:</span></div>
+          <div class="col-md-10" id="arrival-regions"></div>
+        </div>
+        {{ if .XatuCbtEnabled }}
+        <div class="row border-bottom p-2 mx-0" id="waves-timeline" style="display: none;">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The slot's phases as cumulative curves: each line is the share of its own population that has acted by that time. Attestations count against the slot's expected attesters, PTC votes against the committee, payload and head against the nodes that observed them.">Timeline:</span></div>
+          <div class="col-md-10" id="waves-timeline-body"></div>
+        </div>
+        <div class="row border-bottom p-2 mx-0" id="waves-cols" style="display: none;">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="PeerDAS data column sidecars: when each of the 128 columns of this block's blob data was first seen, and how available each measured under custody probing.">Data columns:</span></div>
+          <div class="col-md-10" id="waves-cols-body"></div>
+        </div>
+        {{ end }}
+        <div id="arrival-body" class="px-2 pt-1"></div>
+      </div>
+    </div>
+    <div class="text-muted small px-2 pb-2 d-flex align-items-center" style="gap: 6px;">
+      <img src="/images/xatu.png" alt="Xatu" style="width: 18px; height: 18px;" />
+      Data from <a href="https://github.com/ethpandaops/xatu" target="_blank" rel="noopener">Xatu</a>
+    </div>
+  </div>
+
+  <script type="text/javascript">
+    (function() {
+      var arrivalSlot = {{ .Slot }};
+      // Scopes the query to this block, so a slot with competing blocks shows
+      // each block's own propagation instead of both merged together.
+      var arrivalBlockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
+      // The execution block identity lets the backend pull the EL-side
+      // newPayload captures, which are keyed by block number rather than slot.
+      var arrivalExecHash = "{{ if .Block.ExecutionData }}0x{{ printf "%x" .Block.ExecutionData.BlockHash }}{{ end }}";
+      var arrivalExecNumber = "{{ if .Block.ExecutionData }}{{ .Block.ExecutionData.BlockNumber }}{{ end }}";
+      // On networks where validators carry node names (devnets), the observing
+      // node run by this slot's proposer gets marked in the table.
+      var arrivalProposer = "{{ .ProposerName }}".toLowerCase();
+      var arrivalLoaded = false;
+      var arrivalData = null;
+      var sortState = { key: 'min', dir: 1 };
+
+      var continentColors = {
+        EU: '#5b8def', NA: '#34c38f', AS: '#f1b44c',
+        OC: '#50c3e6', SA: '#a78bfa', AF: '#f46a6a'
+      };
+      var continentNames = {
+        EU: 'Europe', NA: 'North America', AS: 'Asia',
+        OC: 'Oceania', SA: 'South America', AF: 'Africa'
+      };
+      var groupStyles = {
+        ethpandaops: { label: 'EF', cls: 'text-bg-primary' },
+        community:   { label: 'community', cls: 'text-bg-success' },
+        corp:        { label: 'corp', cls: 'text-bg-warning' },
+        other:       { label: 'other', cls: 'text-bg-secondary' }
+      };
+
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, function(c) {
+          return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+      }
+      function fmtStr(ms) {
+        if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
+        return ms + 'ms';
+      }
+      // Axis ticks are round numbers, so drop the trailing zeroes fmtStr keeps.
+      function fmtAxis(ms) {
+        if (ms < 1000) return ms + 'ms';
+        return String(+(ms / 1000).toFixed(2)) + 's';
+      }
+      // Thresholds and colors are duplicated in FormatArrivalMs in
+      // utils/format.go, which colors the same values server side for the
+      // epoch page; change both together.
+      function timeColor(ms) {
+        if (ms < 1000) return '#34c38f';
+        if (ms < 2000) return '#7bc96f';
+        if (ms < 3000) return '#f1b44c';
+        if (ms < 4000) return '#f0824c';
+        return '#f46a6a';
+      }
+      function fmtMsColored(ms) {
+        if (ms == null) return '<span class="text-muted">&mdash;</span>';
+        return '<span class="num" style="color:' + timeColor(ms) + '">' + fmtStr(ms) + '</span>';
+      }
+      function fmtDelta(ms) {
+        if (ms == null) return '<span class="text-muted">&mdash;</span>';
+        var sign = ms < 0 ? '&minus;' : '+';
+        return '<span class="text-muted">' + sign + Math.abs(ms) + 'ms</span>';
+      }
+      function flag(cc) {
+        if (!cc || cc.length !== 2) return '';
+        var A = 0x1F1E6;
+        return String.fromCodePoint(A + cc.charCodeAt(0) - 65, A + cc.charCodeAt(1) - 65);
+      }
+      function contColor(code) { return continentColors[code] || '#74788d'; }
+      function nodeTimes(n) {
+        return [n.api_ms, n.p2p_ms, n.head_ms, n.np_ms, n.pl_ms].filter(function(v) { return v != null; });
+      }
+      function groupBadge(g) {
+        var st = groupStyles[g] || groupStyles.other;
+        return '<span class="arrival-group-badge ' + st.cls + ' me-1">' + st.label + '</span>';
+      }
+
+      // distBar renders a proportional stacked bar plus aligned legend entries:
+      // segments = [{count, color, title, legend}]
+      function distBar(segments) {
+        var total = 0;
+        segments.forEach(function(seg) { total += seg.count; });
+        if (!total) return '';
+
+        var bar = segments.map(function(seg) {
+          var w = (seg.count / total * 100).toFixed(2);
+          return '<div style="width:' + w + '%;background:' + seg.color + '" title="' + seg.title + '"></div>';
+        }).join('');
+
+        var entries = segments.map(function(seg) {
+          return '<span class="entry">' + seg.legend + '</span>';
+        }).join('');
+
+        return '<div class="arrival-dist"><div class="dist-bar">' + bar + '</div>' + entries + '</div>';
+      }
+
+      // Shared time axis for the per-row lanes. Zoomed to where the
+      // observations actually sit rather than anchored at slot start: real
+      // arrivals cluster inside a few hundred milliseconds, and starting at
+      // zero renders every row the same length.
+      //
+      // Bounds come from the values actually drawn, not from the arrival
+      // stats. Those stats describe each node's earliest sighting, while a
+      // lane also plots the block event, the head event and the newPayload
+      // window, which are all later by definition, so scaling to them piled
+      // marks onto the right edge. Late nodes stay out: one stalled node
+      // reporting tens of seconds would flatten everything else.
+      function axis(s, nodes) {
+        var vals = [];
+
+        (nodes || []).forEach(function(n) {
+          if (n.late) return;
+
+          nodeTimes(n).forEach(function(v) { vals.push(v); });
+
+          if (n.np_ms != null && n.np_dur_ms) vals.push(n.np_ms + n.np_dur_ms);
+        });
+
+        vals.sort(function(a, b) { return a - b; });
+
+        var first = vals.length ? vals[0] : s.min_ms;
+        // p95 rather than the maximum: a couple of stragglers should not cost
+        // the whole width, and anything past the edge keeps its chevron
+        var last = vals.length ? vals[Math.floor((vals.length - 1) * 0.95)] : s.p90_ms;
+        var spread = Math.max(40, last - first);
+        var lo = Math.max(0, first - spread * 0.05);
+        var hi = last + spread * 0.12;
+        var span = Math.max(1, hi - lo);
+        var steps = [10, 25, 50, 100, 250, 500, 1000, 2500];
+        var step = steps[steps.length - 1];
+
+        for (var i = 0; i < steps.length; i++) {
+          if (span / steps[i] <= 6) { step = steps[i]; break; }
+        }
+
+        var lines = [];
+        for (var t = Math.ceil(lo / step) * step; t < hi; t += step) {
+          if (t > lo) lines.push(t);
+        }
+
+        return { lo: lo, hi: hi, span: span, step: step, lines: lines };
+      }
+
+      function sortInd(key) {
+        if (sortState.key !== key) return '';
+        return ' <span class="text-muted">' + (sortState.dir > 0 ? '&uarr;' : '&darr;') + '</span>';
+      }
+      function nodeSortValue(n, key) {
+        switch (key) {
+          case 'name': return (n.name || '').toLowerCase();
+          case 'impl': return (n.implementation || '').toLowerCase() || null;
+          case 'cc': return ((n.country_code || n.continent || '').toLowerCase()) || null;
+          case 'p2p': return n.p2p_ms != null ? n.p2p_ms : null;
+          case 'api': return n.api_ms != null ? n.api_ms : null;
+          case 'dv': return (n.api_ms != null && n.p2p_ms != null) ? n.api_ms - n.p2p_ms : null;
+          case 'head': return n.head_ms != null ? n.head_ms : null;
+          case 'np': return n.np_ms != null ? n.np_ms : null;
+          case 'pl': return n.pl_ms != null ? n.pl_ms : null;
+          default: return n.min_ms;
+        }
+      }
+      // Sorts a copy: missing values always last, earliest arrival breaks ties.
+      function sortedNodes(nodes) {
+        var arr = nodes.slice();
+        arr.sort(function(a, b) {
+          var va = nodeSortValue(a, sortState.key);
+          var vb = nodeSortValue(b, sortState.key);
+          if (va == null && vb == null) return a.min_ms - b.min_ms;
+          if (va == null) return 1;
+          if (vb == null) return -1;
+          if (va < vb) return -sortState.dir;
+          if (va > vb) return sortState.dir;
+          return a.min_ms - b.min_ms;
+        });
+        return arr;
+      }
+
+      function laneMarks(n, pos, ax) {
+        var html = '';
+
+        ax.lines.forEach(function(t) {
+          html += '<div class="grid" style="left:' + pos(t) + '%"></div>';
+        });
+
+        var times = nodeTimes(n);
+        if (!times.length) return html;
+
+        // one grammar for every row: a connector across the node's own events,
+        // with a mark per event. A node reporting a single event is a single
+        // mark, which is the normal case for a beacon-API-only sentry.
+        var first = Math.min.apply(null, times);
+        var last = Math.max.apply(null, times);
+
+        if (last > first) {
+          var a = pos(first);
+          var b = pos(last);
+          html += '<div class="span" style="left:' + a + '%;width:' + Math.max(0, b - a) + '%"></div>';
+        }
+
+        if (n.np_ms != null) {
+          var npLo = pos(n.np_ms);
+          var npHi = Math.max(npLo + 0.4, pos(n.np_ms + (n.np_dur_ms || 0)));
+          html += '<div class="np" style="left:' + npLo + '%;width:' + (npHi - npLo) +
+            '%" title="engine newPayload ' + fmtStr(n.np_ms) + ' &rarr; ' +
+            fmtStr(n.np_ms + (n.np_dur_ms || 0)) + ' (' + (n.np_dur_ms || 0) + 'ms, ' +
+            esc(n.np_status || '') + ')"></div>';
+        }
+
+        if (n.p2p_ms != null) {
+          html += '<div class="mark p2p" style="left:' + pos(n.p2p_ms) +
+            '%" title="libp2p block gossip ' + fmtStr(n.p2p_ms) + '"></div>';
+        }
+
+        if (n.api_ms != null) {
+          var tip = 'beacon api block event ' + fmtStr(n.api_ms);
+          if (n.p2p_ms != null && n.api_ms > n.p2p_ms) {
+            tip += ' &middot; verify +' + (n.api_ms - n.p2p_ms) + 'ms after gossip';
+          }
+          html += '<div class="mark api" style="left:' + pos(n.api_ms) + '%" title="' + tip + '"></div>';
+        }
+
+        if (n.head_ms != null) {
+          html += '<div class="tick-head" style="left:' + pos(n.head_ms) +
+            '%" title="head event ' + fmtStr(n.head_ms) + '"></div>';
+        }
+
+        if (n.pl_ms != null) {
+          html += '<div class="mark pl" style="left:' + pos(n.pl_ms) +
+            '%" title="execution payload gossip ' + fmtStr(n.pl_ms) + '"></div>';
+        }
+
+        return html;
+      }
+
+      function laneOverflows(n, ax) {
+        var last = Math.max.apply(null, nodeTimes(n));
+        return last > ax.hi;
+      }
+
+      // Ruler above the lanes; ticks line up with the per-row gridlines.
+      // Gridline labels only render when their extent clears both the end
+      // labels and the previous label, estimated against the column's 16rem
+      // minimum width, so labels can never overlap however the axis lands.
+      function axisHeader(ax, ind) {
+        var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
+        var chw = 2.6;
+        var pad = 1.5;
+        var ticks = '';
+        var labels = '<span style="left:0">' + fmtAxis(ax.lo) + '</span>';
+        var lastEnd = fmtAxis(ax.lo).length * chw + pad;
+        var rightStart = 100 - (fmtAxis(ax.hi).length + (ind ? 2 : 0)) * chw - pad;
+
+        ax.lines.forEach(function(t) {
+          var at = pos(t);
+          ticks += '<i style="left:' + at + '%"></i>';
+
+          var text = fmtAxis(t);
+          var hw = text.length * chw / 2;
+
+          if (at - hw > lastEnd && at + hw < rightStart) {
+            labels += '<span style="left:' + at + '%;transform:translateX(-50%)">' + text + '</span>';
+            lastEnd = at + hw + pad;
+          }
+        });
+
+        return '<div class="arrival-axis-header"><div class="axis-line">' + ticks + '</div>' +
+          '<div class="axis-labels">' + labels +
+          '<span style="right:0">' + fmtAxis(ax.hi) + ind + '</span></div></div>';
+      }
+
+      function renderTable(data) {
+        var s = data.stats;
+        var ax = axis(s, data.nodes);
+        var pos = function(ms) { return Math.min(100, Math.max(0, (ms - ax.lo) / ax.span * 100)); };
+
+        var rows = sortedNodes(data.nodes).map(function(n) {
+          var cc = (n.country_code || '').toUpperCase();
+          var dVerify = (n.api_ms != null && n.p2p_ms != null) ? n.api_ms - n.p2p_ms : null;
+
+          var np = '<span class="text-muted">&mdash;</span>';
+          if (n.np_ms != null) {
+            np = '<span class="num" style="color:' + timeColor(n.np_ms) + '" title="' + esc(n.np_status || '') + '">' + fmtStr(n.np_ms) + '</span>' +
+              ' <span class="text-muted small">+' + n.np_dur_ms + 'ms</span>';
+          }
+
+          var last = n.late
+            ? '<td class="grp-start"><span class="badge rounded-pill text-bg-danger" style="font-size: 11px;" title="Earliest observation ' + fmtStr(n.min_ms) +
+              ' after slot start — likely a syncing or stalled node">late &middot; ' + fmtStr(n.min_ms) + '</span></td>'
+            : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 16rem">' + laneMarks(n, pos, ax) +
+              (laneOverflows(n, ax) ? '<span class="overflow" title="continues past the axis">&raquo;</span>' : '') + '</div></td>';
+
+          var isProposer = arrivalProposer && (n.name || '').toLowerCase() === arrivalProposer;
+          var proposerBadge = isProposer
+            ? ' <span class="badge rounded-pill text-bg-info" style="font-size: 10px;" title="This node&#39;s validator proposed this block">proposer</span>'
+            : '';
+
+          return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
+            '<td class="text-nowrap">' + groupBadge(n.group) +
+            '<span class="arrival-node-name"' + (isProposer ? ' style="font-weight: 600"' : '') +
+            ' title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' + proposerBadge + '</td>' +
+            '<td>' + (n.implementation ? esc(n.implementation) : '<span class="text-muted" title="Not a beacon node — a gossip listener observing the p2p wire">&mdash;</span>') + '</td>' +
+            '<td title="' + esc(n.country || '') + '">' + flag(cc) + ' <span class="text-muted small">' + esc(cc || n.continent || '') + '</span></td>' +
+            '<td class="text-end grp-start">' + fmtMsColored(n.p2p_ms) + '</td>' +
+            '<td class="text-end grp-start">' + fmtMsColored(n.api_ms) + '</td>' +
+            '<td class="text-end num">' + fmtDelta(dVerify) + '</td>' +
+            '<td class="text-end">' + fmtMsColored(n.head_ms) + '</td>' +
+            '<td class="text-end grp-start" data-col="pl">' + fmtMsColored(n.pl_ms) + '</td>' +
+            '<td class="text-end grp-start" data-col="np">' + np + '</td>' +
+            last + '</tr>';
+        }).join('');
+
+        return '<div class="arrival-scroll">' +
+          '<table class="table table-sm arrival-table text-left mb-1' + (data.np_observations ? '' : ' arrival-hide-np') +
+          (data.pl_observations ? '' : ' arrival-hide-pl') + '">' +
+          '<thead>' +
+          '<tr class="group-row">' +
+          '<th></th><th></th><th></th>' +
+          '<th class="text-end layer grp-start" title="Seen by the node&#39;s gossipsub listener: the raw beacon_block message on the wire, before verification">libp2p</th>' +
+          '<th colspan="3" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
+          '<th class="text-end layer grp-start" data-col="pl" title="The gloas execution payload, gossiped separately from the block after the proposer reveals it">payload</th>' +
+          '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
+          '<th class="text-center layer grp-start">timeline<span data-col="pl"> &middot; sort ' +
+          '<span data-sort="min" title="Order the lanes by earliest block arrival">block' + sortInd('min') + '</span> / ' +
+          '<span data-sort="pl" title="Order the lanes by payload receipt">payload' + sortInd('pl') + '</span></span></th></tr>' +
+          '<tr>' +
+          '<th style="width: 18rem" class="sortable" data-sort="name">Node' + sortInd('name') + '</th>' +
+          '<th class="sortable" data-sort="impl">Client' + sortInd('impl') + '</th>' +
+          '<th style="width: 5rem" class="sortable" data-sort="cc">Loc' + sortInd('cc') + '</th>' +
+          '<th class="text-end grp-start sortable" data-sort="p2p" title="First beacon_block gossip message seen on the libp2p wire — pre-verification">' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#9775fa;border-radius:2px"></span>Block&nbsp;gossip' + sortInd('p2p') + '</th>' +
+          '<th class="text-end grp-start sortable" data-sort="api" title="Block event on the beacon API — the node has fully verified and imported the block">' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#5b8def;border-radius:2px"></span>Block event' + sortInd('api') + '</th>' +
+          '<th class="text-end sortable" data-sort="dv" title="Block gossip arrival to block event: verification and import cost">&Delta;&nbsp;verify' + sortInd('dv') + '</th>' +
+          '<th class="text-end sortable" data-sort="head" title="Head event on the beacon API — the node adopted the block as chain head via fork choice">' +
+          '<span class="mark-demo" style="width:2px;height:10px;background:#20c997;border-radius:1px"></span>Head event' + sortInd('head') + '</th>' +
+          '<th class="text-end grp-start sortable" data-sort="pl" data-col="pl" title="First execution_payload gossip message seen by the node — when the revealed payload reached it">' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#e64980;border-radius:2px"></span>Payload' + sortInd('pl') + '</th>' +
+          '<th class="text-end grp-start sortable" data-sort="np" data-col="np" title="engine_newPayload call start (observed completion minus call duration) · how long the execution client took to import">' +
+          '<span class="mark-demo" style="width:12px;height:7px;background:#f1b44c;border-radius:2px"></span>newPayload' + sortInd('np') + '</th>' +
+          '<th class="grp-start sortable" data-sort="min" style="min-width: 16rem" title="Every node on one axis running from slot start, so bar length is the time the node took to have the block in hand">' +
+          axisHeader(ax, sortInd('min')) + '</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+      }
+
+      // Keeps the two sticky header rows flush: any mismatch leaves a gap that
+      // table rows scroll through behind the header.
+      function syncStickyOffsets() {
+        var wrap = document.querySelector('.arrival-scroll');
+        var bar = document.querySelector('.header-bar');
+        if (!wrap || !bar) return;
+
+        var navH = Math.round(bar.getBoundingClientRect().height);
+        if (navH > 0) wrap.style.setProperty('--arrival-nav-h', navH + 'px');
+      }
+
+      window.addEventListener('resize', syncStickyOffsets);
+
+      // the header bar's height is not final until its webfonts land
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(syncStickyOffsets);
+      }
+
+      function render(data) {
+        arrivalData = data;
+        document.getElementById('arrival-loading').style.display = 'none';
+        document.getElementById('arrival-loaded').style.display = '';
+
+        if (!data.nodes || !data.nodes.length) {
+          var empty = document.getElementById('arrival-empty');
+          empty.style.display = '';
+          empty.innerHTML = 'No propagation observations for this slot' + (data.settled ? '.' : ' yet.');
+          return;
+        }
+
+        document.getElementById('arrival-rows-wrap').style.display = '';
+
+        var s = data.stats;
+        var statParts = [];
+        [['fastest', s.min_ms], ['median', s.p50_ms], ['p90', s.p90_ms], ['slowest', s.max_ms]].forEach(function(kv) {
+          statParts.push('<span class="num" style="color:' + timeColor(kv[1]) + '"><b>' + fmtStr(kv[1]) + '</b></span> <span class="text-muted">' + kv[0] + '</span>');
+        });
+        document.getElementById('arrival-stats').innerHTML = statParts.join('<span class="text-muted px-2">&middot;</span>');
+
+        var obs = '<b>' + s.unique_nodes + '</b> nodes &mdash; ' +
+          data.observations + ' block / ' + data.p2p_observations + ' block gossip / ' + data.head_observations + ' head / ' +
+          data.np_observations + ' engine' + (data.pl_observations ? ' / ' + data.pl_observations + ' payload' : '') + ' observations';
+        if (s.late_nodes > 0) {
+          obs += ' <span class="badge rounded-pill text-bg-danger ms-1" style="font-size: 11px;" title="Nodes whose earliest observation came more than a slot after slot start; excluded from stats">' +
+            s.late_nodes + ' late node' + (s.late_nodes > 1 ? 's' : '') + '</span>';
+        }
+        if (!data.settled) {
+          obs += ' <span class="badge rounded-pill text-bg-info ms-1" style="font-size: 11px;">live &mdash; data may still be arriving</span>';
+        }
+        document.getElementById('arrival-observations').innerHTML = obs;
+
+        var groupColors = { ethpandaops: '#0d6efd', community: '#198754', corp: '#ffc107', other: '#6c757d' };
+        document.getElementById('arrival-sources').innerHTML = distBar((data.groups || []).map(function(g) {
+          var st = groupStyles[g.name] || groupStyles.other;
+          return {
+            count: g.nodes,
+            color: groupColors[g.name] || groupColors.other,
+            title: st.label + ': ' + g.nodes + ' nodes, p50 ' + fmtStr(g.p50_ms),
+            legend: '<span class="arrival-group-badge ' + st.cls + '">' + st.label + '</span> <b>' + g.nodes + '</b>' +
+              ' <span class="text-muted small">p50 ' + fmtStr(g.p50_ms) + '</span>'
+          };
+        }));
+
+        // the regions read as the two halves of the slot per continent: when
+        // its nodes adopted the block as head, and when they got the payload.
+        // Group captions use the node table's grammar; the payload group only
+        // renders on networks that observe payload gossip.
+        var totalNodes = s.unique_nodes || 1;
+        var hasPl = (data.continents || []).some(function(c) { return c.pl_min_ms != null; });
+
+        var regionTimeCells = function(minMs, p50Ms, p90Ms) {
+          var cell = function(v, cls) {
+            return '<span class="num' + cls + '" style="width: 5.5rem; flex: none; text-align: right">' +
+              (v != null ? fmtMsColored(v) : '<span class="text-muted">&mdash;</span>') + '</span>';
+          };
+          return '<span class="region-times">' + cell(minMs, '') +
+            cell(p50Ms, ' d-none d-sm-inline') + cell(p90Ms, ' d-none d-md-inline') + '</span>';
+        };
+        var regionTimeLabels = '<span class="region-times">' +
+          '<span style="width: 5.5rem; flex: none; text-align: right">fastest</span>' +
+          '<span class="d-none d-sm-inline" style="width: 5.5rem; flex: none; text-align: right">p50</span>' +
+          '<span class="d-none d-md-inline" style="width: 5.5rem; flex: none; text-align: right">p90</span>' +
+          '</span>';
+
+        var regionHeader = '<div class="d-flex align-items-end arrival-region-line">' +
+          '<span class="region-name"></span>' +
+          '<span class="d-none d-md-inline-block" style="width: 160px; flex: none"></span>' +
+          '<span style="width: 4.5rem; flex: none"></span>' +
+          '<span class="region-times"><span class="region-cap" title="When nodes on each continent adopted this block as head of the chain (beacon API head event)">head arrival</span></span>' +
+          (hasPl ? '<span class="region-times"><span class="region-cap" title="When nodes on each continent first saw this block\'s execution payload on gossip">payload arrival</span></span>' : '') +
+          '</div>' +
+          '<div class="d-flex align-items-center arrival-region-line text-muted small">' +
+          '<span class="region-name"></span>' +
+          '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">share of observing nodes</span>' +
+          '<span style="width: 4.5rem; flex: none; text-align: right">nodes</span>' +
+          regionTimeLabels + (hasPl ? regionTimeLabels : '') +
+          '</div>';
+        var regionRows = (data.continents || []).map(function(c) {
+          var share = c.nodes / totalNodes * 100;
+          var name = continentNames[c.code] || c.code || 'Unknown';
+          return '<div class="d-flex align-items-center arrival-region-line" title="' + esc(name) + ': ' + c.nodes +
+            ' of ' + totalNodes + ' observing nodes (' + share.toFixed(0) + '%)">' +
+            '<span class="region-name"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
+            '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + Math.max(1.5, share).toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
+            '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b></span>' +
+            regionTimeCells(c.head_min_ms, c.head_p50_ms, c.head_p90_ms) +
+            (hasPl ? regionTimeCells(c.pl_min_ms, c.pl_p50_ms, c.pl_p90_ms) : '') +
+            '</div>';
+        }).join('');
+        document.getElementById('arrival-regions').innerHTML = regionRows ? regionHeader + regionRows : '';
+
+        document.getElementById('arrival-body').innerHTML = renderTable(data);
+        requestAnimationFrame(syncStickyOffsets);
+      }
+
+      // The wave rows join the summary block above the table: bold numbers
+      // first, then a proper histogram on the same gridline-and-label grammar
+      // as the table's timeline header.
+      function liveBadge(settled) {
+        if (settled) return '';
+        return ' <span class="badge rounded-pill text-bg-info ms-1" style="font-size: 11px;">live &mdash; data may still be arriving</span>';
+      }
+
+      var sep = '<span class="text-muted px-2">&middot;</span>';
+
+      function histAxis(axLo, axHi) {
+        var span = Math.max(1, axHi - axLo);
+        var steps = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+        var step = steps[steps.length - 1];
+
+        for (var i = 0; i < steps.length; i++) {
+          if (span / steps[i] <= 13) { step = steps[i]; break; }
+        }
+
+        var lines = [];
+        for (var t = Math.ceil(axLo / step) * step; t < axHi; t += step) {
+          if (t > axLo) lines.push(t);
+        }
+
+        return { lo: axLo, hi: axHi, span: span, lines: lines };
+      }
+
+      // Clicking a legend entry isolates that series. The axes are fixed to
+      // the slot and to 0-100%, so isolating never rescales the chart.
+      var tlSolo = null;
+      var wavesData = null;
+
+      // The timeline reads the slot as its phases race to completion: the two
+      // halves of a gloas block (the bid, then the payload) and the votes on
+      // each become comparable cumulative curves on one axis. Each series is
+      // normalized to its own population.
+      function renderTimeline(data) {
+        var slotMs = data.slot_ms || 12000;
+        var att = data.attestations;
+        var series = [];
+        var viewed = null;
+
+        if (att && att.total_count) {
+          (att.roots || []).forEach(function(r) { if (r.viewed) viewed = r; });
+          if (!viewed) viewed = (att.roots || [])[0];
+        }
+
+        // block phase first, then the payload phase, so the legend reads in
+        // the order the slot unfolds
+        if (data.head && data.head.total_count) {
+          series.push({
+            label: 'head adopted', color: '#20c997',
+            buckets: data.head.buckets || [],
+            count: data.head.total_count,
+            denom: data.head.total_count,
+            of: 'observing nodes',
+            unit: 'nodes',
+          });
+        }
+
+        if (viewed) {
+          series.push({
+            label: 'attestations', color: '#5b8def',
+            buckets: viewed.buckets || [],
+            count: viewed.count,
+            denom: att.expected_count || viewed.count,
+            of: 'expected attesters',
+          });
+        }
+
+        if (data.payload && data.payload.total_count) {
+          series.push({
+            label: 'payload seen', color: '#e64980',
+            buckets: data.payload.buckets || [],
+            count: data.payload.total_count,
+            denom: data.payload.total_count,
+            of: 'observing nodes',
+            unit: 'nodes',
+          });
+        }
+
+        if (data.executed && data.executed.total_count) {
+          series.push({
+            label: 'executed', color: '#f1b44c',
+            buckets: data.executed.buckets || [],
+            count: data.executed.total_count,
+            denom: data.executed.total_count,
+            of: 'reporting execution clients',
+            unit: 'clients',
+          });
+        }
+
+        if (data.ptc && data.ptc.total_count) {
+          series.push({
+            label: 'PTC votes', color: '#9775fa',
+            buckets: (data.ptc.buckets || []).map(function(b) { return { ms: b.ms, count: b.present + b.missing }; }),
+            count: data.ptc.total_count,
+            denom: data.ptc.expected_count || data.ptc.total_count,
+            of: 'the PTC',
+          });
+        }
+
+        if (!series.length) return;
+
+        if (tlSolo && !series.some(function(sr) { return sr.label === tlSolo; })) tlSolo = null;
+        var visible = series.filter(function(sr) { return !tlSolo || sr.label === tlSolo; });
+
+        document.getElementById('waves-timeline').style.display = '';
+
+        var ax = histAxis(0, slotMs);
+        var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
+
+        // headroom above the 100% line hosts the marker labels, so they never
+        // sit on top of the curves
+        var Y = function(pct) { return 9 + (100 - Math.min(100, pct)) * 0.91; };
+
+        var ylabs = '';
+        var chart = '';
+
+        [100, 75, 50, 25].forEach(function(pct) {
+          ylabs += '<span style="top:' + Y(pct) + '%">' + pct + '%</span>';
+          chart += '<div class="hgrid" style="top:' + Y(pct) + '%"></div>';
+        });
+
+        ax.lines.forEach(function(t) {
+          chart += '<div class="grid" style="left:' + pos(t) + '%"></div>';
+        });
+
+        var marks = [];
+
+        if (att && att.deadline_ms > 0) {
+          marks.push({
+            ms: att.deadline_ms, label: 'attestation deadline', color: '#f46a6a', series: 'attestations',
+            title: 'ATTESTATION_DUE_BPS into the slot: validators attest now even without a block in hand',
+          });
+        }
+
+        if (data.ptc && data.ptc.deadline_ms > 0) {
+          marks.push({
+            ms: data.ptc.deadline_ms, label: 'PTC deadline', color: '#f46a6a', series: 'PTC votes',
+            title: 'PAYLOAD_ATTESTATION_DUE_BPS into the slot: PTC votes are due by here',
+          });
+        }
+
+        if (viewed && viewed.viewed && att.expected_count > 0 && att.threshold_count > 0) {
+          var cum = 0;
+          var thresholdMs = null;
+
+          (viewed.buckets || []).forEach(function(b) {
+            if (thresholdMs != null) return;
+            cum += b.count;
+            if (cum >= att.threshold_count) thresholdMs = b.ms + 50;
+          });
+
+          if (thresholdMs != null) {
+            var pct = Math.round(att.threshold_count / att.expected_count * 100);
+            marks.push({
+              ms: thresholdMs, label: pct + '% quorum', color: '#5b8def', series: 'attestations',
+              title: 'Attestations for this block passed BUILDER_PAYMENT_THRESHOLD: ' +
+                att.threshold_count.toLocaleString() + ' of ' + att.expected_count.toLocaleString() + ' expected attesters',
+            });
+          }
+        }
+
+        marks.sort(function(a, b) { return a.ms - b.ms; });
+
+        // labels share the top row and only stack when they would overlap
+        var placedMarks = [];
+
+        marks.forEach(function(m) {
+          if (m.ms <= ax.lo || m.ms >= ax.hi) return;
+          if (tlSolo && m.series && m.series !== tlSolo) return;
+
+          var x = pos(m.ms);
+          var width = m.label.length * 0.62;
+          var row = 0;
+
+          while (placedMarks.some(function(pm) { return pm.row === row && x < pm.x + pm.w + 1.5 && x + width > pm.x; })) row++;
+
+          placedMarks.push({ x: x, w: width, row: row });
+
+          chart += '<div class="deadline" style="left:' + x + '%;border-left-color:' + m.color + '">' +
+            '<span class="note" style="top:' + (2 + row * 14) + 'px;color:' + m.color + '" title="' + esc(m.title) + '">' +
+            m.label + '</span></div>';
+        });
+
+        // step curves: a vote in a 50ms chunk counts as landed by its end
+        var svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none">';
+
+        visible.forEach(function(sr) {
+          var cum = 0;
+          var pts = ['0,' + Y(0).toFixed(2)];
+
+          sr.buckets.forEach(function(b) {
+            var x = Math.min(100, pos(b.ms + 50)).toFixed(2);
+            pts.push(x + ',' + Y(cum / sr.denom * 100).toFixed(2));
+            cum += b.count;
+            pts.push(x + ',' + Y(cum / sr.denom * 100).toFixed(2));
+          });
+
+          pts.push('100,' + Y(cum / sr.denom * 100).toFixed(2));
+          svg += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + sr.color +
+            '" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+        });
+
+        svg += '</svg>';
+
+        var hovers = '';
+        var bins = 24;
+
+        for (var b = 0; b < bins; b++) {
+          var upto = ax.lo + ax.span * (b + 1) / bins;
+          var parts = [];
+
+          visible.forEach(function(sr) {
+            var cum = 0;
+            sr.buckets.forEach(function(bk) { if (bk.ms + 50 <= upto) cum += bk.count; });
+            parts.push(sr.label + ' ' + Math.round(cum / sr.denom * 100) + '%');
+          });
+
+          hovers += '<div class="hover" style="left:' + (b / bins * 100) + '%;width:' + (100 / bins) +
+            '%" title="by ' + fmtStr(Math.round(upto)) + ': ' + parts.join(' \u00b7 ') + '"></div>';
+        }
+
+        var labels = '';
+
+        ax.lines.forEach(function(t) {
+          labels += '<span style="left:' + pos(t) + '%">' + fmtAxis(t) + '</span>';
+        });
+        labels += '<span style="left:100%">' + fmtAxis(ax.hi) + '</span>';
+
+        var stats = series.map(function(sr) {
+          var off = tlSolo && tlSolo !== sr.label;
+          return '<span class="tl-toggle' + (off ? ' off' : '') + '" data-tlseries="' + esc(sr.label) +
+            '" style="white-space: nowrap" title="' +
+            (tlSolo === sr.label ? 'showing only this series — click to show all' : 'click to show only this series') +
+            '"><span style="color:' + sr.color + ';font-weight:600" title="of ' +
+            (sr.denom !== sr.count ? sr.denom.toLocaleString() + ' ' : '') + sr.of + '">' + sr.label + '</span> <b>' +
+            sr.count.toLocaleString() + '</b>' +
+            (sr.denom > sr.count ? '<span class="text-muted">/' + sr.denom.toLocaleString() + '</span>' : '') +
+            (sr.unit ? ' <span class="text-muted small">' + sr.unit + '</span>' : '') + '</span>';
+        }).join(sep);
+
+        if (viewed && viewed.viewed && att.total_count > viewed.count) {
+          stats += sep + '<span style="white-space: nowrap"><span class="num" style="color:#f46a6a"><b>' +
+            (att.total_count - viewed.count).toLocaleString() + '</b></span> <span class="text-muted">vote other roots</span></span>';
+        }
+
+        document.getElementById('waves-timeline-body').innerHTML = stats + liveBadge(data.settled) +
+          '<div class="tl-flex" style="margin-top: 8px">' +
+          '<div class="tl-y">' + ylabs + '</div>' +
+          '<div class="arrival-hist hist-tall" style="flex: 1 1 auto; min-width: 0; margin-top: 0">' + chart + svg + hovers + '</div>' +
+          '</div>' +
+          '<div class="arrival-hist-axis" style="margin-left: 2.6rem">' + labels + '</div>';
+      }
+
+      // The column chart follows the lab's data column propagation view:
+      // column index across, arrival time up, with each column's min, median
+      // and p90 reduced from every observing node's sighting.
+      function renderColWave(cols, settled) {
+        var entries = cols.columns || [];
+        if (!entries.length || !cols.blob_count) return;
+
+        var stats = '<b>' + cols.blob_count + '</b> blob' + (cols.blob_count > 1 ? 's' : '') +
+          sep + '<b>' + cols.seen_columns + '</b><span class="text-muted">/' + entries.length + ' columns seen</span>';
+        if (cols.median_ms) {
+          stats += sep + '<span class="text-muted">median</span> ' + fmtMsColored(cols.median_ms) +
+            ' <span class="text-muted small">of ' + (cols.observations || 0).toLocaleString() + ' sightings</span>';
+        }
+        if (cols.probed_columns > 0) {
+          var availColor = cols.min_availability < 100 ? '#f1b44c' : '#34c38f';
+          stats += sep + '<span class="num" style="color:' + availColor + '"><b>' + cols.avg_availability.toFixed(1) +
+            '%</b></span> <span class="text-muted">available (' + cols.total_probes.toLocaleString() + ' probes)</span>';
+          if (cols.min_availability < 100) {
+            stats += ' <span class="text-muted small">worst column ' + cols.min_availability.toFixed(1) + '%</span>';
+          }
+        }
+
+        var count = entries.length;
+        var maxT = 0;
+
+        entries.forEach(function(c) {
+          var top = c.p90_ms || c.p50_ms || c.first_seen_ms;
+          if (top != null && top > maxT) maxT = top;
+        });
+
+        document.getElementById('waves-cols').style.display = '';
+
+        if (!maxT) {
+          document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled);
+          return;
+        }
+
+        var yMax = Math.max(500, Math.ceil(maxT * 1.15 / 500) * 500);
+        var ySteps = [250, 500, 1000, 2500, 5000];
+        var yStep = ySteps[ySteps.length - 1];
+
+        for (var i = 0; i < ySteps.length; i++) {
+          if (yMax / ySteps[i] <= 4) { yStep = ySteps[i]; break; }
+        }
+
+        var X = function(i) { return ((i + 0.5) / count * 100).toFixed(2); };
+        var Y = function(ms) { return (100 - ms / yMax * 100).toFixed(2); };
+
+        // unseen columns break the lines rather than being interpolated over
+        var segs = [];
+        var cur = null;
+
+        entries.forEach(function(c, i) {
+          if (c.first_seen_ms == null) { cur = null; return; }
+
+          if (!cur) {
+            cur = { min: [], p50: [], p90: [] };
+            segs.push(cur);
+          }
+
+          var x = X(i);
+          cur.min.push(x + ',' + Y(c.first_seen_ms));
+          cur.p50.push(x + ',' + Y(c.p50_ms || c.first_seen_ms));
+          cur.p90.push(x + ',' + Y(c.p90_ms || c.p50_ms || c.first_seen_ms));
+        });
+
+        var svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none">';
+
+        segs.forEach(function(seg) {
+          if (seg.min.length === 1) {
+            // a lone column between gaps still deserves a visible dash
+            ['min', 'p50', 'p90'].forEach(function(k) {
+              var pt = seg[k][0].split(',');
+              seg[k] = [(+pt[0] - 0.3).toFixed(2) + ',' + pt[1], (+pt[0] + 0.3).toFixed(2) + ',' + pt[1]];
+            });
+          }
+
+          svg += '<polygon points="' + seg.p90.join(' ') + ' ' + seg.min.slice().reverse().join(' ') +
+            '" fill="rgba(115,128,141,0.16)"/>';
+          svg += '<polyline points="' + seg.p90.join(' ') + '" fill="none" stroke="#f1b44c" stroke-width="1.2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+          svg += '<polyline points="' + seg.p50.join(' ') + '" fill="none" stroke="#5b8def" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+          svg += '<polyline points="' + seg.min.join(' ') + '" fill="none" stroke="#34c38f" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+        });
+
+        svg += '</svg>';
+
+        var chart = '';
+
+        for (var ms = yStep; ms < yMax; ms += yStep) {
+          var top = (100 - ms / yMax * 100) + '%';
+          chart += '<div class="hgrid" style="top:' + top + '"></div>' +
+            '<span class="ylab" style="top:' + top + '">' + fmtAxis(ms) + '</span>';
+        }
+
+        for (var t = 16; t < count; t += 16) {
+          chart += '<div class="grid" style="left:' + (t / count * 100) + '%"></div>';
+        }
+
+        chart += svg;
+
+        entries.forEach(function(c, i) {
+          var tip = 'column ' + c.index;
+
+          if (c.first_seen_ms != null) {
+            tip += ' \u00b7 first ' + fmtStr(c.first_seen_ms);
+            if (c.first_seen_by) tip += ' by ' + c.first_seen_by;
+            if (c.p50_ms) tip += ' \u00b7 median ' + fmtStr(c.p50_ms);
+            if (c.p90_ms) tip += ' \u00b7 p90 ' + fmtStr(c.p90_ms);
+            if (c.observations) tip += ' \u00b7 ' + c.observations + ' sightings';
+          } else {
+            tip += ' \u00b7 not seen';
+          }
+
+          if (c.availability_pct != null) {
+            tip += ' \u00b7 availability ' + c.availability_pct.toFixed(1) + '% (' + c.probes + ' probes)';
+          }
+
+          chart += '<div class="hover" style="left:' + (i / count * 100) + '%;width:' + (100 / count) +
+            '%" title="' + esc(tip) + '"></div>';
+        });
+
+        var labels = '<span style="left:0;transform:none">0</span>';
+        for (var lt = 16; lt < count; lt += 16) {
+          labels += '<span style="left:' + (lt / count * 100) + '%">' + lt + '</span>';
+        }
+        labels += '<span style="left:100%;transform:translateX(-100%)">' + (count - 1) + '</span>';
+
+        var legend = '<div class="text-muted small pt-1">per column, across ' +
+          '<b>' + (cols.observations || 0).toLocaleString() + '</b> node sightings: ' +
+          '<span class="arrival-heat-key" style="background:#34c38f"></span> first ' +
+          '<span class="arrival-heat-key" style="background:#5b8def"></span> median ' +
+          '<span class="arrival-heat-key" style="background:#f1b44c"></span> p90</div>';
+
+        document.getElementById('waves-cols-body').innerHTML = stats + liveBadge(settled) +
+          '<div class="arrival-hist hist-sm">' + chart + '</div>' +
+          '<div class="arrival-hist-axis">' + labels + '</div>' + legend;
+      }
+
+      function renderWaves(data) {
+        wavesData = data;
+        renderTimeline(data);
+        if (data.columns) renderColWave(data.columns, data.settled);
+      }
+
+      function loadArrival() {
+        if (arrivalLoaded) return;
+        arrivalLoaded = true;
+
+        var params = '?root=' + encodeURIComponent(arrivalBlockRoot) +
+          '&exec=' + encodeURIComponent(arrivalExecHash) + '&num=' + encodeURIComponent(arrivalExecNumber);
+
+        // The wave panels stay hidden when their fetch fails or returns
+        // nothing: they are additive context, so their failure should not
+        // add noise to the arrival panel above them.
+        var wavesReq = document.getElementById('waves-timeline')
+          ? fetch('/slot/' + arrivalSlot + '/waves' + params)
+            .then(function(r) {
+              if (!r.ok) throw new Error('status ' + r.status);
+              return r.json();
+            })
+            .catch(function(err) {
+              // the panels stay hidden on failure, but silence would hide
+              // real bugs behind the same blank space as missing data
+              console.error('slot waves failed:', err);
+              return null;
+            })
+          : Promise.resolve(null);
+
+        // both fetches run concurrently, but everything renders in one pass
+        // once both are in, so the wave panels never pop in later and shift
+        // the table under the reader
+        fetch('/slot/' + arrivalSlot + '/arrival' + params)
+          .then(function(r) {
+            if (!r.ok) throw new Error('status ' + r.status);
+            return r.json();
+          })
+          .then(function(data) {
+            return wavesReq.then(function(waves) {
+              render(data);
+
+              if (waves) {
+                try {
+                  renderWaves(waves);
+                } catch (err) {
+                  console.error('slot waves rendering failed:', err);
+                }
+              }
+            });
+          })
+          .catch(function(err) {
+            document.getElementById('arrival-loading').innerHTML =
+              '<span class="text-danger">Failed to load propagation data: ' + esc(err.message) + '</span>';
+          });
+      }
+
+      document.getElementById('arrival-body').addEventListener('click', function(ev) {
+        var th = ev.target.closest('[data-sort]');
+        if (!th || !arrivalData) return;
+        var key = th.getAttribute('data-sort');
+        if (sortState.key === key) {
+          sortState.dir = -sortState.dir;
+        } else {
+          sortState.key = key;
+          sortState.dir = 1;
+        }
+        document.getElementById('arrival-body').innerHTML = renderTable(arrivalData);
+        requestAnimationFrame(syncStickyOffsets);
+      });
+
+      var tlBody = document.getElementById('waves-timeline-body');
+      if (tlBody) {
+        tlBody.addEventListener('click', function(ev) {
+          var el = ev.target.closest('[data-tlseries]');
+          if (!el || !wavesData) return;
+          var label = el.getAttribute('data-tlseries');
+          tlSolo = tlSolo === label ? null : label;
+          renderTimeline(wavesData);
+        });
+      }
+
+      var tab = document.getElementById('arrival-tab');
+      if (tab) {
+        tab.addEventListener('shown.bs.tab', loadArrival);
+        // Load immediately when the tab is preselected via url hash. The page
+        // header script strips the fragment before this runs (to avoid the
+        // browser's scroll-to-fragment) and stashes it in __doraInitialHash.
+        if (window.location.hash === '#arrival' || window.__doraInitialHash === '#arrival') loadArrival();
+      }
+    })();
+  </script>
+{{ end }}

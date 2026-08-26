@@ -1251,6 +1251,9 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 		valueFloat, _ := bigFloat.Float64()
 		valueRaw := f.Value.Bytes()
 
+		input, inputPruned := bdbtypes.TrimPrunedPayload(f.Input)
+		output, outputPruned := bdbtypes.TrimPrunedPayload(f.Output)
+
 		itx := &models.TransactionPageDataInternalTx{
 			CallIndex:    uint32(i),
 			Depth:        f.Depth,
@@ -1263,8 +1266,10 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 			GasUsed:      f.GasUsed,
 			Status:       f.Status,
 			ErrorText:    f.Error,
-			Input:        f.Input,
-			Output:       f.Output,
+			Input:        input,
+			InputPruned:  inputPruned,
+			Output:       output,
+			OutputPruned: outputPruned,
 			HasTraceData: true,
 		}
 
@@ -1274,8 +1279,10 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 			itx.TypeName = fmt.Sprintf("TYPE_%d", f.Type)
 		}
 
-		// Method ID, name, and decoded calldata from input data
-		if len(f.Input) >= 4 {
+		// Method ID, name, and decoded calldata from input data. A pruned input
+		// only carries its leading bytes, and ABI decoding follows offsets that
+		// may point past them, so it stays on the selector-derived fields.
+		if len(input) >= 4 {
 			isCreate := f.Type == 3 || f.Type == 4
 			precompileInfo := utils.GetPrecompileInfo(f.To[:])
 			sysName, isSysContract := sysContracts[f.To]
@@ -1285,26 +1292,30 @@ func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.Transacti
 				itx.MethodName = "deploy"
 			} else if precompileInfo != nil {
 				itx.MethodName = precompileInfo.Name
-				itx.DecodedCalldata = utils.DecodePrecompileInput(precompileInfo.Index, f.Input)
+				if !inputPruned {
+					itx.DecodedCalldata = utils.DecodePrecompileInput(precompileInfo.Index, input)
+				}
 			} else if isNonDepositSys {
 				itx.MethodName = sysName
-				switch sysName {
-				case "Withdrawal Request (EIP-7002)":
-					itx.DecodedCalldata = utils.DecodeWithdrawalRequestInput(f.Input)
-				case "Consolidation Request (EIP-7251)":
-					itx.DecodedCalldata = utils.DecodeConsolidationRequestInput(f.Input)
+				if !inputPruned {
+					switch sysName {
+					case "Withdrawal Request (EIP-7002)":
+						itx.DecodedCalldata = utils.DecodeWithdrawalRequestInput(input)
+					case "Consolidation Request (EIP-7251)":
+						itx.DecodedCalldata = utils.DecodeConsolidationRequestInput(input)
+					}
 				}
 			} else {
 				// Normal call: use fn signature lookup
-				itx.MethodID = f.Input[:4]
+				itx.MethodID = input[:4]
 				var sig types.TxSignatureBytes
-				copy(sig[:], f.Input[:4])
+				copy(sig[:], input[:4])
 				if sigLookups != nil {
 					if lookup, found := sigLookups[sig]; found && lookup.Status == types.TxSigStatusFound {
 						itx.MethodName = lookup.Name
 						itx.MethodSignature = lookup.Signature
-						if len(f.Input) > 4 && lookup.Signature != "" {
-							itx.DecodedCalldata = utils.DecodeCalldata(lookup.Signature, f.Input)
+						if len(input) > 4 && lookup.Signature != "" && !inputPruned {
+							itx.DecodedCalldata = utils.DecodeCalldata(lookup.Signature, input)
 						}
 					}
 				}

@@ -1,0 +1,870 @@
+package handlers
+
+import (
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/sirupsen/logrus"
+
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+
+	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/clients/xatu"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/types/models"
+	xch "github.com/ethpandaops/xatu/pkg/proto/clickhouse"
+)
+
+// SlotArrival returns block propagation observations for the path slot from
+// Xatu, as JSON for the lazy propagation tab on the slot page.
+func SlotArrival(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if xatu.GlobalClient == nil {
+		http.Error(w, "Xatu is not configured", http.StatusNotFound)
+		return
+	}
+
+	vars := mux.Vars(r)
+	slot, err := strconv.ParseUint(vars["slotOrHash"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid slot", http.StatusBadRequest)
+		return
+	}
+
+	// Scope to the block being viewed, so a slot with competing blocks reports
+	// each block's own propagation rather than merging them. Requests without a
+	// usable root fall back to the whole slot.
+	blockRoot := normalizeBlockRoot(r.URL.Query().Get("root"))
+
+	// The execution block identity comes from the page rather than a second
+	// beacon lookup here; a bad value only misses the EL series.
+	execHash := normalizeBlockRoot(r.URL.Query().Get("exec"))
+	execNumber, _ := strconv.ParseUint(r.URL.Query().Get("num"), 10, 64)
+
+	cacheKey := fmt.Sprintf("slotarrival:%d:%s:%s:%d", slot, blockRoot, execHash, execNumber)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
+		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
+		if buildErr != nil {
+			logrus.WithError(buildErr).Error("error loading slot arrival data from xatu")
+			pageCall.CacheTimeout = -1
+
+			return &models.SlotArrivalResponse{Slot: slot}
+		}
+
+		pageCall.CacheTimeout = cacheTimeout
+
+		return data
+	})
+	if pageErr != nil {
+		logrus.WithError(pageErr).Error("error building slot arrival data")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+
+	result, ok := pageRes.(*models.SlotArrivalResponse)
+	if !ok {
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		logrus.WithError(err).Error("error encoding slot arrival data")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+	}
+}
+
+// arrivalNode accumulates per-node observations across both series.
+type arrivalNode struct {
+	fullName       string
+	implementation string
+	continent      string
+	country        string
+	countryCode    string
+	apiMs          *uint32
+	p2pMs          *uint32
+	headMs         *uint32
+	npMs           *uint32
+	npDurMs        *uint32
+	plMs           *uint32
+	npStatus       string
+	observations   int
+}
+
+// buildSlotArrivalData queries Xatu for the slot's block observations on the
+// beacon API event stream and the libp2p gossip layer, and aggregates them
+// per observing node. It returns the response and the cache timeout: no
+// caching while the ingest pipeline may still receive events for the slot, a
+// short timeout for recent slots and a long one for historic slots.
+func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot, execHash string, execNumber uint64) (*models.SlotArrivalResponse, time.Duration, error) {
+	client := xatu.GlobalClient
+	chainState := services.GlobalBeaconService.GetChainState()
+	slotTime := chainState.SlotToTime(slot)
+
+	settled := time.Now().After(slotTime.Add(client.SettleDelay()))
+
+	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	nodes := map[string]*arrivalNode{}
+
+	apiObservations, err := loadAPIArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	p2pObservations, err := loadP2PArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	headObservations, err := loadHeadArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	npObservations, err := loadEngineTimings(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	elObservations, err := loadExecutionEngineTimings(queryCtx, client, execHash, execNumber, slotTime, settled, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	npObservations += elObservations
+
+	plObservations, err := loadPayloadArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	response := &models.SlotArrivalResponse{
+		Slot:             uint64(slot),
+		Settled:          settled,
+		Observations:     apiObservations,
+		P2PObservations:  p2pObservations,
+		HeadObservations: headObservations,
+		NPObservations:   npObservations,
+		PLObservations:   plObservations,
+	}
+
+	if len(nodes) > 0 {
+		buildArrivalAggregates(response, nodes, client.Network(), lateThreshold(chainState))
+	}
+
+	cacheTimeout := time.Duration(-1)
+
+	switch {
+	case !settled:
+		// The pipeline may still be receiving events, so hold the result only
+		// briefly. Not caching at all would re-query on every tab open, and
+		// nothing upstream of this endpoint throttles that.
+		cacheTimeout = unsettledCacheTimeout(chainState)
+	case time.Since(slotTime) < 30*time.Minute:
+		cacheTimeout = 30 * time.Second
+	default:
+		cacheTimeout = time.Hour
+	}
+
+	return response, cacheTimeout, nil
+}
+
+// loadAPIArrivals loads the beacon API block event series into nodes.
+func loadAPIArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
+	req := &xch.ListBeaconApiEthV1EventsBlockRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
+		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
+			Eq: uint32(slotTime.Unix()),
+		}},
+		OrderBy:  "propagation_slot_start_diff",
+		PageSize: xatu.MaxQueryPageSize(),
+	}
+
+	if blockRoot != "" {
+		req.Block = &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: blockRoot}}
+	}
+
+	observations := 0
+
+	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
+		req.PageToken = xatuPageToken(pageOffset)
+
+		query, err := xch.BuildListBeaconApiEthV1EventsBlockQuery(req)
+
+		return query.Query, query.Args, err
+	}, func(rows driver.Rows) error {
+		var row xch.BeaconApiEthV1EventsBlockRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return fmt.Errorf("api scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[row.MetaClientName]
+		if node == nil {
+			node = &arrivalNode{fullName: row.MetaClientName}
+			nodes[row.MetaClientName] = node
+		}
+
+		node.observations++
+		node.implementation = row.MetaConsensusImplementation
+		node.continent = row.MetaClientGeoContinentCode
+		node.country = row.MetaClientGeoCountry
+		node.countryCode = row.MetaClientGeoCountryCode
+
+		// Rows are ordered by propagation time, so the first row per node is
+		// its earliest observation.
+		if node.apiMs == nil {
+			ms := row.PropagationSlotStartDiff
+			node.apiMs = &ms
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("api query: %w", err)
+	}
+
+	return observations, nil
+}
+
+// loadP2PArrivals loads the libp2p gossipsub block series into nodes.
+func loadP2PArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
+	req := &xch.ListLibp2PGossipsubBeaconBlockRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
+		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
+			Eq: uint32(slotTime.Unix()),
+		}},
+		OrderBy:  "propagation_slot_start_diff",
+		PageSize: xatu.MaxQueryPageSize(),
+	}
+
+	if blockRoot != "" {
+		req.Block = &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: blockRoot}}
+	}
+
+	observations := 0
+
+	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
+		req.PageToken = xatuPageToken(pageOffset)
+
+		query, err := xch.BuildListLibp2PGossipsubBeaconBlockQuery(req)
+
+		return query.Query, query.Args, err
+	}, func(rows driver.Rows) error {
+		var row xch.Libp2PGossipsubBeaconBlockRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return fmt.Errorf("p2p scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[row.MetaClientName]
+		if node == nil {
+			node = &arrivalNode{fullName: row.MetaClientName}
+			nodes[row.MetaClientName] = node
+		}
+
+		node.observations++
+
+		if node.continent == "" {
+			node.continent = row.MetaClientGeoContinentCode
+			node.country = row.MetaClientGeoCountry
+			node.countryCode = row.MetaClientGeoCountryCode
+		}
+
+		if node.implementation == "" {
+			node.implementation = reduceSidecarName(row.MetaClientImplementation)
+		}
+
+		if node.p2pMs == nil {
+			ms := row.PropagationSlotStartDiff
+			node.p2pMs = &ms
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("p2p query: %w", err)
+	}
+
+	return observations, nil
+}
+
+// reduceSidecarName shortens gossip listener implementation names like
+// "Xatu Sidecar (lighthouse)" to the client they attach to.
+func reduceSidecarName(name string) string {
+	if open := strings.Index(name, "("); open >= 0 {
+		if close := strings.Index(name[open:], ")"); close > 1 {
+			return name[open+1 : open+close]
+		}
+	}
+
+	return name
+}
+
+// loadHeadArrivals loads the beacon API head event series into nodes. A head
+// event marks the node adopting the block as its head via fork choice, a
+// stronger signal than merely having seen the block.
+func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
+	req := &xch.ListBeaconApiEthV1EventsHeadRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
+		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
+			Eq: uint32(slotTime.Unix()),
+		}},
+		OrderBy:  "propagation_slot_start_diff",
+		PageSize: xatu.MaxQueryPageSize(),
+	}
+
+	if blockRoot != "" {
+		req.Block = &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: blockRoot}}
+	}
+
+	observations := 0
+
+	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
+		req.PageToken = xatuPageToken(pageOffset)
+
+		query, err := xch.BuildListBeaconApiEthV1EventsHeadQuery(req)
+
+		return query.Query, query.Args, err
+	}, func(rows driver.Rows) error {
+		var row xch.BeaconApiEthV1EventsHeadRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return fmt.Errorf("head scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[row.MetaClientName]
+		if node == nil {
+			node = &arrivalNode{fullName: row.MetaClientName}
+			nodes[row.MetaClientName] = node
+		}
+
+		node.observations++
+
+		if node.continent == "" {
+			node.continent = row.MetaClientGeoContinentCode
+			node.country = row.MetaClientGeoCountry
+			node.countryCode = row.MetaClientGeoCountryCode
+		}
+
+		if node.implementation == "" {
+			node.implementation = row.MetaConsensusImplementation
+		}
+
+		if node.headMs == nil {
+			ms := row.PropagationSlotStartDiff
+			node.headMs = &ms
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("head query: %w", err)
+	}
+
+	return observations, nil
+}
+
+// lateThreshold returns the point after slot start beyond which an observation
+// is treated as late: typically a syncing or stalled node whose event times say
+// nothing about propagation. Derived from the chain's slot length, so it stays
+// one slot on chains that do not use twelve second slots.
+func lateThreshold(chainState *consensus.ChainState) uint32 {
+	slotMs := chainState.GetSpecs().SlotDurationMs
+	if slotMs == 0 {
+		slotMs = 12000
+	}
+
+	return uint32(slotMs) //nolint:gosec // slot lengths are small
+}
+
+// loadEngineTimings loads engine API newPayload calls observed by the
+// snooper into nodes: when the consensus client handed the payload to its
+// execution client (derived from the observed completion minus the call
+// duration), and how long the execution client took to import it.
+func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
+	req := &xch.ListConsensusEngineApiNewPayloadRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		Slot:            &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{Eq: uint32(slot)}},
+		SlotStartDateTime: &xch.UInt32Filter{Filter: &xch.UInt32Filter_Eq{
+			Eq: uint32(slotTime.Unix()),
+		}},
+		OrderBy:  "event_date_time",
+		PageSize: xatu.MaxQueryPageSize(),
+	}
+
+	if blockRoot != "" {
+		req.BlockRoot = &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: blockRoot}}
+	}
+
+	slotStartMs := slotTime.UnixMilli()
+	observations := 0
+
+	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
+		req.PageToken = xatuPageToken(pageOffset)
+
+		query, err := xch.BuildListConsensusEngineApiNewPayloadQuery(req)
+
+		return query.Query, query.Args, err
+	}, func(rows driver.Rows) error {
+		var row xch.ConsensusEngineApiNewPayloadRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return fmt.Errorf("newpayload scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[row.MetaClientName]
+		if node == nil {
+			node = &arrivalNode{fullName: row.MetaClientName}
+			nodes[row.MetaClientName] = node
+		}
+
+		node.observations++
+
+		if node.npMs == nil {
+			// event_date_time is stamped when the sentry receives the snooper's
+			// event, which is emitted after the call completes - so the call
+			// START is the observed completion minus the call duration.
+			offset := row.EventDateTime/1000 - slotStartMs - int64(row.DurationMs) //nolint:gosec // duration is bounded
+			if offset < 0 {
+				offset = 0
+			}
+
+			ms := uint32(min(offset, int64(^uint32(0))))           //nolint:gosec // clamped above
+			dur := uint32(min(row.DurationMs, uint64(^uint32(0)))) //nolint:gosec // clamped
+
+			node.npMs = &ms
+			node.npDurMs = &dur
+			node.npStatus = row.Status
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("newpayload query: %w", err)
+	}
+
+	return observations, nil
+}
+
+// loadExecutionEngineTimings loads newPayload calls captured on the execution
+// side into nodes. It covers what the snooper series cannot: EL-instrumented
+// nodes report their own calls, which is the only engine series most devnets
+// have. The capture names its clients differently from the beacon sentries,
+// so rows merge into existing nodes by their display identity, and the
+// snooper's observation wins where both saw the same node.
+func loadExecutionEngineTimings(ctx context.Context, client *xatu.Client, execHash string, execNumber uint64, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+	if execHash == "" || execNumber == 0 {
+		return 0, nil
+	}
+
+	req := &xch.ListExecutionEngineNewPayloadRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		BlockNumber:     &xch.UInt64Filter{Filter: &xch.UInt64Filter_Eq{Eq: execNumber}},
+		BlockHash:       &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: execHash}},
+		OrderBy:         "event_date_time",
+		PageSize:        xatu.MaxQueryPageSize(),
+	}
+
+	query, err := xch.BuildListExecutionEngineNewPayloadQuery(req)
+	if err != nil {
+		return 0, fmt.Errorf("engine el build: %w", err)
+	}
+
+	rows, err := client.Query(ctx, settled, query.Query, query.Args...)
+	if err != nil {
+		return 0, fmt.Errorf("engine el query: %w", err)
+	}
+	defer rows.Close()
+
+	// existing nodes indexed by display identity, so the differently-named
+	// capture rows land on the beacon sentry rows they belong to
+	byDisplay := map[string]*arrivalNode{}
+
+	for _, node := range nodes {
+		group, _, display := parseSentryName(node.fullName, client.Network())
+		byDisplay[group+"|"+display] = node
+	}
+
+	slotStartMs := slotTime.UnixMilli()
+	observations := 0
+
+	for rows.Next() {
+		var row xch.ExecutionEngineNewPayloadRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return 0, fmt.Errorf("engine el scan: %w", err)
+		}
+
+		observations++
+
+		group, _, display := parseSentryName(row.MetaClientName, client.Network())
+
+		node := byDisplay[group+"|"+display]
+		if node == nil {
+			node = nodes[row.MetaClientName]
+			if node == nil {
+				node = &arrivalNode{fullName: row.MetaClientName}
+				nodes[row.MetaClientName] = node
+				byDisplay[group+"|"+display] = node
+			}
+		}
+
+		node.observations++
+
+		if node.continent == "" {
+			node.continent = row.MetaClientGeoContinentCode
+			node.country = row.MetaClientGeoCountry
+			node.countryCode = row.MetaClientGeoCountryCode
+		}
+
+		if node.npMs == nil {
+			// requested_date_time is stamped at the call start, so no
+			// completion-minus-duration derivation is needed here
+			offset := row.RequestedDateTime/1000 - slotStartMs
+			if offset < 0 {
+				offset = 0
+			}
+
+			ms := uint32(min(offset, int64(^uint32(0))))           //nolint:gosec // clamped above
+			dur := uint32(min(row.DurationMs, uint64(^uint32(0)))) //nolint:gosec // clamped
+
+			node.npMs = &ms
+			node.npDurMs = &dur
+			node.npStatus = row.Status
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("engine el query: %w", err)
+	}
+
+	return observations, nil
+}
+
+// payloadGossipQuery reads the gloas execution payload gossip events: when
+// each node first saw the separately-gossiped execution payload on the wire.
+// This is plain SQL rather than a generated builder because the table only
+// exists on networks whose xatu schema carries the gloas migrations, and
+// xatu master's generated package cannot include it until the schema lands
+// there; swap to the generated builder when it does. One page is plenty: the
+// series is one row per observing node.
+const payloadGossipQuery = `SELECT meta_client_name, propagation_slot_start_diff
+FROM beacon_api_eth_v1_events_execution_payload_gossip
+WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ?%s
+ORDER BY propagation_slot_start_diff
+LIMIT 10000`
+
+// loadPayloadArrivals loads the payload gossip series into nodes. A network
+// without the gloas schema has no such table, which reads as no observations
+// rather than an error, so pre-gloas networks keep working untouched.
+func loadPayloadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
+	filter := ""
+	args := []any{client.Network(), slotTime.Unix(), uint32(slot)}
+
+	if blockRoot != "" {
+		filter = " AND block_root = ?"
+
+		args = append(args, blockRoot)
+	}
+
+	rows, err := client.Query(ctx, settled, fmt.Sprintf(payloadGossipQuery, filter), args...)
+	if err != nil {
+		if isMissingTableError(err) {
+			return 0, nil
+		}
+
+		return 0, fmt.Errorf("payload query: %w", err)
+	}
+	defer rows.Close()
+
+	observations := 0
+
+	for rows.Next() {
+		var name string
+
+		var ms uint32
+
+		if err := rows.Scan(&name, &ms); err != nil {
+			return 0, fmt.Errorf("payload scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[name]
+		if node == nil {
+			node = &arrivalNode{fullName: name}
+			nodes[name] = node
+		}
+
+		node.observations++
+
+		if node.plMs == nil {
+			v := ms
+			node.plMs = &v
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("payload query: %w", err)
+	}
+
+	return observations, nil
+}
+
+// isMissingTableError matches ClickHouse's unknown-table error (code 60),
+// which reaches us as text through the HTTP proxy path.
+func isMissingTableError(err error) bool {
+	msg := err.Error()
+
+	return strings.Contains(msg, "UNKNOWN_TABLE") || strings.Contains(msg, "Code: 60")
+}
+
+// buildArrivalAggregates fills the response's nodes, stats and
+// per-continent/group summaries from the accumulated per-node observations.
+// Late nodes are listed after on-time nodes and excluded from all summaries.
+func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[string]*arrivalNode, network string, lateMs uint32) {
+	nodeList := make([]*models.SlotArrivalNode, 0, len(nodes))
+	lateList := make([]*models.SlotArrivalNode, 0)
+	continents := map[string]*models.SlotArrivalContinent{}
+	continentHead := map[string][]uint32{}
+	continentPl := map[string][]uint32{}
+	groups := map[string][]uint32{}
+
+	for _, node := range nodes {
+		// Earliest block arrival: beacon API or gossip layer. Head adoption is
+		// tracked separately and only used as a fallback for head-only nodes.
+		var minMs uint32
+
+		switch {
+		case node.apiMs != nil && node.p2pMs != nil:
+			minMs = min(*node.apiMs, *node.p2pMs)
+		case node.apiMs != nil:
+			minMs = *node.apiMs
+		case node.p2pMs != nil:
+			minMs = *node.p2pMs
+		case node.headMs != nil:
+			minMs = *node.headMs
+		case node.npMs != nil:
+			minMs = *node.npMs
+		case node.plMs != nil:
+			minMs = *node.plMs
+		}
+
+		group, operator, display := parseSentryName(node.fullName, network)
+
+		entry := &models.SlotArrivalNode{
+			Name:           display,
+			FullName:       node.fullName,
+			Group:          group,
+			Operator:       operator,
+			Implementation: node.implementation,
+			Continent:      node.continent,
+			Country:        node.country,
+			CountryCode:    node.countryCode,
+			MinMs:          minMs,
+			APIMs:          node.apiMs,
+			P2PMs:          node.p2pMs,
+			HeadMs:         node.headMs,
+			NPMs:           node.npMs,
+			NPDurMs:        node.npDurMs,
+			PLMs:           node.plMs,
+			NPStatus:       node.npStatus,
+			Observations:   node.observations,
+		}
+
+		if minMs > lateMs {
+			entry.Late = true
+
+			lateList = append(lateList, entry)
+
+			continue
+		}
+
+		nodeList = append(nodeList, entry)
+
+		continent := continents[node.continent]
+		if continent == nil {
+			continent = &models.SlotArrivalContinent{Code: node.continent}
+			continents[node.continent] = continent
+		}
+
+		continent.Nodes++
+
+		if node.headMs != nil {
+			continentHead[node.continent] = append(continentHead[node.continent], *node.headMs)
+		}
+
+		if node.plMs != nil {
+			continentPl[node.continent] = append(continentPl[node.continent], *node.plMs)
+		}
+
+		groups[group] = append(groups[group], minMs)
+	}
+
+	sort.Slice(nodeList, func(a, b int) bool {
+		return nodeList[a].MinMs < nodeList[b].MinMs
+	})
+	sort.Slice(lateList, func(a, b int) bool {
+		return lateList[a].MinMs < lateList[b].MinMs
+	})
+
+	if len(nodeList) == 0 {
+		response.Nodes = lateList
+		response.Stats = &models.SlotArrivalStats{LateNodes: len(lateList)}
+
+		return
+	}
+
+	response.Stats = &models.SlotArrivalStats{
+		UniqueNodes: len(nodeList),
+		MinMs:       nodeList[0].MinMs,
+		P50Ms:       nodeList[len(nodeList)/2].MinMs,
+		P90Ms:       nodeList[len(nodeList)*9/10].MinMs,
+		MaxMs:       nodeList[len(nodeList)-1].MinMs,
+		LateNodes:   len(lateList),
+	}
+	response.Nodes = append(nodeList, lateList...)
+
+	// min/p50/p90 of a sorted series; nils when the series has no values, so
+	// the frontend renders dashes instead of zeros.
+	arrivalStats := func(values []uint32) (*uint32, *uint32, *uint32) {
+		if len(values) == 0 {
+			return nil, nil, nil
+		}
+
+		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
+
+		return &values[0], &values[len(values)/2], &values[len(values)*9/10]
+	}
+
+	continentList := make([]*models.SlotArrivalContinent, 0, len(continents))
+
+	for code, continent := range continents {
+		continent.HeadMinMs, continent.HeadP50Ms, continent.HeadP90Ms = arrivalStats(continentHead[code])
+		continent.PlMinMs, continent.PlP50Ms, continent.PlP90Ms = arrivalStats(continentPl[code])
+
+		continentList = append(continentList, continent)
+	}
+
+	// earliest head adoption first; continents without head data sink to the
+	// bottom, ordered by payload arrival if they have one
+	continentSortKey := func(c *models.SlotArrivalContinent) uint64 {
+		switch {
+		case c.HeadMinMs != nil:
+			return uint64(*c.HeadMinMs)
+		case c.PlMinMs != nil:
+			return uint64(*c.PlMinMs) + (1 << 32)
+		default:
+			return 1 << 33
+		}
+	}
+
+	sort.Slice(continentList, func(a, b int) bool {
+		return continentSortKey(continentList[a]) < continentSortKey(continentList[b])
+	})
+
+	response.Continents = continentList
+
+	groupList := make([]*models.SlotArrivalGroup, 0, len(groups))
+
+	for name, values := range groups {
+		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
+		groupList = append(groupList, &models.SlotArrivalGroup{
+			Name:  name,
+			Nodes: len(values),
+			P50Ms: values[len(values)/2],
+		})
+	}
+
+	sort.Slice(groupList, func(a, b int) bool {
+		return groupList[a].Nodes > groupList[b].Nodes
+	})
+
+	response.Groups = groupList
+}
+
+// unsettledCacheTimeout bounds how stale a pre-settle result can be to one
+// slot, which decouples ClickHouse load from request volume without hiding
+// events that are still arriving for longer than the slot they belong to.
+func unsettledCacheTimeout(chainState *consensus.ChainState) time.Duration {
+	slotDuration := time.Duration(chainState.GetSpecs().SlotDurationMs) * time.Millisecond
+	if slotDuration <= 0 {
+		return 12 * time.Second
+	}
+
+	return slotDuration
+}
+
+// normalizeBlockRoot returns a lowercase 0x-prefixed 32 byte root, or "" when
+// the input is not one. Anything unparsable degrades to a slot-wide query
+// rather than being rejected, so a stale link still renders.
+func normalizeBlockRoot(root string) string {
+	root = strings.ToLower(strings.TrimSpace(root))
+	if len(root) != 66 || !strings.HasPrefix(root, "0x") {
+		return ""
+	}
+
+	if _, err := hex.DecodeString(root[2:]); err != nil {
+		return ""
+	}
+
+	return root
+}
+
+// parseSentryName splits a xatu sentry name of the form
+// <classifier>/<operator>/<node> into a display group, operator and short
+// display name. Names without that shape (e.g. locally run xatu instances)
+// pass through unchanged. Community and corp contributoor nodes carry a
+// hashed suffix that is shortened for display.
+func parseSentryName(name, network string) (group, operator, display string) {
+	parts := strings.Split(name, "/")
+	if len(parts) != 3 {
+		return "other", "", name
+	}
+
+	classifier, mid, node := parts[0], parts[1], parts[2]
+
+	shortHash := func(s string) string {
+		h := strings.TrimPrefix(s, "hashed-")
+		if len(h) > 8 {
+			h = h[:8]
+		}
+
+		return h
+	}
+
+	switch {
+	case classifier == "ethpandaops":
+		display = node
+		for _, prefix := range []string{"utility-" + mid + "-", mid + "-", "utility-" + network + "-", network + "-"} {
+			display = strings.Replace(display, prefix, "", 1)
+		}
+
+		return "ethpandaops", "ethpandaops", display
+	case strings.HasPrefix(classifier, "pub-"):
+		return "community", mid, mid + " #" + shortHash(node)
+	case strings.HasPrefix(classifier, "corp-"):
+		return "corp", mid, mid + " #" + shortHash(node)
+	default:
+		return "other", mid, node
+	}
+}

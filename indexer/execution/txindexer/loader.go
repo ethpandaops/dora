@@ -3,6 +3,7 @@ package txindexer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/execution"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -374,26 +376,49 @@ func (t *TxIndexer) fetchBlockTraces(
 
 	clients := t.getTraceClients(primaryClient, ref)
 
-	for i, client := range clients {
-		results, err := client.GetRPCClient().TraceBlockByHash(ctx, blockHash)
-		if err != nil {
-			t.logger.WithError(err).WithFields(logrus.Fields{
-				"blockHash": blockHash.Hex(),
-				"client":    client.GetName(),
-				"attempt":   i + 1,
-			}).Debug("failed to fetch block traces, trying next client")
+	var lastErr error
 
-			continue
+	for i, client := range clients {
+		results, err := client.GetRPCClient().TraceBlockByHash(
+			ctx, blockHash, bdbtypes.TracePayloadLimit,
+		)
+		if err == nil {
+			return results, nil
 		}
 
-		return results, nil
+		lastErr = err
+
+		t.logger.WithError(err).WithFields(logrus.Fields{
+			"blockHash": blockHash.Hex(),
+			"client":    client.GetName(),
+			"attempt":   i + 1,
+		}).Debug("failed to fetch block traces, trying next client")
+
+		if !shouldRetryOnOtherClient(ctx, err) {
+			break
+		}
 	}
 
-	t.logger.WithField("blockHash", blockHash.Hex()).Warn(
-		"all clients failed to fetch block traces, proceeding without traces",
+	t.logger.WithError(lastErr).WithField("blockHash", blockHash.Hex()).Warn(
+		"could not fetch block traces, proceeding without traces",
 	)
 
 	return nil, nil
+}
+
+// shouldRetryOnOtherClient reports whether a failed tracer call is worth
+// repeating against another client. A cancelled context means the deadline
+// shared by all attempts is already gone, and a decode failure means the
+// response arrived but could not be parsed - the next client returns the same
+// shape and would only burn another timeout on it.
+func shouldRetryOnOtherClient(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+
+	var decodeErr *exerpc.ResponseDecodeError
+
+	return !errors.As(err, &decodeErr)
 }
 
 // fetchBlockStateDiffs fetches per-tx state diffs (storage changes) for a block
@@ -414,23 +439,29 @@ func (t *TxIndexer) fetchBlockStateDiffs(
 
 	clients := t.getTraceClients(primaryClient, ref)
 
+	var lastErr error
+
 	for i, client := range clients {
 		results, err := client.GetRPCClient().TraceBlockStateDiffsByHash(ctx, blockHash)
-		if err != nil {
-			t.logger.WithError(err).WithFields(logrus.Fields{
-				"blockHash": blockHash.Hex(),
-				"client":    client.GetName(),
-				"attempt":   i + 1,
-			}).Debug("failed to fetch block state diffs, trying next client")
-
-			continue
+		if err == nil {
+			return results, nil
 		}
 
-		return results, nil
+		lastErr = err
+
+		t.logger.WithError(err).WithFields(logrus.Fields{
+			"blockHash": blockHash.Hex(),
+			"client":    client.GetName(),
+			"attempt":   i + 1,
+		}).Debug("failed to fetch block state diffs, trying next client")
+
+		if !shouldRetryOnOtherClient(ctx, err) {
+			break
+		}
 	}
 
-	t.logger.WithField("blockHash", blockHash.Hex()).Warn(
-		"all clients failed to fetch block state diffs, proceeding without state diffs",
+	t.logger.WithError(lastErr).WithField("blockHash", blockHash.Hex()).Warn(
+		"could not fetch block state diffs, proceeding without state diffs",
 	)
 
 	return nil, nil

@@ -136,6 +136,8 @@ type ChainSpecConfig struct {
 	ContributionDueBpsGloas              uint64 `yaml:"CONTRIBUTION_DUE_BPS_GLOAS"                 check-if-fork:"GloasForkEpoch"`
 	SyncMessageDueBpsGloas               uint64 `yaml:"SYNC_MESSAGE_DUE_BPS_GLOAS"                 check-if-fork:"GloasForkEpoch"`
 	PayloadAttestationDueBps             uint64 `yaml:"PAYLOAD_ATTESTATION_DUE_BPS"                check-if-fork:"GloasForkEpoch"`
+	BuilderPaymentThresholdNumerator     uint64 `yaml:"BUILDER_PAYMENT_THRESHOLD_NUMERATOR"        check-if-fork:"GloasForkEpoch"`
+	BuilderPaymentThresholdDenominator   uint64 `yaml:"BUILDER_PAYMENT_THRESHOLD_DENOMINATOR"      check-if-fork:"GloasForkEpoch"`
 	PayloadDueBps                        uint64 `yaml:"PAYLOAD_DUE_BPS"                            check-if-fork:"GloasForkEpoch"`
 	MaxRequestPayloads                   uint64 `yaml:"MAX_REQUEST_PAYLOADS"                       check-if-fork:"GloasForkEpoch"`
 
