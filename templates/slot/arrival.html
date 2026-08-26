@@ -222,6 +222,10 @@
       color: var(--bs-secondary-color);
       font-variant-numeric: tabular-nums;
     }
+    /* legend entries double as series filters */
+    .tl-toggle { cursor: pointer; }
+    .tl-toggle:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+    .tl-toggle.off { opacity: 0.35; }
     .arrival-hist .grid {
       position: absolute; top: 0; bottom: 0; width: 1px;
       background: var(--bs-border-color);
@@ -310,7 +314,7 @@
           <div class="col-md-10" id="arrival-sources"></div>
         </div>
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Observing nodes per continent, with the region's earliest observation">Regions:</span></div>
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The arrival stats above split by continent: where the observing nodes sit and when the block reached each region">Regions:</span></div>
           <div class="col-md-10" id="arrival-regions"></div>
         </div>
         {{ if .XatuCbtEnabled }}
@@ -730,20 +734,33 @@
           };
         }));
 
+        // same stats as the Arrival row above, split per continent; a header
+        // row names the columns once instead of tiny labels repeated per row
         var totalNodes = s.unique_nodes || 1;
-        document.getElementById('arrival-regions').innerHTML = (data.continents || []).map(function(c) {
-          var share = Math.max(1.5, c.nodes / totalNodes * 100);
+        var regionHeader = '<div class="d-flex align-items-center arrival-region-line text-muted small">' +
+          '<span class="region-name"></span>' +
+          '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">share of observing nodes</span>' +
+          '<span style="width: 4.5rem; flex: none; text-align: right">nodes</span>' +
+          '<span style="width: 7rem; flex: none; text-align: right">fastest</span>' +
+          '<span class="d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">median</span>' +
+          '<span class="d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">p90</span>' +
+          '<span class="d-none d-md-inline" style="width: 6.5rem; flex: none; text-align: right">slowest</span>' +
+          '</div>';
+        var regionRows = (data.continents || []).map(function(c) {
+          var share = c.nodes / totalNodes * 100;
           var name = continentNames[c.code] || c.code || 'Unknown';
-          return '<div class="d-flex align-items-center arrival-region-line">' +
+          return '<div class="d-flex align-items-center arrival-region-line" title="' + esc(name) + ': ' + c.nodes +
+            ' of ' + totalNodes + ' observing nodes (' + share.toFixed(0) + '%)">' +
             '<span class="region-name"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
-            '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + share.toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
-            '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b> <span class="text-muted small">node' + (c.nodes > 1 ? 's' : '') + '</span></span>' +
-            '<span class="num" style="width: 7rem; flex: none; text-align: right"><span class="text-muted small">first</span> ' + fmtMsColored(c.min_ms) + '</span>' +
-            '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">p50</span> ' + fmtMsColored(c.p50_ms) + '</span>' +
-            '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">p90</span> ' + fmtMsColored(c.p90_ms) + '</span>' +
-            '<span class="num d-none d-md-inline" style="width: 6.5rem; flex: none; text-align: right"><span class="text-muted small">max</span> ' + fmtMsColored(c.max_ms) + '</span>' +
+            '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + Math.max(1.5, share).toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
+            '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b></span>' +
+            '<span class="num" style="width: 7rem; flex: none; text-align: right">' + fmtMsColored(c.min_ms) + '</span>' +
+            '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.p50_ms) + '</span>' +
+            '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.p90_ms) + '</span>' +
+            '<span class="num d-none d-md-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.max_ms) + '</span>' +
             '</div>';
         }).join('');
+        document.getElementById('arrival-regions').innerHTML = regionRows ? regionHeader + regionRows : '';
 
         document.getElementById('arrival-body').innerHTML = renderTable(data);
         requestAnimationFrame(syncStickyOffsets);
@@ -775,6 +792,11 @@
 
         return { lo: axLo, hi: axHi, span: span, lines: lines };
       }
+
+      // Clicking a legend entry isolates that series. The axes are fixed to
+      // the slot and to 0-100%, so isolating never rescales the chart.
+      var tlSolo = null;
+      var wavesData = null;
 
       // The timeline reads the slot as its phases race to completion: the two
       // halves of a gloas block (the bid, then the payload) and the votes on
@@ -848,6 +870,9 @@
 
         if (!series.length) return;
 
+        if (tlSolo && !series.some(function(sr) { return sr.label === tlSolo; })) tlSolo = null;
+        var visible = series.filter(function(sr) { return !tlSolo || sr.label === tlSolo; });
+
         document.getElementById('waves-timeline').style.display = '';
 
         var ax = histAxis(0, slotMs);
@@ -873,14 +898,14 @@
 
         if (att && att.deadline_ms > 0) {
           marks.push({
-            ms: att.deadline_ms, label: 'attestation deadline', color: '#f46a6a',
+            ms: att.deadline_ms, label: 'attestation deadline', color: '#f46a6a', series: 'attestations',
             title: 'ATTESTATION_DUE_BPS into the slot: validators attest now even without a block in hand',
           });
         }
 
         if (data.ptc && data.ptc.deadline_ms > 0) {
           marks.push({
-            ms: data.ptc.deadline_ms, label: 'PTC deadline', color: '#f46a6a',
+            ms: data.ptc.deadline_ms, label: 'PTC deadline', color: '#f46a6a', series: 'PTC votes',
             title: 'PAYLOAD_ATTESTATION_DUE_BPS into the slot: PTC votes are due by here',
           });
         }
@@ -898,7 +923,7 @@
           if (thresholdMs != null) {
             var pct = Math.round(att.threshold_count / att.expected_count * 100);
             marks.push({
-              ms: thresholdMs, label: pct + '% quorum', color: '#5b8def',
+              ms: thresholdMs, label: pct + '% quorum', color: '#5b8def', series: 'attestations',
               title: 'Attestations for this block passed BUILDER_PAYMENT_THRESHOLD: ' +
                 att.threshold_count.toLocaleString() + ' of ' + att.expected_count.toLocaleString() + ' expected attesters',
             });
@@ -912,6 +937,7 @@
 
         marks.forEach(function(m) {
           if (m.ms <= ax.lo || m.ms >= ax.hi) return;
+          if (tlSolo && m.series && m.series !== tlSolo) return;
 
           var x = pos(m.ms);
           var width = m.label.length * 0.62;
@@ -929,7 +955,7 @@
         // step curves: a vote in a 50ms chunk counts as landed by its end
         var svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none">';
 
-        series.forEach(function(sr) {
+        visible.forEach(function(sr) {
           var cum = 0;
           var pts = ['0,' + Y(0).toFixed(2)];
 
@@ -954,7 +980,7 @@
           var upto = ax.lo + ax.span * (b + 1) / bins;
           var parts = [];
 
-          series.forEach(function(sr) {
+          visible.forEach(function(sr) {
             var cum = 0;
             sr.buckets.forEach(function(bk) { if (bk.ms + 50 <= upto) cum += bk.count; });
             parts.push(sr.label + ' ' + Math.round(cum / sr.denom * 100) + '%');
@@ -972,7 +998,11 @@
         labels += '<span style="left:100%">' + fmtAxis(ax.hi) + '</span>';
 
         var stats = series.map(function(sr) {
-          return '<span style="white-space: nowrap"><span style="color:' + sr.color + ';font-weight:600" title="of ' +
+          var off = tlSolo && tlSolo !== sr.label;
+          return '<span class="tl-toggle' + (off ? ' off' : '') + '" data-tlseries="' + esc(sr.label) +
+            '" style="white-space: nowrap" title="' +
+            (tlSolo === sr.label ? 'showing only this series — click to show all' : 'click to show only this series') +
+            '"><span style="color:' + sr.color + ';font-weight:600" title="of ' +
             (sr.denom !== sr.count ? sr.denom.toLocaleString() + ' ' : '') + sr.of + '">' + sr.label + '</span> <b>' +
             sr.count.toLocaleString() + '</b>' +
             (sr.denom > sr.count ? '<span class="text-muted">/' + sr.denom.toLocaleString() + '</span>' : '') +
@@ -1131,6 +1161,7 @@
       }
 
       function renderWaves(data) {
+        wavesData = data;
         renderTimeline(data);
         if (data.columns) renderColWave(data.columns, data.settled);
       }
@@ -1187,6 +1218,17 @@
         document.getElementById('arrival-body').innerHTML = renderTable(arrivalData);
         requestAnimationFrame(syncStickyOffsets);
       });
+
+      var tlBody = document.getElementById('waves-timeline-body');
+      if (tlBody) {
+        tlBody.addEventListener('click', function(ev) {
+          var el = ev.target.closest('[data-tlseries]');
+          if (!el || !wavesData) return;
+          var label = el.getAttribute('data-tlseries');
+          tlSolo = tlSolo === label ? null : label;
+          renderTimeline(wavesData);
+        });
+      }
 
       var tab = document.getElementById('arrival-tab');
       if (tab) {
