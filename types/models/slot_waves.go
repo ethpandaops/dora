@@ -16,7 +16,18 @@ type SlotWavesResponse struct {
 	SlotMs       uint32               `json:"slot_ms"`
 	Attestations *SlotAttestationWave `json:"attestations,omitempty"`
 	Ptc          *SlotPtcWave         `json:"ptc,omitempty"`
-	Columns      *SlotColumnWave      `json:"columns,omitempty"`
+	// Payload and Head bucket when each observing node first saw the revealed
+	// execution payload and first adopted the block as head.
+	Payload *SlotSeenWave   `json:"payload,omitempty"`
+	Head    *SlotSeenWave   `json:"head,omitempty"`
+	Columns *SlotColumnWave `json:"columns,omitempty"`
+}
+
+// SlotSeenWave buckets when observing nodes first saw one per-slot object,
+// in 50ms chunks capped to the slot.
+type SlotSeenWave struct {
+	TotalCount int                      `json:"total_count"`
+	Buckets    []*SlotAttestationBucket `json:"buckets,omitempty"`
 }
 
 // SlotPtcWave is the payload timeliness committee's voting wave on gloas
@@ -25,6 +36,8 @@ type SlotWavesResponse struct {
 type SlotPtcWave struct {
 	TotalCount   int `json:"total_count"`
 	PresentCount int `json:"present_count"`
+	// ExpectedCount is the committee size, PTC_SIZE from the chain spec.
+	ExpectedCount int `json:"expected_count,omitempty"`
 	// DeadlineMs is when PTC votes are due: 75% of the slot.
 	DeadlineMs uint32           `json:"deadline_ms"`
 	Buckets    []*SlotPtcBucket `json:"buckets,omitempty"`
@@ -50,10 +63,6 @@ type SlotAttestationWave struct {
 	// ThresholdCount is the vote count where the block clears the builder
 	// payment quorum (BUILDER_PAYMENT_THRESHOLD of ExpectedCount).
 	ThresholdCount int `json:"threshold_count,omitempty"`
-	// PayloadP50Ms is the median time the separately-gossiped execution
-	// payload reached observing nodes; zero on networks without the gloas
-	// payload series.
-	PayloadP50Ms uint32 `json:"payload_p50_ms,omitempty"`
 	// Roots is ordered by vote count, largest first. Low-volume roots beyond
 	// the first few are merged into one entry with an empty Root.
 	Roots []*SlotAttestationRoot `json:"roots,omitempty"`

@@ -68,14 +68,14 @@ func TestArrivalTemplateGatesCbtPanels(t *testing.T) {
 	}
 
 	with := render(true)
-	for _, want := range []string{`id="waves-att"`, `id="waves-cols"`} {
+	for _, want := range []string{`id="waves-timeline"`, `id="waves-cols"`} {
 		if !bytes.Contains([]byte(with), []byte(want)) {
 			t.Errorf("cbt-enabled output missing %q", want)
 		}
 	}
 
 	without := render(false)
-	if bytes.Contains([]byte(without), []byte(`id="waves-att"`)) {
+	if bytes.Contains([]byte(without), []byte(`id="waves-timeline"`)) {
 		t.Error("cbt panels rendered without a cbt source")
 	}
 	// the fetch guards on the panel's existence, so the JS may ship either way

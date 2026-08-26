@@ -296,13 +296,9 @@
           <div class="col-md-10" id="arrival-regions"></div>
         </div>
         {{ if .XatuCbtEnabled }}
-        <div class="row border-bottom p-2 mx-0" id="waves-att" style="display: none;">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When the network first saw this slot's attestations, in 50ms buckets. Votes for other roots mean those attesters had not imported this block in time.">Attestations:</span></div>
-          <div class="col-md-10" id="waves-att-body"></div>
-        </div>
-        <div class="row border-bottom p-2 mx-0" id="waves-ptc" style="display: none;">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The payload timeliness committee's votes on whether the proposer revealed the execution payload on time, in 50ms buckets of when each vote was first seen.">PTC votes:</span></div>
-          <div class="col-md-10" id="waves-ptc-body"></div>
+        <div class="row border-bottom p-2 mx-0" id="waves-timeline" style="display: none;">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The slot's phases as cumulative curves: each line is the share of its own population that has acted by that time. Attestations count against the slot's expected attesters, PTC votes against the committee, payload and head against the nodes that observed them.">Timeline:</span></div>
+          <div class="col-md-10" id="waves-timeline-body"></div>
         </div>
         <div class="row border-bottom p-2 mx-0" id="waves-cols" style="display: none;">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="PeerDAS data column sidecars: when each of the 128 columns of this block's blob data was first seen, and how available each measured under custody probing.">Data columns:</span></div>
@@ -762,142 +758,92 @@
         return { lo: axLo, hi: axHi, span: span, lines: lines };
       }
 
-      // waveDomain spans the whole slot, so every slot's charts share one
-      // axis and the two rows line up vertically; data past the slot end
-      // stretches it rather than being cut off.
-      function waveDomain(slotMs, dataHi, binMs) {
-        return Math.max(slotMs || 12000, dataHi + binMs * 2);
-      }
+      // The timeline reads the slot as its phases race to completion: the two
+      // halves of a gloas block (the bid, then the payload) and the votes on
+      // each become comparable cumulative curves on one axis. Each series is
+      // normalized to its own population.
+      function renderTimeline(data) {
+        var slotMs = data.slot_ms || 12000;
+        var att = data.attestations;
+        var series = [];
+        var viewed = null;
 
-      function waveBin(domain) {
-        var sizes = [50, 100, 250, 500, 1000];
-
-        for (var i = 0; i < sizes.length; i++) {
-          if (domain / sizes[i] <= 130) return sizes[i];
+        if (att && att.total_count) {
+          (att.roots || []).forEach(function(r) { if (r.viewed) viewed = r; });
+          if (!viewed) viewed = (att.roots || [])[0];
         }
 
-        return sizes[sizes.length - 1];
-      }
+        if (viewed) {
+          series.push({
+            label: 'attestations', color: '#5b8def',
+            buckets: viewed.buckets || [],
+            count: viewed.count,
+            denom: att.expected_count || viewed.count,
+          });
+        }
 
-      // renderHist draws chunky bars with gaps into the histogram block:
-      // bins = [{ms, green, red, tip}], stacked red on green, scaled to the
-      // tallest bin. Returns null when there is nothing to draw.
-      function renderHist(ax, bins, binMs, marks, small) {
+        if (data.ptc && data.ptc.total_count) {
+          series.push({
+            label: 'PTC votes', color: '#9775fa',
+            buckets: (data.ptc.buckets || []).map(function(b) { return { ms: b.ms, count: b.present + b.missing }; }),
+            count: data.ptc.total_count,
+            denom: data.ptc.expected_count || data.ptc.total_count,
+          });
+        }
+
+        if (data.payload && data.payload.total_count) {
+          series.push({
+            label: 'payload seen', color: '#e64980',
+            buckets: data.payload.buckets || [],
+            count: data.payload.total_count,
+            denom: data.payload.total_count,
+          });
+        }
+
+        if (data.head && data.head.total_count) {
+          series.push({
+            label: 'head adopted', color: '#20c997',
+            buckets: data.head.buckets || [],
+            count: data.head.total_count,
+            denom: data.head.total_count,
+          });
+        }
+
+        if (!series.length) return;
+
+        document.getElementById('waves-timeline').style.display = '';
+
+        var ax = histAxis(0, slotMs);
         var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
-        var peak = 0;
 
-        bins.forEach(function(b) {
-          if (b.green + b.red > peak) peak = b.green + b.red;
+        var chart = '';
+
+        [25, 50, 75].forEach(function(pct) {
+          chart += '<div class="hgrid" style="top:' + (100 - pct) + '%"></div>' +
+            '<span class="ylab" style="top:' + (100 - pct) + '%">' + pct + '%</span>';
         });
-        if (!peak) return null;
-
-        var html = '';
 
         ax.lines.forEach(function(t) {
-          html += '<div class="grid" style="left:' + pos(t) + '%"></div>';
-        });
-
-        // each marker label gets its own row, so close markers stay readable
-        (marks || []).forEach(function(m, idx) {
-          if (m.ms <= ax.lo || m.ms >= ax.hi) return;
-
-          html += '<div class="deadline" style="left:' + pos(m.ms) + '%;border-left-color:' + m.color + '">' +
-            '<span class="note" style="top:' + (1 + idx * 13) + 'px;color:' + m.color + '" title="' + esc(m.title) + '">' +
-            m.label + '</span></div>';
-        });
-
-        var slotW = binMs / ax.span * 100;
-        var barW = slotW * 0.7;
-        var off = (slotW - barW) / 2;
-
-        bins.forEach(function(b) {
-          var total = b.green + b.red;
-          if (!total) return;
-
-          var left = (pos(b.ms) + off).toFixed(3) + '%';
-          var width = barW.toFixed(3) + '%';
-          var greenH = b.green ? Math.max(2, b.green / peak * 100) : 0;
-
-          if (b.green) {
-            html += '<div class="bar" style="left:' + left + ';width:' + width + ';height:' + greenH +
-              '%;background:#34c38f;border-radius:' + (b.red ? '0' : '2px 2px 0 0') + '" title="' + b.tip + '"></div>';
-          }
-
-          if (b.red) {
-            html += '<div class="bar" style="left:' + left + ';width:' + width + ';bottom:' + greenH +
-              '%;height:' + Math.max(2, b.red / peak * 100) +
-              '%;background:#f46a6a;border-radius:2px 2px 0 0" title="' + b.tip + '"></div>';
-          }
-        });
-
-        var labels = '';
-
-        ax.lines.forEach(function(t) {
-          labels += '<span style="left:' + pos(t) + '%">' + fmtAxis(t) + '</span>';
-        });
-        labels += '<span style="left:100%">' + fmtAxis(ax.hi) + '</span>';
-
-        return '<div class="arrival-hist' + (small ? ' hist-sm' : '') + '">' + html + '</div>' +
-          '<div class="arrival-hist-axis">' + labels + '</div>';
-      }
-
-      function renderAttWave(att, settled, slotMs) {
-        if (!att.total_count) return;
-
-        var viewed = null;
-        var otherCount = 0;
-        var otherRoots = [];
-
-        (att.roots || []).forEach(function(r) {
-          if (r.viewed) { viewed = r; return; }
-          otherCount += r.count;
-          otherRoots.push(r.root ? r.root.slice(0, 10) + '\u2026' : 'smaller roots');
-        });
-
-        var lo = null, hi = null;
-
-        (att.roots || []).forEach(function(r) {
-          (r.buckets || []).forEach(function(b) {
-            if (lo == null || b.ms < lo) lo = b.ms;
-            if (hi == null || b.ms > hi) hi = b.ms;
-          });
-        });
-        if (lo == null) return;
-
-        // rebin the 50ms chunks until the bars are chunky enough to read
-        // across the whole slot
-        var binMs = waveBin(waveDomain(slotMs, hi, 50));
-
-        var binned = {};
-
-        (att.roots || []).forEach(function(r) {
-          (r.buckets || []).forEach(function(b) {
-            var ms = Math.floor(b.ms / binMs) * binMs;
-            var bin = binned[ms] || (binned[ms] = { ms: ms, green: 0, red: 0 });
-            bin[r.viewed || !viewed ? 'green' : 'red'] += b.count;
-          });
-        });
-
-        var bins = Object.keys(binned).map(function(ms) {
-          var b = binned[ms];
-          b.tip = fmtStr(b.ms) + '\u2013' + fmtStr(b.ms + binMs) + ': ' + (b.green + b.red).toLocaleString() +
-            ' attestations' + (b.red ? ' (' + b.red.toLocaleString() + ' for other roots)' : '');
-          return b;
+          chart += '<div class="grid" style="left:' + pos(t) + '%"></div>';
         });
 
         var marks = [];
 
-        if (att.deadline_ms > 0) {
+        if (att && att.deadline_ms > 0) {
           marks.push({
-            ms: att.deadline_ms, label: 'deadline', color: 'var(--bs-secondary-color)',
-            title: 'One third into the slot: validators attest now even without a block in hand',
+            ms: att.deadline_ms, label: 'attestation deadline', color: 'var(--bs-secondary-color)',
+            title: 'ATTESTATION_DUE_BPS into the slot: validators attest now even without a block in hand',
           });
         }
 
-        // when the votes for this block clear the builder payment quorum,
-        // walked over the cumulative viewed-root buckets; the count and its
-        // ratio both come from the chain spec via the response
-        if (viewed && att.expected_count > 0 && att.threshold_count > 0) {
+        if (data.ptc && data.ptc.deadline_ms > 0) {
+          marks.push({
+            ms: data.ptc.deadline_ms, label: 'PTC deadline', color: 'var(--bs-secondary-color)',
+            title: 'PAYLOAD_ATTESTATION_DUE_BPS into the slot: PTC votes are due by here',
+          });
+        }
+
+        if (viewed && viewed.viewed && att.expected_count > 0 && att.threshold_count > 0) {
           var cum = 0;
           var thresholdMs = null;
 
@@ -910,39 +856,82 @@
           if (thresholdMs != null) {
             var pct = Math.round(att.threshold_count / att.expected_count * 100);
             marks.push({
-              ms: thresholdMs, label: pct + '% voted', color: '#34c38f',
-              title: 'Attestations for this block passed ' + att.threshold_count.toLocaleString() +
-                ' of the slot\u2019s ' + att.expected_count.toLocaleString() + ' expected attesters',
+              ms: thresholdMs, label: pct + '% quorum', color: '#34c38f',
+              title: 'Attestations for this block passed BUILDER_PAYMENT_THRESHOLD: ' +
+                att.threshold_count.toLocaleString() + ' of ' + att.expected_count.toLocaleString() + ' expected attesters',
             });
           }
         }
 
-        if (att.payload_p50_ms > 0) {
-          marks.push({
-            ms: att.payload_p50_ms, label: 'payload p50', color: '#e64980',
-            title: 'Median time the revealed execution payload reached observing nodes',
-          });
-        }
-
         marks.sort(function(a, b) { return a.ms - b.ms; });
 
-        var ax = histAxis(0, waveDomain(slotMs, hi, binMs));
-        var hist = renderHist(ax, bins, binMs, marks, false);
-        if (!hist) return;
+        marks.forEach(function(m, idx) {
+          if (m.ms <= ax.lo || m.ms >= ax.hi) return;
 
-        document.getElementById('waves-att').style.display = '';
+          chart += '<div class="deadline" style="left:' + pos(m.ms) + '%;border-left-color:' + m.color + '">' +
+            '<span class="note" style="top:' + (1 + idx * 13) + 'px;color:' + m.color + '" title="' + esc(m.title) + '">' +
+            m.label + '</span></div>';
+        });
 
-        var stats = '<b>' + att.total_count.toLocaleString() + '</b> attestations first seen';
-        if (viewed) {
-          stats += sep + '<span class="num" style="color:#34c38f"><b>' +
-            (viewed.count / att.total_count * 100).toFixed(1) + '%</b></span> <span class="text-muted">vote this block</span>';
+        // step curves: a vote in a 50ms chunk counts as landed by its end
+        var svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none">';
+
+        series.forEach(function(sr) {
+          var cum = 0;
+          var pts = ['0,100'];
+
+          sr.buckets.forEach(function(b) {
+            var x = Math.min(100, pos(b.ms + 50)).toFixed(2);
+            pts.push(x + ',' + (100 - cum / sr.denom * 100).toFixed(2));
+            cum += b.count;
+            pts.push(x + ',' + (100 - cum / sr.denom * 100).toFixed(2));
+          });
+
+          pts.push('100,' + (100 - cum / sr.denom * 100).toFixed(2));
+          svg += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + sr.color +
+            '" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+        });
+
+        svg += '</svg>';
+
+        var hovers = '';
+        var bins = 24;
+
+        for (var b = 0; b < bins; b++) {
+          var upto = ax.lo + ax.span * (b + 1) / bins;
+          var parts = [];
+
+          series.forEach(function(sr) {
+            var cum = 0;
+            sr.buckets.forEach(function(bk) { if (bk.ms + 50 <= upto) cum += bk.count; });
+            parts.push(sr.label + ' ' + Math.round(cum / sr.denom * 100) + '%');
+          });
+
+          hovers += '<div class="hover" style="left:' + (b / bins * 100) + '%;width:' + (100 / bins) +
+            '%" title="by ' + fmtStr(Math.round(upto)) + ': ' + parts.join(' \u00b7 ') + '"></div>';
         }
-        if (otherCount > 0) {
-          stats += sep + '<span class="num" style="color:#f46a6a" title="' + esc(otherRoots.join(', ')) + '"><b>' +
-            otherCount.toLocaleString() + '</b></span> <span class="text-muted">vote other roots</span>';
+
+        var labels = '';
+
+        ax.lines.forEach(function(t) {
+          labels += '<span style="left:' + pos(t) + '%">' + fmtAxis(t) + '</span>';
+        });
+        labels += '<span style="left:100%">' + fmtAxis(ax.hi) + '</span>';
+
+        var stats = series.map(function(sr) {
+          return '<span class="arrival-heat-key" style="background:' + sr.color + '"></span> ' + sr.label +
+            ' <b>' + sr.count.toLocaleString() + '</b>' +
+            (sr.denom !== sr.count ? '<span class="text-muted">/' + sr.denom.toLocaleString() + '</span>' : '');
+        }).join(sep);
+
+        if (viewed && viewed.viewed && att.total_count > viewed.count) {
+          stats += sep + '<span class="num" style="color:#f46a6a"><b>' +
+            (att.total_count - viewed.count).toLocaleString() + '</b></span> <span class="text-muted">vote other roots</span>';
         }
 
-        document.getElementById('waves-att-body').innerHTML = stats + liveBadge(settled) + hist;
+        document.getElementById('waves-timeline-body').innerHTML = stats + liveBadge(data.settled) +
+          '<div class="arrival-hist">' + chart + svg + hovers + '</div>' +
+          '<div class="arrival-hist-axis">' + labels + '</div>';
       }
 
       // The column chart follows the lab's data column propagation view:
@@ -1083,73 +1072,8 @@
           '<div class="arrival-hist-axis">' + labels + '</div>' + legend;
       }
 
-      function renderPtcWave(ptc, settled, slotMs, payloadP50) {
-        if (!ptc.total_count) return;
-
-        var lo = null, hi = null;
-
-        (ptc.buckets || []).forEach(function(b) {
-          if (lo == null || b.ms < lo) lo = b.ms;
-          if (hi == null || b.ms > hi) hi = b.ms;
-        });
-        if (lo == null) return;
-
-        var binMs = waveBin(waveDomain(slotMs, hi, 50));
-        var binned = {};
-
-        (ptc.buckets || []).forEach(function(b) {
-          var ms = Math.floor(b.ms / binMs) * binMs;
-          var bin = binned[ms] || (binned[ms] = { ms: ms, green: 0, red: 0 });
-          bin.green += b.present;
-          bin.red += b.missing;
-        });
-
-        var bins = Object.keys(binned).map(function(ms) {
-          var b = binned[ms];
-          b.tip = fmtStr(b.ms) + '\u2013' + fmtStr(b.ms + binMs) + ': ' + (b.green + b.red) + ' PTC votes' +
-            (b.red ? ' (' + b.red + ' payload missing)' : '');
-          return b;
-        });
-
-        var marks = [];
-
-        if (payloadP50 > 0) {
-          marks.push({
-            ms: payloadP50, label: 'payload p50', color: '#e64980',
-            title: 'Median time the revealed execution payload reached observing nodes',
-          });
-        }
-
-        if (ptc.deadline_ms > 0) {
-          marks.push({
-            ms: ptc.deadline_ms, label: 'PTC deadline', color: 'var(--bs-secondary-color)',
-            title: 'Votes are due within the first 75% of the slot; some clients vote as soon as they see the payload, others wait for the deadline',
-          });
-        }
-
-        marks.sort(function(a, b) { return a.ms - b.ms; });
-
-        var ax = histAxis(0, waveDomain(slotMs, hi, binMs));
-        var hist = renderHist(ax, bins, binMs, marks, true);
-        if (!hist) return;
-
-        document.getElementById('waves-ptc').style.display = '';
-
-        var missing = ptc.total_count - ptc.present_count;
-        var stats = '<b>' + ptc.total_count.toLocaleString() + '</b> PTC votes first seen';
-        stats += sep + '<span class="num" style="color:' + (missing ? '#f46a6a' : '#34c38f') + '"><b>' +
-          (ptc.present_count / ptc.total_count * 100).toFixed(1) + '%</b></span> <span class="text-muted">judged the payload present</span>';
-        if (missing) {
-          stats += ' <span class="text-muted small">(' + missing.toLocaleString() + ' missing)</span>';
-        }
-
-        document.getElementById('waves-ptc-body').innerHTML = stats + liveBadge(settled) + hist;
-      }
-
       function renderWaves(data) {
-        var slotMs = data.slot_ms || (data.attestations ? data.attestations.deadline_ms * 3 : 0);
-        if (data.attestations) renderAttWave(data.attestations, data.settled, slotMs);
-        if (data.ptc) renderPtcWave(data.ptc, data.settled, slotMs, data.attestations ? data.attestations.payload_p50_ms : 0);
+        renderTimeline(data);
         if (data.columns) renderColWave(data.columns, data.settled);
       }
 
@@ -1159,7 +1083,7 @@
       // they are additive context, so their failure should not add noise to
       // the arrival panel above them.
       function loadWaves() {
-        if (wavesLoaded || !document.getElementById('waves-att')) return;
+        if (wavesLoaded || !document.getElementById('waves-timeline')) return;
         wavesLoaded = true;
         fetch('/slot/' + arrivalSlot + '/waves?root=' + encodeURIComponent(arrivalBlockRoot))
           .then(function(r) {
@@ -1167,7 +1091,11 @@
             return r.json();
           })
           .then(renderWaves)
-          .catch(function() {});
+          .catch(function(err) {
+            // the panels stay hidden on failure, but silence would hide real
+            // rendering bugs behind the same blank space as missing data
+            console.error('slot waves rendering failed:', err);
+          });
       }
 
       function loadArrival() {

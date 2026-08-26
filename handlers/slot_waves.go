@@ -109,16 +109,6 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 		attestations.ExpectedCount = expectedAttesters(queryCtx, chainState, slot)
 		attestations.ThresholdCount = voteThreshold(chainState, attestations.ExpectedCount)
 
-		if xatu.GlobalClient != nil {
-			p50, plErr := queryPayloadP50(queryCtx, xatu.GlobalClient, slot, slotTime, settled, blockRoot)
-			if plErr != nil {
-				// the payload marker is garnish on the attestation chart, so
-				// its failure must not take the whole panel down
-				logrus.WithError(plErr).Warn("error loading payload p50 from xatu")
-			} else {
-				attestations.PayloadP50Ms = p50
-			}
-		}
 	}
 
 	columns, err := loadColumnWave(queryCtx, client, slot, slotTime, settled, blockRoot)
@@ -128,19 +118,38 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 
 	var ptc *models.SlotPtcWave
 
+	var payload, head *models.SlotSeenWave
+
 	if xatu.GlobalClient != nil {
+		slotMs := lateThreshold(chainState)
+
 		ptc, err = loadPtcWave(queryCtx, xatu.GlobalClient, slot, slotTime, settled, blockRoot)
 		if err != nil {
-			// like the payload marker, the PTC row must not take the other
-			// panels down with it
+			// the raw-backed series must not take the cbt panels down
 			logrus.WithError(err).Warn("error loading ptc wave from xatu")
 
 			ptc = nil
 		}
 
 		if ptc != nil {
-			// votes are due within PAYLOAD_ATTESTATION_DUE_BPS of the slot
+			// votes are due within PAYLOAD_ATTESTATION_DUE_BPS of the slot,
+			// from a committee of PTC_SIZE
 			ptc.DeadlineMs = bpsOfSlot(chainState, chainState.GetSpecs().PayloadAttestationDueBps, 7500)
+			ptc.ExpectedCount = int(chainState.GetSpecs().PtcSize) //nolint:gosec // committee sizes are small
+		}
+
+		payload, err = loadSeenWave(queryCtx, xatu.GlobalClient, "beacon_api_eth_v1_events_execution_payload_gossip", "block_root", slot, slotTime, settled, blockRoot, slotMs)
+		if err != nil {
+			logrus.WithError(err).Warn("error loading payload wave from xatu")
+
+			payload = nil
+		}
+
+		head, err = loadSeenWave(queryCtx, xatu.GlobalClient, "beacon_api_eth_v1_events_head", "block", slot, slotTime, settled, blockRoot, slotMs)
+		if err != nil {
+			logrus.WithError(err).Warn("error loading head wave from xatu")
+
+			head = nil
 		}
 	}
 
@@ -150,6 +159,8 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 		SlotMs:       lateThreshold(chainState),
 		Attestations: attestations,
 		Ptc:          ptc,
+		Payload:      payload,
+		Head:         head,
 		Columns:      columns,
 	}
 
@@ -240,53 +251,68 @@ func expectedAttesters(ctx context.Context, chainState *consensus.ChainState, sl
 	return int(rows[0].ValidatorCount / slotsPerEpoch) //nolint:gosec // bounded by the validator set
 }
 
-// payloadP50Query reduces the gloas payload gossip series to its median; see
-// payloadGossipQuery for why this is plain SQL.
-const payloadP50Query = `SELECT count() AS observations, toUInt32(quantileExact(0.5)(propagation_slot_start_diff)) AS p50
-FROM beacon_api_eth_v1_events_execution_payload_gossip
-WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ?%s`
+// seenWaveQuery buckets when each observing node first saw one per-slot
+// object, capped to the slot so an hours-late straggler cannot stretch the
+// chart. Aggregated in ClickHouse because the generated builders cannot
+// express GROUP BY; the object table and its block-root column are
+// interpolated from constants, never from user input.
+const seenWaveQuery = `SELECT toUInt32(intDiv(first_ms, 50) * 50) AS chunk, count() AS nodes
+FROM (
+    SELECT meta_client_name, min(propagation_slot_start_diff) AS first_ms
+    FROM %s
+    WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ? AND propagation_slot_start_diff <= ?%s
+    GROUP BY meta_client_name
+)
+GROUP BY chunk
+ORDER BY chunk`
 
-// queryPayloadP50 returns the median payload arrival for the slot, or zero on
-// networks without the gloas payload series.
-func queryPayloadP50(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (uint32, error) {
+// loadSeenWave loads one first-seen-per-node wave, or nil on networks whose
+// xatu schema lacks the table.
+func loadSeenWave(ctx context.Context, client *xatu.Client, table, rootColumn string, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, slotMs uint32) (*models.SlotSeenWave, error) {
 	filter := ""
-	args := []any{client.Network(), slotTime.Unix(), uint32(slot)}
+	args := []any{client.Network(), slotTime.Unix(), uint32(slot), slotMs}
 
 	if blockRoot != "" {
-		filter = " AND block_root = ?"
+		filter = " AND " + rootColumn + " = ?"
 
 		args = append(args, blockRoot)
 	}
 
-	rows, err := client.Query(ctx, settled, fmt.Sprintf(payloadP50Query, filter), args...)
+	rows, err := client.Query(ctx, settled, fmt.Sprintf(seenWaveQuery, table, filter), args...)
 	if err != nil {
 		if isMissingTableError(err) {
-			return 0, nil
+			return nil, nil
 		}
 
-		return 0, fmt.Errorf("payload p50 query: %w", err)
+		return nil, fmt.Errorf("%s wave query: %w", table, err)
 	}
 	defer rows.Close()
 
-	var observations uint64
-
-	var p50 uint32
+	wave := &models.SlotSeenWave{}
 
 	for rows.Next() {
-		if err := rows.Scan(&observations, &p50); err != nil {
-			return 0, fmt.Errorf("payload p50 scan: %w", err)
+		var chunk uint32
+
+		var nodes uint64
+
+		if err := rows.Scan(&chunk, &nodes); err != nil {
+			return nil, fmt.Errorf("%s wave scan: %w", table, err)
 		}
+
+		count := int(nodes) //nolint:gosec // bounded by the node fleet
+		wave.TotalCount += count
+		wave.Buckets = append(wave.Buckets, &models.SlotAttestationBucket{Ms: chunk, Count: count})
 	}
 
 	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("payload p50 query: %w", err)
+		return nil, fmt.Errorf("%s wave query: %w", table, err)
 	}
 
-	if observations == 0 {
-		return 0, nil
+	if wave.TotalCount == 0 {
+		return nil, nil
 	}
 
-	return p50, nil
+	return wave, nil
 }
 
 // ptcWaveQuery reduces the gloas payload attestation events to 50ms chunks of
