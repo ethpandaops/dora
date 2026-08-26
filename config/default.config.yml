@@ -63,7 +63,16 @@ frontend:
   showSubmitElRequests: false
   showValidatorSummary: false
   publicRpcUrl: "http://127.0.0.1:8545"
-  
+
+  # devnet faucet for the submit deposit pages (requires showSubmitDeposit)
+  # sends `fundingAmount` ETH from one of the prefunded keys on request
+  #faucet:
+  #  enabled: true
+  #  privateKeys:
+  #    - "0x..."
+  #  fundingAmount: 50   # ETH per request
+  #  cooldown: 30s       # per-address cooldown
+
   # DAS Guardian configuration
   #disableDasGuardianCheck: false     # Disable DAS Guardian completely (default: false - enabled)
   #enableDasGuardianMassScan: false   # Enable mass DAS Guardian scanning (default: false - disabled)

@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Modal } from 'react-bootstrap';
+import { useBalance } from 'wagmi';
 import { isAddress } from 'viem';
+import { mnemonicToAccount } from 'viem/accounts';
 
 import { IDeposit } from './DepositsTable';
+import FaucetButton from './FaucetButton';
+import { useEnsLookup } from '../SubmitShared/useEnsLookup';
+import EnsAddressInput, { IEnsResolutionState, emptyEnsState } from '../SubmitShared/EnsAddressInput';
+import { toReadableAmount } from '../../utils/ReadableAmount';
 import {
   validateMnemonicWords,
   validateWithdrawalCredentials,
   generateDeposits,
+  generateRandomMnemonic,
   ethToGwei,
   GeneratorConfig,
   ValidatorOverride,
@@ -19,11 +26,17 @@ interface IDepositGeneratorModalProps {
   genesisForkVersion: string;
   defaultWithdrawalAddress?: string;
   onClose: () => void;
-  onGenerate: (deposits: IDeposit[]) => void;
+  // mnemonic is the normalized phrase the deposits were derived from; callers can use
+  // it to derive the EL wallet (m/44'/60'/0'/0/0) and submit without a browser wallet.
+  onGenerate: (deposits: IDeposit[], mnemonic: string) => void;
   // Builder mode (Gloas/EIP-8282): sign under DOMAIN_BUILDER_DEPOSIT and lock the
   // withdrawal credential to the 0xB0 builder prefix.
   domainType?: DepositDomainType;
   lockBuilderCredentials?: boolean;
+  // Devnet faucet: offer funding the wallet derived from the mnemonic.
+  faucetEnabled?: boolean;
+  faucetAmount?: number;
+  explorerUrl?: string;
 }
 
 type ActiveTab = 'basic' | 'overrides';
@@ -36,13 +49,19 @@ interface IValidatorOverrideState {
   // Credential override fields
   credentialInputMode: CredentialInputMode;
   credentialType: CredentialType; // '00', '01', '02', 'b0'
-  withdrawalAddress: string; // For 0x01/0x02/0xB0
+  withdrawalAddress: string; // For 0x01/0x02/0xB0 - address or ENS name
+  resolvedAddress: string | null; // resolved address when withdrawalAddress is an ENS name
   rawCredentials: string; // For raw mode
   useCustomCredentials: boolean;
 }
 
 const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => {
-  const { genesisForkVersion, defaultWithdrawalAddress, onClose, onGenerate, domainType, lockBuilderCredentials } = props;
+  const { genesisForkVersion, defaultWithdrawalAddress, onClose, onGenerate, domainType, lockBuilderCredentials, faucetEnabled, faucetAmount, explorerUrl } = props;
+
+  const isBuilderMode = domainType === 'builder';
+  const modalTitle = isBuilderMode ? 'Generate Builder Deposits' : 'Generate Validator Deposits';
+  const keyNoun = isBuilderMode ? 'builder' : 'validator';
+  const keyNounCap = isBuilderMode ? 'Builder' : 'Validator';
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('basic');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -50,18 +69,72 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
   const [blsReady, setBlsReady] = useState(false);
 
   // Basic config state
-  const [mnemonic, setMnemonic] = useState('');
+  // The whole generator config is kept in sessionStorage (devnet tool - per-tab,
+  // gone when the browser closes) so reopening the modal in the same session
+  // restores it for editing instead of starting over. Keyed per mode so builder
+  // and validator setups don't clobber each other; the mnemonic is shared.
+  const configCacheKey = `dora_generator_config_${isBuilderMode ? 'builder' : 'deposit'}`;
+  const cachedConfig = useMemo(() => {
+    try {
+      const raw = sessionStorage.getItem(configCacheKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [mnemonic, setMnemonic] = useState(() => {
+    try {
+      return sessionStorage.getItem('dora_generator_mnemonic') || '';
+    } catch {
+      return '';
+    }
+  });
   const [showMnemonic, setShowMnemonic] = useState(false);
-  const [startIndex, setStartIndex] = useState(0);
-  const [validatorCount, setValidatorCount] = useState(1);
-  const [amountEth, setAmountEth] = useState('32');
-  const [credentialInputMode, setCredentialInputMode] = useState<CredentialInputMode>('type');
-  const [credentialType, setCredentialType] = useState<CredentialType>(lockBuilderCredentials ? 'b0' : '01');
-  const [withdrawalAddress, setWithdrawalAddress] = useState(defaultWithdrawalAddress || '');
-  const [rawCredentials, setRawCredentials] = useState('');
+
+  useEffect(() => {
+    try {
+      if (mnemonic.trim() && validateMnemonicWords(mnemonic)) {
+        sessionStorage.setItem('dora_generator_mnemonic', mnemonic);
+      }
+    } catch {
+      // storage unavailable (private mode etc.) - non-essential
+    }
+  }, [mnemonic]);
+  const [startIndex, setStartIndex] = useState(Number(cachedConfig?.startIndex) || 0);
+  const [validatorCount, setValidatorCount] = useState(Number(cachedConfig?.validatorCount) || 1);
+  const [amountEth, setAmountEth] = useState(cachedConfig?.amountEth ?? (isBuilderMode ? '50' : '32'));
+  // becomes true once the user edits the amount - stops the dynamic default below
+  const [amountTouched, setAmountTouched] = useState(cachedConfig?.amountTouched ?? false);
+  const [credentialInputMode, setCredentialInputMode] = useState<CredentialInputMode>(cachedConfig?.credentialInputMode ?? 'type');
+  const [credentialType, setCredentialType] = useState<CredentialType>(cachedConfig?.credentialType ?? (lockBuilderCredentials ? 'b0' : '02'));
+  const [withdrawalAddress, setWithdrawalAddress] = useState(cachedConfig?.withdrawalAddress ?? (defaultWithdrawalAddress || ''));
+  const [rawCredentials, setRawCredentials] = useState(cachedConfig?.rawCredentials ?? '');
 
   // Per-validator overrides
-  const [overrides, setOverrides] = useState<IValidatorOverrideState[]>([]);
+  const [overrides, setOverrides] = useState<IValidatorOverrideState[]>(
+    Array.isArray(cachedConfig?.overrides) ? cachedConfig.overrides : []
+  );
+
+  // Persist the generator config so reopening the modal restores it for editing
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(configCacheKey, JSON.stringify({
+        startIndex,
+        validatorCount,
+        amountEth,
+        amountTouched,
+        credentialInputMode,
+        credentialType,
+        withdrawalAddress,
+        rawCredentials,
+        overrides,
+      }));
+    } catch {
+      // storage unavailable (private mode etc.) - non-essential
+    }
+  }, [configCacheKey, startIndex, validatorCount, amountEth, amountTouched, credentialInputMode, credentialType, withdrawalAddress, rawCredentials, overrides]);
 
   // Initialize BLS library
   useEffect(() => {
@@ -86,6 +159,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
             credentialInputMode: 'type',
             credentialType: credentialType, // Default to parent's credential type
             withdrawalAddress: '',
+            resolvedAddress: null,
             rawCredentials: '',
             useCustomCredentials: false,
           });
@@ -95,6 +169,26 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
     });
   }, [validatorCount, amountEth, credentialType]);
 
+  // Enforce the 32 ETH cap on rows whose credential type is 0x00/0x01, however the
+  // type got there (dropdown, default seeding, cached restore). The cap materializes
+  // as the row's own editable amount: it snaps to 32, can be lowered, and anything
+  // above 32 snaps back.
+  useEffect(() => {
+    if (isBuilderMode) return;
+    setOverrides(prev => {
+      let changed = false;
+      const next = prev.map(o => {
+        if (!o.useCustomCredentials || o.credentialInputMode !== 'type') return o;
+        if (o.credentialType !== '00' && o.credentialType !== '01') return o;
+        const effective = parseFloat(o.useCustomAmount ? o.amountEth : amountEth);
+        if (isNaN(effective) || effective <= 32) return o;
+        changed = true;
+        return { ...o, useCustomAmount: true, amountEth: '32' };
+      });
+      return changed ? next : prev;
+    });
+  }, [overrides, amountEth, isBuilderMode]);
+
   // Validation - only accept 24-word mnemonics
   const mnemonicValid = useMemo(() => {
     if (!mnemonic.trim()) return null;
@@ -103,13 +197,44 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
     return validateMnemonicWords(mnemonic);
   }, [mnemonic]);
 
-  // For type mode: 0x00 doesn't need address, 0x01/0x02 need address
+  // ENS support for the withdrawal address field: the shared EnsAddressInput
+  // resolves dotted non-hex inputs and reports the resolution state here.
+  const trimmedAddressInput = withdrawalAddress.trim();
+  const isEnsNameInput = trimmedAddressInput.includes('.') && !isAddress(trimmedAddressInput);
+  const [ensState, setEnsState] = useState<IEnsResolutionState>(emptyEnsState);
+
+  // Effective withdrawal address (typed address or resolved ENS name) and its
+  // reverse-resolved ENS name, used to preview the default credentials in the
+  // overrides tab. The typed ENS name wins over a reverse lookup.
+  const effectiveAddress = isEnsNameInput && ensState.address
+    ? ensState.address
+    : isAddress(trimmedAddressInput) ? trimmedAddressInput : null;
+  const reverseEnsName = useEnsLookup(effectiveAddress);
+  const effectiveEnsName = (isEnsNameInput ? ensState.name : null) ?? reverseEnsName;
+
+  // Human-readable preview of the default credentials, shown for override rows
+  // that don't set their own (e.g. "0xB0 bbusa.eth").
+  const shortEffectiveAddress = effectiveAddress
+    ? `${effectiveAddress.substring(0, 8)}…${effectiveAddress.substring(effectiveAddress.length - 6)}`
+    : null;
+  const defaultCredsLabel = credentialInputMode === 'raw'
+    ? (rawCredentials ? `raw ${rawCredentials.replace(/^0x/, '').substring(0, 8)}…` : 'raw credentials')
+    : credentialType === '00'
+      ? '0x00 (derived key)'
+      : `0x${credentialType.toUpperCase()} ${effectiveEnsName ?? shortEffectiveAddress ?? '(no address set)'}`;
+
+  // For type mode: 0x00 doesn't need address, 0x01/0x02 need address (or a resolvable ENS name)
   const addressValid = useMemo(() => {
     if (credentialInputMode !== 'type') return true;
     if (credentialType === '00') return true; // 0x00 uses derived withdrawal key
     if (!withdrawalAddress) return null;
-    return isAddress(withdrawalAddress);
-  }, [credentialInputMode, credentialType, withdrawalAddress]);
+    if (isAddress(withdrawalAddress)) return true;
+    if (isEnsNameInput) {
+      if (ensState.resolving) return null;
+      return ensState.address !== null;
+    }
+    return false;
+  }, [credentialInputMode, credentialType, withdrawalAddress, isEnsNameInput, ensState]);
 
   const rawCredentialsValid = useMemo(() => {
     if (credentialInputMode !== 'raw') return true;
@@ -117,10 +242,13 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
     return validateWithdrawalCredentials(rawCredentials);
   }, [credentialInputMode, rawCredentials]);
 
+  // 0x00/0x01 credentials run with a 32 ETH max effective balance, so cap those deposits
+  const maxAmountEth = !isBuilderMode && (credentialType === '00' || credentialType === '01') ? 32 : 2048;
+
   const amountValid = useMemo(() => {
     const amount = parseFloat(amountEth);
-    return !isNaN(amount) && amount >= 1 && amount <= 2048;
-  }, [amountEth]);
+    return !isNaN(amount) && amount >= 1 && amount <= maxAmountEth;
+  }, [amountEth, maxAmountEth]);
 
   const canGenerate = useMemo(() => {
     if (!blsReady || mnemonicValid !== true || validatorCount <= 0 || !amountValid) {
@@ -151,10 +279,11 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
     setGenerationError(null);
 
     try {
-      // Build default credential config
+      // Build default credential config (ENS names use their resolved address)
+      const effectiveWithdrawalAddress = isEnsNameInput && ensState.address ? ensState.address : withdrawalAddress;
       const defaultCredentialConfig: WithdrawalCredentialConfig = {
         type: credentialType,
-        address: credentialType !== '00' ? withdrawalAddress : undefined,
+        address: credentialType !== '00' ? effectiveWithdrawalAddress : undefined,
       };
 
       // Build overrides
@@ -167,29 +296,44 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
         if (override.useCustomAmount) {
           const amount = parseFloat(override.amountEth);
           if (isNaN(amount) || amount < 1) {
-            throw new Error(`Invalid amount for validator #${override.index}`);
+            throw new Error(`Invalid amount for ${keyNoun} #${override.index}`);
           }
           validatorOverride.amount = ethToGwei(amount);
         }
 
         if (override.useCustomCredentials) {
           if (override.credentialInputMode === 'type') {
-            // Type-based credential override
-            if (override.credentialType !== '00' && !isAddress(override.withdrawalAddress)) {
-              throw new Error(`Invalid withdrawal address for validator #${override.index}`);
+            // Type-based credential override (ENS names use their resolved address)
+            const overrideAddress = isAddress(override.withdrawalAddress)
+              ? override.withdrawalAddress
+              : override.resolvedAddress;
+            if (override.credentialType !== '00' && !overrideAddress) {
+              throw new Error(`Invalid withdrawal address for ${keyNoun} #${override.index}`);
             }
             validatorOverride.credentialConfig = {
               type: override.credentialType,
-              address: override.credentialType !== '00' ? override.withdrawalAddress : undefined,
+              address: override.credentialType !== '00' ? overrideAddress : undefined,
             };
           } else {
             // Raw credential override
             if (!validateWithdrawalCredentials(override.rawCredentials)) {
-              throw new Error(`Invalid raw credentials for validator #${override.index}`);
+              throw new Error(`Invalid raw credentials for ${keyNoun} #${override.index}`);
             }
             validatorOverride.rawCredentials = override.rawCredentials.startsWith('0x')
               ? override.rawCredentials
               : `0x${override.rawCredentials}`;
+          }
+        }
+
+        // safety net: 0x00/0x01 credentials cap the deposit at exactly 32 ETH
+        const effectiveType = override.useCustomCredentials && override.credentialInputMode === 'type'
+          ? override.credentialType
+          : credentialInputMode === 'type' ? credentialType : null;
+        if (effectiveType === '01' || effectiveType === '00') {
+          const capGwei = ethToGwei(32);
+          const effectiveAmountGwei = validatorOverride.amount ?? ethToGwei(parseFloat(amountEth));
+          if (effectiveAmountGwei > capGwei) {
+            validatorOverride.amount = capGwei;
           }
         }
 
@@ -210,7 +354,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
       };
 
       const deposits = await generateDeposits(config, genesisForkVersion, domainType ?? 'deposit');
-      onGenerate(deposits);
+      onGenerate(deposits, mnemonic.trim().toLowerCase().replace(/\s+/g, ' '));
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -224,13 +368,54 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
     return words.length;
   }, [mnemonic]);
 
+  // Execution layer wallet derived from the mnemonic (m/44'/60'/0'/0/0).
+  // Shown so the user can fund it (via the faucet on devnets) and use it to submit the deposits.
+  const derivedWalletAddress = useMemo(() => {
+    if (mnemonicValid !== true) return null;
+    try {
+      return mnemonicToAccount(mnemonic.trim().toLowerCase().replace(/\s+/g, ' ')).address;
+    } catch {
+      return null;
+    }
+  }, [mnemonicValid, mnemonic]);
+
+  // Dynamic deposit amount default: spread the funding wallet's balance across the
+  // requested deposits (connected wallet first, else the mnemonic-derived wallet).
+  // Floors: builders need >= 1 ETH, validators >= 32 ETH. Stops once the user edits
+  // the amount manually.
+  const minAmountEth = isBuilderMode ? 1 : 32;
+  const fundingAddress = (defaultWithdrawalAddress || derivedWalletAddress || undefined) as `0x${string}` | undefined;
+  const fundingBalance = useBalance({
+    address: fundingAddress,
+    query: { refetchInterval: 12000 },
+  });
+
+  // live balance of the mnemonic-derived wallet, shown next to its address
+  const derivedBalance = useBalance({
+    address: (derivedWalletAddress ?? undefined) as `0x${string}` | undefined,
+    query: { refetchInterval: 12000 },
+  });
+
+  useEffect(() => {
+    if (amountTouched) return;
+    const balanceWei = fundingBalance.data?.value;
+    if (balanceWei === undefined || balanceWei <= 0n) return;
+
+    const reserveWei = 10n ** 17n; // keep 0.1 ETH for gas & queue fees
+    const usableWei = balanceWei > reserveWei ? balanceWei - reserveWei : 0n;
+    let perDeposit = Number(usableWei / BigInt(Math.max(1, validatorCount)) / (10n ** 18n));
+    if (perDeposit < minAmountEth) perDeposit = minAmountEth;
+    if (perDeposit > maxAmountEth) perDeposit = maxAmountEth;
+    setAmountEth(String(perDeposit));
+  }, [fundingBalance.data?.value, validatorCount, amountTouched, minAmountEth, maxAmountEth]);
+
   if (!blsReady) {
     return (
       <Modal show={true} onHide={onClose} size="lg" className="deposit-generator-modal">
         <Modal.Header closeButton>
           <Modal.Title>
             <i className="fa fa-magic me-2"></i>
-            Generate Validator Deposits
+            {modalTitle}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -248,7 +433,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
       <Modal.Header closeButton>
         <Modal.Title>
           <i className="fa fa-magic me-2"></i>
-          Generate Validator Deposits
+          {modalTitle}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
@@ -259,9 +444,9 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
             <div>
               <strong>DEVNET ONLY - SECURITY WARNING</strong>
               <p className="mb-0 mt-1">
-                Never enter your mnemonic on any website for mainnet validators.
+                Never enter your mnemonic on any website for mainnet {keyNoun}s.
                 This tool is <strong>only</strong> for testing on development networks.
-                Your mnemonic grants full control over your validators.
+                Your mnemonic grants full control over your {keyNoun}s.
               </p>
             </div>
           </div>
@@ -282,7 +467,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
               className={`nav-link ${activeTab === 'overrides' ? 'active' : ''}`}
               onClick={() => setActiveTab('overrides')}
             >
-              <i className="fa fa-list me-1"></i> Per-Validator Overrides
+              <i className="fa fa-list me-1"></i> Per-{keyNounCap} Overrides
             </button>
           </li>
         </ul>
@@ -302,14 +487,28 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
             <div className="mb-3">
               <label className="form-label d-flex justify-content-between align-items-center">
                 <span>Mnemonic Phrase</span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-secondary mnemonic-toggle"
-                  onClick={() => setShowMnemonic(!showMnemonic)}
-                >
-                  <i className={`fa ${showMnemonic ? 'fa-eye-slash' : 'fa-eye'} me-1`}></i>
-                  {showMnemonic ? 'Hide' : 'Show'}
-                </button>
+                <span className="d-inline-flex gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary"
+                    onClick={() => {
+                      setMnemonic(generateRandomMnemonic());
+                      setShowMnemonic(true);
+                    }}
+                    title="Generate a new random 24 word mnemonic"
+                  >
+                    <i className="fa fa-dice me-1"></i>
+                    Generate Random
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary mnemonic-toggle"
+                    onClick={() => setShowMnemonic(!showMnemonic)}
+                  >
+                    <i className={`fa ${showMnemonic ? 'fa-eye-slash' : 'fa-eye'} me-1`}></i>
+                    {showMnemonic ? 'Hide' : 'Show'}
+                  </button>
+                </span>
               </label>
               <textarea
                 className={`form-control mnemonic-input font-monospace ${
@@ -332,6 +531,24 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                   </span>
                 )}
               </div>
+              {derivedWalletAddress && (
+                <div className="form-text d-flex align-items-center gap-2 flex-wrap">
+                  <span>
+                    Wallet address (m/44'/60'/0'/0/0):{' '}
+                    <span className="font-monospace">{derivedWalletAddress}</span>
+                    {derivedBalance.data !== undefined && (
+                      <span className="ms-1">(balance: {toReadableAmount(derivedBalance.data.value, 18, 'ETH', 4)})</span>
+                    )}
+                  </span>
+                  {faucetEnabled && (
+                    <FaucetButton
+                      address={derivedWalletAddress}
+                      amount={faucetAmount || 50}
+                      explorerUrl={explorerUrl}
+                    />
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Index and Count */}
@@ -345,10 +562,10 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                   value={startIndex}
                   onChange={(e) => setStartIndex(Math.max(0, parseInt(e.target.value) || 0))}
                 />
-                <div className="form-text">First validator index to derive</div>
+                <div className="form-text">First {keyNoun} index to derive</div>
               </div>
               <div className="col-6">
-                <label className="form-label">Validator Count</label>
+                <label className="form-label">{keyNounCap} Count</label>
                 <input
                   type="number"
                   className="form-control"
@@ -357,7 +574,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                   value={validatorCount}
                   onChange={(e) => setValidatorCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
                 />
-                <div className="form-text">Number of validators to generate</div>
+                <div className="form-text">Number of {keyNoun}s to generate</div>
               </div>
             </div>
 
@@ -368,13 +585,25 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                 type="number"
                 className={`form-control ${!amountValid ? 'is-invalid' : ''}`}
                 min={1}
-                max={2048}
+                max={maxAmountEth}
                 step="1"
                 value={amountEth}
-                onChange={(e) => setAmountEth(e.target.value)}
+                onChange={(e) => {
+                  setAmountTouched(true);
+                  setAmountEth(e.target.value);
+                }}
               />
               {!amountValid && (
-                <div className="invalid-feedback">Amount must be between 1 and 2048 ETH</div>
+                <div className="invalid-feedback">
+                  Amount must be between 1 and {maxAmountEth} ETH
+                  {maxAmountEth === 32 && ' (0x00/0x01 credentials cap the deposit at 32 ETH)'}
+                </div>
+              )}
+              {!amountTouched && fundingBalance.data !== undefined && (
+                <div className="form-text">
+                  Auto: {(Number(fundingBalance.data.value) / 1e18).toFixed(2)} ETH on{' '}
+                  <span className="font-monospace">{fundingAddress?.substring(0, 10)}…</span> / {validatorCount} deposit{validatorCount !== 1 ? 's' : ''} (min {minAmountEth} ETH)
+                </div>
               )}
             </div>
 
@@ -404,34 +633,33 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                         className="form-select"
                         value={credentialType}
                         disabled={lockBuilderCredentials}
-                        onChange={(e) => setCredentialType(e.target.value as CredentialType)}
+                        onChange={(e) => {
+                          const newType = e.target.value as CredentialType;
+                          setCredentialType(newType);
+                          // 0x00/0x01 cap the deposit at 32 ETH - snap down when switching
+                          if (!isBuilderMode && (newType === '00' || newType === '01') && parseFloat(amountEth) > 32) {
+                            setAmountEth('32');
+                          }
+                        }}
                       >
-                        {lockBuilderCredentials ? (
+                        {lockBuilderCredentials || isBuilderMode ? (
                           <option value="b0">0xB0 - Builder</option>
                         ) : (
                           <>
                             <option value="00">0x00 - BLS (derived)</option>
                             <option value="01">0x01 - Execution</option>
                             <option value="02">0x02 - Compounding</option>
-                            <option value="b0">0xB0 - Builder</option>
                           </>
                         )}
                       </select>
                     </div>
                     {credentialType !== '00' && (
                       <div className="col-8">
-                        <input
-                          type="text"
-                          className={`form-control font-monospace ${
-                            addressValid === false ? 'is-invalid' : addressValid === true ? 'is-valid' : ''
-                          }`}
-                          placeholder="0x..."
+                        <EnsAddressInput
                           value={withdrawalAddress}
-                          onChange={(e) => setWithdrawalAddress(e.target.value)}
+                          onChange={setWithdrawalAddress}
+                          onEnsState={setEnsState}
                         />
-                        {addressValid === false && (
-                          <div className="invalid-feedback">Please enter a valid Ethereum address</div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -468,13 +696,13 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
         {activeTab === 'overrides' && (
           <div>
             <p className="text-muted mb-3">
-              Override deposit amount or withdrawal credentials for individual validators.
-              Validators without overrides will use the default settings from Basic Config.
+              Override deposit amount or withdrawal credentials for individual {keyNoun}s.
+              {' '}{keyNounCap}s without overrides will use the default settings from Basic Config.
             </p>
 
             {validatorCount === 0 ? (
               <div className="alert alert-info">
-                Set a validator count in Basic Config to configure overrides.
+                Set a {keyNoun} count in Basic Config to configure overrides.
               </div>
             ) : (
               <div className="table-responsive">
@@ -519,7 +747,23 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                               type="checkbox"
                               className="form-check-input"
                               checked={override.useCustomCredentials}
-                              onChange={(e) => handleOverrideChange(override.index, 'useCustomCredentials', e.target.checked)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                handleOverrideChange(override.index, 'useCustomCredentials', checked);
+                                // seed the row with the current defaults so editing starts
+                                // from them instead of an empty field
+                                if (checked) {
+                                  if (credentialInputMode === 'raw') {
+                                    if (!override.rawCredentials) {
+                                      handleOverrideChange(override.index, 'credentialInputMode', 'raw');
+                                      handleOverrideChange(override.index, 'rawCredentials', rawCredentials);
+                                    }
+                                  } else if (!override.withdrawalAddress) {
+                                    handleOverrideChange(override.index, 'credentialType', credentialType);
+                                    handleOverrideChange(override.index, 'withdrawalAddress', withdrawalAddress);
+                                  }
+                                }
+                              }}
                               title="Override credentials"
                             />
                             {override.useCustomCredentials ? (
@@ -529,7 +773,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                                   className="form-select form-select-sm flex-shrink-0"
                                   value={override.credentialInputMode}
                                   onChange={(e) => handleOverrideChange(override.index, 'credentialInputMode', e.target.value)}
-                                  style={{ width: '70px' }}
+                                  style={{ width: '90px' }}
                                 >
                                   <option value="type">Type</option>
                                   <option value="raw">Raw</option>
@@ -544,20 +788,23 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                                       onChange={(e) => handleOverrideChange(override.index, 'credentialType', e.target.value)}
                                       style={{ width: '80px' }}
                                     >
-                                      <option value="00">0x00</option>
-                                      <option value="01">0x01</option>
-                                      <option value="02">0x02</option>
-                                      <option value="b0">0xB0</option>
+                                      {isBuilderMode ? (
+                                        <option value="b0">0xB0</option>
+                                      ) : (
+                                        <>
+                                          <option value="00">0x00</option>
+                                          <option value="01">0x01</option>
+                                          <option value="02">0x02</option>
+                                        </>
+                                      )}
                                     </select>
-                                    {/* Address input (only for 0x01/0x02/0xB0) */}
+                                    {/* Address input (only for 0x01/0x02/0xB0), accepts ENS names */}
                                     {override.credentialType !== '00' && (
-                                      <input
-                                        type="text"
-                                        className="form-control form-control-sm font-monospace flex-grow-1"
-                                        placeholder="0x..."
+                                      <EnsAddressInput
+                                        small
                                         value={override.withdrawalAddress}
-                                        onChange={(e) => handleOverrideChange(override.index, 'withdrawalAddress', e.target.value)}
-                                        style={{ minWidth: '100px' }}
+                                        onChange={(value) => handleOverrideChange(override.index, 'withdrawalAddress', value)}
+                                        onEnsState={(state) => handleOverrideChange(override.index, 'resolvedAddress', state.address)}
                                       />
                                     )}
                                     {override.credentialType === '00' && (
@@ -579,7 +826,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
                                 )}
                               </div>
                             ) : (
-                              <span className="text-muted">(use default)</span>
+                              <span className="text-muted" title="Default withdrawal credentials from Basic Config">{defaultCredsLabel}</span>
                             )}
                           </div>
                         </td>
@@ -609,7 +856,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
           ) : (
             <span>
               <i className="fa fa-magic me-1"></i>
-              Generate {validatorCount} Deposit{validatorCount !== 1 ? 's' : ''}
+              Generate {validatorCount} {isBuilderMode ? 'Builder ' : ''}Deposit{validatorCount !== 1 ? 's' : ''}
             </span>
           )}
         </button>

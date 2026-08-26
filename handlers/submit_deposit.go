@@ -97,6 +97,8 @@ func buildSubmitDepositPageData() (*models.SubmitDepositPageData, time.Duration)
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 
+	faucetService := services.GetFaucetService()
+
 	pageData := &models.SubmitDepositPageData{
 		NetworkName:                specs.ConfigName,
 		DepositContract:            specs.DepositContractAddress,
@@ -107,6 +109,9 @@ func buildSubmitDepositPageData() (*models.SubmitDepositPageData, time.Duration)
 		ExplorerUrl:                utils.Config.Frontend.EthExplorerLink,
 		MaxEffectiveBalance:        fmt.Sprintf("%d", specs.MaxEffectiveBalance),
 		MaxEffectiveBalanceElectra: fmt.Sprintf("%d", specs.MaxEffectiveBalanceElectra),
+		FaucetEnabled:              faucetService.IsEnabled(),
+		FaucetAmount:               faucetService.GetFundingAmountEth(),
+		ShowGenerator:              !utils.Config.Frontend.DisableDepositGenerator,
 	}
 
 	if utils.Config.Chain.DisplayName != "" {

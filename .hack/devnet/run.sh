@@ -108,6 +108,12 @@ frontend:
   ${BUILDOOR_CONFIG}
   showSensitivePeerInfos: true
   showSubmitDeposit: true
+  # devnet faucet: ethereum-package prefunded dev accounts
+  faucet:
+    enabled: true
+    privateKeys:
+      - "bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31"
+    fundingAmount: 100
   showSubmitElRequests: true
   showPeerDASInfos: true
   disableDasGuardianCheck: false
@@ -134,6 +140,8 @@ rpcProxy:
     break
   done
   )"
+  requestsPerMinute: 300
+  burstLimit: 100
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""
@@ -195,6 +203,15 @@ ensResolver:
   # no dedicated endpoints -> resolve against the devnet's own EL pool
   registryAddresses:
     - "0xf7CFC9E18166c1BBae0749373C5fC80CabCaDD25"
+  # also resolve mainnet ENS names (registry pinned explicitly - remote networks
+  # would otherwise fall back to the devnet registry address above)
+  remoteNetworks:
+    - name: "mainnet"
+      endpoints:
+        - url: "https://ethereum-rpc.publicnode.com"
+      registryAddresses:
+        - "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
+      multicallAddress: "0xcA11bde05977b3631167028862bE2a173976CA11"
 txsig:
   cbtBaseUrl: "https://cbt-api-mainnet.analytics.production.platform.ethpandaops.io/api/v1/dim_function_signature"
 database:

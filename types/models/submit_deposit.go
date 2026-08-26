@@ -10,6 +10,10 @@ type SubmitDepositPageData struct {
 	ExplorerUrl                string `json:"explorer"`
 	MaxEffectiveBalance        string `json:"maxeffectivebalance"`
 	MaxEffectiveBalanceElectra string `json:"maxeffectivebalanceelectra"`
+
+	FaucetEnabled bool    `json:"faucetenabled"`
+	FaucetAmount  float64 `json:"faucetamount"`
+	ShowGenerator bool    `json:"showgenerator"`
 }
 
 type SubmitDepositPageDataDeposits struct {

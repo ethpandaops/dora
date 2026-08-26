@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { ContainerType, ByteVectorType, UintNumberType, ValueOf } from "@chainsafe/ssz";
 import bls from "@chainsafe/bls/herumi";
-import { useAccount } from 'wagmi';
+import { useAccount, useConfig } from 'wagmi';
+import type { HDAccount } from 'viem';
 
 import { IDeposit } from '../SubmitDepositsForm/DepositsTable';
 import { useQueueDataCache } from '../../hooks/useQueueDataCache';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import BuilderDepositEntry from './BuilderDepositEntry';
+import BatchSubmitButton from '../SubmitShared/BatchSubmitButton';
+import { computeBuilderFees, getRequiredFee } from '../SubmitShared/builderDepositFee';
 
 interface IBuilderDepositsTableProps {
   file?: File | null;
@@ -14,6 +17,8 @@ interface IBuilderDepositsTableProps {
   genesisForkVersion: string;
   builderDepositContract: string;
   explorerUrl?: string;
+  // Submit transactions locally from this account instead of the connected wallet.
+  localAccount?: HDAccount;
 }
 
 const DepositMessage = new ContainerType({
@@ -34,8 +39,13 @@ const SigningData = new ContainerType({
 });
 type SigningData = ValueOf<typeof SigningData>;
 
+const GWEI = 1000000000n;
+
 const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactElement => {
-  const { chain } = useAccount();
+  const { chain: connectedChain } = useAccount();
+  const wagmiConfig = useConfig();
+  // without a connected wallet, fall back to the configured chain (local account mode)
+  const chain = connectedChain ?? wagmiConfig.chains[0];
   const [deposits, setDeposits] = useState<IDeposit[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [blsReady, setBlsReady] = useState(false);
@@ -62,36 +72,9 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
   }, [dataSourceKey, blsReady]);
 
   // Compute the predeploy queue fee (shared across all rows).
-  // Unlike EIP-7002/7251, the EIP-8282 contract charges fees per write path: the fee
-  // numerator is the excess (slot 0) plus the requests already added in the current
-  // block (slot 1) beyond TARGET_PER_BLOCK, so the fee rises within a block.
-  const targetPerBlock = 8n; // TARGET_PER_BLOCK of the builder deposit contract
-  let queueLength = 0n;
-  let isPreFork = false;
-  let requiredFee = 0n;
-  let requestFee = 0n;
-  let avgRequestPerBlock = 0;
-  const logLookbackRange = 10;
-  if (queueData && !queueData.error && !queueData.isLoading) {
-    queueLength = queueData.queueLength;
-    if (queueLength === 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffn) {
-      isPreFork = true;
-    } else {
-      let feeNumerator = queueLength;
-      if (queueData.blockCount > targetPerBlock) {
-        feeNumerator += queueData.blockCount - targetPerBlock;
-      }
-      requiredFee = getRequiredFee(feeNumerator);
-      if (addExtraFee && cachedLogData) {
-        for (let block in cachedLogData.logCount) avgRequestPerBlock += cachedLogData.logCount[block];
-        avgRequestPerBlock /= logLookbackRange;
-        let extra = avgRequestPerBlock < 2 ? 3 : avgRequestPerBlock + 1;
-        requestFee = getRequiredFee(feeNumerator + BigInt(Math.ceil(extra)));
-      } else {
-        requestFee = requiredFee;
-      }
-    }
-  }
+  const { isPreFork, queueLength, requestFee, batchFeeBase } = computeBuilderFees(queueData, cachedLogData, addExtraFee);
+
+  const validDeposits = (deposits || []).filter((d) => d.validity);
 
   let feeFactor = 0;
   let feeUnit = "Wei";
@@ -107,6 +90,9 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
         <div className="col-lg-2 col-sm-3 font-weight-bold">Deposit Source:</div>
         <div className="col-lg-10 col-sm-9">
           {props.file ? props.file.name : <span className="text-warning"><i className="fa fa-magic me-1"></i>Generated (devnet only)</span>}
+          {!props.file && props.localAccount && (
+            <span className="ms-2 font-monospace">from {props.localAccount.address}</span>
+          )}
         </div>
       </div>
 
@@ -134,6 +120,16 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
             </div>
           </div>
 
+          {validDeposits.length > 1 && (
+            <BatchSubmitButton
+              target={props.builderDepositContract}
+              count={validDeposits.length}
+              buildBatch={buildBatch}
+              localAccount={props.localAccount}
+              explorerUrl={props.explorerUrl}
+            />
+          )}
+
           {!deposits ? <p>Loading...</p> : deposits.length === 0 ? <p>No deposits found</p> : (
             <div className="table-ellipsis mt-1">
               <table className="table" style={{ width: "100%" }}>
@@ -154,6 +150,7 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
                       builderDepositContract={props.builderDepositContract}
                       requestFee={requestFee}
                       explorerUrl={props.explorerUrl}
+                      localAccount={props.localAccount}
                     />
                   ))}
                 </tbody>
@@ -164,6 +161,23 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
       }
     </div>
   );
+
+  // Per-item batch payloads: raw 184-byte calldata per deposit, with per-position
+  // escalating fees (the predeploy raises the fee for every request beyond
+  // TARGET_PER_BLOCK within the same block).
+  function buildBatch(): { calls: `0x${string}`[]; values: bigint[] } {
+    const calls = validDeposits.map((deposit) => {
+      const pubkey = deposit.pubkey.replace(/^0x/, "");
+      const wdCreds = deposit.withdrawal_credentials.replace(/^0x/, "");
+      const signature = deposit.signature.replace(/^0x/, "");
+      const amountHex = deposit.amount.toString(16).padStart(16, "0");
+      return ("0x" + pubkey + wdCreds + amountHex + signature) as `0x${string}`;
+    });
+    const values = validDeposits.map((deposit, i) =>
+      BigInt(deposit.amount) * GWEI + getRequiredFee(batchFeeBase + BigInt(i))
+    );
+    return { calls, values };
+  }
 
   async function parseDeposits(): Promise<IDeposit[]> {
     let json: IDeposit[];
@@ -210,17 +224,6 @@ const BuilderDepositsTable = (props: IBuilderDepositsTableProps): React.ReactEle
     }
   }
 
-  function getRequiredFee(numerator: bigint): bigint {
-    let i = 1n;
-    let output = 0n;
-    let numeratorAccum = 1n * 17n;
-    while (numeratorAccum > 0n) {
-      output += numeratorAccum;
-      numeratorAccum = (numeratorAccum * numerator) / (17n * i);
-      i += 1n;
-    }
-    return output / 17n;
-  }
 };
 
 export default BuilderDepositsTable;

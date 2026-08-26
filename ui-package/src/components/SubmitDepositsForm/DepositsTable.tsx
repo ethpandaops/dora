@@ -2,11 +2,15 @@ import React, { useEffect, useMemo } from 'react';
 import { useState } from 'react';
 import {ContainerType, ByteVectorType, UintNumberType, ValueOf} from "@chainsafe/ssz";
 import bls from "@chainsafe/bls/herumi";
+import { encodeFunctionData } from 'viem';
+import type { HDAccount } from 'viem';
 
 import DepositEntry from './DepositEntry';
 import { IDepositTx } from './SubmitDepositsFormProps';
+import { DepositContractAbi } from './DepositContract';
 import { GatingContractData, PREFIX_TO_DEPOSIT_TYPE } from './GatingContract';
 import { GatingDepositTypeStatus } from './GatingStatusBanner';
+import BatchSubmitButton from '../SubmitShared/BatchSubmitButton';
 
 interface IDepositsTableProps {
   file?: File | null;
@@ -16,6 +20,8 @@ interface IDepositsTableProps {
   loadDepositTxs(pubkeys: string[]): Promise<{deposits: IDepositTx[], count: number, havemore: boolean}>;
   explorerUrl?: string;
   gatingData?: GatingContractData | null;
+  // Submit transactions locally from this account instead of the connected wallet.
+  localAccount?: HDAccount;
 }
 
 export interface IDeposit {
@@ -65,6 +71,8 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
   const [loadDepositsError, setLoadDepositsError] = useState<string | null>(null);
   const [depositTxStats, setDepositTxStats] = useState<IDepositTxStats | null>(null);
 
+  const validDeposits = (deposits || []).filter((d) => d.validity);
+
   // Get unique deposit types from withdrawal credential prefixes
   const getUniqueDepositTypes = (depositsList: IDeposit[]): number[] => {
     const prefixes = new Set<string>();
@@ -113,6 +121,9 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
         <div className="col-lg-2 col-sm-3 font-weight-bold">Deposit Source:</div>
         <div className="col-lg-10 col-sm-9">
           {props.file ? props.file.name : <span className="text-warning"><i className="fa fa-magic me-1"></i>Generated (devnet only)</span>}
+          {!props.file && props.localAccount && (
+            <span className="ms-2 font-monospace">from {props.localAccount.address}</span>
+          )}
         </div>
       </div>
       {parseError ?
@@ -152,6 +163,16 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
             />
           )}
 
+          {validDeposits.length > 1 && (
+            <BatchSubmitButton
+              target={props.depositContract}
+              count={validDeposits.length}
+              buildBatch={buildBatch}
+              localAccount={props.localAccount}
+              explorerUrl={props.explorerUrl}
+            />
+          )}
+
           {!deposits ? <p>Loading...</p> : deposits.length === 0 ? <p>No deposits found</p> : (
             <div className="table-ellipsis mt-1">
               <table className="table" style={{width: "100%"}}>
@@ -172,6 +193,7 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
                         depositContract={props.depositContract}
                         explorerUrl={props.explorerUrl}
                         gatingData={props.gatingData}
+                        localAccount={props.localAccount}
                         key={deposit.pubkey}
                       />
                     );
@@ -184,6 +206,25 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
       }
     </div>
   );
+
+  // Per-item batch payloads: ABI-encoded deposit() calls. The deposit contract
+  // charges no queue fee, so each item's value is just its stake.
+  function buildBatch(): { calls: `0x${string}`[]; values: bigint[] } {
+    const calls = validDeposits.map((deposit) =>
+      encodeFunctionData({
+        abi: DepositContractAbi,
+        functionName: 'deposit',
+        args: [
+          "0x" + deposit.pubkey,
+          "0x" + deposit.withdrawal_credentials,
+          "0x" + deposit.signature,
+          "0x" + deposit.deposit_data_root,
+        ],
+      })
+    );
+    const values = validDeposits.map((deposit) => BigInt(deposit.amount) * 1000000000n);
+    return { calls, values };
+  }
 
   async function parseDeposits(): Promise<{deposits: IDeposit[], loadDepositsErr: string | null, depositStats: IDepositTxStats | null}> {
     try {

@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
+import React, { useState, useMemo } from 'react';
 import { useAccount } from 'wagmi';
+import { mnemonicToAccount } from 'viem/accounts';
 
 import { ISubmitBuilderDepositsFormProps } from './SubmitBuilderDepositsFormProps';
 import { IDeposit } from '../SubmitDepositsForm/DepositsTable';
 import DepositGeneratorModal from '../SubmitDepositsForm/DepositGeneratorModal';
+import FaucetButton from '../SubmitDepositsForm/FaucetButton';
 import BuilderDepositsTable from './BuilderDepositsTable';
+import TopupBuilderForm from './TopupBuilderForm';
+import LocalWalletBanner from '../SubmitShared/LocalWalletBanner';
+import DepositSourcePanels from '../SubmitShared/DepositSourcePanels';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import '../SubmitDepositsForm/SubmitDepositsForm.scss';
 
 const SubmitBuilderDepositsForm = (props: ISubmitBuilderDepositsFormProps): React.ReactElement => {
@@ -13,8 +18,30 @@ const SubmitBuilderDepositsForm = (props: ISubmitBuilderDepositsFormProps): Reac
 
   const [file, setFile] = useState<File | null>(null);
   const [generatedDeposits, setGeneratedDeposits] = useState<IDeposit[] | null>(null);
+  const [generatedMnemonic, setGeneratedMnemonic] = useState<string | null>(() => {
+    // pick up the session's generated mnemonic so the wallet-free flow works
+    // right after a reload, before regenerating deposits
+    try {
+      return sessionStorage.getItem('dora_generator_mnemonic');
+    } catch {
+      return null;
+    }
+  });
   const [refreshIdx, setRefreshIdx] = useState<number>(0);
   const [showGeneratorModal, setShowGeneratorModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'initial' | 'topup'>('initial');
+
+  // Without a connected wallet, deposits generated from a mnemonic can be submitted
+  // from the wallet derived from that mnemonic (fund it via the faucet first).
+  const localAccount = useMemo(() => {
+    if (!generatedMnemonic) return null;
+    try {
+      return mnemonicToAccount(generatedMnemonic);
+    } catch {
+      return null;
+    }
+  }, [generatedMnemonic]);
+  const useLocalAccount = !isConnected && localAccount !== null;
 
   return (
     <div className="submit-deposits">
@@ -28,57 +55,114 @@ const SubmitBuilderDepositsForm = (props: ISubmitBuilderDepositsFormProps): Reac
         </div>
       </div>
 
-      <div className="row mt-3">
-        <div className="col-12"><b>Step 1: Connect your wallet</b></div>
-      </div>
+      {/* Tab navigation */}
       <div className="row">
-        <div className="col-12 p-2">
-          <ConnectButton showBalance={true} accountStatus={{ smallScreen: 'avatar', largeScreen: 'full' }} chainStatus={{ smallScreen: 'icon', largeScreen: 'full' }} />
+        <div className="col-12 px-0">
+          <ul className="nav nav-tabs">
+            <li className="nav-item">
+              <button
+                className={`nav-link ${activeTab === 'initial' ? 'active' : ''}`}
+                onClick={() => setActiveTab('initial')}
+              >
+                Initial Deposit
+              </button>
+            </li>
+            <li className="nav-item">
+              <button
+                className={`nav-link ${activeTab === 'topup' ? 'active' : ''}`}
+                onClick={() => setActiveTab('topup')}
+              >
+                Topup Deposit
+              </button>
+            </li>
+          </ul>
         </div>
       </div>
 
-      <div className="row mt-3">
-        <div className="col-12">
-          <label htmlFor="formFile" className="form-label"><b>Step 2: Upload builder deposit data file</b></label>
-          <div className="d-flex gap-2 align-items-center">
-            <input
-              type="file"
-              className="form-control"
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                if (e.target.files) {
-                  setFile(e.target.files[0]);
-                  setGeneratedDeposits(null);
-                  setRefreshIdx(refreshIdx + 1);
-                }
-              }}
-            />
-            <span className="text-muted">or</span>
-            <button
-              className="btn btn-outline-secondary text-nowrap"
-              onClick={() => setShowGeneratorModal(true)}
-              title="Generate builder deposits for devnet testing"
-            >
-              <i className="fa fa-magic me-1"></i>
-              Generate
-            </button>
+      {activeTab === 'topup' && (
+        <>
+          <div className="row mt-3">
+            <div className="col-12">
+              <b>Step 1: Connect your wallet</b>
+            </div>
           </div>
-          <p className="text-secondary-emphasis mt-2">The deposit data file is a JSON array of builder deposits (pubkey, 0xB0 withdrawal_credentials, amount, signature).</p>
-        </div>
+          <div className="row">
+            <div className="col-12 p-2">
+              <ConnectButton showBalance={true} accountStatus={{ smallScreen: 'avatar', largeScreen: 'full' }} chainStatus={{ smallScreen: 'icon', largeScreen: 'full' }} />
+            </div>
+          </div>
+          {useLocalAccount && (
+            <LocalWalletBanner
+              address={localAccount.address}
+              faucetEnabled={props.faucetEnabled}
+              faucetAmount={props.faucetAmount}
+              explorerUrl={props.explorerUrl}
+            />
+          )}
+          {(isConnected || useLocalAccount) && (
+            <TopupBuilderForm
+              builderDepositContract={props.builderDepositContract}
+              loadBuilders={props.loadBuilders}
+              searchBuilders={props.searchBuilders}
+              explorerUrl={props.explorerUrl}
+              localAccount={useLocalAccount ? localAccount : undefined}
+            />
+          )}
+        </>
+      )}
 
-        {(file || generatedDeposits) && isConnected && (
-          <BuilderDepositsTable
-            key={refreshIdx}
-            file={file}
-            deposits={generatedDeposits}
-            genesisForkVersion={props.genesisForkVersion}
-            builderDepositContract={props.builderDepositContract}
+      {activeTab === 'initial' && (
+      <>
+      <DepositSourcePanels
+        showGenerator={props.showGenerator !== false}
+        fileLabel="Step 2: Upload builder deposit data file"
+        fileHint="The deposit data file is a JSON array of builder deposits (pubkey, 0xB0 withdrawal_credentials, amount, signature)."
+        generatorTitle="Generate builder deposits"
+        generatorHint="Create and submit builder deposits without any external tooling:"
+        walletExtra={isConnected && props.faucetEnabled ? (
+          <FaucetButton
+            address={walletAddress}
+            amount={props.faucetAmount || 50}
             explorerUrl={props.explorerUrl}
           />
+        ) : undefined}
+        onFileSelected={(file) => {
+          setFile(file);
+          setGeneratedDeposits(null);
+          setGeneratedMnemonic(null);
+          setRefreshIdx(refreshIdx + 1);
+        }}
+        onGenerateClick={() => setShowGeneratorModal(true)}
+      />
+
+      <div className="row mt-3">
+        {(file || generatedDeposits) && (isConnected || useLocalAccount) && (
+          <>
+            {useLocalAccount && (
+              <LocalWalletBanner
+                address={localAccount.address}
+                faucetEnabled={props.faucetEnabled}
+                faucetAmount={props.faucetAmount}
+                explorerUrl={props.explorerUrl}
+              />
+            )}
+            <BuilderDepositsTable
+              key={refreshIdx}
+              file={file}
+              deposits={generatedDeposits}
+              genesisForkVersion={props.genesisForkVersion}
+              builderDepositContract={props.builderDepositContract}
+              explorerUrl={props.explorerUrl}
+              localAccount={useLocalAccount ? localAccount : undefined}
+            />
+          </>
         )}
-        {(file || generatedDeposits) && !isConnected && (
+        {(file || generatedDeposits) && !isConnected && !useLocalAccount && (
           <div className="alert alert-info mt-2">Connect your wallet to review and submit the deposits.</div>
         )}
       </div>
+      </>
+      )}
 
       {showGeneratorModal && (
         <DepositGeneratorModal
@@ -86,9 +170,13 @@ const SubmitBuilderDepositsForm = (props: ISubmitBuilderDepositsFormProps): Reac
           defaultWithdrawalAddress={walletAddress}
           domainType="builder"
           lockBuilderCredentials={true}
+          faucetEnabled={props.faucetEnabled}
+          faucetAmount={props.faucetAmount}
+          explorerUrl={props.explorerUrl}
           onClose={() => setShowGeneratorModal(false)}
-          onGenerate={(deposits) => {
+          onGenerate={(deposits, mnemonic) => {
             setGeneratedDeposits(deposits);
+            setGeneratedMnemonic(mnemonic);
             setFile(null);
             setShowGeneratorModal(false);
             setRefreshIdx(refreshIdx + 1);

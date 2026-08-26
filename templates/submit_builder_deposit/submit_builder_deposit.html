@@ -52,6 +52,17 @@
           builderDepositContract: "{{ .BuilderDepositContract }}",
           genesisForkVersion: "0x{{ printf "%x" .GenesisForkVersion }}",
           explorerUrl: "{{ .ExplorerUrl }}",
+          faucetEnabled: {{ .FaucetEnabled }},
+          faucetAmount: {{ .FaucetAmount }},
+          showGenerator: {{ .ShowGenerator }},
+          loadBuilders: function(address) {
+            return fetch(`?ajax=load_builders&address=${address}`)
+              .then(response => response.json());
+          },
+          searchBuilders: function(searchTerm) {
+            return fetch(`?ajax=search_builders&search=${searchTerm}`)
+              .then(response => response.json());
+          },
         }
       }
     );

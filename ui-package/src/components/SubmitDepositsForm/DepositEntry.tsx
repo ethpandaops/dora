@@ -1,26 +1,44 @@
 import React, { useEffect } from 'react';
-import { useAccount, useWriteContract } from 'wagmi';
+import { useAccount, useConfig, useWriteContract } from 'wagmi';
 import { useState } from 'react';
+import { createWalletClient, http } from 'viem';
+import type { HDAccount } from 'viem';
 import { Modal } from 'react-bootstrap';
 
 import { IDeposit } from './DepositsTable';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { DepositContractAbi } from './DepositContract';
 import { GatingContractData, PREFIX_TO_DEPOSIT_TYPE } from './GatingContract';
+import { useEnsLookup } from '../SubmitShared/useEnsLookup';
+import { credentialTypeInfo } from '../SubmitShared/credentialTypes';
+import { useTrackedTx } from '../SubmitShared/useTrackedTx';
+import TxStatusButton from '../SubmitShared/TxStatusButton';
 
 interface IDepositEntryProps {
   deposit: IDeposit;
   depositContract: string;
   explorerUrl?: string;
   gatingData?: GatingContractData | null;
+  // Submit the transaction locally from this account instead of the connected wallet.
+  localAccount?: HDAccount;
 }
 
 const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
-  const { address: walletAddress, chain, isConnected } = useAccount();
+  const { address: walletAddress, chain: connectedChain, isConnected } = useAccount();
+  const wagmiConfig = useConfig();
+  const chain = connectedChain ?? wagmiConfig.chains[0];
   const [errorModal, setErrorModal] = useState<string | null>(null);
   const [showTxDetails, setShowTxDetails] = useState<boolean>(false);
 
   const depositRequest = useWriteContract();
+  const tx = useTrackedTx(setErrorModal);
+
+  const useLocalAccount = !!props.localAccount;
+
+  // ENS name of the address embedded in the credentials (0x01/0x02/0xb0 types)
+  const wdCredsHex = props.deposit.withdrawal_credentials.replace(/^0x/, "");
+  const credsAddress = /^(01|02|b0)/i.test(wdCredsHex) ? "0x" + wdCredsHex.substring(24) : null;
+  const credsEnsName = useEnsLookup(credsAddress);
 
   // Check gating status for this deposit type
   const prefix = props.deposit.withdrawal_credentials.substring(0, 2);
@@ -79,24 +97,22 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
         : null}
       </td>
       <td className="p-0">
-        <button className="btn btn-primary" disabled={!isConnected || !props.deposit.validity || depositRequest.isPending || depositRequest.isSuccess || (props.gatingData && !canSubmit)} onClick={() => submitDeposit()}>
-          {depositRequest.isSuccess ?
-            <span>Submitted</span> :
-            depositRequest.isPending ? (
-              <span className="text-nowrap"><div className="spinner-border spinner-border-sm me-1" role="status"></div>Pending...</span>
-              ) : (
-                depositRequest.isError ? (
-                  <span className="text-nowrap"><i className="fa-solid fa-repeat me-1"></i> Retry</span>
-                ) : isBlocked ? (
-                  <span className="text-nowrap"><i className="fa fa-ban me-1"></i> Blocked</span>
-                ) : requiresToken && !hasToken ? (
-                  <span className="text-nowrap"><i className="fa fa-lock me-1"></i> Need Token</span>
-                ) : (
-                  "Submit"
-                )
-              )
+        <TxStatusButton
+          tx={tx}
+          onSubmit={() => submitDeposit()}
+          disabled={!(isConnected || useLocalAccount) || !props.deposit.validity || (props.gatingData ? !canSubmit : false)}
+          idleLabel={
+            isBlocked ? (
+              <span className="text-nowrap"><i className="fa fa-ban me-1"></i> Blocked</span>
+            ) : requiresToken && !hasToken ? (
+              <span className="text-nowrap"><i className="fa fa-lock me-1"></i> Need Token</span>
+            ) : (
+              "Submit"
+            )
           }
-        </button>
+          confirmedLabel="Submitted"
+          explorerUrl={props.explorerUrl}
+        />
         {errorModal && (
           <Modal show={true} onHide={() => setErrorModal(null)} size="lg" className="submit-deposit-modal">
             <Modal.Header closeButton>
@@ -218,13 +234,15 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
   );
 
   function formatWithdrawalHash(creds: string) {
-    switch (creds.substring(0, 2)) {
+    const prefix = creds.substring(0, 2);
+    const typeInfo = credentialTypeInfo(prefix);
+    switch (prefix) {
       case "02":
-        return <span><span className="text-success">02</span>...{creds.substring(24)}</span>;
       case "01":
-        return <span><span className="text-success">01</span>...{creds.substring(24)}</span>;
+      case "b0":
+        return <span><span className={typeInfo.className} data-bs-toggle="tooltip" title={typeInfo.label}>{prefix}</span>...{credsEnsName ?? creds.substring(24)}</span>;
       default:
-        return <span><span className="text-warning">{creds.substring(0, 2)}</span>{creds.substring(2)}</span>;
+        return <span><span className={typeInfo.className} data-bs-toggle="tooltip" title={typeInfo.label}>{prefix}</span>{creds.substring(2)}</span>;
     }
   }
 
@@ -235,19 +253,35 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
 
   async function submitDeposit() {
     let args = [ "0x" + props.deposit.pubkey, "0x" + props.deposit.withdrawal_credentials, "0x" + props.deposit.signature, "0x" + props.deposit.deposit_data_root ];
-    depositRequest.writeContractAsync({
-      address: props.depositContract as `0x${string}`,
-      account: walletAddress,
-      abi: DepositContractAbi,
-      chain: chain,
-      functionName: "deposit",
-      args: args,
-      value: BigInt(props.deposit.amount) * BigInt(10 ** 9),
-      gas: 150000n,
-    }).then(tx => {
-      console.log(tx);
-    }).catch(error => {
-      setErrorModal(error.message);
+    const value = BigInt(props.deposit.amount) * BigInt(10 ** 9);
+
+    // no explicit gas limit on either path: let estimation decide - gas-repriced
+    // devnets (glamsterdam) need far more than the classic costs
+    tx.start(() => {
+      if (props.localAccount) {
+        // no connected wallet: sign & send locally with the mnemonic-derived account
+        const walletClient = createWalletClient({
+          account: props.localAccount,
+          chain,
+          transport: http(),
+        });
+        return walletClient.writeContract({
+          address: props.depositContract as `0x${string}`,
+          abi: DepositContractAbi,
+          functionName: "deposit",
+          args: args,
+          value: value,
+        });
+      }
+      return depositRequest.writeContractAsync({
+        address: props.depositContract as `0x${string}`,
+        account: walletAddress,
+        abi: DepositContractAbi,
+        chain: chain,
+        functionName: "deposit",
+        args: args,
+        value: value,
+      });
     });
   }
 }

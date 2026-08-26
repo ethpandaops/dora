@@ -1,7 +1,8 @@
 import React from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount } from 'wagmi';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { mnemonicToAccount } from 'viem/accounts';
 
 import { ISubmitDepositsFormProps } from './SubmitDepositsFormProps';
 import DepositsTable, { IDeposit } from './DepositsTable';
@@ -10,6 +11,9 @@ import { useGatingContract } from '../../hooks/useGatingContract';
 import { GatingStatusBanner } from './GatingStatusBanner';
 import GatingManageModal from './GatingManageModal';
 import DepositGeneratorModal from './DepositGeneratorModal';
+import FaucetButton from './FaucetButton';
+import LocalWalletBanner from '../SubmitShared/LocalWalletBanner';
+import DepositSourcePanels from '../SubmitShared/DepositSourcePanels';
 import './SubmitDepositsForm.scss';
 
 const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement => {
@@ -17,10 +21,31 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
 
   const [file, setFile] = useState<File | null>(null);
   const [generatedDeposits, setGeneratedDeposits] = useState<IDeposit[] | null>(null);
+  const [generatedMnemonic, setGeneratedMnemonic] = useState<string | null>(() => {
+    // pick up the session's generated mnemonic so the wallet-free flow (incl. the
+    // topup tab) works right after a reload, before regenerating deposits
+    try {
+      return sessionStorage.getItem('dora_generator_mnemonic');
+    } catch {
+      return null;
+    }
+  });
   const [refreshIdx, setRefreshIdx] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<'initial' | 'topup'>('initial');
   const [showManageModal, setShowManageModal] = useState(false);
   const [showGeneratorModal, setShowGeneratorModal] = useState(false);
+
+  // Without a connected wallet, deposits generated from a mnemonic can be submitted
+  // from the wallet derived from that mnemonic (fund it via the faucet first).
+  const localAccount = useMemo(() => {
+    if (!generatedMnemonic) return null;
+    try {
+      return mnemonicToAccount(generatedMnemonic);
+    } catch {
+      return null;
+    }
+  }, [generatedMnemonic]);
+  const useLocalAccount = !isConnected && localAccount !== null;
 
   // Fetch gating contract data
   const { gatingData, refetch: refetchGating, isLoading: isGatingLoading } = useGatingContract(
@@ -73,16 +98,45 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
         </div>
       )}
 
-      <div className="row mt-3">
-        <div className="col-12">
-          <b>Step 1: Connect your wallet</b>
-        </div>
-      </div>
-      <div className="row">
-        <div className="col-12 p-2">
-          <ConnectButton showBalance={true} accountStatus={{ smallScreen: 'avatar', largeScreen: 'full' }} chainStatus={{ smallScreen: 'icon', largeScreen: 'full' }} />
-        </div>
-      </div>
+      {/* Initial tab: two-column source chooser (wallet & file vs. generator).
+          Topup tab keeps a plain connect-wallet row. */}
+      {activeTab === 'initial' && (
+        <DepositSourcePanels
+          showGenerator={props.showGenerator !== false}
+          fileLabel="Step 2: Upload deposit data file"
+          fileHint={<span>The deposit data file is usually called <code>deposit_data-[timestamp].json</code> and is located in your <code>/staking-deposit-cli/validator_keys</code> directory.</span>}
+          generatorTitle="Generate validator deposits"
+          generatorHint="Create and submit validator deposits without any external tooling:"
+          walletExtra={isConnected && props.faucetEnabled ? (
+            <FaucetButton
+              address={walletAddress}
+              amount={props.faucetAmount || 50}
+              explorerUrl={props.explorerLink}
+            />
+          ) : undefined}
+          onFileSelected={(file) => {
+            setFile(file);
+            setGeneratedDeposits(null);
+            setGeneratedMnemonic(null);
+            setRefreshIdx(refreshIdx + 1);
+          }}
+          onGenerateClick={() => setShowGeneratorModal(true)}
+        />
+      )}
+      {activeTab === 'topup' && (
+        <>
+          <div className="row mt-3">
+            <div className="col-12">
+              <b>Step 1: Connect your wallet</b>
+            </div>
+          </div>
+          <div className="row">
+            <div className="col-12 p-2">
+              <ConnectButton showBalance={true} accountStatus={{ smallScreen: 'avatar', largeScreen: 'full' }} chainStatus={{ smallScreen: 'icon', largeScreen: 'full' }} />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Gating Status Banner - only show on initial deposit tab since topup tab has its own */}
       {isConnected && (gatingData || isGatingLoading) && activeTab === 'initial' && (
@@ -101,35 +155,14 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
       {/* Initial Deposit Form */}
       {activeTab === 'initial' && (
         <div className="row mt-3">
-          <div className="col-12">
-            <label htmlFor="formFile" className="form-label">
-              <b>Step 2: Upload deposit data file</b>
-            </label>
-            <div className="d-flex gap-2 align-items-center">
-              <input
-                type="file"
-                className="form-control"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  if (e.target.files) {
-                    setFile(e.target.files[0]);
-                    setGeneratedDeposits(null);
-                    setRefreshIdx(refreshIdx + 1);
-                  }
-                }}
-              />
-              <span className="text-muted">or</span>
-              <button
-                className="btn btn-outline-secondary text-nowrap"
-                onClick={() => setShowGeneratorModal(true)}
-                title="Generate deposits for devnet testing"
-              >
-                <i className="fa fa-magic me-1"></i>
-                Generate
-              </button>
-            </div>
-            <p className="text-secondary-emphasis mt-2">The deposit data file is usually called <code>deposit_data-[timestamp].json</code> and is located in your <code>/staking-deposit-cli/validator_keys</code> directory.</p>
-          </div>
-
+          {(file || generatedDeposits) && useLocalAccount && (
+            <LocalWalletBanner
+              address={localAccount.address}
+              faucetEnabled={props.faucetEnabled}
+              faucetAmount={props.faucetAmount}
+              explorerUrl={props.explorerLink}
+            />
+          )}
           {(file || generatedDeposits) && (
             <DepositsTable
               key={refreshIdx}
@@ -140,13 +173,22 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
               loadDepositTxs={props.loadDepositTxs}
               explorerUrl={props.explorerLink}
               gatingData={gatingData}
+              localAccount={useLocalAccount ? localAccount : undefined}
             />
           )}
         </div>
       )}
 
       {/* Topup Deposit Form */}
-      {activeTab === 'topup' && isConnected && (
+      {activeTab === 'topup' && useLocalAccount && (
+        <LocalWalletBanner
+          address={localAccount.address}
+          faucetEnabled={props.faucetEnabled}
+          faucetAmount={props.faucetAmount}
+          explorerUrl={props.explorerLink}
+        />
+      )}
+      {activeTab === 'topup' && (isConnected || useLocalAccount) && (
         <TopupDepositForm
           loadValidators={props.loadValidators}
           searchValidators={props.searchValidators}
@@ -155,6 +197,8 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
           maxEffectiveBalanceElectra={props.maxEffectiveBalanceElectra}
           gatingData={gatingData}
           isGatingLoading={isGatingLoading}
+          explorerUrl={props.explorerLink}
+          localAccount={useLocalAccount ? localAccount : undefined}
         />
       )}
 
@@ -173,9 +217,13 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
         <DepositGeneratorModal
           genesisForkVersion={props.genesisForkVersion}
           defaultWithdrawalAddress={walletAddress}
+          faucetEnabled={props.faucetEnabled}
+          faucetAmount={props.faucetAmount}
+          explorerUrl={props.explorerLink}
           onClose={() => setShowGeneratorModal(false)}
-          onGenerate={(deposits) => {
+          onGenerate={(deposits, mnemonic) => {
             setGeneratedDeposits(deposits);
+            setGeneratedMnemonic(mnemonic);
             setFile(null);
             setShowGeneratorModal(false);
             setRefreshIdx(refreshIdx + 1);
