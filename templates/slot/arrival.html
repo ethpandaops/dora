@@ -898,7 +898,7 @@
           if (thresholdMs != null) {
             var pct = Math.round(att.threshold_count / att.expected_count * 100);
             marks.push({
-              ms: thresholdMs, label: pct + '% quorum', color: '#34c38f',
+              ms: thresholdMs, label: pct + '% quorum', color: '#5b8def',
               title: 'Attestations for this block passed BUILDER_PAYMENT_THRESHOLD: ' +
                 att.threshold_count.toLocaleString() + ' of ' + att.expected_count.toLocaleString() + ' expected attesters',
             });
