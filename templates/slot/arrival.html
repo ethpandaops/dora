@@ -68,6 +68,27 @@
       height: 100%;
       border-radius: 4px;
     }
+    /* fixed-width group for the four time columns, so the caption above can
+       span exactly the visible ones at every breakpoint */
+    .arrival-region-line .region-times {
+      display: flex;
+      gap: 0.9rem;
+      flex: none;
+      width: 7rem;
+    }
+    @media (min-width: 576px) { .arrival-region-line .region-times { width: 21.8rem; } }
+    @media (min-width: 768px) { .arrival-region-line .region-times { width: 29.2rem; } }
+    .arrival-region-line .region-cap {
+      flex: 1 1 auto;
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--bs-secondary-color);
+      font-weight: 600;
+      text-align: center;
+      border-bottom: 1px solid var(--bs-border-color);
+      padding-bottom: 0.15rem;
+    }
 
     .lane-track { position: relative; }
     /* shared gridlines: let arrival times be compared straight down the column */
@@ -737,15 +758,22 @@
         // same stats as the Arrival row above, split per continent; a header
         // row names the columns once instead of tiny labels repeated per row
         var totalNodes = s.unique_nodes || 1;
-        var regionHeader = '<div class="d-flex align-items-center arrival-region-line text-muted small">' +
+        var regionHeader = '<div class="d-flex align-items-end arrival-region-line">' +
+          '<span class="region-name"></span>' +
+          '<span class="d-none d-md-inline-block" style="width: 160px; flex: none"></span>' +
+          '<span style="width: 4.5rem; flex: none"></span>' +
+          '<span class="region-times"><span class="region-cap" title="Each node\'s earliest sighting of the block itself (beacon API block event or gossip); head adoption, payload and execution times are not part of these numbers">block arrival</span></span>' +
+          '</div>' +
+          '<div class="d-flex align-items-center arrival-region-line text-muted small">' +
           '<span class="region-name"></span>' +
           '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">share of observing nodes</span>' +
           '<span style="width: 4.5rem; flex: none; text-align: right">nodes</span>' +
+          '<span class="region-times">' +
           '<span style="width: 7rem; flex: none; text-align: right">fastest</span>' +
           '<span class="d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">median</span>' +
           '<span class="d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">p90</span>' +
           '<span class="d-none d-md-inline" style="width: 6.5rem; flex: none; text-align: right">slowest</span>' +
-          '</div>';
+          '</span></div>';
         var regionRows = (data.continents || []).map(function(c) {
           var share = c.nodes / totalNodes * 100;
           var name = continentNames[c.code] || c.code || 'Unknown';
@@ -754,11 +782,12 @@
             '<span class="region-name"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
             '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + Math.max(1.5, share).toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
             '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b></span>' +
+            '<span class="region-times">' +
             '<span class="num" style="width: 7rem; flex: none; text-align: right">' + fmtMsColored(c.min_ms) + '</span>' +
             '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.p50_ms) + '</span>' +
             '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.p90_ms) + '</span>' +
             '<span class="num d-none d-md-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.max_ms) + '</span>' +
-            '</div>';
+            '</span></div>';
         }).join('');
         document.getElementById('arrival-regions').innerHTML = regionRows ? regionHeader + regionRows : '';
 
