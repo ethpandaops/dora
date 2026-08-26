@@ -207,13 +207,20 @@
     }
     .arrival-hist.hist-sm { height: 72px; }
     .arrival-hist.hist-tall { height: 210px; }
-    .arrival-hist .endlab {
+    /* y axis labels live in a gutter left of the plot, not inside it */
+    .tl-flex { display: flex; align-items: stretch; }
+    .tl-y {
+      position: relative;
+      width: 2.6rem;
+      flex: none;
+    }
+    .tl-y > span {
       position: absolute;
-      right: 5px;
+      right: 8px;
       transform: translateY(-50%);
-      font-size: 0.72rem;
-      font-weight: 600;
-      text-shadow: 0 0 3px var(--bs-body-bg), 0 0 3px var(--bs-body-bg);
+      font-size: 0.63rem;
+      color: var(--bs-secondary-color);
+      font-variant-numeric: tabular-nums;
     }
     .arrival-hist .grid {
       position: absolute; top: 0; bottom: 0; width: 1px;
@@ -233,6 +240,7 @@
       font-size: 0.63rem;
       color: var(--bs-secondary-color);
       white-space: nowrap;
+      text-shadow: 0 0 3px var(--bs-body-bg), 0 0 3px var(--bs-body-bg), 0 0 3px var(--bs-body-bg);
     }
     .arrival-hist-axis {
       position: relative;
@@ -792,6 +800,7 @@
             count: data.head.total_count,
             denom: data.head.total_count,
             of: 'observing nodes',
+            unit: 'nodes',
           });
         }
 
@@ -812,6 +821,7 @@
             count: data.payload.total_count,
             denom: data.payload.total_count,
             of: 'observing nodes',
+            unit: 'nodes',
           });
         }
 
@@ -822,6 +832,7 @@
             count: data.executed.total_count,
             denom: data.executed.total_count,
             of: 'reporting execution clients',
+            unit: 'clients',
           });
         }
 
@@ -842,12 +853,16 @@
         var ax = histAxis(0, slotMs);
         var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
 
+        // headroom above the 100% line hosts the marker labels, so they never
+        // sit on top of the curves
+        var Y = function(pct) { return 9 + (100 - Math.min(100, pct)) * 0.91; };
+
+        var ylabs = '';
         var chart = '';
 
-        chart += '<span class="ylab" style="top:0%">100%</span>';
-        [25, 50, 75].forEach(function(pct) {
-          chart += '<div class="hgrid" style="top:' + (100 - pct) + '%"></div>' +
-            '<span class="ylab" style="top:' + (100 - pct) + '%">' + pct + '%</span>';
+        [100, 75, 50, 25].forEach(function(pct) {
+          ylabs += '<span style="top:' + Y(pct) + '%">' + pct + '%</span>';
+          chart += '<div class="hgrid" style="top:' + Y(pct) + '%"></div>';
         });
 
         ax.lines.forEach(function(t) {
@@ -892,11 +907,22 @@
 
         marks.sort(function(a, b) { return a.ms - b.ms; });
 
-        marks.forEach(function(m, idx) {
+        // labels share the top row and only stack when they would overlap
+        var placedMarks = [];
+
+        marks.forEach(function(m) {
           if (m.ms <= ax.lo || m.ms >= ax.hi) return;
 
-          chart += '<div class="deadline" style="left:' + pos(m.ms) + '%;border-left-color:' + m.color + '">' +
-            '<span class="note" style="top:' + (1 + idx * 13) + 'px;color:' + m.color + '" title="' + esc(m.title) + '">' +
+          var x = pos(m.ms);
+          var width = m.label.length * 0.62;
+          var row = 0;
+
+          while (placedMarks.some(function(pm) { return pm.row === row && x < pm.x + pm.w + 1.5 && x + width > pm.x; })) row++;
+
+          placedMarks.push({ x: x, w: width, row: row });
+
+          chart += '<div class="deadline" style="left:' + x + '%;border-left-color:' + m.color + '">' +
+            '<span class="note" style="top:' + (2 + row * 14) + 'px;color:' + m.color + '" title="' + esc(m.title) + '">' +
             m.label + '</span></div>';
         });
 
@@ -905,17 +931,16 @@
 
         series.forEach(function(sr) {
           var cum = 0;
-          var pts = ['0,100'];
+          var pts = ['0,' + Y(0).toFixed(2)];
 
           sr.buckets.forEach(function(b) {
             var x = Math.min(100, pos(b.ms + 50)).toFixed(2);
-            pts.push(x + ',' + (100 - cum / sr.denom * 100).toFixed(2));
+            pts.push(x + ',' + Y(cum / sr.denom * 100).toFixed(2));
             cum += b.count;
-            pts.push(x + ',' + (100 - cum / sr.denom * 100).toFixed(2));
+            pts.push(x + ',' + Y(cum / sr.denom * 100).toFixed(2));
           });
 
-          sr.finalPct = cum / sr.denom * 100;
-          pts.push('100,' + (100 - sr.finalPct).toFixed(2));
+          pts.push('100,' + Y(cum / sr.denom * 100).toFixed(2));
           svg += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + sr.color +
             '" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
         });
@@ -939,25 +964,6 @@
             '%" title="by ' + fmtStr(Math.round(upto)) + ': ' + parts.join(' \u00b7 ') + '"></div>';
         }
 
-        // name each line at its right end instead of asking the reader to map
-        // legend swatches; stacked labels get pushed apart when lines end at
-        // the same level
-        var slots = series.map(function(sr, i) { return { i: i, top: 100 - sr.finalPct }; });
-        slots.sort(function(a, b) { return a.top - b.top; });
-
-        var minGap = 7;
-        for (var li = 1; li < slots.length; li++) {
-          if (slots[li].top < slots[li - 1].top + minGap) slots[li].top = slots[li - 1].top + minGap;
-        }
-
-        var endlabs = '';
-        slots.forEach(function(sl) {
-          var sr = series[sl.i];
-          endlabs += '<span class="endlab" style="top:' + Math.min(93, Math.max(3, sl.top + 3)) +
-            '%;color:' + sr.color + '">' + sr.label + '</span>';
-        });
-        chart += endlabs;
-
         var labels = '';
 
         ax.lines.forEach(function(t) {
@@ -966,20 +972,24 @@
         labels += '<span style="left:100%">' + fmtAxis(ax.hi) + '</span>';
 
         var stats = series.map(function(sr) {
-          return '<span style="color:' + sr.color + ';font-weight:600" title="of ' +
+          return '<span style="white-space: nowrap"><span style="color:' + sr.color + ';font-weight:600" title="of ' +
             (sr.denom !== sr.count ? sr.denom.toLocaleString() + ' ' : '') + sr.of + '">' + sr.label + '</span> <b>' +
             sr.count.toLocaleString() + '</b>' +
-            (sr.denom !== sr.count ? '<span class="text-muted">/' + sr.denom.toLocaleString() + '</span>' : '');
+            (sr.denom > sr.count ? '<span class="text-muted">/' + sr.denom.toLocaleString() + '</span>' : '') +
+            (sr.unit ? ' <span class="text-muted small">' + sr.unit + '</span>' : '') + '</span>';
         }).join(sep);
 
         if (viewed && viewed.viewed && att.total_count > viewed.count) {
-          stats += sep + '<span class="num" style="color:#f46a6a"><b>' +
-            (att.total_count - viewed.count).toLocaleString() + '</b></span> <span class="text-muted">vote other roots</span>';
+          stats += sep + '<span style="white-space: nowrap"><span class="num" style="color:#f46a6a"><b>' +
+            (att.total_count - viewed.count).toLocaleString() + '</b></span> <span class="text-muted">vote other roots</span></span>';
         }
 
         document.getElementById('waves-timeline-body').innerHTML = stats + liveBadge(data.settled) +
-          '<div class="arrival-hist hist-tall">' + chart + svg + hovers + '</div>' +
-          '<div class="arrival-hist-axis">' + labels + '</div>';
+          '<div class="tl-flex" style="margin-top: 8px">' +
+          '<div class="tl-y">' + ylabs + '</div>' +
+          '<div class="arrival-hist hist-tall" style="flex: 1 1 auto; min-width: 0; margin-top: 0">' + chart + svg + hovers + '</div>' +
+          '</div>' +
+          '<div class="arrival-hist-axis" style="margin-left: 2.6rem">' + labels + '</div>';
       }
 
       // The column chart follows the lab's data column propagation view:
