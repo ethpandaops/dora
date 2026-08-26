@@ -225,7 +225,7 @@
 
   // mirrors utils.FormatProposerWithBuildSource: house = self-built payload,
   // hard-hat (linking to the builder) = builder-built payload
-  function formatProposerWithBuildSource(status, idx, name, hasBuilder, builderIdx, builderUrl) {
+  function formatProposerWithBuildSource(status, idx, name, hasBuilder, builderIdx, builderName) {
     if(status == 0 || idx >= 9223372036854775807n) {
       if(idx >= 9223372036854775807n) {
         return `<span class="validator-label validator-index">unknown</span>`;
@@ -246,13 +246,9 @@
     if(builderIdx >= 18446744073709551615n) {
       iconHtml = `<i class="fas fa-house mr-2" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Self-built payload"></i>`;
     } else {
-      var builderLink = "/builder/" + builderIdx;
-      var external = "";
-      if(builderUrl) {
-        builderLink = escapeHtml(builderUrl);
-        external = ` target="_blank" rel="noopener noreferrer"`;
-      }
-      iconHtml = `<a href="` + builderLink + `"` + external + ` class="builder-source-link" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload (builder ` + builderIdx + `)"><i class="fas fa-hard-hat mr-2"></i></a>`;
+      // the icon links to the builder details page; the tooltip names the builder when known
+      var builderLabel = builderName ? escapeHtml(builderName) + " (" + builderIdx + ")" : "builder " + builderIdx;
+      iconHtml = `<a href="/builder/` + builderIdx + `" class="builder-source-link" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload by ` + builderLabel + `"><i class="fas fa-hard-hat mr-2"></i></a>`;
     }
 
     if(name != "") {
