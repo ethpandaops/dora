@@ -161,6 +161,8 @@ type Config struct {
 		RefreshInterval time.Duration    `yaml:"refreshInterval" envconfig:"MEVINDEXER_REFRESH_INTERVAL"`
 	} `yaml:"mevIndexer"`
 
+	Xatu XatuConfig `yaml:"xatu"`
+
 	ExecutionIndexer struct {
 		Enabled         bool          `yaml:"enabled" envconfig:"EXECUTIONINDEXER_ENABLED"`
 		ParallelBlocks  int           `yaml:"parallelBlocks" envconfig:"EXECUTIONINDEXER_PARALLEL_BLOCKS"`
@@ -276,6 +278,49 @@ type MevRelayConfig struct {
 	Name       string `yaml:"name"`
 	Url        string `yaml:"url"`
 	BlockLimit int    `yaml:"blockLimit"`
+}
+
+// XatuConfig configures the optional Xatu ClickHouse data source.
+type XatuConfig struct {
+	Enabled bool `yaml:"enabled" envconfig:"XATU_ENABLED"`
+	// NetworkName filters rows by meta_network_name; defaults to the chain name.
+	NetworkName string `yaml:"networkName" envconfig:"XATU_NETWORK_NAME"`
+	// SettleDelay is how long after slot start the ingest pipeline is assumed to
+	// still be receiving events. Responses for younger slots are cached for one
+	// slot only, rather than not at all, so repeat views cannot each re-query.
+	SettleDelay      time.Duration `yaml:"settleDelay" envconfig:"XATU_SETTLE_DELAY"`
+	ConcurrencyLimit int           `yaml:"concurrencyLimit" envconfig:"XATU_CONCURRENCY_LIMIT"`
+	// Raw holds the connection to xatu's raw event tables. xatu-cbt's
+	// transformed models live on a different cluster, so a cbt source slots in
+	// alongside this one rather than sharing its connection.
+	Raw XatuSourceConfig `yaml:"raw"`
+	// Cbt holds the connection to the xatu-cbt transformed models. Optional;
+	// features backed by cbt tables stay hidden when no DSN is set.
+	Cbt XatuCbtSourceConfig `yaml:"cbt"`
+}
+
+// XatuSourceConfig is the connection to one ClickHouse instance holding xatu
+// data.
+type XatuSourceConfig struct {
+	// ClickhouseDsn is the ClickHouse endpoint, e.g. "https://user:pass@clickhouse.example.com"
+	// (HTTP protocol) or "clickhouse://user:pass@host:9000" (native protocol).
+	ClickhouseDsn string `yaml:"clickhouseDsn" envconfig:"XATU_RAW_CLICKHOUSE_DSN"`
+	// ClickhouseCachedDsn optionally points at a response-caching proxy (e.g. chproxy).
+	// Queries for settled slots are routed here so identical queries across
+	// instances and page loads share one cached response.
+	ClickhouseCachedDsn string `yaml:"clickhouseCachedDsn" envconfig:"XATU_RAW_CLICKHOUSE_CACHED_DSN"`
+	Database            string `yaml:"database" envconfig:"XATU_RAW_DATABASE"`
+}
+
+// XatuCbtSourceConfig is the connection to a ClickHouse instance holding
+// xatu-cbt transformed models. It mirrors XatuSourceConfig; the envconfig tags
+// carry the source name, so each source needs its own struct.
+type XatuCbtSourceConfig struct {
+	ClickhouseDsn       string `yaml:"clickhouseDsn" envconfig:"XATU_CBT_CLICKHOUSE_DSN"`
+	ClickhouseCachedDsn string `yaml:"clickhouseCachedDsn" envconfig:"XATU_CBT_CLICKHOUSE_CACHED_DSN"`
+	// Database names the per-network database holding the cbt models; defaults
+	// to the network name.
+	Database string `yaml:"database" envconfig:"XATU_CBT_DATABASE"`
 }
 
 type DatabaseConfig struct {

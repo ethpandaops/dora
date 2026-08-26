@@ -29,6 +29,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/blockdb"
+	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -59,6 +60,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/builder_deposit_requests.html",
 		"slot/builder_exit_requests.html",
 		"slot/bids.html",
+		"slot/arrival.html",
 		"slot/ptc_votes.html",
 		"slot/inclusion_lists.html",
 		"slot/block_access_list.html",
@@ -266,6 +268,8 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		EpochFinalized: finalizedEpoch >= chainState.EpochOfSlot(slot),
 		Badges:         []*models.SlotPageBlockBadge{},
 		TracoorUrl:     utils.Config.Frontend.TracoorUrl,
+		XatuEnabled:    xatu.GlobalClient != nil,
+		XatuCbtEnabled: xatu.GlobalCbtClient != nil,
 	}
 
 	var epochStatsValues *beacon.EpochStatsValues

@@ -11,6 +11,7 @@ type EpochPageData struct {
 	NextEpoch               uint64    `json:"next_epoch"`
 	Ts                      time.Time `json:"ts"`
 	Synchronized            bool      `json:"synchronized"`
+	XatuEnabled             bool      `json:"xatu_enabled"`
 	Finalized               bool      `json:"finalized"`
 	Future                  bool      `json:"future"`
 	AttestationCount        uint64    `json:"attestation_count"`
@@ -72,4 +73,11 @@ type EpochPageDataSlot struct {
 	WithEthBlock          bool      `json:"with_eth_block"`
 	Graffiti              []byte    `json:"graffiti"`
 	BlockRoot             []byte    `json:"block_root" ssz-size:"32"`
+	// ArrivalNodes is the number of nodes behind the arrival figures, and zero
+	// when there is no data for the slot. This page model is cached as SSZ,
+	// which has no optionals, so a pointer would come back as a pointer to
+	// zero and render as a real 0ms measurement.
+	ArrivalNodes uint32 `json:"arrival_nodes"`
+	ArrivalMinMs uint32 `json:"arrival_min_ms"`
+	ArrivalP90Ms uint32 `json:"arrival_p90_ms"`
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -134,6 +135,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	firstSlot := chainState.EpochToSlot(phase0.Epoch(epoch))
 	lastSlot := chainState.EpochToSlot(phase0.Epoch(epoch+1)) - 1
 	pageData := &models.EpochPageData{
+		XatuEnabled:   xatu.GlobalClient != nil,
 		Epoch:         epoch,
 		PreviousEpoch: epoch - 1,
 		NextEpoch:     nextEpoch,
@@ -185,6 +187,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 
 	// load slots
 	pageData.Slots = make([]*models.EpochPageDataSlot, 0)
+	epochArrival := getEpochArrivalData(phase0.Epoch(epoch))
 	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(ctx, uint64(lastSlot), uint32(specs.SlotsPerEpoch), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
@@ -289,5 +292,15 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	default:
 		cacheTimeout = 12 * time.Second
 	}
+	if epochArrival != nil {
+		for _, slotData := range pageData.Slots {
+			if entry, ok := epochArrival.Slots[slotData.Slot]; ok && entry.Nodes > 0 {
+				slotData.ArrivalNodes = entry.Nodes
+				slotData.ArrivalMinMs = entry.MinMs
+				slotData.ArrivalP90Ms = entry.P90Ms
+			}
+		}
+	}
+
 	return pageData, cacheTimeout
 }

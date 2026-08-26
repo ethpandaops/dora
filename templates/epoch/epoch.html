@@ -182,6 +182,9 @@
                 <th><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings / Attester Slashings">Slashings</span></th>
                 <th>Txs / Blobs</th>
                 <th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>
+                {{ if .XatuEnabled }}
+                  <th class="d-none d-md-table-cell text-end" data-bs-toggle="tooltip" data-bs-placement="top" title="Block arrival across Xatu's observing nodes: earliest / 90th percentile">Arrival <span class="d-none d-lg-inline">min / p90</span></th>
+                {{ end }}
                 <th>Graffiti</th>
               </tr>
             </thead>
@@ -220,9 +223,14 @@
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
+                    {{ if $epoch.XatuEnabled }}
+                      <td class="d-none d-md-table-cell text-end text-nowrap">
+                        {{ if $slot.ArrivalNodes }}{{ formatArrivalMs $slot.ArrivalMinMs }} <span class="text-muted">/</span> {{ formatArrivalMs $slot.ArrivalP90Ms }}{{ else }}<span class="text-muted">&mdash;</span>{{ end }}
+                      </td>
+                    {{ end }}
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
                   {{ else }}
-                    <td colspan="6">Not indexed yet</td>
+                    <td colspan="{{ if $epoch.XatuEnabled }}7{{ else }}6{{ end }}">Not indexed yet</td>
                   {{ end }}
                 </tr>
               {{ end }}
