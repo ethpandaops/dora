@@ -238,6 +238,10 @@
       // Scopes the query to this block, so a slot with competing blocks shows
       // each block's own propagation instead of both merged together.
       var arrivalBlockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
+      // The execution block identity lets the backend pull the EL-side
+      // newPayload captures, which are keyed by block number rather than slot.
+      var arrivalExecHash = "{{ if .Block.ExecutionData }}0x{{ printf "%x" .Block.ExecutionData.BlockHash }}{{ end }}";
+      var arrivalExecNumber = "{{ if .Block.ExecutionData }}{{ .Block.ExecutionData.BlockNumber }}{{ end }}";
       // On networks where validators carry node names (devnets), the observing
       // node run by this slot's proposer gets marked in the table.
       var arrivalProposer = "{{ .ProposerName }}".toLowerCase();
@@ -648,7 +652,8 @@
       function loadArrival() {
         if (arrivalLoaded) return;
         arrivalLoaded = true;
-        fetch('/slot/' + arrivalSlot + '/arrival?root=' + encodeURIComponent(arrivalBlockRoot))
+        fetch('/slot/' + arrivalSlot + '/arrival?root=' + encodeURIComponent(arrivalBlockRoot) +
+          '&exec=' + encodeURIComponent(arrivalExecHash) + '&num=' + encodeURIComponent(arrivalExecNumber))
           .then(function(r) {
             if (!r.ok) throw new Error('status ' + r.status);
             return r.json();
