@@ -894,24 +894,25 @@
           });
         }
 
-        // when the votes for this block pass 60% of the slot's expected
-        // attesters, walked over the cumulative viewed-root buckets
-        if (viewed && att.expected_count > 0) {
-          var need = att.expected_count * 0.6;
+        // when the votes for this block clear the builder payment quorum,
+        // walked over the cumulative viewed-root buckets; the count and its
+        // ratio both come from the chain spec via the response
+        if (viewed && att.expected_count > 0 && att.threshold_count > 0) {
           var cum = 0;
           var thresholdMs = null;
 
           (viewed.buckets || []).forEach(function(b) {
             if (thresholdMs != null) return;
             cum += b.count;
-            if (cum >= need) thresholdMs = b.ms + 50;
+            if (cum >= att.threshold_count) thresholdMs = b.ms + 50;
           });
 
           if (thresholdMs != null) {
+            var pct = Math.round(att.threshold_count / att.expected_count * 100);
             marks.push({
-              ms: thresholdMs, label: '60% voted', color: '#34c38f',
-              title: 'Attestations for this block passed 60% of the slot\u2019s ' +
-                att.expected_count.toLocaleString() + ' expected attesters',
+              ms: thresholdMs, label: pct + '% voted', color: '#34c38f',
+              title: 'Attestations for this block passed ' + att.threshold_count.toLocaleString() +
+                ' of the slot\u2019s ' + att.expected_count.toLocaleString() + ' expected attesters',
             });
           }
         }

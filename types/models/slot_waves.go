@@ -45,9 +45,11 @@ type SlotAttestationWave struct {
 	// DeadlineMs is a third of the slot, the point where validators that have
 	// not seen a block attest anyway, which the wave visibly spikes around.
 	DeadlineMs uint32 `json:"deadline_ms"`
-	// ExpectedCount is how many validators were due to attest in this slot,
-	// so the chart can mark when the votes for the block pass 60% of it.
+	// ExpectedCount is how many validators were due to attest in this slot.
 	ExpectedCount int `json:"expected_count,omitempty"`
+	// ThresholdCount is the vote count where the block clears the builder
+	// payment quorum (BUILDER_PAYMENT_THRESHOLD of ExpectedCount).
+	ThresholdCount int `json:"threshold_count,omitempty"`
 	// PayloadP50Ms is the median time the separately-gossiped execution
 	// payload reached observing nodes; zero on networks without the gloas
 	// payload series.

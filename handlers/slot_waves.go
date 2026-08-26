@@ -107,6 +107,7 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 	if attestations != nil {
 		attestations.DeadlineMs = attestationDeadlineMs(chainState, slot)
 		attestations.ExpectedCount = expectedAttesters(queryCtx, chainState, slot)
+		attestations.ThresholdCount = voteThreshold(chainState, attestations.ExpectedCount)
 
 		if xatu.GlobalClient != nil {
 			p50, plErr := queryPayloadP50(queryCtx, xatu.GlobalClient, slot, slotTime, settled, blockRoot)
@@ -138,8 +139,8 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 		}
 
 		if ptc != nil {
-			// PAYLOAD_ATTESTATION_DUE_BPS: votes are due within 75% of the slot
-			ptc.DeadlineMs = lateThreshold(chainState) * 75 / 100
+			// votes are due within PAYLOAD_ATTESTATION_DUE_BPS of the slot
+			ptc.DeadlineMs = bpsOfSlot(chainState, chainState.GetSpecs().PayloadAttestationDueBps, 7500)
 		}
 	}
 
@@ -166,18 +167,50 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 	return response, cacheTimeout, nil
 }
 
-// attestationDeadlineMs is the point where validators attest without a block
-// in hand: a third of the slot, moved to a quarter by gloas
-// (ATTESTATION_DUE_BPS_GLOAS = 2500).
-func attestationDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) uint32 {
-	slotMs := lateThreshold(chainState)
+// gloasActive reports whether the slot is past the gloas fork.
+func gloasActive(chainState *consensus.ChainState, slot phase0.Slot) bool {
 	specs := chainState.GetSpecs()
 
-	if specs.GloasForkEpoch != nil && chainState.EpochOfSlot(slot) >= phase0.Epoch(*specs.GloasForkEpoch) {
-		return slotMs * 25 / 100
+	return specs.GloasForkEpoch != nil && chainState.EpochOfSlot(slot) >= phase0.Epoch(*specs.GloasForkEpoch)
+}
+
+// bpsOfSlot resolves a basis-points spec value against the slot duration,
+// with the spec's own default for nodes that do not serve the key yet.
+func bpsOfSlot(chainState *consensus.ChainState, bps, defaultBps uint64) uint32 {
+	if bps == 0 {
+		bps = defaultBps
 	}
 
-	return slotMs / 3
+	return uint32(uint64(lateThreshold(chainState)) * bps / 10000) //nolint:gosec // bounded by the slot length
+}
+
+// attestationDeadlineMs is the point where validators attest without a block
+// in hand: ATTESTATION_DUE_BPS of the slot, moved earlier by gloas.
+func attestationDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) uint32 {
+	specs := chainState.GetSpecs()
+
+	if gloasActive(chainState, slot) {
+		return bpsOfSlot(chainState, specs.AttestationDueBpsGloas, 2500)
+	}
+
+	return bpsOfSlot(chainState, specs.AttestationDueBps, 3333)
+}
+
+// voteThreshold is the vote count where the block clears the gloas builder
+// payment quorum: BUILDER_PAYMENT_THRESHOLD (6/10 by default) of the slot's
+// expected attesters. Pre-gloas networks do not serve the keys, so the
+// gloas default doubles as a plain supermajority reference there.
+func voteThreshold(chainState *consensus.ChainState, expected int) int {
+	specs := chainState.GetSpecs()
+
+	numerator := specs.BuilderPaymentThresholdNumerator
+	denominator := specs.BuilderPaymentThresholdDenominator
+
+	if numerator == 0 || denominator == 0 {
+		numerator, denominator = 6, 10
+	}
+
+	return int(uint64(expected) * numerator / denominator) //nolint:gosec // bounded by the validator set
 }
 
 // expectedAttesters is how many validators were due to attest in the slot:
