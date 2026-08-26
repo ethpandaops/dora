@@ -91,6 +91,7 @@ type arrivalNode struct {
 	headMs         *uint32
 	npMs           *uint32
 	npDurMs        *uint32
+	plMs           *uint32
 	npStatus       string
 	observations   int
 }
@@ -132,6 +133,11 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot strin
 		return nil, -1, err
 	}
 
+	plObservations, err := loadPayloadArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
 	response := &models.SlotArrivalResponse{
 		Slot:             uint64(slot),
 		Settled:          settled,
@@ -139,6 +145,7 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot strin
 		P2PObservations:  p2pObservations,
 		HeadObservations: headObservations,
 		NPObservations:   npObservations,
+		PLObservations:   plObservations,
 	}
 
 	if len(nodes) > 0 {
@@ -447,6 +454,84 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 	return observations, nil
 }
 
+// payloadGossipQuery reads the gloas execution payload gossip events: when
+// each node first saw the separately-gossiped execution payload on the wire.
+// This is plain SQL rather than a generated builder because the table only
+// exists on networks whose xatu schema carries the gloas migrations, and
+// xatu master's generated package cannot include it until the schema lands
+// there; swap to the generated builder when it does. One page is plenty: the
+// series is one row per observing node.
+const payloadGossipQuery = `SELECT meta_client_name, propagation_slot_start_diff
+FROM beacon_api_eth_v1_events_execution_payload_gossip
+WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ?%s
+ORDER BY propagation_slot_start_diff
+LIMIT 10000`
+
+// loadPayloadArrivals loads the payload gossip series into nodes. A network
+// without the gloas schema has no such table, which reads as no observations
+// rather than an error, so pre-gloas networks keep working untouched.
+func loadPayloadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, nodes map[string]*arrivalNode) (int, error) {
+	filter := ""
+	args := []any{client.Network(), slotTime.Unix(), uint32(slot)}
+
+	if blockRoot != "" {
+		filter = " AND block_root = ?"
+
+		args = append(args, blockRoot)
+	}
+
+	rows, err := client.Query(ctx, settled, fmt.Sprintf(payloadGossipQuery, filter), args...)
+	if err != nil {
+		if isMissingTableError(err) {
+			return 0, nil
+		}
+
+		return 0, fmt.Errorf("payload query: %w", err)
+	}
+	defer rows.Close()
+
+	observations := 0
+
+	for rows.Next() {
+		var name string
+
+		var ms uint32
+
+		if err := rows.Scan(&name, &ms); err != nil {
+			return 0, fmt.Errorf("payload scan: %w", err)
+		}
+
+		observations++
+
+		node := nodes[name]
+		if node == nil {
+			node = &arrivalNode{fullName: name}
+			nodes[name] = node
+		}
+
+		node.observations++
+
+		if node.plMs == nil {
+			v := ms
+			node.plMs = &v
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("payload query: %w", err)
+	}
+
+	return observations, nil
+}
+
+// isMissingTableError matches ClickHouse's unknown-table error (code 60),
+// which reaches us as text through the HTTP proxy path.
+func isMissingTableError(err error) bool {
+	msg := err.Error()
+
+	return strings.Contains(msg, "UNKNOWN_TABLE") || strings.Contains(msg, "Code: 60")
+}
+
 // buildArrivalAggregates fills the response's nodes, stats and
 // per-continent/group summaries from the accumulated per-node observations.
 // Late nodes are listed after on-time nodes and excluded from all summaries.
@@ -492,6 +577,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 			HeadMs:         node.headMs,
 			NPMs:           node.npMs,
 			NPDurMs:        node.npDurMs,
+			PLMs:           node.plMs,
 			NPStatus:       node.npStatus,
 			Observations:   node.observations,
 		}
