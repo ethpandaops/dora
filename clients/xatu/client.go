@@ -244,6 +244,12 @@ func connect(dsn, database string) (driver.Conn, error) {
 		},
 		DialTimeout: 10 * time.Second,
 		ReadTimeout: 60 * time.Second,
+		// sized above the per-client concurrency limit: the default pool ran
+		// dry once a slot view fanned out to several series, and an exhausted
+		// pool surfaces as an acquire timeout that reads like an outage
+		MaxOpenConns:    8,
+		MaxIdleConns:    4,
+		ConnMaxLifetime: time.Hour,
 	}
 
 	if password, ok := parsed.User.Password(); ok {
