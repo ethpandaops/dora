@@ -42,19 +42,26 @@ fi
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
 
-# Local kurtosis buildoor container, when present, overrides the network-derived URL.
-BUILDOOR_CONTAINER=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
+# Local kurtosis buildoor containers, when present, override the network-derived URL.
+# Matches both the legacy shared "buildoor" service and per-participant instances
+# named "buildoor-<cl>-<el>-<n>" (ethereum-package buildoor_params.instances).
+BUILDOOR_CONTAINERS=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
               -f "label=com.kurtosistech.app-id=kurtosis" \
-              -f "label=com.kurtosistech.id=buildoor" | head -1)
-if [ -n "$BUILDOOR_CONTAINER" ]; then
-  BUILDOOR_PORT=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort }}' "$BUILDOOR_CONTAINER" 2>/dev/null)
-  # kurtosis service name (e.g. "buildoor") so dora shows it instead of the forwarded IP:port
-  BUILDOOR_NAME=$(docker inspect --format='{{ index .Config.Labels "kurtosis_service_name" }}' "$BUILDOOR_CONTAINER" 2>/dev/null)
-  if [ -z "$BUILDOOR_NAME" ]; then BUILDOOR_NAME="buildoor"; fi
-  if [ -n "$BUILDOOR_PORT" ]; then
-    BUILDOOR_CONFIG="buildoorUrls:
-    - \"${BUILDOOR_NAME}|http://127.0.0.1:${BUILDOOR_PORT}\""
+              -f "name=buildoor")
+BUILDOOR_URLS=""
+for container in $BUILDOOR_CONTAINERS; do
+  BUILDOOR_PORT=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort }}' "$container" 2>/dev/null)
+  if [ -z "$BUILDOOR_PORT" ]; then
+    continue
   fi
+  # kurtosis service name (e.g. "buildoor-lighthouse-geth-1") so dora shows it instead of the forwarded IP:port
+  BUILDOOR_NAME=$(docker inspect --format='{{ index .Config.Labels "com.kurtosistech.id" }}' "$container" 2>/dev/null)
+  if [ -z "$BUILDOOR_NAME" ]; then BUILDOOR_NAME="buildoor"; fi
+  BUILDOOR_URLS="${BUILDOOR_URLS}
+    - \"${BUILDOOR_NAME}|http://127.0.0.1:${BUILDOOR_PORT}\""
+done
+if [ -n "$BUILDOOR_URLS" ]; then
+  BUILDOOR_CONFIG="buildoorUrls:${BUILDOOR_URLS}"
 fi
 
 BEACON_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
