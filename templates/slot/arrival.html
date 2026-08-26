@@ -218,6 +218,8 @@
     .arrival-hide-pl [data-col="pl"] { display: none; }
     .arrival-table th.sortable { cursor: pointer; user-select: none; }
     .arrival-table th.sortable:hover { color: var(--bs-emphasis-color); }
+    .arrival-table .group-row span[data-sort] { cursor: pointer; user-select: none; }
+    .arrival-table .group-row span[data-sort]:hover { color: var(--bs-emphasis-color); }
 
     .arrival-hist {
       position: relative;
@@ -680,7 +682,9 @@
           '<th colspan="3" class="text-center layer grp-start" title="The node&#39;s beacon API event stream: emitted after the block is fully verified and imported">beacon api</th>' +
           '<th class="text-end layer grp-start" data-col="pl" title="The gloas execution payload, gossiped separately from the block after the proposer reveals it">payload</th>' +
           '<th class="text-end layer grp-start" data-col="np" title="Observed on the engine API between the consensus and execution client">engine api</th>' +
-          '<th class="text-center layer grp-start">timeline</th></tr>' +
+          '<th class="text-center layer grp-start">timeline<span data-col="pl"> &middot; sort ' +
+          '<span data-sort="min" title="Order the lanes by earliest block arrival">block' + sortInd('min') + '</span> / ' +
+          '<span data-sort="pl" title="Order the lanes by payload receipt">payload' + sortInd('pl') + '</span></span></th></tr>' +
           '<tr>' +
           '<th style="width: 18rem" class="sortable" data-sort="name">Node' + sortInd('name') + '</th>' +
           '<th class="sortable" data-sort="impl">Client' + sortInd('impl') + '</th>' +
@@ -1268,7 +1272,7 @@
       }
 
       document.getElementById('arrival-body').addEventListener('click', function(ev) {
-        var th = ev.target.closest('th[data-sort]');
+        var th = ev.target.closest('[data-sort]');
         if (!th || !arrivalData) return;
         var key = th.getAttribute('data-sort');
         if (sortState.key === key) {
