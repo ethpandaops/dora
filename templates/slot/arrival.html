@@ -300,6 +300,10 @@
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When the network first saw this slot's attestations, in 50ms buckets. Votes for other roots mean those attesters had not imported this block in time.">Attestations:</span></div>
           <div class="col-md-10" id="waves-att-body"></div>
         </div>
+        <div class="row border-bottom p-2 mx-0" id="waves-ptc" style="display: none;">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The payload timeliness committee's votes on whether the proposer revealed the execution payload on time, in 50ms buckets of when each vote was first seen.">PTC votes:</span></div>
+          <div class="col-md-10" id="waves-ptc-body"></div>
+        </div>
         <div class="row border-bottom p-2 mx-0" id="waves-cols" style="display: none;">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="PeerDAS data column sidecars: when each of the 128 columns of this block's blob data was first seen, and how available each measured under custody probing.">Data columns:</span></div>
           <div class="col-md-10" id="waves-cols-body"></div>
@@ -1074,9 +1078,64 @@
           '<div class="arrival-hist-axis">' + labels + '</div>' + legend;
       }
 
+      function renderPtcWave(ptc, settled, slotMs, payloadP50) {
+        if (!ptc.total_count) return;
+
+        var lo = null, hi = null;
+
+        (ptc.buckets || []).forEach(function(b) {
+          if (lo == null || b.ms < lo) lo = b.ms;
+          if (hi == null || b.ms > hi) hi = b.ms;
+        });
+        if (lo == null) return;
+
+        var binMs = waveBin(waveDomain(slotMs, hi, 50));
+        var binned = {};
+
+        (ptc.buckets || []).forEach(function(b) {
+          var ms = Math.floor(b.ms / binMs) * binMs;
+          var bin = binned[ms] || (binned[ms] = { ms: ms, green: 0, red: 0 });
+          bin.green += b.present;
+          bin.red += b.missing;
+        });
+
+        var bins = Object.keys(binned).map(function(ms) {
+          var b = binned[ms];
+          b.tip = fmtStr(b.ms) + '\u2013' + fmtStr(b.ms + binMs) + ': ' + (b.green + b.red) + ' PTC votes' +
+            (b.red ? ' (' + b.red + ' payload missing)' : '');
+          return b;
+        });
+
+        var marks = [];
+
+        if (payloadP50 > 0) {
+          marks.push({
+            ms: payloadP50, label: 'payload p50', color: '#e64980',
+            title: 'Median time the revealed execution payload reached observing nodes',
+          });
+        }
+
+        var ax = histAxis(0, waveDomain(slotMs, hi, binMs));
+        var hist = renderHist(ax, bins, binMs, marks, true);
+        if (!hist) return;
+
+        document.getElementById('waves-ptc').style.display = '';
+
+        var missing = ptc.total_count - ptc.present_count;
+        var stats = '<b>' + ptc.total_count.toLocaleString() + '</b> PTC votes first seen';
+        stats += sep + '<span class="num" style="color:' + (missing ? '#f46a6a' : '#34c38f') + '"><b>' +
+          (ptc.present_count / ptc.total_count * 100).toFixed(1) + '%</b></span> <span class="text-muted">judged the payload present</span>';
+        if (missing) {
+          stats += ' <span class="text-muted small">(' + missing.toLocaleString() + ' missing)</span>';
+        }
+
+        document.getElementById('waves-ptc-body').innerHTML = stats + liveBadge(settled) + hist;
+      }
+
       function renderWaves(data) {
         var slotMs = data.slot_ms || (data.attestations ? data.attestations.deadline_ms * 3 : 0);
         if (data.attestations) renderAttWave(data.attestations, data.settled, slotMs);
+        if (data.ptc) renderPtcWave(data.ptc, data.settled, slotMs, data.attestations ? data.attestations.payload_p50_ms : 0);
         if (data.columns) renderColWave(data.columns, data.settled);
       }
 

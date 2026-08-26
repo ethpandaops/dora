@@ -15,7 +15,24 @@ type SlotWavesResponse struct {
 	// instead of stopping wherever the data does.
 	SlotMs       uint32               `json:"slot_ms"`
 	Attestations *SlotAttestationWave `json:"attestations,omitempty"`
+	Ptc          *SlotPtcWave         `json:"ptc,omitempty"`
 	Columns      *SlotColumnWave      `json:"columns,omitempty"`
+}
+
+// SlotPtcWave is the payload timeliness committee's voting wave on gloas
+// networks: when each PTC member's vote was first seen, split by whether it
+// judged the payload present. Nil on networks without the gloas schema.
+type SlotPtcWave struct {
+	TotalCount   int              `json:"total_count"`
+	PresentCount int              `json:"present_count"`
+	Buckets      []*SlotPtcBucket `json:"buckets,omitempty"`
+}
+
+// SlotPtcBucket is one 50ms chunk of PTC votes.
+type SlotPtcBucket struct {
+	Ms      uint32 `json:"ms"`
+	Present int    `json:"present"`
+	Missing int    `json:"missing"`
 }
 
 // SlotAttestationWave is the network's attestation traffic for one slot,

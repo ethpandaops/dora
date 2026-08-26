@@ -125,11 +125,25 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 		return nil, -1, err
 	}
 
+	var ptc *models.SlotPtcWave
+
+	if xatu.GlobalClient != nil {
+		ptc, err = loadPtcWave(queryCtx, xatu.GlobalClient, slot, slotTime, settled, blockRoot)
+		if err != nil {
+			// like the payload marker, the PTC row must not take the other
+			// panels down with it
+			logrus.WithError(err).Warn("error loading ptc wave from xatu")
+
+			ptc = nil
+		}
+	}
+
 	response := &models.SlotWavesResponse{
 		Slot:         uint64(slot),
 		Settled:      settled,
 		SlotMs:       lateThreshold(chainState),
 		Attestations: attestations,
+		Ptc:          ptc,
 		Columns:      columns,
 	}
 
@@ -221,6 +235,90 @@ func queryPayloadP50(ctx context.Context, client *xatu.Client, slot phase0.Slot,
 	}
 
 	return p50, nil
+}
+
+// ptcWaveQuery reduces the gloas payload attestation events to 50ms chunks of
+// unique PTC votes, split by the vote's payload_present verdict. Each vote is
+// deduplicated to its first sighting across all observing nodes. Plain SQL
+// for the same reason as payloadGossipQuery.
+const ptcWaveQuery = `SELECT chunk, payload_present, count() AS votes
+FROM (
+    SELECT validator_index, payload_present,
+           toUInt32(intDiv(min(propagation_slot_start_diff), 50) * 50) AS chunk
+    FROM beacon_api_eth_v1_events_payload_attestation
+    WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ?%s
+    GROUP BY validator_index, payload_present
+)
+GROUP BY chunk, payload_present
+ORDER BY chunk`
+
+// loadPtcWave loads the payload timeliness committee's voting wave, or nil on
+// networks without the gloas schema.
+func loadPtcWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (*models.SlotPtcWave, error) {
+	filter := ""
+	args := []any{client.Network(), slotTime.Unix(), uint32(slot)}
+
+	if blockRoot != "" {
+		filter = " AND beacon_block_root = ?"
+
+		args = append(args, blockRoot)
+	}
+
+	rows, err := client.Query(ctx, settled, fmt.Sprintf(ptcWaveQuery, filter), args...)
+	if err != nil {
+		if isMissingTableError(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("ptc wave query: %w", err)
+	}
+	defer rows.Close()
+
+	buckets := map[uint32]*models.SlotPtcBucket{}
+	wave := &models.SlotPtcWave{}
+
+	for rows.Next() {
+		var chunk uint32
+
+		var present bool
+
+		var votes uint64
+
+		if err := rows.Scan(&chunk, &present, &votes); err != nil {
+			return nil, fmt.Errorf("ptc wave scan: %w", err)
+		}
+
+		bucket := buckets[chunk]
+		if bucket == nil {
+			bucket = &models.SlotPtcBucket{Ms: chunk}
+			buckets[chunk] = bucket
+			wave.Buckets = append(wave.Buckets, bucket)
+		}
+
+		count := int(votes) //nolint:gosec // bounded by the committee size
+		wave.TotalCount += count
+
+		if present {
+			bucket.Present += count
+			wave.PresentCount += count
+		} else {
+			bucket.Missing += count
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ptc wave query: %w", err)
+	}
+
+	if wave.TotalCount == 0 {
+		return nil, nil
+	}
+
+	sort.Slice(wave.Buckets, func(a, b int) bool {
+		return wave.Buckets[a].Ms < wave.Buckets[b].Ms
+	})
+
+	return wave, nil
 }
 
 // waveRoot accumulates one voted block root's buckets before they are sorted
