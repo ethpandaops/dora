@@ -62,14 +62,20 @@ type SlotArrivalNode struct {
 	Observations   int     `json:"observations"`
 }
 
-// SlotArrivalContinent aggregates earliest observations per continent.
+// SlotArrivalContinent aggregates per-continent arrival stats for the two
+// observable halves of the slot: when nodes adopted the block as head and
+// when they first saw the execution payload. A series is nil when the
+// continent has no observations of it (payload stats only exist on networks
+// with the gloas payload gossip schema).
 type SlotArrivalContinent struct {
-	Code  string `json:"code"`
-	Nodes int    `json:"nodes"`
-	MinMs uint32 `json:"min_ms"`
-	P50Ms uint32 `json:"p50_ms"`
-	P90Ms uint32 `json:"p90_ms"`
-	MaxMs uint32 `json:"max_ms"`
+	Code      string  `json:"code"`
+	Nodes     int     `json:"nodes"`
+	HeadMinMs *uint32 `json:"head_min_ms,omitempty"`
+	HeadP50Ms *uint32 `json:"head_p50_ms,omitempty"`
+	HeadP90Ms *uint32 `json:"head_p90_ms,omitempty"`
+	PlMinMs   *uint32 `json:"pl_min_ms,omitempty"`
+	PlP50Ms   *uint32 `json:"pl_p50_ms,omitempty"`
+	PlP90Ms   *uint32 `json:"pl_p90_ms,omitempty"`
 }
 
 // SlotArrivalGroup aggregates earliest observations per node group.

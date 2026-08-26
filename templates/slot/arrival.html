@@ -68,16 +68,16 @@
       height: 100%;
       border-radius: 4px;
     }
-    /* fixed-width group for the four time columns, so the caption above can
+    /* fixed-width group of three time columns, so the caption above can
        span exactly the visible ones at every breakpoint */
     .arrival-region-line .region-times {
       display: flex;
       gap: 0.9rem;
       flex: none;
-      width: 7rem;
+      width: 5.5rem;
     }
-    @media (min-width: 576px) { .arrival-region-line .region-times { width: 21.8rem; } }
-    @media (min-width: 768px) { .arrival-region-line .region-times { width: 29.2rem; } }
+    @media (min-width: 576px) { .arrival-region-line .region-times { width: 11.9rem; } }
+    @media (min-width: 768px) { .arrival-region-line .region-times { width: 18.3rem; } }
     .arrival-region-line .region-cap {
       flex: 1 1 auto;
       font-size: 0.66rem;
@@ -599,19 +599,28 @@
       }
 
       // Ruler above the lanes; ticks line up with the per-row gridlines.
+      // Gridline labels only render when their extent clears both the end
+      // labels and the previous label, estimated against the column's 16rem
+      // minimum width, so labels can never overlap however the axis lands.
       function axisHeader(ax, ind) {
         var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
+        var chw = 2.6;
+        var pad = 1.5;
         var ticks = '';
         var labels = '<span style="left:0">' + fmtAxis(ax.lo) + '</span>';
+        var lastEnd = fmtAxis(ax.lo).length * chw + pad;
+        var rightStart = 100 - (fmtAxis(ax.hi).length + (ind ? 2 : 0)) * chw - pad;
 
         ax.lines.forEach(function(t) {
           var at = pos(t);
           ticks += '<i style="left:' + at + '%"></i>';
 
-          // the window hugs the data, so the first gridline can sit almost on
-          // top of the start label; leave the tick, drop the crowded label
-          if (at > 12 && at < 88) {
-            labels += '<span style="left:' + at + '%;transform:translateX(-50%)">' + fmtAxis(t) + '</span>';
+          var text = fmtAxis(t);
+          var hw = text.length * chw / 2;
+
+          if (at - hw > lastEnd && at + hw < rightStart) {
+            labels += '<span style="left:' + at + '%;transform:translateX(-50%)">' + text + '</span>';
+            lastEnd = at + hw + pad;
           }
         });
 
@@ -755,25 +764,40 @@
           };
         }));
 
-        // same stats as the Arrival row above, split per continent; a header
-        // row names the columns once instead of tiny labels repeated per row
+        // the regions read as the two halves of the slot per continent: when
+        // its nodes adopted the block as head, and when they got the payload.
+        // Group captions use the node table's grammar; the payload group only
+        // renders on networks that observe payload gossip.
         var totalNodes = s.unique_nodes || 1;
+        var hasPl = (data.continents || []).some(function(c) { return c.pl_min_ms != null; });
+
+        var regionTimeCells = function(minMs, p50Ms, p90Ms) {
+          var cell = function(v, cls) {
+            return '<span class="num' + cls + '" style="width: 5.5rem; flex: none; text-align: right">' +
+              (v != null ? fmtMsColored(v) : '<span class="text-muted">&mdash;</span>') + '</span>';
+          };
+          return '<span class="region-times">' + cell(minMs, '') +
+            cell(p50Ms, ' d-none d-sm-inline') + cell(p90Ms, ' d-none d-md-inline') + '</span>';
+        };
+        var regionTimeLabels = '<span class="region-times">' +
+          '<span style="width: 5.5rem; flex: none; text-align: right">fastest</span>' +
+          '<span class="d-none d-sm-inline" style="width: 5.5rem; flex: none; text-align: right">p50</span>' +
+          '<span class="d-none d-md-inline" style="width: 5.5rem; flex: none; text-align: right">p90</span>' +
+          '</span>';
+
         var regionHeader = '<div class="d-flex align-items-end arrival-region-line">' +
           '<span class="region-name"></span>' +
           '<span class="d-none d-md-inline-block" style="width: 160px; flex: none"></span>' +
           '<span style="width: 4.5rem; flex: none"></span>' +
-          '<span class="region-times"><span class="region-cap" title="Each node\'s earliest sighting of the block itself (beacon API block event or gossip); head adoption, payload and execution times are not part of these numbers">block arrival</span></span>' +
+          '<span class="region-times"><span class="region-cap" title="When nodes on each continent adopted this block as head of the chain (beacon API head event)">head arrival</span></span>' +
+          (hasPl ? '<span class="region-times"><span class="region-cap" title="When nodes on each continent first saw this block\'s execution payload on gossip">payload arrival</span></span>' : '') +
           '</div>' +
           '<div class="d-flex align-items-center arrival-region-line text-muted small">' +
           '<span class="region-name"></span>' +
           '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">share of observing nodes</span>' +
           '<span style="width: 4.5rem; flex: none; text-align: right">nodes</span>' +
-          '<span class="region-times">' +
-          '<span style="width: 7rem; flex: none; text-align: right">fastest</span>' +
-          '<span class="d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">median</span>' +
-          '<span class="d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">p90</span>' +
-          '<span class="d-none d-md-inline" style="width: 6.5rem; flex: none; text-align: right">slowest</span>' +
-          '</span></div>';
+          regionTimeLabels + (hasPl ? regionTimeLabels : '') +
+          '</div>';
         var regionRows = (data.continents || []).map(function(c) {
           var share = c.nodes / totalNodes * 100;
           var name = continentNames[c.code] || c.code || 'Unknown';
@@ -782,12 +806,9 @@
             '<span class="region-name"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
             '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + Math.max(1.5, share).toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
             '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b></span>' +
-            '<span class="region-times">' +
-            '<span class="num" style="width: 7rem; flex: none; text-align: right">' + fmtMsColored(c.min_ms) + '</span>' +
-            '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.p50_ms) + '</span>' +
-            '<span class="num d-none d-sm-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.p90_ms) + '</span>' +
-            '<span class="num d-none d-md-inline" style="width: 6.5rem; flex: none; text-align: right">' + fmtMsColored(c.max_ms) + '</span>' +
-            '</span></div>';
+            regionTimeCells(c.head_min_ms, c.head_p50_ms, c.head_p90_ms) +
+            (hasPl ? regionTimeCells(c.pl_min_ms, c.pl_p50_ms, c.pl_p90_ms) : '') +
+            '</div>';
         }).join('');
         document.getElementById('arrival-regions').innerHTML = regionRows ? regionHeader + regionRows : '';
 

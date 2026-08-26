@@ -645,7 +645,8 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 	nodeList := make([]*models.SlotArrivalNode, 0, len(nodes))
 	lateList := make([]*models.SlotArrivalNode, 0)
 	continents := map[string]*models.SlotArrivalContinent{}
-	continentValues := map[string][]uint32{}
+	continentHead := map[string][]uint32{}
+	continentPl := map[string][]uint32{}
 	groups := map[string][]uint32{}
 
 	for _, node := range nodes {
@@ -664,6 +665,8 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 			minMs = *node.headMs
 		case node.npMs != nil:
 			minMs = *node.npMs
+		case node.plMs != nil:
+			minMs = *node.plMs
 		}
 
 		group, operator, display := parseSentryName(node.fullName, network)
@@ -700,15 +703,18 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 
 		continent := continents[node.continent]
 		if continent == nil {
-			continent = &models.SlotArrivalContinent{Code: node.continent, MinMs: minMs}
+			continent = &models.SlotArrivalContinent{Code: node.continent}
 			continents[node.continent] = continent
 		}
 
 		continent.Nodes++
-		continentValues[node.continent] = append(continentValues[node.continent], minMs)
 
-		if minMs < continent.MinMs {
-			continent.MinMs = minMs
+		if node.headMs != nil {
+			continentHead[node.continent] = append(continentHead[node.continent], *node.headMs)
+		}
+
+		if node.plMs != nil {
+			continentPl[node.continent] = append(continentPl[node.continent], *node.plMs)
 		}
 
 		groups[group] = append(groups[group], minMs)
@@ -738,20 +744,42 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 	}
 	response.Nodes = append(nodeList, lateList...)
 
+	// min/p50/p90 of a sorted series; nils when the series has no values, so
+	// the frontend renders dashes instead of zeros.
+	arrivalStats := func(values []uint32) (*uint32, *uint32, *uint32) {
+		if len(values) == 0 {
+			return nil, nil, nil
+		}
+
+		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
+
+		return &values[0], &values[len(values)/2], &values[len(values)*9/10]
+	}
+
 	continentList := make([]*models.SlotArrivalContinent, 0, len(continents))
 
 	for code, continent := range continents {
-		values := continentValues[code]
-		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
-		continent.P50Ms = values[len(values)/2]
-		continent.P90Ms = values[len(values)*9/10]
-		continent.MaxMs = values[len(values)-1]
+		continent.HeadMinMs, continent.HeadP50Ms, continent.HeadP90Ms = arrivalStats(continentHead[code])
+		continent.PlMinMs, continent.PlP50Ms, continent.PlP90Ms = arrivalStats(continentPl[code])
 
 		continentList = append(continentList, continent)
 	}
 
+	// earliest head adoption first; continents without head data sink to the
+	// bottom, ordered by payload arrival if they have one
+	continentSortKey := func(c *models.SlotArrivalContinent) uint64 {
+		switch {
+		case c.HeadMinMs != nil:
+			return uint64(*c.HeadMinMs)
+		case c.PlMinMs != nil:
+			return uint64(*c.PlMinMs) + (1 << 32)
+		default:
+			return 1 << 33
+		}
+	}
+
 	sort.Slice(continentList, func(a, b int) bool {
-		return continentList[a].MinMs < continentList[b].MinMs
+		return continentSortKey(continentList[a]) < continentSortKey(continentList[b])
 	})
 
 	response.Continents = continentList
