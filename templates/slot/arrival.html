@@ -774,7 +774,7 @@
       // renderHist draws chunky bars with gaps into the histogram block:
       // bins = [{ms, green, red, tip}], stacked red on green, scaled to the
       // tallest bin. Returns null when there is nothing to draw.
-      function renderHist(ax, bins, binMs, deadlineMs, small) {
+      function renderHist(ax, bins, binMs, marks, small) {
         var pos = function(ms) { return (ms - ax.lo) / ax.span * 100; };
         var peak = 0;
 
@@ -789,10 +789,14 @@
           html += '<div class="grid" style="left:' + pos(t) + '%"></div>';
         });
 
-        if (deadlineMs != null && deadlineMs > ax.lo && deadlineMs < ax.hi) {
-          html += '<div class="deadline" style="left:' + pos(deadlineMs) + '%">' +
-            '<span class="note" title="One third into the slot: validators attest now even without a block in hand">deadline</span></div>';
-        }
+        // each marker label gets its own row, so close markers stay readable
+        (marks || []).forEach(function(m, idx) {
+          if (m.ms <= ax.lo || m.ms >= ax.hi) return;
+
+          html += '<div class="deadline" style="left:' + pos(m.ms) + '%;border-left-color:' + m.color + '">' +
+            '<span class="note" style="top:' + (1 + idx * 13) + 'px;color:' + m.color + '" title="' + esc(m.title) + '">' +
+            m.label + '</span></div>';
+        });
 
         var slotW = binMs / ax.span * 100;
         var barW = slotW * 0.7;
@@ -873,8 +877,48 @@
           return b;
         });
 
+        var marks = [];
+
+        if (att.deadline_ms > 0) {
+          marks.push({
+            ms: att.deadline_ms, label: 'deadline', color: 'var(--bs-secondary-color)',
+            title: 'One third into the slot: validators attest now even without a block in hand',
+          });
+        }
+
+        // when the votes for this block pass 60% of the slot's expected
+        // attesters, walked over the cumulative viewed-root buckets
+        if (viewed && att.expected_count > 0) {
+          var need = att.expected_count * 0.6;
+          var cum = 0;
+          var thresholdMs = null;
+
+          (viewed.buckets || []).forEach(function(b) {
+            if (thresholdMs != null) return;
+            cum += b.count;
+            if (cum >= need) thresholdMs = b.ms + 50;
+          });
+
+          if (thresholdMs != null) {
+            marks.push({
+              ms: thresholdMs, label: '60% voted', color: '#34c38f',
+              title: 'Attestations for this block passed 60% of the slot\u2019s ' +
+                att.expected_count.toLocaleString() + ' expected attesters',
+            });
+          }
+        }
+
+        if (att.payload_p50_ms > 0) {
+          marks.push({
+            ms: att.payload_p50_ms, label: 'payload p50', color: '#e64980',
+            title: 'Median time the revealed execution payload reached observing nodes',
+          });
+        }
+
+        marks.sort(function(a, b) { return a.ms - b.ms; });
+
         var ax = histAxis(0, waveDomain(slotMs, hi, binMs));
-        var hist = renderHist(ax, bins, binMs, att.deadline_ms, false);
+        var hist = renderHist(ax, bins, binMs, marks, false);
         if (!hist) return;
 
         document.getElementById('waves-att').style.display = '';

@@ -16,7 +16,9 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/xatu"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types/models"
 	cbtch "github.com/ethpandaops/xatu-cbt/pkg/proto/clickhouse"
@@ -104,6 +106,18 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 
 	if attestations != nil {
 		attestations.DeadlineMs = lateThreshold(chainState) / 3
+		attestations.ExpectedCount = expectedAttesters(queryCtx, chainState, slot)
+
+		if xatu.GlobalClient != nil {
+			p50, plErr := queryPayloadP50(queryCtx, xatu.GlobalClient, slot, slotTime, settled, blockRoot)
+			if plErr != nil {
+				// the payload marker is garnish on the attestation chart, so
+				// its failure must not take the whole panel down
+				logrus.WithError(plErr).Warn("error loading payload p50 from xatu")
+			} else {
+				attestations.PayloadP50Ms = p50
+			}
+		}
 	}
 
 	columns, err := loadColumnWave(queryCtx, client, slot, slotTime, settled, blockRoot)
@@ -131,6 +145,82 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot string)
 	}
 
 	return response, cacheTimeout, nil
+}
+
+// expectedAttesters is how many validators were due to attest in the slot:
+// the epoch's active validator count spread over its slots. Recent epochs
+// come from the in-memory epoch stats; older ones fall back to the epochs
+// table, which serves history but only fills when the synchronizer runs.
+func expectedAttesters(ctx context.Context, chainState *consensus.ChainState, slot phase0.Slot) int {
+	epoch := chainState.EpochOfSlot(slot)
+
+	slotsPerEpoch := chainState.GetSpecs().SlotsPerEpoch
+	if slotsPerEpoch == 0 {
+		return 0
+	}
+
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
+		if values := epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false); values != nil && values.ActiveValidators > 0 {
+			return int(values.ActiveValidators / slotsPerEpoch) //nolint:gosec // bounded by the validator set
+		}
+	}
+
+	rows := db.GetEpochs(ctx, uint64(epoch), 1)
+	if len(rows) == 0 || rows[0].Epoch != uint64(epoch) {
+		return 0
+	}
+
+	return int(rows[0].ValidatorCount / slotsPerEpoch) //nolint:gosec // bounded by the validator set
+}
+
+// payloadP50Query reduces the gloas payload gossip series to its median; see
+// payloadGossipQuery for why this is plain SQL.
+const payloadP50Query = `SELECT count() AS observations, toUInt32(quantileExact(0.5)(propagation_slot_start_diff)) AS p50
+FROM beacon_api_eth_v1_events_execution_payload_gossip
+WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ?%s`
+
+// queryPayloadP50 returns the median payload arrival for the slot, or zero on
+// networks without the gloas payload series.
+func queryPayloadP50(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (uint32, error) {
+	filter := ""
+	args := []any{client.Network(), slotTime.Unix(), uint32(slot)}
+
+	if blockRoot != "" {
+		filter = " AND block_root = ?"
+
+		args = append(args, blockRoot)
+	}
+
+	rows, err := client.Query(ctx, settled, fmt.Sprintf(payloadP50Query, filter), args...)
+	if err != nil {
+		if isMissingTableError(err) {
+			return 0, nil
+		}
+
+		return 0, fmt.Errorf("payload p50 query: %w", err)
+	}
+	defer rows.Close()
+
+	var observations uint64
+
+	var p50 uint32
+
+	for rows.Next() {
+		if err := rows.Scan(&observations, &p50); err != nil {
+			return 0, fmt.Errorf("payload p50 scan: %w", err)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("payload p50 query: %w", err)
+	}
+
+	if observations == 0 {
+		return 0, nil
+	}
+
+	return p50, nil
 }
 
 // waveRoot accumulates one voted block root's buckets before they are sorted
