@@ -1216,39 +1216,51 @@
         if (data.columns) renderColWave(data.columns, data.settled);
       }
 
-      var wavesLoaded = false;
-
-      // The wave panels stay hidden when the fetch fails or returns nothing:
-      // they are additive context, so their failure should not add noise to
-      // the arrival panel above them.
-      function loadWaves() {
-        if (wavesLoaded || !document.getElementById('waves-timeline')) return;
-        wavesLoaded = true;
-        fetch('/slot/' + arrivalSlot + '/waves?root=' + encodeURIComponent(arrivalBlockRoot) +
-          '&exec=' + encodeURIComponent(arrivalExecHash) + '&num=' + encodeURIComponent(arrivalExecNumber))
-          .then(function(r) {
-            if (!r.ok) throw new Error('status ' + r.status);
-            return r.json();
-          })
-          .then(renderWaves)
-          .catch(function(err) {
-            // the panels stay hidden on failure, but silence would hide real
-            // rendering bugs behind the same blank space as missing data
-            console.error('slot waves rendering failed:', err);
-          });
-      }
-
       function loadArrival() {
         if (arrivalLoaded) return;
         arrivalLoaded = true;
-        loadWaves();
-        fetch('/slot/' + arrivalSlot + '/arrival?root=' + encodeURIComponent(arrivalBlockRoot) +
-          '&exec=' + encodeURIComponent(arrivalExecHash) + '&num=' + encodeURIComponent(arrivalExecNumber))
+
+        var params = '?root=' + encodeURIComponent(arrivalBlockRoot) +
+          '&exec=' + encodeURIComponent(arrivalExecHash) + '&num=' + encodeURIComponent(arrivalExecNumber);
+
+        // The wave panels stay hidden when their fetch fails or returns
+        // nothing: they are additive context, so their failure should not
+        // add noise to the arrival panel above them.
+        var wavesReq = document.getElementById('waves-timeline')
+          ? fetch('/slot/' + arrivalSlot + '/waves' + params)
+            .then(function(r) {
+              if (!r.ok) throw new Error('status ' + r.status);
+              return r.json();
+            })
+            .catch(function(err) {
+              // the panels stay hidden on failure, but silence would hide
+              // real bugs behind the same blank space as missing data
+              console.error('slot waves failed:', err);
+              return null;
+            })
+          : Promise.resolve(null);
+
+        // both fetches run concurrently, but everything renders in one pass
+        // once both are in, so the wave panels never pop in later and shift
+        // the table under the reader
+        fetch('/slot/' + arrivalSlot + '/arrival' + params)
           .then(function(r) {
             if (!r.ok) throw new Error('status ' + r.status);
             return r.json();
           })
-          .then(render)
+          .then(function(data) {
+            return wavesReq.then(function(waves) {
+              render(data);
+
+              if (waves) {
+                try {
+                  renderWaves(waves);
+                } catch (err) {
+                  console.error('slot waves rendering failed:', err);
+                }
+              }
+            });
+          })
           .catch(function(err) {
             document.getElementById('arrival-loading').innerHTML =
               '<span class="text-danger">Failed to load propagation data: ' + esc(err.message) + '</span>';

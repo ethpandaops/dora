@@ -32,7 +32,7 @@ func TestArrivalTemplateExecutes(t *testing.T) {
 	}
 
 	got := out.String()
-	for _, want := range []string{`var arrivalSlot = 12345`, `var arrivalBlockRoot = "0xabcd"`, `/arrival?root=`} {
+	for _, want := range []string{`var arrivalSlot = 12345`, `var arrivalBlockRoot = "0xabcd"`, `'?root=' + encodeURIComponent(arrivalBlockRoot)`, `'/arrival' + params`} {
 		if !bytes.Contains([]byte(got), []byte(want)) {
 			t.Errorf("rendered output missing %q", want)
 		}
