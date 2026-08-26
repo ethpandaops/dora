@@ -47,9 +47,14 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 	// usable root fall back to the whole slot.
 	blockRoot := normalizeBlockRoot(r.URL.Query().Get("root"))
 
-	cacheKey := fmt.Sprintf("slotarrival:%d:%s", slot, blockRoot)
+	// The execution block identity comes from the page rather than a second
+	// beacon lookup here; a bad value only misses the EL series.
+	execHash := normalizeBlockRoot(r.URL.Query().Get("exec"))
+	execNumber, _ := strconv.ParseUint(r.URL.Query().Get("num"), 10, 64)
+
+	cacheKey := fmt.Sprintf("slotarrival:%d:%s:%s:%d", slot, blockRoot, execHash, execNumber)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
-		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot)
+		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
 		if buildErr != nil {
 			logrus.WithError(buildErr).Error("error loading slot arrival data from xatu")
 			pageCall.CacheTimeout = -1
@@ -101,7 +106,7 @@ type arrivalNode struct {
 // per observing node. It returns the response and the cache timeout: no
 // caching while the ingest pipeline may still receive events for the slot, a
 // short timeout for recent slots and a long one for historic slots.
-func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot string) (*models.SlotArrivalResponse, time.Duration, error) {
+func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot, execHash string, execNumber uint64) (*models.SlotArrivalResponse, time.Duration, error) {
 	client := xatu.GlobalClient
 	chainState := services.GlobalBeaconService.GetChainState()
 	slotTime := chainState.SlotToTime(slot)
@@ -132,6 +137,13 @@ func buildSlotArrivalData(ctx context.Context, slot phase0.Slot, blockRoot strin
 	if err != nil {
 		return nil, -1, err
 	}
+
+	elObservations, err := loadExecutionEngineTimings(queryCtx, client, execHash, execNumber, slotTime, settled, nodes)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	npObservations += elObservations
 
 	plObservations, err := loadPayloadArrivals(queryCtx, client, slot, slotTime, settled, blockRoot, nodes)
 	if err != nil {
@@ -449,6 +461,100 @@ func loadEngineTimings(ctx context.Context, client *xatu.Client, slot phase0.Slo
 	})
 	if err != nil {
 		return 0, fmt.Errorf("newpayload query: %w", err)
+	}
+
+	return observations, nil
+}
+
+// loadExecutionEngineTimings loads newPayload calls captured on the execution
+// side into nodes. It covers what the snooper series cannot: EL-instrumented
+// nodes report their own calls, which is the only engine series most devnets
+// have. The capture names its clients differently from the beacon sentries,
+// so rows merge into existing nodes by their display identity, and the
+// snooper's observation wins where both saw the same node.
+func loadExecutionEngineTimings(ctx context.Context, client *xatu.Client, execHash string, execNumber uint64, slotTime time.Time, settled bool, nodes map[string]*arrivalNode) (int, error) {
+	if execHash == "" || execNumber == 0 {
+		return 0, nil
+	}
+
+	req := &xch.ListExecutionEngineNewPayloadRequest{
+		MetaNetworkName: &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: client.Network()}},
+		BlockNumber:     &xch.UInt64Filter{Filter: &xch.UInt64Filter_Eq{Eq: execNumber}},
+		BlockHash:       &xch.StringFilter{Filter: &xch.StringFilter_Eq{Eq: execHash}},
+		OrderBy:         "event_date_time",
+		PageSize:        xatu.MaxQueryPageSize(),
+	}
+
+	query, err := xch.BuildListExecutionEngineNewPayloadQuery(req)
+	if err != nil {
+		return 0, fmt.Errorf("engine el build: %w", err)
+	}
+
+	rows, err := client.Query(ctx, settled, query.Query, query.Args...)
+	if err != nil {
+		return 0, fmt.Errorf("engine el query: %w", err)
+	}
+	defer rows.Close()
+
+	// existing nodes indexed by display identity, so the differently-named
+	// capture rows land on the beacon sentry rows they belong to
+	byDisplay := map[string]*arrivalNode{}
+
+	for _, node := range nodes {
+		group, _, display := parseSentryName(node.fullName, client.Network())
+		byDisplay[group+"|"+display] = node
+	}
+
+	slotStartMs := slotTime.UnixMilli()
+	observations := 0
+
+	for rows.Next() {
+		var row xch.ExecutionEngineNewPayloadRow
+		if err := rows.ScanStruct(&row); err != nil {
+			return 0, fmt.Errorf("engine el scan: %w", err)
+		}
+
+		observations++
+
+		group, _, display := parseSentryName(row.MetaClientName, client.Network())
+
+		node := byDisplay[group+"|"+display]
+		if node == nil {
+			node = nodes[row.MetaClientName]
+			if node == nil {
+				node = &arrivalNode{fullName: row.MetaClientName}
+				nodes[row.MetaClientName] = node
+				byDisplay[group+"|"+display] = node
+			}
+		}
+
+		node.observations++
+
+		if node.continent == "" {
+			node.continent = row.MetaClientGeoContinentCode
+			node.country = row.MetaClientGeoCountry
+			node.countryCode = row.MetaClientGeoCountryCode
+		}
+
+		if node.npMs == nil {
+			// requested_date_time is stamped at the call start, so no
+			// completion-minus-duration derivation is needed here
+			offset := row.RequestedDateTime/1000 - slotStartMs
+			if offset < 0 {
+				offset = 0
+			}
+
+			ms := uint32(min(offset, int64(^uint32(0))))           //nolint:gosec // clamped above
+			dur := uint32(min(row.DurationMs, uint64(^uint32(0)))) //nolint:gosec // clamped
+
+			node.npMs = &ms
+			node.npDurMs = &dur
+			node.npStatus = row.Status
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("engine el query: %w", err)
 	}
 
 	return observations, nil
