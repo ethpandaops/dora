@@ -318,6 +318,9 @@
       // Scopes the query to this block, so a slot with competing blocks shows
       // each block's own propagation instead of both merged together.
       var arrivalBlockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
+      // On networks where validators carry node names (devnets), the observing
+      // node run by this slot's proposer gets marked in the table.
+      var arrivalProposer = "{{ .ProposerName }}".toLowerCase();
       var arrivalLoaded = false;
       var arrivalData = null;
       var sortState = { key: 'min', dir: 1 };
@@ -583,9 +586,15 @@
             : '<td class="grp-start"><div class="lane-track" style="height: 18px; min-width: 16rem">' + laneMarks(n, pos, ax) +
               (laneOverflows(n, ax) ? '<span class="overflow" title="continues past the axis">&raquo;</span>' : '') + '</div></td>';
 
+          var isProposer = arrivalProposer && (n.name || '').toLowerCase() === arrivalProposer;
+          var proposerBadge = isProposer
+            ? ' <span class="badge rounded-pill text-bg-info" style="font-size: 10px;" title="This node&#39;s validator proposed this block">proposer</span>'
+            : '';
+
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
             '<td class="text-nowrap">' + groupBadge(n.group) +
-            '<span class="arrival-node-name" title="' + esc(n.full_name) + '">' + esc(n.name) + '</span></td>' +
+            '<span class="arrival-node-name"' + (isProposer ? ' style="font-weight: 600"' : '') +
+            ' title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' + proposerBadge + '</td>' +
             '<td>' + (n.implementation ? esc(n.implementation) : '<span class="text-muted" title="Not a beacon node — a gossip listener observing the p2p wire">&mdash;</span>') + '</td>' +
             '<td title="' + esc(n.country || '') + '">' + flag(cc) + ' <span class="text-muted small">' + esc(cc || n.continent || '') + '</span></td>' +
             '<td class="text-end grp-start">' + fmtMsColored(n.p2p_ms) + '</td>' +

@@ -74,11 +74,6 @@
             <a class="nav-link" id="bids-tab" data-bs-toggle="tab" href="#bids" role="tab" aria-controls="bids" aria-selected="false">Bids <span class="badge bg-secondary text-white">{{ .Block.BidsCount }}</span></a>
           </li>
         {{ end }}
-        {{ if .XatuEnabled }}
-          <li class="nav-item">
-            <a class="nav-link" id="arrival-tab" data-bs-toggle="tab" href="#arrival" role="tab" aria-controls="arrival" aria-selected="false">Propagation</a>
-          </li>
-        {{ end }}
         <li class="nav-item">
           <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
         </li>
@@ -143,8 +138,13 @@
             <a class="nav-link" id="proofs-tab" data-bs-toggle="tab" href="#proofs" role="tab" aria-controls="proofs" aria-selected="false">Proofs <span class="badge bg-secondary text-white">{{ .Block.ExecutionProofsCount }}</span></a>
           </li>
         {{ end }}
-        {{ if .Block }}
+        {{ if .XatuEnabled }}
           <li class="nav-item ms-auto">
+            <a class="nav-link" id="arrival-tab" data-bs-toggle="tab" href="#arrival" role="tab" aria-controls="arrival" aria-selected="false">Propagation</a>
+          </li>
+        {{ end }}
+        {{ if .Block }}
+          <li class="nav-item{{ if not .XatuEnabled }} ms-auto{{ end }}">
             <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Download">
               <i class="fas fa-download"></i>
             </a>
