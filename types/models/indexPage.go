@@ -85,6 +85,7 @@ type IndexPageDataBlocks struct {
 	PayloadStatus uint8     `json:"payload_status"`
 	HasBuilder    bool      `json:"has_builder"`
 	BuilderIndex  uint64    `json:"builder_index"`
+	BuilderName   string    `json:"builder_name"`
 	BuilderURL    string    `json:"builder_url"`
 	BlockRoot     []byte    `json:"block_root" ssz-size:"32"`
 }
@@ -100,6 +101,7 @@ type IndexPageDataSlots struct {
 	PayloadStatus uint8                     `json:"payload_status"`
 	HasBuilder    bool                      `json:"has_builder"`
 	BuilderIndex  uint64                    `json:"builder_index"`
+	BuilderName   string                    `json:"builder_name"`
 	BuilderURL    string                    `json:"builder_url"`
 	Safe          bool                      `json:"safe"`
 	BlockRoot     []byte                    `json:"block_root" ssz-size:"32"`
