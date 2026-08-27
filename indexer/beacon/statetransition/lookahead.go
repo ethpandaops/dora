@@ -1,6 +1,7 @@
 package statetransition
 
 import (
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
@@ -33,13 +34,14 @@ func processProposerLookahead(s *stateAccessor) {
 }
 
 // getBeaconProposerIndices computes the proposer index for each slot in the given epoch.
-// Spec: get_beacon_proposer_index applied to each slot.
+//
+// Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-get_beacon_proposer_indices
 func getBeaconProposerIndices(s *stateAccessor, epoch phase0.Epoch) []phase0.ValidatorIndex {
 	slotsPerEpoch := s.specs.SlotsPerEpoch
 	startSlot := uint64(epoch) * slotsPerEpoch
 	indices := make([]phase0.ValidatorIndex, slotsPerEpoch)
 
-	activeIndices := s.getActiveValidatorIndices(epoch)
+	activeIndices := s.getProposerCandidates(epoch)
 	if len(activeIndices) == 0 {
 		return indices
 	}
@@ -50,6 +52,25 @@ func getBeaconProposerIndices(s *stateAccessor, epoch phase0.Epoch) []phase0.Val
 	}
 
 	return indices
+}
+
+// getProposerCandidates returns the validators eligible to be selected as proposer
+// for the given epoch. Since Gloas (EIP-8045) slashed validators are excluded from
+// the candidate pool.
+func (s *stateAccessor) getProposerCandidates(epoch phase0.Epoch) []phase0.ValidatorIndex {
+	activeIndices := s.getActiveValidatorIndices(epoch)
+	if s.Version < spec.DataVersionGloas {
+		return activeIndices
+	}
+
+	candidates := make([]phase0.ValidatorIndex, 0, len(activeIndices))
+	for _, index := range activeIndices {
+		if !s.Validators[index].Slashed {
+			candidates = append(candidates, index)
+		}
+	}
+
+	return candidates
 }
 
 // computeProposerIndex selects the proposer for a specific slot using the

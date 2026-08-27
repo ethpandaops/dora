@@ -161,7 +161,7 @@ func buildConsolidationsPageData(ctx context.Context, firstEpoch uint64, pageSiz
 				consolidationData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
 				consolidationData.Status = uint64(1)
 				consolidationData.Result = request.Result
-				consolidationData.ResultMessage = getConsolidationResultMessage(request.Result, chainState.GetSpecs())
+				consolidationData.ResultMessage = getConsolidationResultMessage(request.Result, chainState, chainState.EpochOfSlot(phase0.Slot(request.SlotNumber)))
 			}
 
 			if transaction := consolidation.Transaction; transaction != nil {

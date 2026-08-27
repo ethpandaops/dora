@@ -321,10 +321,6 @@ func processParentExecutionPayload(s *stateAccessor, block *all.SignedBeaconBloc
 	parentFeeRecip := s.LatestExecutionPayloadBid.FeeRecipient
 	parentRequests := body.ParentExecutionRequests
 
-	// Genesis: no prior committed payload bid — nothing to apply.
-	if parentBlockHash == (phase0.Hash32{}) {
-		return
-	}
 	// Parent block was EMPTY (payload not delivered): the current bid's
 	// parent_block_hash references the grand-parent payload, not the parent.
 	// No requests to apply; no bid to settle.

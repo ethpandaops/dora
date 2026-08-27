@@ -201,7 +201,7 @@ func (t *TxIndexer) fetchBlockTransactions(
 	}
 
 	// Parse header fields and transactions in a single pass to avoid
-	// unmarshaling the (potentially large) raw JSON twice.
+	// unmarshalling the (potentially large) raw JSON twice.
 	var block struct {
 		Number       *hexutil.Big        `json:"number"`
 		Hash         common.Hash         `json:"hash"`

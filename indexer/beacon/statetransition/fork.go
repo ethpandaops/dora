@@ -17,9 +17,13 @@ import (
 // withdrawal-credential prefix that marks a deposit as a builder deposit.
 const builderWithdrawalPrefix byte = 0xB0
 
+// payloadBuilderVersion is PAYLOAD_BUILDER_VERSION (Gloas/EIP-8282): the builder
+// registry version of a payload builder, the only kind of builder that exists so far.
+const payloadBuilderVersion byte = 0
+
 // isBuilderWithdrawalCredential reports whether the credentials use the builder prefix (0xB0).
 func isBuilderWithdrawalCredential(wc []byte) bool {
-	return len(wc) > 0 && wc[0] == builderWithdrawalPrefix
+	return len(wc) == 32 && wc[0] == builderWithdrawalPrefix
 }
 
 // maybeUpgradeToGloas applies the upgrade_to_gloas irregular state change at the first slot of
@@ -174,18 +178,18 @@ func onboardBuildersFromPendingDeposits(s *stateAccessor) []*electra.PendingDepo
 	sigValid := batchVerifyOnboardingSignatures(s, validatorPubkeys)
 
 	// The builder registry is empty pre-fork and only this loop grows it, so a pubkey→index map
-	// mirrors state.builders exactly (used to detect top-ups). keptPubkeys mirrors the deposits
-	// that stay in the queue, so a builder deposit sharing a pubkey with a pending validator
-	// deposit is kept rather than onboarded.
+	// mirrors state.builders exactly (used to detect top-ups). keptValidPubkeys mirrors the
+	// deposits that stay in the queue and will create a validator (is_pending_validator only
+	// counts a queued deposit with a valid signature), so a builder deposit sharing a pubkey
+	// with a pending validator deposit is kept rather than onboarded.
 	kept := make([]*electra.PendingDeposit, 0, len(s.PendingDeposits))
-	keptPubkeys := make(map[phase0.BLSPubKey]bool, len(s.PendingDeposits))
+	keptValidPubkeys := make(map[phase0.BLSPubKey]bool, len(s.PendingDeposits))
 	builderIndexByPubkey := make(map[phase0.BLSPubKey]uint64)
 
 	for i, deposit := range s.PendingDeposits {
 		// deposits for existing validators always stay in the pending queue
 		if validatorPubkeys[deposit.Pubkey] {
 			kept = append(kept, deposit)
-			keptPubkeys[deposit.Pubkey] = true
 			continue
 		}
 
@@ -197,10 +201,12 @@ func onboardBuildersFromPendingDeposits(s *stateAccessor) []*electra.PendingDepo
 			// validator deposit, stay in the queue (applied to that validator later).
 			if !isBuilderWithdrawalCredential(deposit.WithdrawalCredentials) {
 				kept = append(kept, deposit)
-				keptPubkeys[deposit.Pubkey] = true
+				if sigValid[i] {
+					keptValidPubkeys[deposit.Pubkey] = true
+				}
 				continue
 			}
-			if keptPubkeys[deposit.Pubkey] {
+			if keptValidPubkeys[deposit.Pubkey] {
 				kept = append(kept, deposit)
 				continue
 			}
@@ -211,7 +217,7 @@ func onboardBuildersFromPendingDeposits(s *stateAccessor) []*electra.PendingDepo
 			}
 			var execAddr bellatrix.ExecutionAddress
 			copy(execAddr[:], deposit.WithdrawalCredentials[12:])
-			addBuilderToRegistry(s, deposit.Pubkey, deposit.WithdrawalCredentials[0], execAddr, deposit.Amount, deposit.Slot)
+			addBuilderToRegistry(s, deposit.Pubkey, payloadBuilderVersion, execAddr, deposit.Amount, deposit.Slot)
 			builderIndexByPubkey[deposit.Pubkey] = uint64(len(s.Builders) - 1)
 		}
 
@@ -223,17 +229,29 @@ func onboardBuildersFromPendingDeposits(s *stateAccessor) []*electra.PendingDepo
 	return onboarded
 }
 
-// batchVerifyOnboardingSignatures batch-verifies the proof-of-possession of every builder-credential
-// pending deposit for a pubkey that is not already a validator (a superset of the deposits whose
-// signature actually gates a new builder registration), returning per-deposit validity indexed by
-// position in state.pending_deposits. Verification uses the regular deposit domain.
+// batchVerifyOnboardingSignatures batch-verifies the proof-of-possession of every pending deposit
+// whose pubkey is a builder candidate — a pubkey that is not already a validator and has at least
+// one builder-credential deposit in the queue. That covers both signatures the onboarding consults:
+// the one gating a new builder registration, and the one deciding whether an earlier queued deposit
+// for the same pubkey is a pending validator. Verification uses the regular deposit domain.
 func batchVerifyOnboardingSignatures(s *stateAccessor, validatorPubkeys map[phase0.BLSPubKey]bool) []bool {
 	sigValid := make([]bool, len(s.PendingDeposits))
 
-	inputs := make([]depositsig.Input, 0, len(s.PendingDeposits))
-	indexes := make([]int, 0, len(s.PendingDeposits))
+	builderPubkeys := make(map[phase0.BLSPubKey]bool)
+	for _, deposit := range s.PendingDeposits {
+		if !validatorPubkeys[deposit.Pubkey] && isBuilderWithdrawalCredential(deposit.WithdrawalCredentials) {
+			builderPubkeys[deposit.Pubkey] = true
+		}
+	}
+
+	if len(builderPubkeys) == 0 {
+		return sigValid
+	}
+
+	inputs := make([]depositsig.Input, 0, len(builderPubkeys))
+	indexes := make([]int, 0, len(builderPubkeys))
 	for i, deposit := range s.PendingDeposits {
-		if validatorPubkeys[deposit.Pubkey] || !isBuilderWithdrawalCredential(deposit.WithdrawalCredentials) {
+		if !builderPubkeys[deposit.Pubkey] {
 			continue
 		}
 		inputs = append(inputs, depositsig.Input{

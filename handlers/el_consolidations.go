@@ -239,7 +239,7 @@ func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, 
 			elConsolidationData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
 			elConsolidationData.Status = uint64(1)
 			elConsolidationData.Result = request.Result
-			elConsolidationData.ResultMessage = getConsolidationResultMessage(request.Result, chainState.GetSpecs())
+			elConsolidationData.ResultMessage = getConsolidationResultMessage(request.Result, chainState, chainState.EpochOfSlot(phase0.Slot(request.SlotNumber)))
 			if consolidation.RequestOrphaned {
 				elConsolidationData.Status = uint64(2)
 			}
@@ -317,14 +317,16 @@ func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, 
 	return pageData, cacheTimeout
 }
 
-func getConsolidationResultMessage(result uint8, specs *consensus.ChainSpec) string {
+func getConsolidationResultMessage(result uint8, chainState *consensus.ChainState, epoch phase0.Epoch) string {
+	specs := chainState.GetSpecs()
+
 	switch result {
 	case dbtypes.ConsolidationRequestResultUnknown:
 		return "Unknown result"
 	case dbtypes.ConsolidationRequestResultSuccess:
 		return "Success"
 	case dbtypes.ConsolidationRequestResultTotalBalanceTooLow:
-		requiredBalance := getConsolidationRequiredBalance(specs)
+		requiredBalance := getConsolidationRequiredBalance(chainState, epoch)
 		return fmt.Sprintf("Error: Total active balance too low (required: %v ETH)", requiredBalance/beacon.EtherGweiFactor)
 	case dbtypes.ConsolidationRequestResultQueueFull:
 		return "Error: Consolidation queue is full"
@@ -353,32 +355,27 @@ func getConsolidationResultMessage(result uint8, specs *consensus.ChainSpec) str
 	}
 }
 
-func getConsolidationRequiredBalance(chainSpec *consensus.ChainSpec) phase0.Gwei {
-	// (c) claude-3.5-sonnet
-	// We need: consolidationChurnLimit > chainSpec.MinActivationBalance
-	// Where: consolidationChurnLimit = balanceChurnLimit - activationExitChurnLimit
-	// And: balanceChurnLimit = max(totalActiveBalance/ChurnLimitQuotient, MinPerEpochChurnLimitElectra)
-	// And: activationExitChurnLimit = min(balanceChurnLimit, MaxPerEpochActivationExitChurnLimit)
+func getConsolidationRequiredBalance(chainState *consensus.ChainState, epoch phase0.Epoch) phase0.Gwei {
+	chainSpec := chainState.GetSpecs()
 
-	// Work backwards:
-	// 1. balanceChurnLimit - activationExitChurnLimit > MinActivationBalance
-	// 2. balanceChurnLimit - min(balanceChurnLimit, MaxPerEpochActivationExitChurnLimit) > MinActivationBalance
-	// 3. For the minimum valid totalActiveBalance, these will be equal:
-	//    balanceChurnLimit - MaxPerEpochActivationExitChurnLimit = MinActivationBalance
-	// 4. Therefore: balanceChurnLimit = MinActivationBalance + MaxPerEpochActivationExitChurnLimit
+	// The consolidation churn limit is a multiple of EffectiveBalanceIncrement and must be
+	// greater than MinActivationBalance, so the smallest churn limit that passes the check is
+	// MinActivationBalance rounded up to the next increment.
+	requiredConsolidationChurnLimit := chainSpec.MinActivationBalance + chainSpec.EffectiveBalanceIncrement
+	requiredConsolidationChurnLimit -= requiredConsolidationChurnLimit % chainSpec.EffectiveBalanceIncrement
 
-	requiredBalanceChurnLimit := chainSpec.MinActivationBalance + chainSpec.MaxPerEpochActivationExitChurnLimit
-
-	// Round up to next increment
-	if requiredBalanceChurnLimit%chainSpec.EffectiveBalanceIncrement != 0 {
-		requiredBalanceChurnLimit += chainSpec.EffectiveBalanceIncrement - (requiredBalanceChurnLimit % chainSpec.EffectiveBalanceIncrement)
+	// Since Gloas the consolidation churn limit is derived from the total active balance via
+	// CONSOLIDATION_CHURN_LIMIT_QUOTIENT:
+	// consolidationChurnLimit = totalActiveBalance / ConsolidationChurnLimitQuotient
+	if chainState.IsEip7732Enabled(epoch) && chainSpec.ConsolidationChurnLimitQuotient > 0 {
+		return phase0.Gwei(requiredConsolidationChurnLimit * chainSpec.ConsolidationChurnLimitQuotient)
 	}
 
-	// Now solve for totalActiveBalance:
+	// Before Gloas the consolidation churn limit is what's left of the balance churn limit after
+	// subtracting the activation/exit churn limit:
+	// consolidationChurnLimit = balanceChurnLimit - min(balanceChurnLimit, MaxPerEpochActivationExitChurnLimit)
 	// balanceChurnLimit = max(totalActiveBalance/ChurnLimitQuotient, MinPerEpochChurnLimitElectra)
-	// Therefore: totalActiveBalance = balanceChurnLimit * ChurnLimitQuotient
-
-	// But first ensure we meet the minimum churn limit
+	requiredBalanceChurnLimit := requiredConsolidationChurnLimit + chainSpec.MaxPerEpochActivationExitChurnLimit
 	if requiredBalanceChurnLimit < chainSpec.MinPerEpochChurnLimitElectra {
 		requiredBalanceChurnLimit = chainSpec.MinPerEpochChurnLimitElectra
 	}
