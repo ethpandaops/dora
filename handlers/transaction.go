@@ -838,8 +838,9 @@ func applyReceiptMetaFromBlockdb(ctx context.Context, pageData *models.Transacti
 	if err != nil {
 		return
 	}
-	var meta bdbtypes.ReceiptMetaData
-	if err := dynssz.GetGlobalDynSsz().UnmarshalSSZ(&meta, metaRaw); err != nil {
+
+	meta, _, err := bdbtypes.DecodeReceiptMetaSection(metaRaw)
+	if err != nil {
 		return
 	}
 

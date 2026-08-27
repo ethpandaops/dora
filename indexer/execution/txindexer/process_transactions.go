@@ -141,8 +141,10 @@ type txProcessingResult struct {
 	internalAggregates map[*pendingAccount]*pendingInternalAggregate
 	callTraceData      []bdbtypes.FlatCallFrame // Flattened call trace for blockdb serialization
 
-	// Frames of an EIP-8141 frame transaction, nil for every other type.
-	frames []*pendingFrame
+	// Frames of an EIP-8141 frame transaction, nil for every other type, and the account
+	// its receipt names as having settled the fee.
+	frames     []*pendingFrame
+	framePayer common.Address
 
 	// internalFromFrames marks internalAggregates as derived from a frame transaction's
 	// own frames rather than from a call trace. Those come from the receipt, so they are
@@ -346,6 +348,10 @@ func (ctx *txProcessingContext) processTransaction(
 	case isFrameTx:
 		// The recipient stays unset; the targets are resolved per frame below.
 		result.frames = ctx.resolveFrames(frameTx, receipt, fromAccount)
+
+		if extra := receipt.FrameExtra(); extra != nil {
+			result.framePayer = extra.Payer
+		}
 	case isContractCreation:
 		// Calculate contract address for contract creation
 		toAddr = crypto.CreateAddress(from, tx.Nonce())
@@ -1581,9 +1587,11 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 			}
 		}
 
-		// Encode receipt metadata section
+		// Encode receipt metadata section, with the frame content of a frame
+		// transaction after it. The frames' own fields come back from the transaction in
+		// the beacon block; who paid and what each frame did are only on the receipt.
 		if result.receiptMeta != nil {
-			raw, err := ds.MarshalSSZ(result.receiptMeta)
+			raw, err := bdbtypes.EncodeReceiptMetaSection(result.receiptMeta, frameReceiptData(result.frames, result.framePayer))
 			if err != nil {
 				return nil, 0
 			}

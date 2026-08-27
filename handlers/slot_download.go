@@ -327,6 +327,20 @@ type receiptJSON struct {
 	Status            string     `json:"status"`
 	BlobGasUsed       string     `json:"blobGasUsed,omitempty"`
 	BlobGasPrice      string     `json:"blobGasPrice,omitempty"`
+
+	// EIP-8141 frame transactions only: the account that settled the fee, and one result
+	// per frame. A frame transaction has no transaction-level status in the consensus
+	// receipt, and its "to" is the sender rather than a recipient.
+	Payer         *string             `json:"payer,omitempty"`
+	FrameReceipts []*frameReceiptJSON `json:"frameReceipts,omitempty"`
+}
+
+// frameReceiptJSON is one frame's result within a frame transaction's receipt.
+type frameReceiptJSON struct {
+	Status       string     `json:"status"`
+	GasUsed      string     `json:"gasUsed"`
+	StateGasUsed string     `json:"stateGasUsed"`
+	Logs         []*logJSON `json:"logs"`
 }
 
 // logJSON matches the log entry format in eth_getTransactionReceipt.
@@ -491,8 +505,8 @@ func buildSingleReceipt(
 		return nil, fmt.Errorf("failed to decompress receipt meta: %w", err)
 	}
 
-	var meta bdbtypes.ReceiptMetaData
-	if err := dynssz.GetGlobalDynSsz().UnmarshalSSZ(&meta, metaRaw); err != nil {
+	meta, frameData, err := bdbtypes.DecodeReceiptMetaSection(metaRaw)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode receipt meta: %w", err)
 	}
 
@@ -563,6 +577,40 @@ func buildSingleReceipt(
 				BlockHash:        blockHashHex,
 				LogIndex:         fmt.Sprintf("0x%x", ev.EventIndex),
 				Removed:          false,
+			})
+		}
+	}
+
+	// Frame transaction content. The transaction's logs are the per-frame lists
+	// concatenated in frame order, so the per-frame counts partition the flat list back
+	// into the frames that emitted them.
+	if frameData != nil {
+		payer := fmt.Sprintf("0x%x", frameData.Payer[:])
+		receipt.Payer = &payer
+		receipt.FrameReceipts = make([]*frameReceiptJSON, 0, len(frameData.Frames))
+
+		logOffset := 0
+
+		for i := range frameData.Frames {
+			frame := &frameData.Frames[i]
+
+			logEnd := logOffset + int(frame.LogCount)
+			if logEnd > len(receipt.Logs) {
+				logEnd = len(receipt.Logs)
+			}
+
+			frameLogs := []*logJSON{}
+			if logOffset < logEnd {
+				frameLogs = receipt.Logs[logOffset:logEnd]
+			}
+
+			logOffset = logEnd
+
+			receipt.FrameReceipts = append(receipt.FrameReceipts, &frameReceiptJSON{
+				Status:       fmt.Sprintf("0x%x", frame.Status),
+				GasUsed:      fmt.Sprintf("0x%x", frame.ExecGasUsed),
+				StateGasUsed: fmt.Sprintf("0x%x", frame.StateGasUsed),
+				Logs:         frameLogs,
 			})
 		}
 	}

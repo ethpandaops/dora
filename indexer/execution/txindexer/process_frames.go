@@ -95,6 +95,31 @@ func (f *pendingFrame) toDbRow(txUid uint64) *dbtypes.ElTxFrame {
 	return row
 }
 
+// frameReceiptData renders the frames as the receipt content stored in blockdb, or nil
+// for a transaction that has none. It is what keeps a frame transaction legible after its
+// relational rows have been pruned.
+func frameReceiptData(frames []*pendingFrame, payer common.Address) *bdbtypes.FrameReceiptData {
+	if len(frames) == 0 {
+		return nil
+	}
+
+	data := &bdbtypes.FrameReceiptData{
+		Payer:  payer,
+		Frames: make([]bdbtypes.FrameReceiptEntry, 0, len(frames)),
+	}
+
+	for _, frame := range frames {
+		data.Frames = append(data.Frames, bdbtypes.FrameReceiptEntry{
+			Status:       uint8(frame.status),
+			ExecGasUsed:  frame.execGasUsed,
+			StateGasUsed: frame.stateGasUsed,
+			LogCount:     frame.logCount,
+		})
+	}
+
+	return data
+}
+
 // isAtomicBatch reports whether the frame is batched with the frames that follow it.
 func (f *pendingFrame) isAtomicBatch() bool {
 	return f.flags&txtypes.AtomicBatchFlag != 0
