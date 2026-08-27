@@ -1767,8 +1767,8 @@ func getSlotPageInclusionLists(pageData *models.SlotPageBlockData, slot phase0.S
 				Index: uint64(il.Message.ValidatorIndex),
 				Name:  services.GlobalBeaconService.GetValidatorNameAt(uint64(il.Message.ValidatorIndex), slot),
 			},
-			InclusionListCommitteeRoot: il.Message.InclusionListCommitteeRoot[:],
-			Signature:                  il.Signature[:],
+			DependentRoot: il.Message.DependentRoot[:],
+			Signature:     il.Signature[:],
 		}
 
 		ilData.Transactions = decodeInclusionListTransactions(il, sysContracts)

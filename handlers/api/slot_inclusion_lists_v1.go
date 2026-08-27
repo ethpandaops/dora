@@ -30,12 +30,12 @@ type APISlotInclusionListsData struct {
 
 // APISlotInclusionList is a single signed inclusion list (EIP-7805).
 type APISlotInclusionList struct {
-	ValidatorIndex             uint64                             `json:"validator_index"`
-	ValidatorName              string                             `json:"validator_name,omitempty"`
-	InclusionListCommitteeRoot string                             `json:"inclusion_list_committee_root"`
-	Signature                  string                             `json:"signature"`
-	TransactionsCount          uint64                             `json:"transactions_count"`
-	Transactions               []*APISlotInclusionListTransaction `json:"transactions"`
+	ValidatorIndex    uint64                             `json:"validator_index"`
+	ValidatorName     string                             `json:"validator_name,omitempty"`
+	DependentRoot     string                             `json:"dependent_root"`
+	Signature         string                             `json:"signature"`
+	TransactionsCount uint64                             `json:"transactions_count"`
+	Transactions      []*APISlotInclusionListTransaction `json:"transactions"`
 }
 
 // APISlotInclusionListTransaction describes one transaction in an inclusion list.
@@ -109,11 +109,11 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 
 		valIndex := uint64(il.Message.ValidatorIndex)
 		listEntry := &APISlotInclusionList{
-			ValidatorIndex:             valIndex,
-			ValidatorName:              services.GlobalBeaconService.GetValidatorNameAt(valIndex, phase0.Slot(dbSlot.Slot)),
-			InclusionListCommitteeRoot: fmt.Sprintf("0x%x", il.Message.InclusionListCommitteeRoot[:]),
-			Signature:                  fmt.Sprintf("0x%x", il.Signature[:]),
-			Transactions:               make([]*APISlotInclusionListTransaction, 0, len(il.Message.Transactions)),
+			ValidatorIndex: valIndex,
+			ValidatorName:  services.GlobalBeaconService.GetValidatorNameAt(valIndex, phase0.Slot(dbSlot.Slot)),
+			DependentRoot:  fmt.Sprintf("0x%x", il.Message.DependentRoot[:]),
+			Signature:      fmt.Sprintf("0x%x", il.Signature[:]),
+			Transactions:   make([]*APISlotInclusionListTransaction, 0, len(il.Message.Transactions)),
 		}
 
 		for idx, txBytes := range il.Message.Transactions {

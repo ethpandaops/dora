@@ -12,10 +12,10 @@
           </div>
         </div>
         <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The hash-tree-root of the IL committee">IL Committee Root:</span></div>
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The shuffling dependent root of the block the inclusion list committee was computed from">Dependent Root:</span></div>
           <div class="col-md-10 text-monospace text-break">
-            0x{{ printf "%x" $inclusionList.InclusionListCommitteeRoot }}
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $inclusionList.InclusionListCommitteeRoot }}"></i>
+            0x{{ printf "%x" $inclusionList.DependentRoot }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $inclusionList.DependentRoot }}"></i>
           </div>
         </div>
         <div class="row border-bottom p-1 mx-0">
