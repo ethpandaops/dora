@@ -391,7 +391,10 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 			pageData.ToIsContract = toAccount.IsContract
 			pageData.HasTo = true
 		}
-	} else {
+	} else if !dbtypes.IsMultiTarget(tx.TxType) {
+		// No recipient means a contract creation - unless the transaction addresses
+		// several, in which case it has none of its own and the row's to_id is the 0
+		// that says so.
 		pageData.IsCreate = true
 	}
 
