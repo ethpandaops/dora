@@ -257,7 +257,7 @@ func handleBlockBodyDownload(w http.ResponseWriter, blockData *services.Combined
 		}
 
 		// Marshal the tx, then augment with block context fields.
-		txJSON, err := marshalTransactionJSON(tx)
+		txJSON, err := tx.MarshalJSON()
 		if err != nil {
 			return fmt.Errorf("failed to marshal tx %d: %w", i, err)
 		}

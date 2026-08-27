@@ -121,15 +121,16 @@ func TestDecodeBlockTransactionRequiresReportedHash(t *testing.T) {
 	}
 }
 
-// Frame transactions arrive as raw wire bytes in the beacon block's execution payload,
-// which is the path that decodes every transaction the indexer sees. go-ethereum cannot
-// represent type 0x06 at all, so before the switch to txtypes such a payload entry failed
-// to decode and the transaction went unindexed.
-func TestDecodeTxAcceptsFrameTransaction(t *testing.T) {
-	target := common.HexToAddress("0x30592ef78d262bc79f0fe46355e07a51d685e382")
-	expiry := common.HexToAddress("0x0000000000000000000000000000000000008141")
+// frameTarget is the target of the sample frame transaction's SENDER frame.
+var frameTarget = common.HexToAddress("0x30592ef78d262bc79f0fe46355e07a51d685e382")
 
-	frameTx := &txtypes.FrameTx{
+// sampleFrameTx builds a two-frame transaction of the shape spamoor's frametx scenario
+// emits: an expiry check followed by the user's operation.
+func sampleFrameTx() *txtypes.FrameTx {
+	expiry := common.HexToAddress("0x0000000000000000000000000000000000008141")
+	target := frameTarget
+
+	return &txtypes.FrameTx{
 		ChainID:   uint256.NewInt(0x301824),
 		NonceKeys: []*uint256.Int{uint256.NewInt(0)},
 		NonceSeq:  7,
@@ -159,6 +160,14 @@ func TestDecodeTxAcceptsFrameTransaction(t *testing.T) {
 			BlobFeeCap: uint256.NewInt(0),
 		},
 	}
+}
+
+// Frame transactions arrive as raw wire bytes in the beacon block's execution payload,
+// which is the path that decodes every transaction the indexer sees. go-ethereum cannot
+// represent type 0x06 at all, so before the switch to txtypes such a payload entry failed
+// to decode and the transaction went unindexed.
+func TestDecodeTxAcceptsFrameTransaction(t *testing.T) {
+	frameTx := sampleFrameTx()
 
 	encoded, err := txtypes.NewTx(frameTx).MarshalBinary()
 	if err != nil {
@@ -194,8 +203,54 @@ func TestDecodeTxAcceptsFrameTransaction(t *testing.T) {
 	}
 
 	// A frame transaction has no single recipient, and dora must not read one into it.
-	if decoded.Frames[1].Target == nil || *decoded.Frames[1].Target != target {
+	if decoded.Frames[1].Target == nil || *decoded.Frames[1].Target != frameTarget {
 		t.Errorf("second frame target did not survive the round trip")
+	}
+}
+
+// The EL client is the fallback whenever the beacon block payload cannot be decoded, and
+// it reports transactions as JSON. A frame transaction has to survive that round trip
+// too: the hash check re-encodes whatever the decoder produced, so a JSON representation
+// that loses any part of the transaction is rejected rather than indexed.
+func TestDecodeBlockTransactionAcceptsFrameTransactionJSON(t *testing.T) {
+	frameTx := sampleFrameTx()
+
+	rawTx, err := txtypes.NewTx(frameTx).MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	// A frame transaction addresses each frame separately and reports no recipient of
+	// its own, so the object must carry no top-level "to".
+	var fields map[string]any
+	if err := json.Unmarshal(rawTx, &fields); err != nil {
+		t.Fatalf("unmarshal into fields failed: %v", err)
+	}
+
+	if _, ok := fields["to"]; ok {
+		t.Error(`frame transaction object must not carry a top-level "to"`)
+	}
+
+	if _, ok := fields["frames"]; !ok {
+		t.Error("frame transaction object is missing its frames")
+	}
+
+	tx, err := decodeBlockTransaction(rawTx)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if tx.Hash() != txtypes.NewTx(frameTx).Hash() {
+		t.Errorf("hash = %s, want %s", tx.Hash().Hex(), txtypes.NewTx(frameTx).Hash().Hex())
+	}
+
+	decoded, ok := tx.Inner().(*txtypes.FrameTx)
+	if !ok {
+		t.Fatalf("inner type = %T, want *txtypes.FrameTx", tx.Inner())
+	}
+
+	if len(decoded.Frames) != len(frameTx.Frames) {
+		t.Errorf("frames = %d, want %d", len(decoded.Frames), len(frameTx.Frames))
 	}
 }
 

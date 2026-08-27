@@ -125,6 +125,8 @@ github.com/ethpandaops/go-eth2-client v0.1.7-0.20260812120339-e742ab5a2de1 h1:Hh
 github.com/ethpandaops/go-eth2-client v0.1.7-0.20260812120339-e742ab5a2de1/go.mod h1:MXQukU/345puJmB2EikoaeQIFizk3zbekPxwYyxG/t8=
 github.com/ethpandaops/spamoor v1.2.4-0.20260827023747-b4261f99f166 h1:yA0vXk+/g+fapSEe6z8MZvX+YIbaMp+mvwSJxFXvss0=
 github.com/ethpandaops/spamoor v1.2.4-0.20260827023747-b4261f99f166/go.mod h1:cctZJLYwi94DIf4if6X+CCoLkV/PeHiVrpfK9JwEAho=
+github.com/ethpandaops/spamoor v1.2.4-0.20260827024547-16a25fb5b40c h1:FFkpwDVdbydi66y8jDIR9Z+J9bE4l/9Y9/1hyZjAEUg=
+github.com/ethpandaops/spamoor v1.2.4-0.20260827024547-16a25fb5b40c/go.mod h1:cctZJLYwi94DIf4if6X+CCoLkV/PeHiVrpfK9JwEAho=
 github.com/ethpandaops/xatu v1.22.1-0.20260824050538-619c572d19c3 h1:83LDwFEAijcssPdQ8ojzzbi+2mD3a+zL1b4V4cY1sMo=
 github.com/ethpandaops/xatu v1.22.1-0.20260824050538-619c572d19c3/go.mod h1:sDLPtT/bQgK+vExtPq77y2W4yHq9tRdiDu852yptTcU=
 github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8 h1:YfAXAt5fQcEnzPccCfByhXY2Vy9FlGrOp+NxGLx3QNY=

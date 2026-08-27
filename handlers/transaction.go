@@ -873,7 +873,8 @@ func applyReceiptMetaFromBlockdb(ctx context.Context, pageData *models.Transacti
 
 // generateTxJSON creates a JSON representation of the transaction using proper marshaling.
 func generateTxJSON(pageData *models.TransactionPageData, ethTx *txtypes.Transaction) {
-	jsonBytes, err := marshalTransactionJSON(ethTx)
+	// Use the transaction's built-in MarshalJSON for standardized format
+	jsonBytes, err := ethTx.MarshalJSON()
 	if err != nil {
 		return
 	}
@@ -1499,20 +1500,6 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	if ethTx.Type() == txtypes.AccessListTxType {
 		loadAccessListData(pageData, ethTx)
 	}
-}
-
-// marshalTransactionJSON renders a transaction the way a JSON-RPC endpoint reports it.
-//
-// go-ethereum owns the encoding for the types it can represent. A type it cannot - an
-// EIP-8141 frame transaction among them - has no encoder yet, and the caller shows the
-// transaction without its JSON rather than showing a wrong one.
-func marshalTransactionJSON(tx *txtypes.Transaction) ([]byte, error) {
-	gethTx, err := tx.ToGethTx()
-	if err != nil {
-		return nil, fmt.Errorf("no JSON encoding for transaction type %d: %w", tx.Type(), err)
-	}
-
-	return gethTx.MarshalJSON()
 }
 
 // loadBlobData populates blob-related data for type 3 (blob) transactions.
