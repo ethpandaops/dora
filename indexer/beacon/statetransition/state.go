@@ -169,6 +169,12 @@ func isActiveValidator(v *phase0.Validator, epoch phase0.Epoch) bool {
 	return v.ActivationEpoch <= epoch && epoch < v.ExitEpoch
 }
 
+// isSlashableValidator checks if a validator is slashable at the given epoch.
+// https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#is_slashable_validator
+func isSlashableValidator(v *phase0.Validator, epoch phase0.Epoch) bool {
+	return !v.Slashed && v.ActivationEpoch <= epoch && epoch < v.WithdrawableEpoch
+}
+
 // getActiveValidatorIndices returns all active validator indices for the given epoch.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#get_active_validator_indices
 func (s *stateAccessor) getActiveValidatorIndices(epoch phase0.Epoch) []phase0.ValidatorIndex {
@@ -262,6 +268,10 @@ func intSqrt(n uint64) uint64 {
 
 // FarFutureEpoch is the sentinel value for unset epochs.
 const FarFutureEpoch = phase0.Epoch(math.MaxUint64)
+
+// unsetDepositRequestsStartIndex is UNSET_DEPOSIT_REQUESTS_START_INDEX: the value
+// state.deposit_requests_start_index carries until the first deposit request arrives.
+const unsetDepositRequestsStartIndex = uint64(math.MaxUint64)
 
 // Altair constants.
 const (
@@ -380,24 +390,49 @@ func (s *stateAccessor) getActivationExitChurnLimit() phase0.Gwei {
 	return churn
 }
 
-// getActivationChurnLimit returns the per-epoch churn budget that deposits consume.
-// New in Gloas (EIP-8061), which gives activations their own quotient and cap so deposits no
-// longer share the budget with exits; before Gloas it is the activation/exit churn limit.
-// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-get_activation_churn_limit
-func (s *stateAccessor) getActivationChurnLimit() phase0.Gwei {
-	if s.Version < spec.DataVersionGloas {
-		return s.getActivationExitChurnLimit()
-	}
+// hasGloasChurn reports whether the state is on the Gloas churn schedule
+// (EIP-8061), which splits the shared activation/exit churn into separate
+// activation and exit limits derived from CHURN_LIMIT_QUOTIENT_GLOAS.
+func (s *stateAccessor) hasGloasChurn() bool {
+	return s.Version >= spec.DataVersionGloas && s.specs.ChurnLimitQuotientGloas > 0
+}
 
+// getGloasChurnLimit returns the churn base shared by the Gloas activation and
+// exit churn limits: the total active balance over CHURN_LIMIT_QUOTIENT_GLOAS,
+// floored at MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA and rounded down to
+// EFFECTIVE_BALANCE_INCREMENT.
+func (s *stateAccessor) getGloasChurnLimit() phase0.Gwei {
 	churn := uint64(s.getTotalActiveBalance()) / s.specs.ChurnLimitQuotientGloas
 	if s.specs.MinPerEpochChurnLimitElectra > churn {
 		churn = s.specs.MinPerEpochChurnLimitElectra
 	}
-	churn -= churn % s.specs.EffectiveBalanceIncrement
+	return phase0.Gwei(churn - churn%s.specs.EffectiveBalanceIncrement)
+}
 
-	if s.specs.MaxPerEpochActivationChurnLimitGloas < churn {
-		return phase0.Gwei(s.specs.MaxPerEpochActivationChurnLimitGloas)
+// getActivationChurnLimit returns the per-epoch churn limit for activations,
+// which caps the deposits processed per epoch.
+//
+// New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-get_activation_churn_limit
+func (s *stateAccessor) getActivationChurnLimit() phase0.Gwei {
+	if !s.hasGloasChurn() {
+		return s.getActivationExitChurnLimit()
 	}
 
-	return phase0.Gwei(churn)
+	churn := s.getGloasChurnLimit()
+	if phase0.Gwei(s.specs.MaxPerEpochActivationChurnLimitGloas) < churn {
+		return phase0.Gwei(s.specs.MaxPerEpochActivationChurnLimitGloas)
+	}
+	return churn
+}
+
+// getExitChurnLimit returns the per-epoch churn limit for exits, which is
+// uncapped since Gloas.
+//
+// New in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-get_exit_churn_limit
+func (s *stateAccessor) getExitChurnLimit() phase0.Gwei {
+	if !s.hasGloasChurn() {
+		return s.getActivationExitChurnLimit()
+	}
+
+	return s.getGloasChurnLimit()
 }

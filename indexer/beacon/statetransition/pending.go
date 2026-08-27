@@ -2,12 +2,15 @@ package statetransition
 
 import (
 	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	zrnt_common "github.com/protolambda/zrnt/eth2/beacon/common"
 )
 
 // processPendingDeposits implements the Electra+ version of process_pending_deposits.
+//
+// Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-process_pending_deposits
 // New in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-process_pending_deposits
 // [Modified in Gloas:EIP8061] deposits consume the activation-only churn budget.
 func processPendingDeposits(s *stateAccessor) error {
@@ -31,9 +34,12 @@ func processPendingDeposits(s *stateAccessor) error {
 	// only on the genesis fork version.
 	depositDomain := depositsig.Domain(s.specs.GenesisForkVersion)
 
+	// Gloas dropped the Eth1 bridge gate: by then all bridge deposits are applied.
+	hasEth1BridgeGate := s.Version < spec.DataVersionGloas
+
 	for _, deposit := range s.PendingDeposits {
 		// Do not process deposit requests if Eth1 bridge deposits are not yet applied.
-		if deposit.Slot > 0 && s.ETH1DepositIndex < s.DepositRequestsStartIndex {
+		if hasEth1BridgeGate && deposit.Slot > 0 && s.ETH1DepositIndex < s.DepositRequestsStartIndex {
 			break
 		}
 
