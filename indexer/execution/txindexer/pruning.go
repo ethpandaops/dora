@@ -14,6 +14,7 @@ const (
 	PruneObjTransactions   = "transactions"
 	PruneObjInternalTxs    = "internal_txs"
 	PruneObjTokenTransfers = "token_transfers"
+	PruneObjTxFrames       = "tx_frames"
 	PruneObjBlocks         = "blocks"
 	PruneObjExecData       = "exec_data"
 	PruneObjTxHashIndex    = "tx_hash_index"

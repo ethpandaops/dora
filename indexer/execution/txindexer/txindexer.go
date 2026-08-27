@@ -792,7 +792,7 @@ func (t *TxIndexer) checkAndRunCleanup() {
 	durationMs := time.Since(start).Milliseconds()
 
 	// Build per-object stats for this cleanup cycle.
-	objects := make([]ElPruningObjectStat, 0, 7)
+	objects := make([]ElPruningObjectStat, 0, 8)
 	addObj := func(typ string, deleted, sizeBytes int64) {
 		if deleted > 0 || sizeBytes > 0 {
 			objects = append(objects, ElPruningObjectStat{Type: typ, Deleted: deleted, SizeBytes: sizeBytes})
@@ -803,6 +803,7 @@ func (t *TxIndexer) checkAndRunCleanup() {
 		addObj(PruneObjTransactions, retentionStats.TransactionsDeleted, 0)
 		addObj(PruneObjInternalTxs, retentionStats.InternalTxsDeleted, 0)
 		addObj(PruneObjTokenTransfers, retentionStats.TokenTransfersDeleted, 0)
+		addObj(PruneObjTxFrames, retentionStats.TxFramesDeleted, 0)
 		addObj(PruneObjBlocks, retentionStats.BlocksDeleted, 0)
 	}
 	addObj(PruneObjExecData, execPruned+sizeReset, execFreed+sizeFreed)
@@ -831,6 +832,7 @@ func (t *TxIndexer) checkAndRunCleanup() {
 			fields["transactions"] = retentionStats.TransactionsDeleted
 			fields["internalTxs"] = retentionStats.InternalTxsDeleted
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
+			fields["txFrames"] = retentionStats.TxFramesDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted
 		}
 		fields["blockdbPruned"] = execPruned + sizeReset

@@ -1,14 +1,17 @@
 package txindexer
 
 import (
+	"io"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/holiman/uint256"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -22,9 +25,13 @@ var (
 // Neither resolveFrames nor aggregateFrames performs I/O: accounts are only recorded for
 // batch resolution later.
 func newFrameTestContext() *txProcessingContext {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
 	return &txProcessingContext{
 		accounts: make(map[common.Address]*pendingAccount, 8),
 		block:    &BlockRef{BlockUID: 1},
+		indexer:  &TxIndexer{logger: logger},
 	}
 }
 
@@ -395,5 +402,138 @@ func TestCorrelateFrameTraceRejectsMismatchedTargets(t *testing.T) {
 
 	if correlateFrameTrace(frames, roots) {
 		t.Error("a root addressing a different account must not be mapped onto the frame")
+	}
+}
+
+// A frame becomes its el_tx_frames row with the target account resolved by commit time.
+func TestPendingFrameToDbRow(t *testing.T) {
+	ctx := newFrameTestContext()
+	callee := ctx.ensureAccount(frameCallee, nil, false)
+	callee.id = 42
+
+	frame := &pendingFrame{
+		index:         3,
+		mode:          uint8(txtypes.FrameModeSender),
+		flags:         txtypes.AtomicBatchFlag,
+		target:        frameCallee,
+		toAccount:     callee,
+		value:         big.NewInt(1_000_000_000_000_000_000),
+		dataLen:       9,
+		methodID:      []byte{0xde, 0xad, 0xbe, 0xef},
+		execGasLimit:  30000,
+		stateGasLimit: 500,
+		hasResult:     true,
+		status:        txtypes.FrameStatusSuccess,
+		execGasUsed:   21000,
+		stateGasUsed:  40,
+		logCount:      2,
+		traceCount:    5,
+	}
+
+	row := frame.toDbRow(0xdeadbeef)
+
+	if row.TxUid != 0xdeadbeef || row.FrameIndex != 3 {
+		t.Errorf("row key = (%d, %d), want (%d, 3)", row.TxUid, row.FrameIndex, 0xdeadbeef)
+	}
+
+	if row.ToID != 42 {
+		t.Errorf("to id = %d, want the resolved account id 42", row.ToID)
+	}
+
+	if row.Status != dbtypes.ElFrameStatusSuccess {
+		t.Errorf("status = %d, want success", row.Status)
+	}
+
+	if row.Amount != 1.0 {
+		t.Errorf("amount = %v, want 1 ETH", row.Amount)
+	}
+
+	if row.ExecGasUsed != 21000 || row.StateGasUsed != 40 {
+		t.Errorf("gas = %d/%d, want 21000/40", row.ExecGasUsed, row.StateGasUsed)
+	}
+
+	if row.TraceCount != 5 {
+		t.Errorf("trace count = %d, want 5", row.TraceCount)
+	}
+}
+
+// A frame the client reported no result for is neither a success nor a failure, and a
+// zero status would claim it failed.
+func TestPendingFrameToDbRowMarksMissingResult(t *testing.T) {
+	frame := &pendingFrame{index: 0, value: new(big.Int)}
+
+	row := frame.toDbRow(1)
+	if row.Status != dbtypes.ElFrameStatusUnknown {
+		t.Errorf("status = %d, want the unknown sentinel %d", row.Status, dbtypes.ElFrameStatusUnknown)
+	}
+
+	if row.ToID != 0 {
+		t.Errorf("to id = %d, want 0 for an unresolved target", row.ToID)
+	}
+}
+
+// log_count is a SMALLINT, which postgres signs, so a frame that emitted more logs than
+// that holds has to be clamped rather than overflow the column.
+func TestPendingFrameToDbRowClampsLogCount(t *testing.T) {
+	frame := &pendingFrame{index: 0, value: new(big.Int), logCount: 100000}
+
+	row := frame.toDbRow(1)
+	if row.LogCount != 32767 {
+		t.Errorf("log count = %d, want it clamped to 32767", row.LogCount)
+	}
+}
+
+// A frame transaction's row keeps no recipient of its own, and callers must be able to
+// tell that apart from a contract creation, which is the other reason a row has none.
+func TestIsMultiTargetIdentifiesFrameTransactions(t *testing.T) {
+	if !dbtypes.IsMultiTarget(txtypes.FrameTxType) {
+		t.Error("a frame transaction addresses more than one recipient")
+	}
+
+	// The create flag shares the tx_type byte and must not be read as a type.
+	if !dbtypes.IsMultiTarget(txtypes.FrameTxType | dbtypes.ElTxFlagCreate) {
+		t.Error("the create flag must not hide the transaction type")
+	}
+
+	for _, txType := range []uint8{
+		txtypes.LegacyTxType, txtypes.AccessListTxType, txtypes.DynamicFeeTxType,
+		txtypes.BlobTxType, txtypes.SetCodeTxType,
+	} {
+		if dbtypes.IsMultiTarget(txType) {
+			t.Errorf("type %d addresses a single recipient", txType)
+		}
+
+		if dbtypes.IsMultiTarget(txType | dbtypes.ElTxFlagCreate) {
+			t.Errorf("type %d with the create flag addresses a single recipient", txType)
+		}
+	}
+}
+
+// A transaction reporting more frames than EIP-8141 allows cannot be in a valid block.
+// Indexing all of them anyway would hand frame_index a value its column cannot hold, and
+// the block would fail to insert on every retry.
+func TestResolveFramesCapsFrameCount(t *testing.T) {
+	ctx := newFrameTestContext()
+
+	frames := make([]*txtypes.Frame, 0, txtypes.MaxFrames+8)
+	for i := 0; i < txtypes.MaxFrames+8; i++ {
+		target := frameCallee
+		frames = append(frames, &txtypes.Frame{
+			Mode:   txtypes.FrameModeSender,
+			Target: &target,
+			Value:  uint256.NewInt(0),
+		})
+	}
+
+	frameTx := &txtypes.FrameTx{Sender: frameSender, Frames: frames}
+
+	resolved := ctx.resolveFrames(frameTx, &txtypes.Receipt{Type: txtypes.FrameTxType}, nil)
+
+	if len(resolved) != txtypes.MaxFrames {
+		t.Fatalf("resolved %d frames, want the cap of %d", len(resolved), txtypes.MaxFrames)
+	}
+
+	if last := resolved[len(resolved)-1].index; last != txtypes.MaxFrames-1 {
+		t.Errorf("last frame index = %d, want %d", last, txtypes.MaxFrames-1)
 	}
 }

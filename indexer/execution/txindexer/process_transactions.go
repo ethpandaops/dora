@@ -1334,6 +1334,19 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 		}
 	}
 
+	// 3b. Insert the frames of a frame transaction. Their targets are the recipients the
+	// transaction row cannot hold, and each frame carries its own value, status and gas.
+	if len(result.frames) > 0 && result.transaction != nil {
+		frameRows := make([]*dbtypes.ElTxFrame, 0, len(result.frames))
+		for _, frame := range result.frames {
+			frameRows = append(frameRows, frame.toDbRow(result.transaction.TxUid))
+		}
+
+		if err := db.InsertElTxFrames(commitCtx, dbTx, frameRows); err != nil {
+			return err
+		}
+	}
+
 	// 4. Insert token transfers with resolved token and account IDs
 	if len(result.tokenTransfers) > 0 {
 		transfers := make([]*dbtypes.ElTokenTransfer, 0, len(result.tokenTransfers))

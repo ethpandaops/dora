@@ -221,6 +221,7 @@ var pruneObjectLabels = map[string]string{
 	txindexer.PruneObjTransactions:   "Transactions",
 	txindexer.PruneObjInternalTxs:    "Internal Txs",
 	txindexer.PruneObjTokenTransfers: "Token Transfers",
+	txindexer.PruneObjTxFrames:       "TX Frames",
 	txindexer.PruneObjBlocks:         "Blocks",
 	txindexer.PruneObjExecData:       "Exec Data",
 	txindexer.PruneObjTxHashIndex:    "TX-Hash Index",

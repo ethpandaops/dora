@@ -6,7 +6,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/spamoor/txtypes"
+	"github.com/sirupsen/logrus"
 )
 
 // pendingFrame is one frame of an EIP-8141 frame transaction, paired with the result the
@@ -52,6 +54,47 @@ type pendingFrame struct {
 	traceCount uint32
 }
 
+// toDbRow renders the frame as its el_tx_frames row. Account ids are resolved by then.
+func (f *pendingFrame) toDbRow(txUid uint64) *dbtypes.ElTxFrame {
+	// A client that reported no result for the frame leaves it neither succeeded nor
+	// failed, which the status sentinel says and a zero status would not.
+	status := dbtypes.ElFrameStatusUnknown
+	if f.hasResult {
+		status = uint8(f.status)
+	}
+
+	// log_count is a SMALLINT, which postgres signs.
+	logCount := f.logCount
+	if logCount > 32767 {
+		logCount = 32767
+	}
+
+	row := &dbtypes.ElTxFrame{
+		TxUid:         txUid,
+		FrameIndex:    f.index,
+		Mode:          f.mode,
+		Flags:         f.flags,
+		Status:        status,
+		RolledBack:    f.rolledBack,
+		Amount:        weiToFloat(f.value, 18),
+		AmountRaw:     f.value.Bytes(),
+		MethodID:      f.methodID,
+		DataLen:       f.dataLen,
+		ExecGasLimit:  f.execGasLimit,
+		StateGasLimit: f.stateGasLimit,
+		ExecGasUsed:   f.execGasUsed,
+		StateGasUsed:  f.stateGasUsed,
+		LogCount:      uint16(logCount),
+		TraceCount:    f.traceCount,
+	}
+
+	if f.toAccount != nil {
+		row.ToID = f.toAccount.id
+	}
+
+	return row
+}
+
 // isAtomicBatch reports whether the frame is batched with the frames that follow it.
 func (f *pendingFrame) isAtomicBatch() bool {
 	return f.flags&txtypes.AtomicBatchFlag != 0
@@ -77,9 +120,23 @@ func (ctx *txProcessingContext) resolveFrames(
 	fromAccount *pendingAccount,
 ) []*pendingFrame {
 	extra := receipt.FrameExtra()
-	frames := make([]*pendingFrame, 0, len(frameTx.Frames))
 
-	for i, frame := range frameTx.Frames {
+	// EIP-8141 caps a transaction at MaxFrames, and a block carrying more than that is
+	// not valid. Trusting the count anyway would hand a frame index to a column that
+	// cannot hold it, failing the block's insert on every retry.
+	txFrames := frameTx.Frames
+	if len(txFrames) > txtypes.MaxFrames {
+		ctx.indexer.logger.WithFields(logrus.Fields{
+			"frames": len(txFrames),
+			"cap":    txtypes.MaxFrames,
+		}).Warn("transaction reports more frames than the protocol allows, indexing the first ones only")
+
+		txFrames = txFrames[:txtypes.MaxFrames]
+	}
+
+	frames := make([]*pendingFrame, 0, len(txFrames))
+
+	for i, frame := range txFrames {
 		target := frame.ResolvedTarget(frameTx.Sender)
 
 		pending := &pendingFrame{
