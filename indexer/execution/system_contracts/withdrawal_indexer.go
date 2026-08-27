@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
@@ -112,7 +113,7 @@ func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 
 // processFinalTx is the callback for the contract indexer to process final transactions
 // it parses the transaction and returns the corresponding withdrawal transaction
-func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, _ []*dbtypes.WithdrawalRequestTx) (*dbtypes.WithdrawalRequestTx, error) {
+func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, _ []*dbtypes.WithdrawalRequestTx) (*dbtypes.WithdrawalRequestTx, error) {
 	requestTx := wi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid withdrawal log")
@@ -130,7 +131,7 @@ func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transactio
 
 // processRecentTx is the callback for the contract indexer to process recent transactions
 // it parses the transaction and returns the corresponding withdrawal transaction
-func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.WithdrawalRequestTx) (*dbtypes.WithdrawalRequestTx, error) {
+func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.WithdrawalRequestTx) (*dbtypes.WithdrawalRequestTx, error) {
 	requestTx := wi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid withdrawal log")

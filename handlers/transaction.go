@@ -31,6 +31,7 @@ import (
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/types/models"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/spamoor/txtypes"
 )
 
 // EIP-7708: ETH Transfer logger address — emits Transfer(address,address,uint256) on every ETH move.
@@ -43,6 +44,7 @@ var txTypeNames = map[uint8]string{
 	2: "Dynamic Fee (EIP-1559)",
 	3: "Blob (EIP-4844)",
 	4: "Set Code (EIP-7702)",
+	6: "Frame (EIP-8141)",
 }
 
 // Transaction handles the /tx/{hash} page
@@ -484,7 +486,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	case "statechanges":
 		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
 	case "authorizations":
-		if pageData.TxType == ethtypes.SetCodeTxType && len(pageData.Authorizations) > 0 {
+		if pageData.TxType == txtypes.SetCodeTxType && len(pageData.Authorizations) > 0 {
 			resolveAuthorizationValidity(ctx, pageData, tx.BlockUid)
 		}
 	}
@@ -507,7 +509,7 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 	defer cancel()
 
 	// Try to fetch transaction from EL client
-	var ethTx *ethtypes.Transaction
+	var ethTx *txtypes.Transaction
 	var isPending bool
 	var err error
 
@@ -519,12 +521,7 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 			continue
 		}
 
-		ethClient := rpcClient.GetEthClient()
-		if ethClient == nil {
-			continue
-		}
-
-		ethTx, isPending, err = ethClient.TransactionByHash(ctx, txHashCommon)
+		ethTx, isPending, err = rpcClient.GetTransactionByHash(ctx, txHashCommon)
 		if err == nil && ethTx != nil {
 			break
 		}
@@ -558,12 +555,7 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 			continue
 		}
 
-		ethClient := rpcClient.GetEthClient()
-		if ethClient == nil {
-			continue
-		}
-
-		receipt, err := ethClient.TransactionReceipt(ctx, txHashCommon)
+		receipt, err := rpcClient.GetTransactionReceipt(ctx, txHashCommon)
 		if err == nil && receipt != nil {
 			// Receipt found - upgrade to full view mode
 			pageData.ViewMode = models.TxViewModeFull
@@ -651,7 +643,7 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 
 // applyEthTxFields populates the page-data fields derived from a parsed
 // transaction envelope. Shared by the EL-client and blockdb-reconstruction paths.
-func applyEthTxFields(ctx context.Context, pageData *models.TransactionPageData, ethTx *ethtypes.Transaction) {
+func applyEthTxFields(ctx context.Context, pageData *models.TransactionPageData, ethTx *txtypes.Transaction) {
 	pageData.TxType = ethTx.Type()
 	if name, ok := txTypeNames[ethTx.Type()]; ok {
 		pageData.TxTypeName = name
@@ -680,7 +672,7 @@ func applyEthTxFields(ctx context.Context, pageData *models.TransactionPageData,
 		pageData.TipPrice = tipFloat / 1e9
 	}
 
-	if from, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(ethTx.ChainId()), ethTx); err == nil {
+	if from, err := ethTx.From(ethTx.ChainId()); err == nil {
 		pageData.FromAddr = from.Bytes()
 	}
 
@@ -706,10 +698,10 @@ func applyEthTxFields(ctx context.Context, pageData *models.TransactionPageData,
 
 	pageData.BlobCount = uint32(len(ethTx.BlobHashes()))
 
-	if ethTx.Type() == ethtypes.SetCodeTxType {
+	if ethTx.Type() == txtypes.SetCodeTxType {
 		loadAuthorizationData(pageData, ethTx)
 	}
-	if ethTx.Type() == ethtypes.AccessListTxType {
+	if ethTx.Type() == txtypes.AccessListTxType {
 		loadAccessListData(pageData, ethTx)
 	}
 }
@@ -772,8 +764,8 @@ func buildTransactionPageDataFromBlockdb(ctx context.Context, pageData *models.T
 		}
 		rlpData := execTxs[txIndex]
 
-		var ethTx ethtypes.Transaction
-		if err := ethTx.UnmarshalBinary(rlpData); err != nil {
+		ethTx, err := txtypes.DecodeTx(rlpData)
+		if err != nil {
 			continue
 		}
 		if !bytes.Equal(ethTx.Hash().Bytes(), txHash) {
@@ -782,9 +774,9 @@ func buildTransactionPageDataFromBlockdb(ctx context.Context, pageData *models.T
 
 		// Match found - reconstruct the page from the envelope.
 		pageData.ViewMode = models.TxViewModePartial
-		applyEthTxFields(ctx, pageData, &ethTx)
+		applyEthTxFields(ctx, pageData, ethTx)
 		pageData.TxRLP = "0x" + hex.EncodeToString(rlpData)
-		generateTxJSON(pageData, &ethTx)
+		generateTxJSON(pageData, ethTx)
 
 		// Block info.
 		pageData.Slot = block.Slot
@@ -816,8 +808,8 @@ func buildTransactionPageDataFromBlockdb(ctx context.Context, pageData *models.T
 		applyReceiptMetaFromBlockdb(ctx, pageData, block.Slot, block.Root, txHash)
 
 		// Blob data for type 3 (blob) transactions.
-		if ethTx.Type() == 3 && len(ethTx.BlobHashes()) > 0 {
-			loadBlobData(pageData, &ethTx, blockData)
+		if ethTx.Type() == txtypes.BlobTxType && len(ethTx.BlobHashes()) > 0 {
+			loadBlobData(pageData, ethTx, blockData)
 		}
 
 		return true
@@ -880,9 +872,8 @@ func applyReceiptMetaFromBlockdb(ctx context.Context, pageData *models.Transacti
 }
 
 // generateTxJSON creates a JSON representation of the transaction using proper marshaling.
-func generateTxJSON(pageData *models.TransactionPageData, ethTx *ethtypes.Transaction) {
-	// Use the transaction's built-in MarshalJSON for standardized format
-	jsonBytes, err := ethTx.MarshalJSON()
+func generateTxJSON(pageData *models.TransactionPageData, ethTx *txtypes.Transaction) {
+	jsonBytes, err := marshalTransactionJSON(ethTx)
 	if err != nil {
 		return
 	}
@@ -1476,8 +1467,8 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	pageData.TxRLP = "0x" + hex.EncodeToString(rlpData)
 
 	// Parse the transaction to get input data and JSON representation
-	var ethTx ethtypes.Transaction
-	if err := ethTx.UnmarshalBinary(rlpData); err != nil {
+	ethTx, err := txtypes.DecodeTx(rlpData)
+	if err != nil {
 		logrus.WithError(err).Debug("failed to parse transaction RLP")
 		return
 	}
@@ -1492,28 +1483,42 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	}
 
 	// Generate JSON using proper marshaling
-	generateTxJSON(pageData, &ethTx)
+	generateTxJSON(pageData, ethTx)
 
 	// Load blob data for type 3 transactions
-	if ethTx.Type() == 3 && len(ethTx.BlobHashes()) > 0 {
-		loadBlobData(pageData, &ethTx, blockData)
+	if ethTx.Type() == txtypes.BlobTxType && len(ethTx.BlobHashes()) > 0 {
+		loadBlobData(pageData, ethTx, blockData)
 	}
 
 	// Load authorization data for type 4 (EIP-7702) transactions
-	if ethTx.Type() == ethtypes.SetCodeTxType {
-		loadAuthorizationData(pageData, &ethTx)
+	if ethTx.Type() == txtypes.SetCodeTxType {
+		loadAuthorizationData(pageData, ethTx)
 	}
 
 	// Load access list data for type 1 (EIP-2930) transactions
-	if ethTx.Type() == ethtypes.AccessListTxType {
-		loadAccessListData(pageData, &ethTx)
+	if ethTx.Type() == txtypes.AccessListTxType {
+		loadAccessListData(pageData, ethTx)
 	}
+}
+
+// marshalTransactionJSON renders a transaction the way a JSON-RPC endpoint reports it.
+//
+// go-ethereum owns the encoding for the types it can represent. A type it cannot - an
+// EIP-8141 frame transaction among them - has no encoder yet, and the caller shows the
+// transaction without its JSON rather than showing a wrong one.
+func marshalTransactionJSON(tx *txtypes.Transaction) ([]byte, error) {
+	gethTx, err := tx.ToGethTx()
+	if err != nil {
+		return nil, fmt.Errorf("no JSON encoding for transaction type %d: %w", tx.Type(), err)
+	}
+
+	return gethTx.MarshalJSON()
 }
 
 // loadBlobData populates blob-related data for type 3 (blob) transactions.
 // It extracts versioned hashes from the transaction, KZG commitments from the beacon block,
 // and calculates blob gas fees.
-func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transaction, blockData *services.CombinedBlockResponse) {
+func loadBlobData(pageData *models.TransactionPageData, ethTx *txtypes.Transaction, blockData *services.CombinedBlockResponse) {
 	blobHashes := ethTx.BlobHashes()
 	if len(blobHashes) == 0 {
 		return
@@ -1649,9 +1654,9 @@ func applyCalldataCosts(pageData *models.TransactionPageData) {
 // parsed transaction and populates pageData.Authorizations.
 func loadAuthorizationData(
 	pageData *models.TransactionPageData,
-	ethTx *ethtypes.Transaction,
+	ethTx *txtypes.Transaction,
 ) {
-	authList := ethTx.SetCodeAuthorizations()
+	authList := ethTx.AuthList()
 	if len(authList) == 0 {
 		return
 	}
@@ -1682,7 +1687,7 @@ func loadAuthorizationData(
 // pageData.AccessListStorageKeys.
 func loadAccessListData(
 	pageData *models.TransactionPageData,
-	ethTx *ethtypes.Transaction,
+	ethTx *txtypes.Transaction,
 ) {
 	al := ethTx.AccessList()
 	if len(al) == 0 {

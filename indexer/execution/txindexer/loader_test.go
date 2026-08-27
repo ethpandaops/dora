@@ -8,7 +8,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/spamoor/txtypes"
+	"github.com/holiman/uint256"
 )
 
 // Transaction 0 of glamsterdam-devnet-8 block 90220: a legacy contract creation, which
@@ -55,7 +56,7 @@ func TestDecodeBlockTransactionAcceptsContractCreation(t *testing.T) {
 	}
 
 	// The sender is only recoverable when the decoded transaction matches the signed one.
-	from, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	from, err := tx.From(tx.ChainId())
 	if err != nil {
 		t.Fatalf("sender recovery failed: %v", err)
 	}
@@ -67,7 +68,8 @@ func TestDecodeBlockTransactionAcceptsContractCreation(t *testing.T) {
 
 // A client that renders a contract creation as a transaction to the zero address changes
 // the transaction's RLP, and with it both its hash and the sender recovered from its
-// signature. The decoded transaction must be rejected rather than indexed.
+// signature. The decoder adopts the hash the client reported, so the mismatch is only
+// visible once the decoded fields are re-encoded - which is what the check exists for.
 func TestDecodeBlockTransactionRejectsZeroAddressCreation(t *testing.T) {
 	_, err := decodeBlockTransaction(creationTx(`"0x0000000000000000000000000000000000000000"`))
 	if !errors.Is(err, errTxHashMismatch) {
@@ -75,48 +77,147 @@ func TestDecodeBlockTransactionRejectsZeroAddressCreation(t *testing.T) {
 	}
 }
 
-func TestDecodeBlockTransactionRejectsUnsupportedType(t *testing.T) {
-	_, err := decodeBlockTransaction(json.RawMessage([]byte(`{"type":"0x7f"}`)))
-	if !errors.Is(err, errUnsupportedTxType) {
-		t.Fatalf("expected errUnsupportedTxType, got %v", err)
-	}
-}
+// A transaction whose type has no decoder keeps the generic fields the node reported
+// rather than being dropped. Dropping it would leave the block short of a transaction
+// and shift every receipt index behind it.
+func TestDecodeBlockTransactionKeepsUnsupportedType(t *testing.T) {
+	const unknownHash = "0x1111111111111111111111111111111111111111111111111111111111111111"
 
-// A client may legitimately omit the hash; there is nothing to verify against then.
-func TestDecodeBlockTransactionWithoutReportedHash(t *testing.T) {
 	tx, err := decodeBlockTransaction(json.RawMessage([]byte(`{
-		"type": "0x0", "nonce": "0x642", "gasPrice": "0x4a817c800", "gas": "0x7245c",
-		"to": null, "value": "0x0", "input": "0x",
-		"r": "0x3ff5600801ba387ca2a30ae64abe088bc89c71a85e4a94308c5b647cb0308f41",
-		"s": "0x1e45986beae6e6c0e381df35bf713c6e1adda09aada2578e716548f8300472de",
-		"v": "0x34d5198ff"
+		"type": "0x7f",
+		"hash": "` + unknownHash + `",
+		"nonce": "0x642",
+		"gas": "0x7245c",
+		"to": "0x30592ef78d262bc79f0fe46355e07a51d685e382",
+		"value": "0x2a",
+		"input": "0x"
 	}`)))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
 
-	if tx.Nonce() != 0x642 {
-		t.Errorf("nonce = %d, want %d", tx.Nonce(), 0x642)
+	if tx.Type() != 0x7f {
+		t.Errorf("type = %d, want %d", tx.Type(), 0x7f)
+	}
+
+	if got := tx.Hash().Hex(); got != unknownHash {
+		t.Errorf("hash = %s, want %s", got, unknownHash)
+	}
+
+	if got := tx.Value().Uint64(); got != 42 {
+		t.Errorf("value = %d, want 42", got)
+	}
+}
+
+// The hash is what the re-encoded transaction is checked against, so a response that
+// omits it cannot be verified and is rejected rather than trusted.
+func TestDecodeBlockTransactionRequiresReportedHash(t *testing.T) {
+	_, err := decodeBlockTransaction(json.RawMessage([]byte(`{
+		"type": "0x0", "nonce": "0x642", "gasPrice": "0x4a817c800", "gas": "0x7245c",
+		"to": null, "value": "0x0", "input": "0x"
+	}`)))
+	if err == nil {
+		t.Fatal("expected an error for a transaction object with no hash")
+	}
+}
+
+// Frame transactions arrive as raw wire bytes in the beacon block's execution payload,
+// which is the path that decodes every transaction the indexer sees. go-ethereum cannot
+// represent type 0x06 at all, so before the switch to txtypes such a payload entry failed
+// to decode and the transaction went unindexed.
+func TestDecodeTxAcceptsFrameTransaction(t *testing.T) {
+	target := common.HexToAddress("0x30592ef78d262bc79f0fe46355e07a51d685e382")
+	expiry := common.HexToAddress("0x0000000000000000000000000000000000008141")
+
+	frameTx := &txtypes.FrameTx{
+		ChainID:   uint256.NewInt(0x301824),
+		NonceKeys: []*uint256.Int{uint256.NewInt(0)},
+		NonceSeq:  7,
+		Sender:    common.HexToAddress("0x6df35438a4dfcdbd25c7a364ab77e3cfdce87fc5"),
+		Frames: []*txtypes.Frame{
+			{
+				Mode:   txtypes.FrameModeVerify,
+				Target: &expiry,
+				Limits: txtypes.FrameLimits{Execution: 5000},
+				Value:  uint256.NewInt(0),
+				Data:   []byte{0, 0, 0, 0, 0x6a, 0x8f, 0x9c, 0xff},
+			},
+			{
+				Mode:   txtypes.FrameModeSender,
+				Target: &target,
+				Limits: txtypes.FrameLimits{Execution: 30000},
+				Value:  uint256.NewInt(1),
+				Data:   []byte{0xde, 0xad, 0xbe, 0xef},
+			},
+		},
+		Signatures: []*txtypes.FrameSignature{
+			{Scheme: txtypes.SigSchemeSecp256k1, Signature: make([]byte, 65)},
+		},
+		Fees: txtypes.FrameFees{
+			GasTipCap:  uint256.NewInt(0x77359400),
+			GasFeeCap:  uint256.NewInt(0x4a817c800),
+			BlobFeeCap: uint256.NewInt(0),
+		},
+	}
+
+	encoded, err := txtypes.NewTx(frameTx).MarshalBinary()
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	tx, err := txtypes.DecodeTx(encoded)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if tx.Type() != txtypes.FrameTxType {
+		t.Fatalf("type = %d, want %d", tx.Type(), txtypes.FrameTxType)
+	}
+
+	decoded, ok := tx.Inner().(*txtypes.FrameTx)
+	if !ok {
+		t.Fatalf("inner type = %T, want *txtypes.FrameTx", tx.Inner())
+	}
+
+	if len(decoded.Frames) != 2 {
+		t.Fatalf("frames = %d, want 2", len(decoded.Frames))
+	}
+
+	// The sender is an explicit field rather than something recovered from a signature.
+	from, err := tx.From(tx.ChainId())
+	if err != nil {
+		t.Fatalf("sender resolution failed: %v", err)
+	}
+
+	if from != frameTx.Sender {
+		t.Errorf("sender = %s, want %s", from.Hex(), frameTx.Sender.Hex())
+	}
+
+	// A frame transaction has no single recipient, and dora must not read one into it.
+	if decoded.Frames[1].Target == nil || *decoded.Frames[1].Target != target {
+		t.Errorf("second frame target did not survive the round trip")
 	}
 }
 
 // Receipts must be matched to transactions by hash. Matching them by position lets one
 // unmatchable transaction consume the receipts belonging to the transactions after it.
 func TestReceiptLookupIsByHashNotPosition(t *testing.T) {
-	mkTx := func(nonce uint64) *types.Transaction {
-		return types.NewTx(&types.LegacyTx{Nonce: nonce, Gas: 21000, GasPrice: big.NewInt(1), Value: big.NewInt(0)})
+	mkTx := func(nonce uint64) *txtypes.Transaction {
+		return txtypes.NewTx(&txtypes.LegacyTx{
+			Nonce: nonce, Gas: 21000, GasPrice: big.NewInt(1), Value: big.NewInt(0),
+		})
 	}
 
-	txs := []*types.Transaction{mkTx(0), mkTx(1), mkTx(2)}
+	txs := []*txtypes.Transaction{mkTx(0), mkTx(1), mkTx(2)}
 	unmatchable := mkTx(99)
 
 	// The block's receipts, with no receipt for the unmatchable transaction.
-	receipts := make([]*types.Receipt, 0, len(txs))
+	receipts := make([]*txtypes.Receipt, 0, len(txs))
 	for i, tx := range txs {
-		receipts = append(receipts, &types.Receipt{TxHash: tx.Hash(), TransactionIndex: uint(i)})
+		receipts = append(receipts, &txtypes.Receipt{TxHash: tx.Hash(), TransactionIndex: uint(i)})
 	}
 
-	receiptMap := make(map[common.Hash]*types.Receipt, len(receipts))
+	receiptMap := make(map[common.Hash]*txtypes.Receipt, len(receipts))
 	for _, receipt := range receipts {
 		receiptMap[receipt.TxHash] = receipt
 	}

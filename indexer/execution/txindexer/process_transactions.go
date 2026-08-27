@@ -14,7 +14,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/snappy"
 	"github.com/jmoiron/sqlx"
@@ -26,6 +25,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/spamoor/txtypes"
 )
 
 // Event topic signatures for token transfers
@@ -300,8 +300,8 @@ func newTxProcessingContext(
 // processTransaction processes a single transaction within the context.
 // callTrace may be nil if traces are not available or not configured.
 func (ctx *txProcessingContext) processTransaction(
-	tx *types.Transaction,
-	receipt *types.Receipt,
+	tx *txtypes.Transaction,
+	receipt *txtypes.Receipt,
 	callTrace *exerpc.CallTraceCall,
 	stateDiff *exerpc.StateDiff,
 ) (dbCommitCallback, error) {
@@ -311,13 +311,12 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 
 	txHash := tx.Hash()
-	chainID := tx.ChainId()
-	if chainID.Cmp(big.NewInt(0)) == 0 {
-		chainID = nil
-	}
-	from, err := types.Sender(types.LatestSignerForChainID(chainID), tx)
+
+	// A transaction decoded from a client's JSON already carries the sender the node
+	// reported; one decoded from the beacon block's wire bytes has it recovered here.
+	from, err := tx.From(tx.ChainId())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve sender of transaction %s: %w", txHash.Hex(), err)
 	}
 
 	// 1. First ensure "from" account exists (no funder for sender)
@@ -716,7 +715,7 @@ func (ctx *txProcessingContext) resolveTokensFromDB() error {
 // processEvent collects event data for the event index (DB) and blockdb storage.
 func (ctx *txProcessingContext) processEvent(
 	index uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) *pendingTxEvent {
 	// Ensure source account exists
@@ -754,7 +753,7 @@ func (ctx *txProcessingContext) processEvent(
 func (ctx *txProcessingContext) detectTokenTransfers(
 	eventIndex uint32,
 	txPos uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) []*pendingTokenTransfer {
 	if len(log.Topics) == 0 {
@@ -794,7 +793,7 @@ func (ctx *txProcessingContext) detectTokenTransfers(
 func (ctx *txProcessingContext) parseERC20or721Transfer(
 	eventIndex uint32,
 	txPos uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) *pendingTokenTransfer {
 	// Need at least 3 topics for ERC20/721
@@ -834,7 +833,7 @@ func (ctx *txProcessingContext) parseERC20or721Transfer(
 func (ctx *txProcessingContext) parseERC1155TransferSingle(
 	eventIndex uint32,
 	txPos uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) *pendingTokenTransfer {
 	// Need 4 topics and at least 64 bytes of data
@@ -860,7 +859,7 @@ func (ctx *txProcessingContext) parseERC1155TransferSingle(
 func (ctx *txProcessingContext) parseERC1155TransferBatch(
 	eventIndex uint32,
 	txPos uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) []*pendingTokenTransfer {
 	// Need 4 topics and data for arrays

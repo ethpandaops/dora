@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/dora/blockdb"
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/services"
@@ -15,6 +14,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/golang/snappy"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -251,13 +251,13 @@ func handleBlockBodyDownload(w http.ResponseWriter, blockData *services.Combined
 
 	block.Transactions = make([]json.RawMessage, 0, len(transactions))
 	for i, txBytes := range transactions {
-		var tx ethtypes.Transaction
-		if err := tx.UnmarshalBinary(txBytes); err != nil {
+		tx, err := txtypes.DecodeTx(txBytes)
+		if err != nil {
 			return fmt.Errorf("failed to decode tx %d: %w", i, err)
 		}
 
 		// Marshal the tx, then augment with block context fields.
-		txJSON, err := tx.MarshalJSON()
+		txJSON, err := marshalTransactionJSON(tx)
 		if err != nil {
 			return fmt.Errorf("failed to marshal tx %d: %w", i, err)
 		}
@@ -272,11 +272,7 @@ func handleBlockBodyDownload(w http.ResponseWriter, blockData *services.Combined
 		txMap["transactionIndex"] = fmt.Sprintf("0x%x", i)
 
 		// Recover sender address.
-		chainID := tx.ChainId()
-		if chainID != nil && chainID.Sign() == 0 {
-			chainID = nil
-		}
-		if from, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainID), &tx); err == nil {
+		if from, err := tx.From(tx.ChainId()); err == nil {
 			txMap["from"] = fmt.Sprintf("0x%x", from[:])
 		}
 
@@ -438,8 +434,8 @@ func buildReceiptsFromFullBlob(
 	receipts := make([]*receiptJSON, 0, len(transactions))
 
 	for i, txBytes := range transactions {
-		var tx ethtypes.Transaction
-		if err := tx.UnmarshalBinary(txBytes); err != nil {
+		tx, err := txtypes.DecodeTx(txBytes)
+		if err != nil {
 			return nil, fmt.Errorf("failed to decode tx %d: %w", i, err)
 		}
 

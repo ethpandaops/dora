@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/jmoiron/sqlx"
 	blsu "github.com/protolambda/bls12-381-util"
 	zrnt_common "github.com/protolambda/zrnt/eth2/beacon/common"
@@ -106,7 +107,7 @@ func (ds *DepositIndexer) runDepositIndexerLoop() {
 
 // processFinalTx is the callback for the contract indexer to process final transactions
 // it parses the transaction and returns the corresponding deposit transaction
-func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*dbtypes.DepositTx) (*dbtypes.DepositTx, error) {
+func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*dbtypes.DepositTx) (*dbtypes.DepositTx, error) {
 	requestTx := ci.parseDepositLog(log, parentTxs, 0)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid deposit log")
@@ -123,7 +124,7 @@ func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, 
 
 // processRecentTx is the callback for the contract indexer to process recent transactions
 // it parses the transaction and returns the corresponding deposit transaction
-func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, parentTxs []*dbtypes.DepositTx) (*dbtypes.DepositTx, error) {
+func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, parentTxs []*dbtypes.DepositTx) (*dbtypes.DepositTx, error) {
 	forkId := uint64(fork.ForkId)
 	clBlock := ci.indexerCtx.BeaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
 	if len(clBlock) > 0 {

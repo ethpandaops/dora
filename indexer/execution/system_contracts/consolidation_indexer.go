@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
@@ -111,7 +112,7 @@ func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
 
 // processFinalTx is the callback for the contract indexer for finalized transactions
 // it parses the transaction and returns the corresponding consolidation request transaction
-func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, _ []*dbtypes.ConsolidationRequestTx) (*dbtypes.ConsolidationRequestTx, error) {
+func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, _ []*dbtypes.ConsolidationRequestTx) (*dbtypes.ConsolidationRequestTx, error) {
 	requestTx := ci.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid consolidation log")
@@ -129,7 +130,7 @@ func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transac
 
 // processRecentTx is the callback for the contract indexer for recent transactions
 // it parses the transaction and returns the corresponding consolidation request transaction
-func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.ConsolidationRequestTx) (*dbtypes.ConsolidationRequestTx, error) {
+func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.ConsolidationRequestTx) (*dbtypes.ConsolidationRequestTx, error) {
 	requestTx := ci.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid consolidation log")

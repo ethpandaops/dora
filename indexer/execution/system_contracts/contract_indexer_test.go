@@ -7,26 +7,48 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/spamoor/txtypes"
+	"github.com/holiman/uint256"
 )
 
-// TestTxRecipient checks the recipient lookup used by the contract-event
-// callbacks. Contract-creation transactions have no recipient, so the lookup
-// must fall back to the emitting contract instead of dereferencing a nil pointer.
+// TestTxRecipient checks the recipient lookup used by the contract-event callbacks.
+// Transactions that have no recipient of their own must fall back to the emitting
+// contract instead of dereferencing a nil pointer or reporting a target that is not the
+// transaction's.
 func TestTxRecipient(t *testing.T) {
 	contract := common.HexToAddress("0x00000000219ab540356cBB839Cbe05303d7705Fa")
 	log := &types.Log{Address: contract}
 
 	// Contract-creation transaction (To is nil): falls back to the emitter.
-	createTx := types.NewTx(&types.DynamicFeeTx{Nonce: 0, To: nil, Value: big.NewInt(0)})
+	createTx := txtypes.NewTx(&txtypes.DynamicFeeTx{Nonce: 0, To: nil, Value: big.NewInt(0)})
 	if got := txRecipient(createTx, log); got != contract {
 		t.Errorf("creation tx recipient = %x, want %x", got, contract)
 	}
 
 	// Normal call transaction: uses its recipient.
 	to := common.HexToAddress("0x00000000000000000000000000000000000000aa")
-	callTx := types.NewTx(&types.DynamicFeeTx{To: &to})
+	callTx := txtypes.NewTx(&txtypes.DynamicFeeTx{To: &to})
 	if got := txRecipient(callTx, log); got != to {
 		t.Errorf("call tx recipient = %x, want %x", got, to)
+	}
+
+	// Frame transaction: reports the first SENDER frame's target, which is one of
+	// several and not the transaction's own recipient, so the emitter wins.
+	frameTarget := common.HexToAddress("0x30592ef78d262bc79f0fe46355e07a51d685e382")
+	frameTx := txtypes.NewTx(&txtypes.FrameTx{
+		Frames: []*txtypes.Frame{{
+			Mode:   txtypes.FrameModeSender,
+			Target: &frameTarget,
+			Value:  uint256.NewInt(0),
+		}},
+	})
+
+	if got := frameTx.To(); got == nil || *got != frameTarget {
+		t.Fatalf("frame tx To() = %v, want the first SENDER frame target", got)
+	}
+
+	if got := txRecipient(frameTx, log); got != contract {
+		t.Errorf("frame tx recipient = %x, want %x", got, contract)
 	}
 }
 

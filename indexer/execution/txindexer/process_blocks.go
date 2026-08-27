@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
@@ -29,8 +29,8 @@ const (
 type blockData struct {
 	BlockNumber       uint64
 	BlockHash         common.Hash
-	Transactions      []*types.Transaction
-	Receipts          []*types.Receipt
+	Transactions      []*txtypes.Transaction
+	Receipts          []*txtypes.Receipt
 	FeeRecipient      common.Address   // Fee recipient from beacon block
 	Withdrawals       []WithdrawalData // Withdrawals from beacon block
 	TotalPriorityFees *big.Int         // Total priority fees in the block
@@ -158,7 +158,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	// Receipts are matched by transaction hash rather than by position: the transaction
 	// list can be sparse when a transaction fails to decode, and a receipt carries the
 	// authoritative transaction index that the tx UID is built from.
-	receiptMap := make(map[common.Hash]*types.Receipt, len(data.Receipts))
+	receiptMap := make(map[common.Hash]*txtypes.Receipt, len(data.Receipts))
 	for _, receipt := range data.Receipts {
 		receiptMap[receipt.TxHash] = receipt
 	}
