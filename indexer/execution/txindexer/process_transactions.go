@@ -520,10 +520,7 @@ func (ctx *txProcessingContext) processTransaction(
 			framesTraced = correlateFrameTrace(result.frames, callTrace)
 		}
 
-		// The root frames of an ordinary transaction's trace restate the transaction
-		// itself and are left out of the aggregates. The roots of a decomposed frame
-		// transaction are its frames, which nothing else records, so they are kept.
-		callTraceData, aggregates := ctx.processCallTrace(callTrace, fromAccount, !framesTraced)
+		callTraceData, aggregates := ctx.processCallTrace(callTrace, fromAccount)
 
 		if !isFrameTx || framesTraced {
 			result.callTraceData = callTraceData
@@ -539,11 +536,14 @@ func (ctx *txProcessingContext) processTransaction(
 		}
 	}
 
-	// A frame transaction whose trace does not decompose into its frames is decomposed by
-	// the frames themselves. They come from the receipt, so they are there whether or not
-	// tracing runs.
-	if isFrameTx && !framesTraced {
-		result.internalAggregates = ctx.aggregateFrames(result.frames, fromAccount)
+	// A frame transaction's frames always come from its receipt, so its account activity
+	// reads the same whether or not tracing runs and whichever client served the trace.
+	// The trace adds only the calls made from within the frames.
+	if isFrameTx {
+		result.internalAggregates = mergeInternalAggregates(
+			result.internalAggregates,
+			ctx.aggregateFrames(result.frames, fromAccount),
+		)
 		result.internalFromFrames = true
 	}
 
@@ -1424,7 +1424,6 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 func (ctx *txProcessingContext) processCallTrace(
 	roots []*exerpc.CallTraceCall,
 	funderAccount *pendingAccount,
-	skipRoots bool,
 ) ([]bdbtypes.FlatCallFrame, map[*pendingAccount]*pendingInternalAggregate) {
 	if len(roots) == 0 {
 		return nil, nil
@@ -1487,9 +1486,13 @@ func (ctx *txProcessingContext) processCallTrace(
 
 		frames = append(frames, frame)
 
-		// Aggregate per touched account. A root call is left out when it restates the
-		// transaction el_transactions already holds.
-		if depth > 0 || !skipRoots {
+		// Aggregate per touched account, leaving out the root calls. An ordinary
+		// transaction's root restates what el_transactions already holds. A decomposed
+		// frame transaction's roots are its frames, which the receipt describes and
+		// aggregateFrames records - taking them here too would count each frame twice,
+		// and would enter ENTRY_POINT, the predeploy that calls DEFAULT and VERIFY
+		// frames, as an account that took part in the transaction.
+		if depth > 0 {
 			fromAccount := ctx.ensureAccount(call.From, funderAccount, false)
 			toAccount := ctx.ensureAccount(call.To, fromAccount, false)
 			callType := exerpc.CallTypeFromString(call.Type)

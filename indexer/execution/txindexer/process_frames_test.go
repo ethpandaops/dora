@@ -537,3 +537,147 @@ func TestResolveFramesCapsFrameCount(t *testing.T) {
 		t.Errorf("last frame index = %d, want %d", last, txtypes.MaxFrames-1)
 	}
 }
+
+// Both stores record a frame's result, and a page is rebuilt from whichever still has
+// it: the relational rows while they exist, blockdb once they are pruned. They therefore
+// have to spell the result the same way, or a transaction changes its mind about what
+// happened to it when its rows age out.
+func TestFrameStoresAgreeOnStatus(t *testing.T) {
+	frames := []*pendingFrame{
+		{index: 0, value: new(big.Int), hasResult: true, status: txtypes.FrameStatusSuccess},
+		{index: 1, value: new(big.Int), hasResult: true, status: txtypes.FrameStatusFailed},
+		{index: 2, value: new(big.Int), hasResult: true, status: txtypes.FrameStatusSkipped},
+		// The client reported no result for this one.
+		{index: 3, value: new(big.Int)},
+	}
+
+	receiptData := frameReceiptData(frames, common.Address{})
+	if receiptData == nil || len(receiptData.Frames) != len(frames) {
+		t.Fatal("blockdb frame data was not built")
+	}
+
+	for i, frame := range frames {
+		row := frame.toDbRow(1)
+		stored := receiptData.Frames[i].Status
+
+		if row.Status != stored {
+			t.Errorf("frame %d: el_tx_frames says %d, blockdb says %d", i, row.Status, stored)
+		}
+	}
+
+	// The frame with no reported result must say so in both, rather than claim a failure.
+	if got := receiptData.Frames[3].Status; got != dbtypes.ElFrameStatusUnknown {
+		t.Errorf("unreported frame stored as %d, want the unknown sentinel %d", got, dbtypes.ElFrameStatusUnknown)
+	}
+}
+
+func TestMergeInternalAggregates(t *testing.T) {
+	ctx := newFrameTestContext()
+	sender := ctx.ensureAccount(frameSender, nil, false)
+	callee := ctx.ensureAccount(frameCallee, nil, false)
+	other := ctx.ensureAccount(framePaymaster, nil, false)
+
+	dst := map[*pendingAccount]*pendingInternalAggregate{
+		sender: {account: sender, outCount: 1, valueOut: 2, gasUsed: 10, callTypeMask: 1 << bdbtypes.CallTypeCall},
+		callee: {account: callee, inCount: 1, valueIn: 2, gasUsed: 10},
+	}
+
+	src := map[*pendingAccount]*pendingInternalAggregate{
+		sender: {account: sender, outCount: 2, valueOut: 3, gasUsed: 5, callTypeMask: 1 << bdbtypes.CallTypeFrame},
+		other:  {account: other, inCount: 1, gasUsed: 7},
+	}
+
+	merged := mergeInternalAggregates(dst, src)
+
+	if len(merged) != 3 {
+		t.Fatalf("merged accounts = %d, want 3", len(merged))
+	}
+
+	got := merged[sender]
+	if got.outCount != 3 || got.valueOut != 5 || got.gasUsed != 15 {
+		t.Errorf("sender merged to out=%d value=%v gas=%d, want 3/5/15", got.outCount, got.valueOut, got.gasUsed)
+	}
+
+	// Both sources' call types survive, so a frame stays distinguishable from a sub-call.
+	wantMask := uint16(1<<bdbtypes.CallTypeCall | 1<<bdbtypes.CallTypeFrame)
+	if got.callTypeMask != wantMask {
+		t.Errorf("sender call type mask = %b, want %b", got.callTypeMask, wantMask)
+	}
+
+	if merged[other].gasUsed != 7 {
+		t.Error("an account only the second set touched was dropped")
+	}
+
+	if merged[callee].inCount != 1 {
+		t.Error("an account only the first set touched was disturbed")
+	}
+}
+
+// An empty destination must not lose the source, which is the shape a frame transaction
+// takes when no trace was collected for it.
+func TestMergeInternalAggregatesFromEmpty(t *testing.T) {
+	ctx := newFrameTestContext()
+	sender := ctx.ensureAccount(frameSender, nil, false)
+
+	src := map[*pendingAccount]*pendingInternalAggregate{
+		sender: {account: sender, outCount: 1},
+	}
+
+	if merged := mergeInternalAggregates(nil, src); len(merged) != 1 {
+		t.Fatalf("merged accounts = %d, want 1", len(merged))
+	}
+}
+
+// A decomposed frame transaction's trace has one root per frame, and DEFAULT and VERIFY
+// frames are entered by the ENTRY_POINT predeploy rather than by the sender. Aggregating
+// those roots would record ENTRY_POINT as an account that took part, collecting every
+// frame transaction on the chain onto one address - and would count each frame a second
+// time, since the receipt already describes them.
+func TestProcessCallTraceLeavesFrameRootsToTheReceipt(t *testing.T) {
+	ctx := newFrameTestContext()
+	entryPoint := common.HexToAddress("0x00000000000000000000000000000000000000aa")
+	inner := common.HexToAddress("0x1111111111111111111111111111111111111111")
+
+	roots := []*exerpc.CallTraceCall{
+		// A VERIFY frame, entered by the predeploy.
+		{Type: "CALL", From: entryPoint, To: frameSender, Gas: 5000, GasUsed: 51},
+		// A SENDER frame, which does make a call of its own.
+		{Type: "CALL", From: frameSender, To: frameCallee, Gas: 30000, GasUsed: 21000, Calls: []exerpc.CallTraceCall{
+			{Type: "CALL", From: frameCallee, To: inner, Gas: 1000, GasUsed: 700},
+		}},
+	}
+
+	frames, aggregates := ctx.processCallTrace(roots, nil)
+
+	// Every call is still stored for display, roots included.
+	if len(frames) != 3 {
+		t.Fatalf("stored call frames = %d, want 3", len(frames))
+	}
+
+	for account := range aggregates {
+		if common.BytesToAddress(account.account.Address) == entryPoint {
+			t.Error("ENTRY_POINT must not be recorded as a participant in the transaction")
+		}
+	}
+
+	// Only the call made from within a frame is aggregated.
+	if len(aggregates) != 2 {
+		t.Fatalf("aggregated accounts = %d, want 2 (the sub-call's caller and callee)", len(aggregates))
+	}
+
+	for account, agg := range aggregates {
+		addr := common.BytesToAddress(account.account.Address)
+		switch addr {
+		case frameCallee:
+			if agg.outCount != 1 || agg.inCount != 0 {
+				t.Errorf("frame target in/out = %d/%d, want 0/1 - its own frame is the receipt's to count", agg.inCount, agg.outCount)
+			}
+		case inner:
+			if agg.inCount != 1 || agg.gasUsed != 700 {
+				t.Errorf("sub-call callee in=%d gas=%d, want 1/700", agg.inCount, agg.gasUsed)
+			}
+		default:
+			t.Errorf("unexpected account aggregated: %s", addr.Hex())
+		}
+	}
+}

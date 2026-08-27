@@ -54,15 +54,20 @@ type pendingFrame struct {
 	traceCount uint32
 }
 
-// toDbRow renders the frame as its el_tx_frames row. Account ids are resolved by then.
-func (f *pendingFrame) toDbRow(txUid uint64) *dbtypes.ElTxFrame {
-	// A client that reported no result for the frame leaves it neither succeeded nor
-	// failed, which the status sentinel says and a zero status would not.
-	status := dbtypes.ElFrameStatusUnknown
-	if f.hasResult {
-		status = uint8(f.status)
+// storedStatus is the frame's result as both stores record it.
+//
+// A client that reported no result for the frame leaves it neither succeeded nor failed,
+// which the sentinel says and a zero status would not - zero is how a failure is spelled.
+func (f *pendingFrame) storedStatus() uint8 {
+	if !f.hasResult {
+		return dbtypes.ElFrameStatusUnknown
 	}
 
+	return uint8(f.status)
+}
+
+// toDbRow renders the frame as its el_tx_frames row. Account ids are resolved by then.
+func (f *pendingFrame) toDbRow(txUid uint64) *dbtypes.ElTxFrame {
 	// log_count is a SMALLINT, which postgres signs.
 	logCount := f.logCount
 	if logCount > 32767 {
@@ -74,7 +79,7 @@ func (f *pendingFrame) toDbRow(txUid uint64) *dbtypes.ElTxFrame {
 		FrameIndex:    f.index,
 		Mode:          f.mode,
 		Flags:         f.flags,
-		Status:        status,
+		Status:        f.storedStatus(),
 		RolledBack:    f.rolledBack,
 		Amount:        weiToFloat(f.value, 18),
 		AmountRaw:     f.value.Bytes(),
@@ -110,7 +115,7 @@ func frameReceiptData(frames []*pendingFrame, payer common.Address) *bdbtypes.Fr
 
 	for _, frame := range frames {
 		data.Frames = append(data.Frames, bdbtypes.FrameReceiptEntry{
-			Status:       uint8(frame.status),
+			Status:       frame.storedStatus(),
 			ExecGasUsed:  frame.execGasUsed,
 			StateGasUsed: frame.stateGasUsed,
 			LogCount:     frame.logCount,
@@ -244,10 +249,10 @@ func markRolledBackBatches(frames []*pendingFrame) {
 // aggregateFrames builds the per-account internal-transaction aggregates of a frame
 // transaction from its frames.
 //
-// The frames are used rather than the transaction's call trace. They are consensus data
-// carried by the receipt, so they are available whether or not tracing is enabled, and
-// combining the two would count the same calls twice - a client's trace of a frame
-// transaction covers the very calls the frames describe.
+// The frames come from the receipt, so this is what a frame transaction's account
+// activity is built from whether or not tracing runs. A call trace contributes only the
+// calls made from within the frames; its own roots are the frames again and are left out
+// of it, so nothing is counted twice.
 //
 // Every frame is attributed to the transaction's sender as caller. DEFAULT and VERIFY
 // frames are entered by the ENTRY_POINT predeploy rather than by the sender, but that
@@ -359,4 +364,31 @@ func countCallFrames(call *exerpc.CallTraceCall) uint32 {
 	}
 
 	return count
+}
+
+// mergeInternalAggregates folds src into dst and returns the combined set. Accounts are
+// keyed by the pending entry a block shares for one address, so the same account resolves
+// to the same key in both.
+func mergeInternalAggregates(dst, src map[*pendingAccount]*pendingInternalAggregate) map[*pendingAccount]*pendingInternalAggregate {
+	if len(dst) == 0 {
+		return src
+	}
+
+	for account, agg := range src {
+		existing, ok := dst[account]
+		if !ok {
+			dst[account] = agg
+
+			continue
+		}
+
+		existing.inCount += agg.inCount
+		existing.outCount += agg.outCount
+		existing.callTypeMask |= agg.callTypeMask
+		existing.valueIn += agg.valueIn
+		existing.valueOut += agg.valueOut
+		existing.gasUsed += agg.gasUsed
+	}
+
+	return dst
 }
