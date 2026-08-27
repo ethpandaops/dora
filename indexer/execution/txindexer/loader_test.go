@@ -292,3 +292,94 @@ func TestReceiptLookupIsByHashNotPosition(t *testing.T) {
 		}
 	}
 }
+
+// A frame's logs are reported inside the receipt that contains them, so they carry none
+// of the position fields go-ethereum's Log type requires. Block receipts are decoded as
+// one response, so a receipt that fails to decode fails every receipt beside it - one
+// frame transaction that emitted a log cost its whole block an EL index.
+func TestBlockReceiptsDecodeFrameLogsWithoutPosition(t *testing.T) {
+	// Shaped as ethrex reports it: the top-level list carries the full context, the
+	// per-frame copy carries only what the frame itself produced.
+	raw := []byte(`[
+		{
+			"type": "0x2",
+			"status": "0x1",
+			"transactionHash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+			"blockHash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+			"blockNumber": "0x169",
+			"transactionIndex": "0x0",
+			"gasUsed": "0x5208",
+			"logs": []
+		},
+		{
+			"type": "0x6",
+			"status": "0x1",
+			"payer": "0x6df35438a4dfcdbd25c7a364ab77e3cfdce87fc5",
+			"transactionHash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+			"blockHash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+			"blockNumber": "0x169",
+			"transactionIndex": "0x8",
+			"gasUsed": "0x5261",
+			"logs": [
+				{
+					"address": "0xffffffffffffffffffffffffffffffffffffffff",
+					"topics": ["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"],
+					"data": "0x",
+					"blockHash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+					"blockNumber": "0x169",
+					"transactionHash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+					"transactionIndex": "0x8",
+					"logIndex": "0x4",
+					"removed": false
+				}
+			],
+			"frameReceipts": [
+				{"status": "0x1", "gasUsed": "0x0", "stateGasUsed": "0x0", "logs": []},
+				{"status": "0x1", "gasUsed": "0x0", "stateGasUsed": "0x0", "logs": [
+					{
+						"address": "0xffffffffffffffffffffffffffffffffffffffff",
+						"topics": ["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"],
+						"data": "0x"
+					}
+				]}
+			]
+		}
+	]`)
+
+	receipts := []*txtypes.Receipt{}
+	if err := json.Unmarshal(raw, &receipts); err != nil {
+		t.Fatalf("block receipts must decode when a frame's logs omit their position: %v", err)
+	}
+
+	if len(receipts) != 2 {
+		t.Fatalf("receipts = %d, want 2 - a failed receipt takes the whole block with it", len(receipts))
+	}
+
+	extra := receipts[1].FrameExtra()
+	if extra == nil {
+		t.Fatal("frame receipt content was lost")
+	}
+
+	if len(extra.Frames) != 2 {
+		t.Fatalf("frames = %d, want 2", len(extra.Frames))
+	}
+
+	// The per-frame log counts are what attribute the transaction's flat log list back
+	// to the frames that emitted it.
+	if got := len(extra.Frames[0].Logs); got != 0 {
+		t.Errorf("frame 0 logs = %d, want 0", got)
+	}
+
+	if got := len(extra.Frames[1].Logs); got != 1 {
+		t.Fatalf("frame 1 logs = %d, want 1", got)
+	}
+
+	// A nested log inherits the transaction it belongs to from the receipt around it.
+	if got := extra.Frames[1].Logs[0].TxHash; got != receipts[1].TxHash {
+		t.Errorf("nested log tx hash = %s, want the receipt's %s", got.Hex(), receipts[1].TxHash.Hex())
+	}
+
+	if got := extra.Frames[1].Logs[0].BlockNumber; got != 0x169 {
+		t.Errorf("nested log block number = %d, want 361", got)
+	}
+}
