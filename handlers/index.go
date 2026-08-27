@@ -399,15 +399,17 @@ func buildIndexPageRecentEpochsData(ctx context.Context, pageData *models.IndexP
 
 // resolveBuildSource maps a db builder index (-1 = self-built) to the model fields
 // driving the proposer build-source icon (house / hard-hat), matching the slots page.
-func resolveBuildSource(dbBuilderIndex int64) (hasBuilder bool, builderIndex uint64, builderURL string) {
+func resolveBuildSource(dbBuilderIndex int64) (hasBuilder bool, builderIndex uint64, builderName string, builderURL string) {
 	if dbBuilderIndex == -1 {
-		return true, math.MaxUint64, ""
+		return true, math.MaxUint64, "", ""
 	}
 	if dbBuilderIndex < 0 {
-		return false, 0, ""
+		return false, 0, "", ""
 	}
 	builderIndex = uint64(dbBuilderIndex)
-	return true, builderIndex, services.GlobalBeaconService.GetBuilderURL(builderIndex)
+	builderName = services.GlobalBeaconService.GetValidatorName(builderIndex | services.BuilderIndexFlag)
+	builderURL = services.GlobalBeaconService.GetBuilderURL(builderIndex)
+	return true, builderIndex, builderName, builderURL
 }
 
 func buildIndexPageRecentBlocksData(ctx context.Context, pageData *models.IndexPageData, recentBlockCount int) {
@@ -447,7 +449,7 @@ func buildIndexPageRecentBlocksData(ctx context.Context, pageData *models.IndexP
 			PayloadStatus: uint8(payloadStatus),
 			BlockRoot:     blockData.Root,
 		}
-		blockModel.HasBuilder, blockModel.BuilderIndex, blockModel.BuilderURL = resolveBuildSource(blockData.BuilderIndex)
+		blockModel.HasBuilder, blockModel.BuilderIndex, blockModel.BuilderName, blockModel.BuilderURL = resolveBuildSource(blockData.BuilderIndex)
 		if blockData.EthBlockNumber != nil {
 			blockModel.WithEthBlock = true
 			blockModel.EthBlock = *blockData.EthBlockNumber
@@ -507,7 +509,7 @@ func buildIndexPageRecentSlotsData(ctx context.Context, pageData *models.IndexPa
 				ForkGraph:     make([]*models.IndexPageDataForkGraph, 0),
 			}
 			if dbSlot.Status > 0 {
-				slotData.HasBuilder, slotData.BuilderIndex, slotData.BuilderURL = resolveBuildSource(dbSlot.BuilderIndex)
+				slotData.HasBuilder, slotData.BuilderIndex, slotData.BuilderName, slotData.BuilderURL = resolveBuildSource(dbSlot.BuilderIndex)
 			}
 			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
 			blockCount++

@@ -400,8 +400,9 @@
         if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
         return ms + 'ms';
       }
-      // Axis ticks are round numbers, so drop the trailing zeroes fmtStr keeps.
+      // Axis bounds are fractional (lo/hi carry float noise), so round to whole ms.
       function fmtAxis(ms) {
+        ms = Math.round(ms);
         if (ms < 1000) return ms + 'ms';
         return String(+(ms / 1000).toFixed(2)) + 's';
       }
