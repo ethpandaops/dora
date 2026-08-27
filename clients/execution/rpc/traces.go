@@ -63,8 +63,15 @@ type CallTracerConfig struct {
 // CallTraceResult is the JSON result for one transaction from
 // debug_traceBlockByHash with the callTracer.
 type CallTraceResult struct {
-	TxHash common.Hash    `json:"txHash"`
-	Result *CallTraceCall `json:"result"`
+	TxHash common.Hash
+
+	// Roots are the transaction's top-level call frames.
+	//
+	// An ordinary transaction is a single call and has exactly one. An EIP-8141 frame
+	// transaction is a list of calls, so a client that decomposes one reports a root per
+	// frame; the callTracer is not part of execution-apis and nothing specifies how, so
+	// both a lone object and a list are accepted here.
+	Roots []*CallTraceCall
 }
 
 // CallTraceCall is a single call frame in the callTracer output.
@@ -85,6 +92,25 @@ type CallTraceCall struct {
 
 	// Revert reason (some clients include this separately)
 	RevertReason LenientHexBytes `json:"revertReason,omitempty"`
+
+	// EIP-8037 splits gas into a regular and a state dimension. Clients on such a chain
+	// report both alongside gasUsed, which they do not always fill in.
+	RegularGasUsed hexutil.Uint64 `json:"regularGasUsed"`
+	StateGasUsed   hexutil.Uint64 `json:"stateGasUsed"`
+	GasRefund      hexutil.Uint64 `json:"gasRefund"`
+}
+
+// TotalGasUsed returns the gas the call consumed across both EIP-8037 dimensions.
+//
+// gasUsed is normally their sum, but not always: ethrex leaves it at zero on the root
+// frame of a frame transaction while still reporting the dimensions, so falling back to
+// their sum keeps the call's cost visible rather than recording it as free.
+func (c *CallTraceCall) TotalGasUsed() uint64 {
+	if c.GasUsed != 0 {
+		return uint64(c.GasUsed)
+	}
+
+	return uint64(c.RegularGasUsed) + uint64(c.StateGasUsed)
 }
 
 // CallTypeFromString converts a callTracer type string to a numeric call type.

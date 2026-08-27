@@ -128,12 +128,12 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		}
 	}
 
-	// Build trace lookup map (txHash → call trace) for O(1) access per tx
-	traceMap := make(map[common.Hash]*exerpc.CallTraceCall, len(data.TraceResults))
+	// Build trace lookup map (txHash → top-level call frames) for O(1) access per tx
+	traceMap := make(map[common.Hash][]*exerpc.CallTraceCall, len(data.TraceResults))
 	for i := range data.TraceResults {
 		tr := &data.TraceResults[i]
-		if tr.Result != nil {
-			traceMap[tr.TxHash] = tr.Result
+		if len(tr.Roots) > 0 {
+			traceMap[tr.TxHash] = tr.Roots
 		}
 	}
 

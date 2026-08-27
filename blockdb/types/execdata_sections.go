@@ -12,6 +12,7 @@ const (
 	CallTypeCreate       = 3
 	CallTypeCreate2      = 4
 	CallTypeSelfDestruct = 5
+	CallTypeFrame        = 6
 )
 
 // Call status constants for binary encoding.
