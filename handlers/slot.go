@@ -1203,8 +1203,17 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 		} else {
 			txData.From = txFrom.Bytes()
 		}
+
+		// A frame transaction addresses each of its frames separately. What To() reports
+		// for one is the first SENDER frame's target, which is neither the transaction's
+		// recipient nor, when it is absent, a contract creation.
 		txTo := tx.To()
-		if txTo != nil {
+
+		if frameTx, ok := tx.Inner().(*txtypes.FrameTx); ok {
+			txData.IsMultiTarget = true
+			txData.FrameCount = uint64(len(frameTx.Frames))
+			txTo = nil
+		} else if txTo != nil {
 			txData.To = txTo.Bytes()
 		}
 
@@ -1212,7 +1221,7 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 		txHashMap[string(txHash[:])] = txData
 
 		// check call fn signature
-		isCreate := txTo == nil
+		isCreate := txTo == nil && !txData.IsMultiTarget
 		if txData.DataLen >= 4 {
 			// Skip fn signature lookup for deployments, precompiles, and system contracts
 			if skip, altName := utils.ShouldSkipSignatureLookup(txData.To, isCreate, sysContracts); skip {

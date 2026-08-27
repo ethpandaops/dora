@@ -339,6 +339,12 @@ type SlotPageTransaction struct {
 	Type          uint64  `json:"type"`
 	TypeName      string  `json:"type_name"`
 
+	// IsMultiTarget marks a transaction that addresses several recipients rather than
+	// one - an EIP-8141 frame transaction - so its missing recipient is not a contract
+	// creation. FrameCount is how many calls it carries.
+	IsMultiTarget bool   `json:"is_multi_target"`
+	FrameCount    uint64 `json:"frame_count"`
+
 	// EL-enriched data (only available when execution indexer is enabled)
 	HasElData    bool    `json:"has_el_data"`
 	Reverted     bool    `json:"reverted"`

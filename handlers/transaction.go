@@ -57,6 +57,7 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 		"transaction/internaltxs.html",
 		"transaction/authorizations.html",
 		"transaction/blobs.html",
+		"transaction/frames.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"transaction/notfound.html",
@@ -424,12 +425,12 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 		pageData.GasUsedPct = float64(tx.GasUsed) / float64(tx.GasLimit) * 100
 	}
 
-	// Transaction details
-	pageData.TxType = tx.TxType
-	if name, ok := txTypeNames[tx.TxType]; ok {
+	// Transaction details. The create flag shares the byte with the type.
+	pageData.TxType = tx.TxType & dbtypes.ElTxTypeMask
+	if name, ok := txTypeNames[pageData.TxType]; ok {
 		pageData.TxTypeName = name
 	} else {
-		pageData.TxTypeName = fmt.Sprintf("Type %d", tx.TxType)
+		pageData.TxTypeName = fmt.Sprintf("Type %d", pageData.TxType)
 	}
 	pageData.Nonce = tx.Nonce
 	pageData.TxIndex = uint32(tx.TxUid & 0xFFFF)
@@ -457,6 +458,19 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// A call trace exists for this tx whenever its block stored call traces, even
 	// if it has only the single root frame (no internal calls aggregated).
 	pageData.HasTrace = pageData.DataStatus&dbtypes.ElBlockDataCallTraces != 0
+
+	// Frames of a frame transaction. They are the transaction's recipients, values and
+	// statuses, so they belong on the overview rather than behind a tab that has to be
+	// opened; the payer comes from blockdb, which is the only place it is kept.
+	if dbtypes.IsMultiTarget(tx.TxType) {
+		pageData.IsFrameTx = true
+
+		loadTransactionFrames(ctx, pageData, tx.TxUid)
+
+		if displayBlock != nil {
+			loadFramePayerFromBlockdb(ctx, pageData, displayBlock.Slot, displayBlock.Root, tx.TxHash)
+		}
+	}
 
 	// Event count comes straight off the tx row (logs emitted); full event
 	// data is loaded from blockdb when the events tab is opened.
@@ -560,6 +574,8 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 			// Receipt found - upgrade to full view mode
 			pageData.ViewMode = models.TxViewModeFull
 			pageData.HasReceipt = true
+
+			applyFrameReceiptExtra(pageData, receipt)
 
 			// Status
 			pageData.Status = receipt.Status == 1
@@ -676,10 +692,20 @@ func applyEthTxFields(ctx context.Context, pageData *models.TransactionPageData,
 		pageData.FromAddr = from.Bytes()
 	}
 
-	if ethTx.To() != nil {
+	// A frame transaction reports the first SENDER frame's target, which is one of
+	// several and not the transaction's recipient - and its absence is not a creation.
+	switch {
+	case ethTx.Type() == txtypes.FrameTxType:
+		pageData.IsFrameTx = true
+
+		if frameTx, ok := ethTx.Inner().(*txtypes.FrameTx); ok {
+			buildFramesFromEnvelope(pageData, frameTx)
+			applyFrameTxEnvelope(pageData, frameTx)
+		}
+	case ethTx.To() != nil:
 		pageData.ToAddr = ethTx.To().Bytes()
 		pageData.HasTo = true
-	} else {
+	default:
 		pageData.IsCreate = true
 	}
 
@@ -839,9 +865,14 @@ func applyReceiptMetaFromBlockdb(ctx context.Context, pageData *models.Transacti
 		return
 	}
 
-	meta, _, err := bdbtypes.DecodeReceiptMetaSection(metaRaw)
+	meta, frameData, err := bdbtypes.DecodeReceiptMetaSection(metaRaw)
 	if err != nil {
 		return
+	}
+
+	if frameData != nil {
+		applyFramePayer(pageData, frameData)
+		applyFrameResults(pageData, frameData.Frames)
 	}
 
 	pageData.ViewMode = models.TxViewModeFull
@@ -1486,6 +1517,16 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 
 	// Generate JSON using proper marshaling
 	generateTxJSON(pageData, ethTx)
+
+	// A frame transaction's nonce domain and expiry deadline live in the envelope, so
+	// they are only available while the block it came in is still retained.
+	if frameTx, ok := ethTx.Inner().(*txtypes.FrameTx); ok {
+		if len(pageData.Frames) == 0 {
+			buildFramesFromEnvelope(pageData, frameTx)
+		}
+
+		applyFrameTxEnvelope(pageData, frameTx)
+	}
 
 	// Load blob data for type 3 transactions
 	if ethTx.Type() == txtypes.BlobTxType && len(ethTx.BlobHashes()) > 0 {

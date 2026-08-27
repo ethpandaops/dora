@@ -54,6 +54,7 @@ type TransactionsFilter struct {
 	Type2     bool   `json:"type2"`
 	Type3     bool   `json:"type3"`
 	Type4     bool   `json:"type4"`
+	Type6     bool   `json:"type6"`
 	Active    bool   `json:"active"` // any filter set (controls panel open state)
 }
 
@@ -69,14 +70,18 @@ type TransactionsPageDataTransaction struct {
 	ToAddr         []byte    `json:"to_addr"`
 	ToIsContract   bool      `json:"to_is_contract"`
 	HasTo          bool      `json:"has_to"`
-	IsCreate       bool      `json:"is_create"`
-	Nonce          uint64    `json:"nonce"`
-	Amount         float64   `json:"amount"`
-	TxFee          float64   `json:"tx_fee"`
-	GasUsed        uint64    `json:"gas_used"`
-	TxType         uint8     `json:"tx_type"`
-	Reverted       bool      `json:"reverted"`
-	RevertReason   string    `json:"revert_reason,omitempty"`
-	MethodID       []byte    `json:"method_id"`
-	MethodName     string    `json:"method_name"`
+	// IsMultiTarget marks a transaction that addresses several recipients rather than
+	// one, so a missing recipient is not a contract creation.
+	IsMultiTarget bool    `json:"is_multi_target"`
+	FrameCount    int     `json:"frame_count"`
+	IsCreate      bool    `json:"is_create"`
+	Nonce         uint64  `json:"nonce"`
+	Amount        float64 `json:"amount"`
+	TxFee         float64 `json:"tx_fee"`
+	GasUsed       uint64  `json:"gas_used"`
+	TxType        uint8   `json:"tx_type"`
+	Reverted      bool    `json:"reverted"`
+	RevertReason  string  `json:"revert_reason,omitempty"`
+	MethodID      []byte  `json:"method_id"`
+	MethodName    string  `json:"method_name"`
 }

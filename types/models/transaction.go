@@ -143,6 +143,32 @@ type TransactionPageData struct {
 	// EIP-7976: calldata floor gas cost = 21000 + 64 × len(calldata); 0 if no calldata
 	CalldataFloorGas uint64 `json:"calldata_floor_gas"`
 
+	// Frame transaction (EIP-8141). A frame transaction is an ordered list of calls
+	// rather than one, so it has no recipient, value or status of its own.
+	IsFrameTx  bool   `json:"is_frame_tx"`
+	FrameCount uint64 `json:"frame_count"`
+
+	// FrameShape names the transaction by its validation prefix - the thing that makes a
+	// frame transaction legible at a glance.
+	FrameShape string `json:"frame_shape"`
+
+	// PayerAddr settled the fee. Worth showing whenever it is not the sender, which is
+	// the whole point of a sponsored transaction.
+	PayerAddr     []byte `json:"payer_addr"`
+	PayerIsSender bool   `json:"payer_is_sender"`
+
+	// ExpiryTime is the deadline an expiry verifier frame checked against.
+	HasExpiry  bool      `json:"has_expiry"`
+	ExpiryTime time.Time `json:"expiry_time"`
+
+	// NonceIsAccount reports whether NonceSeq is the sender's ordinary account nonce,
+	// which is only so when the transaction names the zero nonce key alone. Otherwise it
+	// is sequenced in a domain of its own and NonceKeys names which.
+	NonceIsAccount bool     `json:"nonce_is_account"`
+	NonceKeys      []string `json:"nonce_keys"`
+
+	Frames []*TransactionPageDataFrame `json:"frames"`
+
 	// Tab view
 	TabView string `json:"tab_view"`
 
@@ -168,6 +194,60 @@ type TransactionPageData struct {
 	StateChangesNotAvailable bool                                     `json:"state_changes_not_available"`
 
 	EnsNameData
+}
+
+// TransactionPageDataFrame is one frame of an EIP-8141 frame transaction.
+type TransactionPageDataFrame struct {
+	Index uint32 `json:"index"`
+
+	Mode     uint8  `json:"mode"`
+	ModeName string `json:"mode_name"`
+
+	// Species names what the frame does within the transaction - a deadline check, a
+	// paymaster approving payment, the user's own operation.
+	Species string `json:"species"`
+
+	Flags             uint8 `json:"flags"`
+	ApprovesPayment   bool  `json:"approves_payment"`
+	ApprovesExecution bool  `json:"approves_execution"`
+
+	// AtomicBatch marks a frame batched with the frame after it. BatchIndex groups the
+	// frames of one batch so they can be shown together; frames outside a batch each get
+	// their own.
+	AtomicBatch bool `json:"atomic_batch"`
+	BatchIndex  int  `json:"batch_index"`
+	BatchSize   int  `json:"batch_size"`
+
+	TargetAddr     []byte `json:"target_addr"`
+	TargetIsSender bool   `json:"target_is_sender"`
+	HasTarget      bool   `json:"has_target"`
+
+	Amount   float64 `json:"amount"`
+	DataLen  uint32  `json:"data_len"`
+	MethodID []byte  `json:"method_id"`
+
+	// Status is EIP-8141's per-frame status. Skipped is neither a success nor a failure:
+	// an earlier frame in the same atomic batch failed and this one never ran. Unknown
+	// means the client reported no result for it.
+	Status     uint8  `json:"status"`
+	StatusText string `json:"status_text"`
+
+	// RolledBack marks a frame whose atomic batch was undone after it ran. It may report
+	// success, but its logs were discarded and its state gas zeroed - nothing it did
+	// survived, and a plain success would say otherwise.
+	RolledBack bool `json:"rolled_back"`
+
+	// EIP-8037 budgets and reports each frame in two gas dimensions.
+	ExecGasLimit  uint64 `json:"exec_gas_limit"`
+	StateGasLimit uint64 `json:"state_gas_limit"`
+	ExecGasUsed   uint64 `json:"exec_gas_used"`
+	StateGasUsed  uint64 `json:"state_gas_used"`
+
+	LogCount uint16 `json:"log_count"`
+
+	// ExpiryTime is set on an expiry verifier frame, whose calldata is the deadline.
+	HasExpiry  bool      `json:"has_expiry"`
+	ExpiryTime time.Time `json:"expiry_time"`
 }
 
 // TransactionAccessListEntry is one address+storage-keys pair from an EIP-2930 access list.

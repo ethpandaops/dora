@@ -108,10 +108,24 @@
             {{ end }}
           </div>
         </div>
+        {{ if and .IsFrameTx (gt (len .PayerAddr) 0) (not .PayerIsSender) }}
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Receiving address">{{ if .IsCreate }}Created Contract:{{ else }}To:{{ end }}</span></div>
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The account that settled the fee, which for a sponsored transaction is not the sender">Payer:</span></div>
           <div class="col-md-9 text-monospace text-break">
-            {{ if .HasTo }}
+            {{ $payerAddr := formatEthAddressFull .PayerAddr }}
+            <a href="/address/{{ $payerAddr }}">{{ $payerAddr }}</a>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $payerAddr }}"></i>
+          </div>
+        </div>
+        {{ end }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Receiving address">{{ if .IsCreate }}Created Contract:{{ else if .IsFrameTx }}Targets:{{ else }}To:{{ end }}</span></div>
+          <div class="col-md-9 text-monospace text-break">
+            {{ if .IsFrameTx }}
+            <span data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction addresses each of its frames separately and has no recipient of its own">
+              {{ .FrameCount }} frame{{ if ne .FrameCount 1 }}s{{ end }}
+            </span>
+            {{ else if .HasTo }}
             {{ $toAddr := formatEthAddressFull .ToAddr }}
             {{ if .ToIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
             <a href="/address/{{ $toAddr }}">{{ $toAddr }}</a>
@@ -242,11 +256,21 @@
             {{ end }}
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction type">Type:</span></div>
-              <div class="col-md-9">{{ .TxTypeName }} ({{ .TxType }})</div>
+              <div class="col-md-9">
+                {{ .TxTypeName }} ({{ .TxType }})
+                {{ if .FrameShape }}<span class="badge rounded-pill bg-secondary ms-1">{{ .FrameShape }}</span>{{ end }}
+              </div>
             </div>
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction nonce">Nonce:</span></div>
-              <div class="col-md-9">{{ formatAddCommas .Nonce }}</div>
+              <div class="col-md-9">
+                {{ formatAddCommas .Nonce }}
+                {{ if and .IsFrameTx (not .NonceIsAccount) }}
+                <span class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="This transaction is sequenced in its own nonce domain rather than against the sender's account nonce">
+                  in nonce key{{ if ne (len .NonceKeys) 1 }}s{{ end }} {{ range $i, $key := .NonceKeys }}{{ if $i }}, {{ end }}{{ $key }}{{ end }}
+                </span>
+                {{ end }}
+              </div>
             </div>
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Position in block">Position in Block:</span></div>
@@ -348,6 +372,9 @@
                 <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7976 floor (Amsterdam+): flat 64 gas per byte (all bytes equal, zero or not)&#xA;= 21,000 + {{ len .InputData }}×64 = {{ formatAddCommas .CalldataAmsterdamFloor }} gas&#xA;Supersedes EIP-7623; especially raises cost for zero-heavy calldata.">EIP-7976&nbsp;{{ formatAddCommas .CalldataAmsterdamFloor }}</span>
               </div>
             </div>
+            {{ end }}
+            {{ if .IsFrameTx }}
+            {{ template "frames" . }}
             {{ end }}
           </div>
         </div>

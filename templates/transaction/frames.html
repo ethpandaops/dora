@@ -1,0 +1,87 @@
+{{ define "frames" }}
+<div class="row p-2 mx-0">
+  <div class="col-12">
+    <div class="d-flex align-items-center mb-2">
+      <span class="me-2" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction is an ordered list of calls. Each frame declares its own target, value and gas budgets, and the receipt reports a result for each.">Frames:</span>
+      {{ if .HasExpiry }}
+      <span class="badge text-bg-secondary ms-auto" data-bs-toggle="tooltip" data-bs-placement="top" title="Deadline checked by the expiry verifier frame">
+        <i class="far fa-clock me-1"></i>expires {{ formatRecentTimeShort .ExpiryTime }}
+      </span>
+      {{ end }}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-nobr table-sm mb-0" style="font-size: 0.9rem;">
+        <thead>
+          <tr>
+            <th style="width: 3rem;">#</th>
+            <th>Kind</th>
+            <th>Target</th>
+            <th class="text-end">Value</th>
+            <th class="text-end">Data</th>
+            <th class="text-end" data-bs-toggle="tooltip" data-bs-placement="top" title="Execution gas used of the budget declared for this frame">Exec gas</th>
+            <th class="text-end" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-8037 state gas used of the budget declared for this frame. A later frame can retroactively reduce an earlier one through a state-gas refill.">State gas</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ $prevBatch := -1 }}
+          {{ range $frame := .Frames }}
+          {{ $inBatch := gt $frame.BatchSize 1 }}
+          <tr{{ if $inBatch }} class="frame-batched" data-batch="{{ $frame.BatchIndex }}"{{ end }}>
+            <td class="text-muted">
+              {{ if and $inBatch (ne $frame.BatchIndex $prevBatch) }}
+              <i class="fas fa-link text-muted" style="font-size:0.7rem" data-bs-toggle="tooltip" data-bs-placement="top" title="Atomic batch of {{ $frame.BatchSize }} frames: if one fails the whole batch rolls back and the rest are skipped"></i>
+              {{ end }}
+              {{ $frame.Index }}
+            </td>
+            <td>
+              <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $frame.ModeName }} mode, flags 0x{{ printf "%x" $frame.Flags }}{{ if $frame.ApprovesPayment }} - approves payment{{ end }}{{ if $frame.ApprovesExecution }} - approves execution{{ end }}">
+                {{ if $frame.Species }}{{ $frame.Species }}{{ else }}{{ $frame.ModeName }}{{ end }}
+              </span>
+            </td>
+            <td class="text-monospace">
+              {{ if $frame.HasTarget }}
+              {{ $target := formatEthAddressFull $frame.TargetAddr }}
+              <a href="/address/{{ $target }}">{{ formatEthAddress $frame.TargetAddr }}</a>
+              {{ if $frame.TargetIsSender }}<span class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="The frame declares no target, which addresses the transaction's sender">(sender)</span>{{ end }}
+              {{ else }}
+              <span class="text-muted">-</span>
+              {{ end }}
+            </td>
+            <td class="text-end">{{ if gt $frame.Amount 0.0 }}{{ formatFloat $frame.Amount 6 }} ETH{{ else }}<span class="text-muted">-</span>{{ end }}</td>
+            <td class="text-end">
+              {{ if gt $frame.DataLen 0 }}
+              <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if gt (len $frame.MethodID) 0 }}Method 0x{{ printf "%x" $frame.MethodID }}{{ else }}Calldata{{ end }}">{{ $frame.DataLen }} B</span>
+              {{ else }}
+              <span class="text-muted">-</span>
+              {{ end }}
+            </td>
+            <td class="text-end">{{ formatAddCommas $frame.ExecGasUsed }}<span class="text-muted"> / {{ formatAddCommas $frame.ExecGasLimit }}</span></td>
+            <td class="text-end">{{ formatAddCommas $frame.StateGasUsed }}<span class="text-muted"> / {{ formatAddCommas $frame.StateGasLimit }}</span></td>
+            <td>
+              {{ if $frame.RolledBack }}
+              <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="This frame ran, but a later frame in its atomic batch failed. Its logs were discarded and its state gas zeroed, so nothing it did survived.">{{ $frame.StatusText }}</span>
+              {{ else if eq $frame.Status 1 }}
+              <span class="badge text-bg-success">{{ $frame.StatusText }}</span>
+              {{ else if eq $frame.Status 0 }}
+              <span class="badge text-bg-danger">{{ $frame.StatusText }}</span>
+              {{ else if eq $frame.Status 2 }}
+              <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="An earlier frame in this atomic batch failed, so this frame never ran. It is neither a success nor a failure.">{{ $frame.StatusText }}</span>
+              {{ else }}
+              <span class="badge text-bg-light text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="The client reported no result for this frame">{{ $frame.StatusText }}</span>
+              {{ end }}
+              {{ if gt $frame.LogCount 0 }}
+              <span class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="Logs emitted by this frame">
+                <i class="fa fa-list" style="font-size:0.7rem"></i> {{ $frame.LogCount }}
+              </span>
+              {{ end }}
+            </td>
+          </tr>
+          {{ $prevBatch = $frame.BatchIndex }}
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{ end }}
