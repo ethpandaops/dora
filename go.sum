@@ -121,8 +121,8 @@ github.com/ethpandaops/ethcore v0.0.0-20260807103219-0fb0622e156b h1:hcP42xFgU4d
 github.com/ethpandaops/ethcore v0.0.0-20260807103219-0fb0622e156b/go.mod h1:my+mlolmidi2VzoaGhchtcxDVbp1ZNVQJtnkk3oe6+M=
 github.com/ethpandaops/ethwallclock v0.4.0 h1:+sgnhf4pk6hLPukP076VxkiLloE4L0Yk1yat+ZyHh1g=
 github.com/ethpandaops/ethwallclock v0.4.0/go.mod h1:y0Cu+mhGLlem19vnAV2x0hpFS5KZ7oOi2SWYayv9l24=
-github.com/ethpandaops/go-eth2-client v0.1.7-0.20260827135002-38c12e37286c h1:oYdBGOouiTFcQ++0GcFSjFCOGA+EX7/315s713KfFCE=
-github.com/ethpandaops/go-eth2-client v0.1.7-0.20260827135002-38c12e37286c/go.mod h1:MXQukU/345puJmB2EikoaeQIFizk3zbekPxwYyxG/t8=
+github.com/ethpandaops/go-eth2-client v0.1.7-0.20260827135229-5c907ec076d6 h1:Gao+SMCax395TyfpJsjdxi3bKDZ2YdzLBgzmVch63dU=
+github.com/ethpandaops/go-eth2-client v0.1.7-0.20260827135229-5c907ec076d6/go.mod h1:MXQukU/345puJmB2EikoaeQIFizk3zbekPxwYyxG/t8=
 github.com/ethpandaops/xatu v1.22.1-0.20260824050538-619c572d19c3 h1:83LDwFEAijcssPdQ8ojzzbi+2mD3a+zL1b4V4cY1sMo=
 github.com/ethpandaops/xatu v1.22.1-0.20260824050538-619c572d19c3/go.mod h1:sDLPtT/bQgK+vExtPq77y2W4yHq9tRdiDu852yptTcU=
 github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8 h1:YfAXAt5fQcEnzPccCfByhXY2Vy9FlGrOp+NxGLx3QNY=
