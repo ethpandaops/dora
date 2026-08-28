@@ -133,7 +133,6 @@ func (ctx *txProcessingContext) resolveFrames(
 			mode:          uint8(frame.Mode),
 			flags:         frame.Flags,
 			target:        target,
-			toAccount:     ctx.ensureAccount(target, fromAccount, false),
 			value:         new(big.Int),
 			dataLen:       uint32(len(frame.Data)),
 			execGasLimit:  frame.Limits.Execution,
@@ -156,6 +155,15 @@ func (ctx *txProcessingContext) resolveFrames(
 			pending.execGasUsed = result.ExecutionGas
 			pending.stateGasUsed = result.StateGas
 			pending.logCount = uint32(len(result.Logs))
+		}
+
+		// The account is ensured only for a frame that ran. A frame skipped by an
+		// earlier failure called nobody, and registering its target would create an
+		// account whose first sighting is a call that never happened - funded, by this
+		// block, from a transfer that did not occur. Nothing downstream needs it either:
+		// both the aggregates and the value transfers require the frame to have run.
+		if pending.executed() {
+			pending.toAccount = ctx.ensureAccount(target, fromAccount, false)
 		}
 
 		frames = append(frames, pending)
@@ -200,6 +208,12 @@ func markRolledBackBatches(frames []*pendingFrame) {
 		}
 
 		for _, member := range batch {
+			// Only a frame that succeeded had anything taken back from it; the one that
+			// failed and the ones that never ran are described by their own status.
+			if !member.hasResult || member.status != txtypes.FrameStatusSuccess {
+				continue
+			}
+
 			member.rolledBack = true
 		}
 	}

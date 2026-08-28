@@ -159,16 +159,20 @@ func TestMarkRolledBackBatches(t *testing.T) {
 		want   []bool
 	}{
 		{
+			// A frame that fails on its own is a failure, not a batch that rolled back:
+			// it has no success to lose and nothing else went down with it.
 			name:   "no batches, independent failure",
 			flags:  []uint8{0, 0, 0},
 			status: []uint64{txtypes.FrameStatusSuccess, txtypes.FrameStatusFailed, txtypes.FrameStatusSuccess},
-			want:   []bool{false, true, false},
+			want:   []bool{false, false, false},
 		},
 		{
+			// Only the success before the failure had anything taken back from it. The
+			// frame that failed and the one that never ran are told by their own status.
 			name:   "batch rolls back the successes before the failure",
 			flags:  []uint8{batched, batched, 0},
 			status: []uint64{txtypes.FrameStatusSuccess, txtypes.FrameStatusFailed, txtypes.FrameStatusSkipped},
-			want:   []bool{true, true, true},
+			want:   []bool{true, false, false},
 		},
 		{
 			name:   "batch that fully succeeds survives",
@@ -180,13 +184,13 @@ func TestMarkRolledBackBatches(t *testing.T) {
 			name:   "only the failing batch rolls back",
 			flags:  []uint8{batched, 0, batched, 0},
 			status: []uint64{txtypes.FrameStatusSuccess, txtypes.FrameStatusSuccess, txtypes.FrameStatusSuccess, txtypes.FrameStatusFailed},
-			want:   []bool{false, false, true, true},
+			want:   []bool{false, false, true, false},
 		},
 		{
 			name:   "a trailing batch flag does not run past the end",
 			flags:  []uint8{batched, batched},
 			status: []uint64{txtypes.FrameStatusSuccess, txtypes.FrameStatusFailed},
-			want:   []bool{true, true},
+			want:   []bool{true, false},
 		},
 	}
 
@@ -596,5 +600,46 @@ func TestProcessCallTraceLeavesFrameRootsToTheReceipt(t *testing.T) {
 		default:
 			t.Errorf("unexpected account aggregated: %s", addr.Hex())
 		}
+	}
+}
+
+// A frame skipped by an earlier failure called nobody. Registering its target would put
+// an account in the index whose first sighting is a call that never happened, funded by
+// this block from a transfer that did not occur.
+func TestResolveFramesRegistersOnlyTheTargetsThatWereCalled(t *testing.T) {
+	ctx := newFrameTestContext()
+
+	called := frameCallee
+	uncalled := framePaymaster
+
+	frameTx := &txtypes.FrameTx{
+		Sender: frameSender,
+		Frames: []*txtypes.Frame{
+			{Mode: txtypes.FrameModeSender, Target: &called, Value: uint256.NewInt(0)},
+			{Mode: txtypes.FrameModeSender, Target: &uncalled, Value: uint256.NewInt(0)},
+		},
+	}
+
+	receipt := frameReceipt(common.Address{},
+		&txtypes.FrameReceipt{Status: txtypes.FrameStatusSuccess},
+		&txtypes.FrameReceipt{Status: txtypes.FrameStatusSkipped},
+	)
+
+	frames := ctx.resolveFrames(frameTx, receipt, nil)
+
+	if frames[0].toAccount == nil {
+		t.Error("a frame that ran needs its target, for the aggregates and any transfer")
+	}
+
+	if frames[1].toAccount != nil {
+		t.Error("a frame that never ran must not register its target")
+	}
+
+	if _, tracked := ctx.accounts[uncalled]; tracked {
+		t.Error("the skipped frame's target was entered into the block's accounts")
+	}
+
+	if _, tracked := ctx.accounts[called]; !tracked {
+		t.Error("the executed frame's target should be tracked")
 	}
 }

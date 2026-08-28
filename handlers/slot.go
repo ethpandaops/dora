@@ -1827,13 +1827,21 @@ func decodeInclusionListTransactions(il *v1.SignedInclusionList, sysContracts ma
 		if err == nil {
 			txData.From = txFrom.Bytes()
 		}
+		// A frame transaction addresses each of its frames separately, exactly as on the
+		// block's own transaction list: To() reports the first SENDER frame's target,
+		// which is not the recipient, and its absence is not a creation.
 		txTo := tx.To()
-		if txTo != nil {
+
+		if frameTx, ok := tx.Inner().(*txtypes.FrameTx); ok {
+			txData.IsMultiTarget = true
+			txData.FrameCount = uint64(len(frameTx.Frames))
+			txTo = nil
+		} else if txTo != nil {
 			txData.To = txTo.Bytes()
 		}
 
 		// Check call fn signature
-		isCreate := txTo == nil
+		isCreate := txTo == nil && !txData.IsMultiTarget
 		if txData.DataLen >= 4 {
 			if skip, altName := utils.ShouldSkipSignatureLookup(txData.To, isCreate, sysContracts); skip {
 				txData.FuncSigStatus = 10

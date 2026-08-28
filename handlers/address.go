@@ -978,6 +978,7 @@ var callTypeBitNames = []string{
 	"CREATE",       // 3
 	"CREATE2",      // 4
 	"SELFDESTRUCT", // 5
+	"FRAME",        // 6 - a consensus frame of an EIP-8141 transaction, not a traced call
 }
 
 func expandCallTypeMask(mask uint16) []models.AddressPageDataInternalTransactionCallType {

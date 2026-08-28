@@ -583,3 +583,43 @@ func TestSignatureOfTheWrongLengthIsNotSplit(t *testing.T) {
 		t.Errorf("an arbitrary entry was split into %d parts", len(parts))
 	}
 }
+
+// A frame that fails on its own is a failure, not a batch that rolled back: there is no
+// success to lose and nothing went down with it. Marking it rolled back made the page
+// show it amber, with a tooltip naming the frame itself as the cause.
+func TestALoneFailedFrameIsNotRolledBack(t *testing.T) {
+	frames := []*models.TransactionPageDataFrame{
+		{Index: 0, Status: uint8(txtypes.FrameStatusSuccess)},
+		{Index: 1, Status: uint8(txtypes.FrameStatusFailed), StatusText: "Failed"},
+		{Index: 2, Status: uint8(txtypes.FrameStatusSuccess)},
+	}
+
+	markRolledBackFrames(frames)
+
+	for i, frame := range frames {
+		if frame.RolledBack {
+			t.Errorf("frame %d was marked rolled back with no batch to roll back", i)
+		}
+	}
+}
+
+// Inside a batch, only the frame that succeeded had anything taken back from it. The one
+// that failed and the one that never ran are told by their own status.
+func TestOnlyUndoneSuccessesAreMarkedRolledBack(t *testing.T) {
+	frames := []*models.TransactionPageDataFrame{
+		{Index: 0, Status: uint8(txtypes.FrameStatusSuccess), AtomicBatch: true},
+		{Index: 1, Status: uint8(txtypes.FrameStatusFailed), AtomicBatch: true},
+		{Index: 2, Status: uint8(txtypes.FrameStatusSkipped)},
+	}
+
+	markRolledBackFrames(frames)
+
+	if !frames[0].RolledBack || frames[0].BatchFailedIndex != 1 {
+		t.Errorf("the success before the failure should be undone by frame 1, got %v/%d",
+			frames[0].RolledBack, frames[0].BatchFailedIndex)
+	}
+
+	if frames[1].RolledBack || frames[2].RolledBack {
+		t.Error("the failed and skipped frames say what happened to them themselves")
+	}
+}

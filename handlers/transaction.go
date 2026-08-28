@@ -657,6 +657,11 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 				pageData.StatusText = "Failed"
 			}
 
+			// A frame transaction's status is derived from its frames, not taken from
+			// the client's own derived one, so it is stated after the generic status
+			// rather than before it.
+			applyFrameTxStatus(pageData)
+
 			// Gas used
 			pageData.GasUsed = receipt.GasUsed
 			if pageData.GasLimit > 0 {
@@ -959,6 +964,10 @@ func applyReceiptMetaFromBlockdb(ctx context.Context, pageData *models.Transacti
 	} else {
 		pageData.StatusText = "Failed"
 	}
+
+	// As on the EL path: a frame transaction's own status comes from its frames and has
+	// to be stated after the generic one, or the client's derived status wins.
+	applyFrameTxStatus(pageData)
 
 	pageData.GasUsed = meta.GasUsed
 	if pageData.GasLimit > 0 {
@@ -2184,6 +2193,14 @@ func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
 		}
 
 		for _, member := range batch {
+			// Only a frame that succeeded had anything taken back from it. The frame
+			// that failed, and the ones after it that never ran, are told by their own
+			// status - and a lone failed frame is not a batch that rolled back, it is
+			// just a failure.
+			if uint64(member.Status) != txtypes.FrameStatusSuccess {
+				continue
+			}
+
 			member.RolledBack = true
 			member.BatchFailedIndex = failedIndex
 			member.StatusText = frameStatusText(member.Status, true)
