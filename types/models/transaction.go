@@ -294,8 +294,10 @@ type TransactionPageDataFrame struct {
 	ModeName string `json:"mode_name"`
 
 	// Species names what the frame does within the transaction - a deadline check, a
-	// paymaster approving payment, the user's own operation.
-	Species string `json:"species"`
+	// paymaster approving payment, the user's own operation - and SpeciesInfo says what
+	// that kind of frame is for.
+	Species     string `json:"species"`
+	SpeciesInfo string `json:"species_info"`
 
 	Flags             uint8 `json:"flags"`
 	ApprovesPayment   bool  `json:"approves_payment"`

@@ -247,7 +247,7 @@
 
         <span class="frm-kind">
           {{ if $frame.Species }}
-          <span class="badge text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="What this frame does within the transaction, derived from its mode and approval flags">{{ $frame.Species }}</span>
+          <span class="badge text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if $frame.SpeciesInfo }}{{ $frame.SpeciesInfo }}{{ else }}What this frame does within the transaction, derived from its mode and approval flags.{{ end }}">{{ $frame.Species }}</span>
           {{ end }}
           <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if eq $frame.Mode 1 }}VERIFY frames run with STATICCALL semantics and cannot change state{{ else if eq $frame.Mode 2 }}SENDER frames are the only ones that may carry value{{ else }}DEFAULT frames run general operations, such as a paymaster settling up{{ end }}">{{ $frame.ModeName }}</span>
           {{ if $frame.ApprovesPayment }}<i class="fas fa-coins text-muted" style="font-size:0.72rem" data-bs-toggle="tooltip" data-bs-placement="top" title="Approves payment: its success is what makes the fee payable"></i>{{ end }}

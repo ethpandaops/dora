@@ -1956,6 +1956,34 @@ var frameSpeciesNames = map[txtypes.FrameSpecies]string{
 	txtypes.SpeciesOther:        "Other",
 }
 
+// frameSpeciesInfo says what each kind of frame is for. The name on the badge is short
+// enough to scan a list by; this is what it means.
+var frameSpeciesInfo = map[txtypes.FrameSpecies]string{
+	txtypes.SpeciesSelfVerify: "Runs the sender's own validation code and approves both execution and payment. " +
+		"This is the self-relayed case: the sender vouches for the transaction and pays for it itself.",
+
+	txtypes.SpeciesOnlyVerify: "Runs the sender's own validation code and approves execution, but not payment. " +
+		"Someone else settles the fee, in a paymaster frame that follows.",
+
+	txtypes.SpeciesPay: "A paymaster approves payment, which makes it the account charged for the transaction " +
+		"rather than the sender. Its own signature entry on the transaction is what authorises that.",
+
+	txtypes.SpeciesExpiryVerify: "Calls the expiry verifier predeploy with a deadline. It reverts once the deadline " +
+		"has passed, and a reverting validation frame makes the whole transaction invalid - which is what keeps a " +
+		"stale transaction off the chain.",
+
+	txtypes.SpeciesDeploy: "Deploys code to the sender's account before anything validates it, so an account that " +
+		"does not exist yet can be used by the same transaction that creates it. It has to lead the validation prefix.",
+
+	txtypes.SpeciesUserOp: "One of the calls the transaction was sent to make. SENDER frames are entered by the " +
+		"sender itself, and are the only ones that may carry value.",
+
+	txtypes.SpeciesPostOp: "A call made after the operations have run, entered by the ENTRY_POINT predeploy rather " +
+		"than by the sender. It is where a paymaster squares up once the real cost is known.",
+
+	txtypes.SpeciesOther: "The frame's mode and approval flags match none of the shapes the mempool rules name.",
+}
+
 // frameStatusText renders a frame's result. Skipped is neither a success nor a failure -
 // an earlier frame in its atomic batch failed and this one never ran - and a frame the
 // client reported no result for is neither either.
@@ -1989,12 +2017,14 @@ func buildFramesFromEnvelope(pageData *models.TransactionPageData, frameTx *txty
 	for i, protocolFrame := range frameTx.Frames {
 		target := protocolFrame.ResolvedTarget(frameTx.Sender)
 		caller := frameCaller(protocolFrame, frameTx.Sender)
+		species := frameSpecies(protocolFrame, frameTx.Sender, i < validationLen)
 
 		frame := &models.TransactionPageDataFrame{
 			Index:             uint32(i),
 			Mode:              uint8(protocolFrame.Mode),
 			ModeName:          frameModeNames[uint8(protocolFrame.Mode)],
-			Species:           frameSpeciesNames[frameSpecies(protocolFrame, frameTx.Sender, i < validationLen)],
+			Species:           frameSpeciesNames[species],
+			SpeciesInfo:       frameSpeciesInfo[species],
 			Flags:             protocolFrame.Flags,
 			ApprovesPayment:   protocolFrame.Flags&txtypes.ApprovePayment != 0,
 			ApprovesExecution: protocolFrame.Flags&txtypes.ApproveExecution != 0,
