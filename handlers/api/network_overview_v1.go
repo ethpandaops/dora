@@ -298,13 +298,17 @@ func buildNetworkOverviewData(ctx context.Context) (*APINetworkOverviewData, tim
 			}
 
 			if validatorStats.TotalEligibleEther > 0 {
-				etherChurnPerEpoch := chainState.GetActivationExitChurnLimit(validatorStats.TotalEligibleEther)
+				// Deposits consume the activation-only churn budget from Gloas on (EIP-8061).
+				etherChurnPerEpoch := chainState.GetActivationChurnLimit(currentEpoch, validatorStats.TotalEligibleEther)
 				queueStats.EtherChurnPerDay = etherChurnPerEpoch * 225 // ~225 epochs per day
 
-				if queueStats.EtherChurnPerDay > 0 {
+				// Exits have their own (uncapped) churn budget since Gloas; before that it is
+				// the same shared activation/exit limit.
+				exitChurnPerDay := chainState.GetExitChurnLimit(currentEpoch, validatorStats.TotalEligibleEther) * 225
+				if exitChurnPerDay > 0 {
 					// Calculate exit time in seconds, assuming each validator has the average balance
 					exitEtherAmount := queueStats.ExitingValidatorCount * validatorStats.AverageBalance
-					exitDays := float64(exitEtherAmount) / float64(queueStats.EtherChurnPerDay)
+					exitDays := float64(exitEtherAmount) / float64(exitChurnPerDay)
 					queueStats.ExitEstimatedTimeToProcess = uint64(exitDays * 24 * 60 * 60)
 				}
 			}
