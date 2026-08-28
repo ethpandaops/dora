@@ -2,7 +2,6 @@ package txindexer
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -42,9 +41,13 @@ func creationTx(to string) json.RawMessage {
 }
 
 func TestDecodeBlockTransactionAcceptsContractCreation(t *testing.T) {
-	tx, err := decodeBlockTransaction(creationTx("null"))
+	tx, derived, err := decodeBlockTransaction(creationTx("null"))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
+	}
+
+	if derived != (common.Hash{}) {
+		t.Errorf("re-encoded to %s, want agreement with the reported hash", derived.Hex())
 	}
 
 	if tx.To() != nil {
@@ -68,12 +71,22 @@ func TestDecodeBlockTransactionAcceptsContractCreation(t *testing.T) {
 
 // A client that renders a contract creation as a transaction to the zero address changes
 // the transaction's RLP, and with it both its hash and the sender recovered from its
-// signature. The decoder adopts the hash the client reported, so the mismatch is only
-// visible once the decoded fields are re-encoded - which is what the check exists for.
-func TestDecodeBlockTransactionRejectsZeroAddressCreation(t *testing.T) {
-	_, err := decodeBlockTransaction(creationTx(`"0x0000000000000000000000000000000000000000"`))
-	if !errors.Is(err, errTxHashMismatch) {
-		t.Fatalf("expected errTxHashMismatch, got %v", err)
+// signature. The decoder adopts the hash the client reported, so the disagreement is only
+// visible once the decoded fields are re-encoded. The transaction is still indexed under
+// the hash the chain knows it by; the re-encoded hash is reported so the client's defect
+// is not silent.
+func TestDecodeBlockTransactionReportsZeroAddressCreation(t *testing.T) {
+	tx, derived, err := decodeBlockTransaction(creationTx(`"0x0000000000000000000000000000000000000000"`))
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if derived == (common.Hash{}) {
+		t.Fatal("expected the re-encoded hash to disagree with the reported one")
+	}
+
+	if got := tx.Hash().Hex(); got != creationTxHash {
+		t.Errorf("hash = %s, want the reported %s", got, creationTxHash)
 	}
 }
 
@@ -83,7 +96,7 @@ func TestDecodeBlockTransactionRejectsZeroAddressCreation(t *testing.T) {
 func TestDecodeBlockTransactionKeepsUnsupportedType(t *testing.T) {
 	const unknownHash = "0x1111111111111111111111111111111111111111111111111111111111111111"
 
-	tx, err := decodeBlockTransaction(json.RawMessage([]byte(`{
+	tx, _, err := decodeBlockTransaction(json.RawMessage([]byte(`{
 		"type": "0x7f",
 		"hash": "` + unknownHash + `",
 		"nonce": "0x642",
@@ -109,10 +122,11 @@ func TestDecodeBlockTransactionKeepsUnsupportedType(t *testing.T) {
 	}
 }
 
-// The hash is what the re-encoded transaction is checked against, so a response that
-// omits it cannot be verified and is rejected rather than trusted.
+// The hash is the chain's identity for a transaction and is what the indexer keys
+// everything else by, so a response that omits it is rejected rather than indexed under a
+// hash derived from fields that may not be what was signed.
 func TestDecodeBlockTransactionRequiresReportedHash(t *testing.T) {
-	_, err := decodeBlockTransaction(json.RawMessage([]byte(`{
+	_, _, err := decodeBlockTransaction(json.RawMessage([]byte(`{
 		"type": "0x0", "nonce": "0x642", "gasPrice": "0x4a817c800", "gas": "0x7245c",
 		"to": null, "value": "0x0", "input": "0x"
 	}`)))
@@ -235,7 +249,7 @@ func TestDecodeBlockTransactionAcceptsFrameTransactionJSON(t *testing.T) {
 		t.Error("frame transaction object is missing its frames")
 	}
 
-	tx, err := decodeBlockTransaction(rawTx)
+	tx, _, err := decodeBlockTransaction(rawTx)
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}

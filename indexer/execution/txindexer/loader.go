@@ -62,19 +62,10 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 			txs, bn, bh, coinbase, wdt, err := t.fetchBlockTransactions(ctx, rpcClient, ref.BlockHash)
 			if err != nil {
 				lastErr = fmt.Errorf("fetch transactions from %s: %w", client.GetName(), err)
-				entry := t.logger.WithError(err).WithFields(logrus.Fields{
+				t.logger.WithError(err).WithFields(logrus.Fields{
 					"client": client.GetName(),
 					"retry":  retry + 1,
-				})
-
-				// A fetch that simply failed is routine and retried quietly. A client that
-				// answered with a transaction it encodes differently from the canonical form
-				// is a defect in that client and stays hidden unless it is reported.
-				if errors.Is(err, errTxHashMismatch) {
-					entry.Warn("client returned a transaction that does not match its own hash, retrying with another client")
-				} else {
-					entry.Debug("failed to fetch transactions, retrying")
-				}
+				}).Debug("failed to fetch transactions, retrying")
 
 				continue
 			}
@@ -245,21 +236,23 @@ func (t *TxIndexer) fetchBlockTransactions(
 
 	transactions := make([]*txtypes.Transaction, 0, len(block.Transactions))
 	for idx, rawTx := range block.Transactions {
-		tx, err := decodeBlockTransaction(rawTx)
+		tx, derived, err := decodeBlockTransaction(rawTx)
 		if err != nil {
-			// A client whose transaction encoding disagrees with the canonical one cannot
-			// be trusted for the rest of the block either, so the whole response is
-			// rejected and the caller retries against another client.
-			if errors.Is(err, errTxHashMismatch) {
-				return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block %s transaction %d: %w", hash.Hex(), idx, err)
-			}
-
 			t.logger.WithError(err).WithFields(logrus.Fields{
 				"blockHash": hash.Hex(),
 				"txIndex":   idx,
 			}).Debug("skipping transaction")
 
 			continue
+		}
+
+		if derived != (common.Hash{}) {
+			t.logger.WithFields(logrus.Fields{
+				"blockHash": hash.Hex(),
+				"txIndex":   idx,
+				"reported":  tx.Hash().Hex(),
+				"derived":   derived.Hex(),
+			}).Warn("transaction does not re-encode to the hash reported for it, indexing it as reported")
 		}
 
 		transactions = append(transactions, tx)
@@ -278,44 +271,36 @@ func (t *TxIndexer) fetchBlockTransactions(
 	return transactions, block.Number.ToInt().Uint64(), block.Hash, block.Coinbase, withdrawals, nil
 }
 
-// errTxHashMismatch marks a transaction that does not survive the round trip through
-// the client's JSON representation.
-var errTxHashMismatch = errors.New("transaction does not match the hash reported for it")
-
 // decodeBlockTransaction rebuilds a transaction from one entry of an eth_getBlockBy*
-// response.
+// response. It returns the transaction, and the hash the decoded fields re-encode to when
+// that disagrees with the hash the client reported.
 //
-// The decoder adopts the hash the client reported, so the decoded fields are re-encoded
-// here to find out whether they agree with it. When they do not, the client's encoding of
-// the transaction disagrees with the canonical one and everything derived from the decoded
-// fields is wrong with it: the hash, the sender recovered from the signature, and whether
-// the transaction is a contract creation. Such a transaction is rejected rather than
-// indexed, because the corruption is silent otherwise and produces plausible-looking rows
-// that belong to no real transaction.
+// The transaction keeps the reported hash either way: it is the chain's identity for the
+// transaction, and everything else - receipts, traces, the transaction the user follows a
+// link to - is keyed by it. A disagreement means this build encodes the transaction
+// differently from the client that produced it, which says nothing about which of the two
+// is right, so it is reported and the transaction is indexed as reported rather than
+// dropped. Fields the decoder derives rather than reads - the sender recovered from the
+// signature, whether the transaction creates a contract - may be wrong in that case.
 //
 // A transaction of a type this build has no decoder for carries only the generic fields
-// the node reported and cannot be re-encoded. It is taken at its word, which keeps it
-// counted and indexed instead of shifting every receipt index behind it.
-func decodeBlockTransaction(rawTx json.RawMessage) (*txtypes.Transaction, error) {
+// the node reported and cannot be re-encoded, so there is nothing to compare.
+func decodeBlockTransaction(rawTx json.RawMessage) (*txtypes.Transaction, common.Hash, error) {
 	tx, err := txtypes.UnmarshalJSONTx(rawTx)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal transaction: %w", err)
+		return nil, common.Hash{}, fmt.Errorf("unmarshal transaction: %w", err)
 	}
 
 	encoded, err := tx.MarshalBinary()
 	if err != nil {
-		if errors.Is(err, txtypes.ErrTxTypeNotSupported) {
-			return tx, nil
-		}
-
-		return nil, fmt.Errorf("re-encode transaction: %w", err)
+		return tx, common.Hash{}, nil
 	}
 
 	if derived := crypto.Keccak256Hash(encoded); derived != tx.Hash() {
-		return nil, fmt.Errorf("%w: reported %s, decodes to %s", errTxHashMismatch, tx.Hash().Hex(), derived.Hex())
+		return tx, derived, nil
 	}
 
-	return tx, nil
+	return tx, common.Hash{}, nil
 }
 
 // fetchBlockReceipts fetches receipts for a block from an EL client.
