@@ -161,7 +161,8 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		if queuedDeposits != nil {
 			pageData.EnteringValidatorCount = queuedDeposits.TotalNew
 			pageData.EnteringEtherAmount = uint64(queuedDeposits.TotalGwei)
-			pageData.EtherChurnPerEpoch = chainState.GetActivationExitChurnLimit(pageData.TotalEligibleEther)
+			// Deposits consume the activation-only churn budget from Gloas on (EIP-8061).
+			pageData.EtherChurnPerEpoch = chainState.GetActivationChurnLimit(currentEpoch, pageData.TotalEligibleEther)
 			pageData.EtherChurnPerDay = pageData.EtherChurnPerEpoch * 225
 
 			// QueueEstimation is the epoch the queue is fully processed; render the remaining

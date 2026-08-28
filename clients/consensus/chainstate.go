@@ -586,6 +586,29 @@ func (cs *ChainState) GetActivationChurnLimit(epoch phase0.Epoch, totalActiveBal
 	return churn
 }
 
+// GetExitChurnLimit returns the per-epoch churn budget that voluntary exits consume.
+//
+// Gloas (EIP-8061) derives it from CHURN_LIMIT_QUOTIENT_GLOAS like the activation churn, but
+// without the MAX_PER_EPOCH_ACTIVATION_CHURN_LIMIT_GLOAS cap. Before Gloas exits share the
+// activation/exit churn limit with deposits.
+// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-get_exit_churn_limit
+func (cs *ChainState) GetExitChurnLimit(epoch phase0.Epoch, totalActiveBalance uint64) uint64 {
+	if cs.specs == nil {
+		return 0
+	}
+
+	if !cs.IsEip7732Enabled(epoch) || cs.specs.ChurnLimitQuotientGloas == 0 {
+		return cs.GetActivationExitChurnLimit(totalActiveBalance)
+	}
+
+	churn := totalActiveBalance / cs.specs.ChurnLimitQuotientGloas
+	if churn < cs.specs.MinPerEpochChurnLimitElectra {
+		churn = cs.specs.MinPerEpochChurnLimitElectra
+	}
+
+	return churn - churn%cs.specs.EffectiveBalanceIncrement
+}
+
 // GetConsolidationChurnLimit returns the per-epoch churn limit reserved for consolidations
 // at the given epoch.
 //
