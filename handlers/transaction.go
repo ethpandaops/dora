@@ -500,8 +500,13 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	transferCount, _ := db.GetElTokenTransferCountByTxUid(ctx, tx.TxUid)
 	pageData.TokenTransferCount = transferCount
 
-	internalTxCount, _ := db.GetElTransactionsInternalCountByTxUid(ctx, tx.TxUid)
-	pageData.InternalTxCount = internalTxCount
+	// A frame transaction's per-account rows are built from its frames rather than from a
+	// call trace, so counting them would put a call count on the tab that is really a
+	// count of accounts the frames touched. The tab reports the real number once loaded.
+	if !pageData.IsFrameTx {
+		internalTxCount, _ := db.GetElTransactionsInternalCountByTxUid(ctx, tx.TxUid)
+		pageData.InternalTxCount = internalTxCount
+	}
 
 	// Load tab-specific detailed data. Full row data is only loaded for
 	// the active tab to avoid unnecessary I/O. Events and internal txs
@@ -982,6 +987,8 @@ func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.Tran
 					} else {
 						pageData.Events = buildEventsFromBlockdb(events)
 						pageData.EventCount = uint64(len(pageData.Events))
+						attributeEventsToFrames(pageData)
+
 						return
 					}
 				}
@@ -1235,6 +1242,8 @@ func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models
 					} else {
 						buildInternalTxsFromBlockdb(ctx, pageData, frames)
 						pageData.InternalTxCount = uint64(len(pageData.InternalTxs))
+						attributeInternalTxsToFrames(pageData)
+
 						return
 					}
 				}
@@ -1245,7 +1254,20 @@ func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models
 	// No per-call detail in the DB index (it stores per-account aggregates),
 	// so when blockdb is unavailable we have nothing to render. Surface the
 	// "not available" state so the template shows the archive notice.
+	//
+	// For a frame transaction the block's trace was stored - the check above passed -
+	// and this transaction still has none, which means the client did not decompose it
+	// into its frames. That is a statement about the client, not about the data being
+	// gone, and the count taken from the per-account rows is not a call count either.
 	_ = txUid
+
+	if pageData.IsFrameTx {
+		pageData.FrameCallsNotTraced = true
+		pageData.InternalTxCount = 0
+
+		return
+	}
+
 	pageData.InternalTxsNotAvailable = true
 }
 
@@ -2077,6 +2099,101 @@ func frameCaller(frame *txtypes.Frame, sender common.Address) common.Address {
 	}
 
 	return txtypes.EntryPoint
+}
+
+// executedFrames are the frames that ran: a skipped frame never did, and a frame the
+// client reported no result for cannot be claimed to have.
+func executedFrames(frames []*models.TransactionPageDataFrame) []*models.TransactionPageDataFrame {
+	executed := make([]*models.TransactionPageDataFrame, 0, len(frames))
+
+	for _, frame := range frames {
+		switch uint64(frame.Status) {
+		case txtypes.FrameStatusSuccess, txtypes.FrameStatusFailed:
+			executed = append(executed, frame)
+		}
+	}
+
+	return executed
+}
+
+// attributeEventsToFrames marks each event with the frame that emitted it.
+//
+// A frame transaction's logs are the per-frame lists concatenated in frame order, so the
+// per-frame counts partition the flat list. A frame whose atomic batch rolled back had
+// its logs discarded by the client, so it owns none of them and its count is already
+// zero.
+//
+// The counts have to account for every event before any of them is claimed: a client
+// that reported a partial set would otherwise shift every log after the gap onto the
+// wrong frame, and a wrong attribution is worse than none.
+func attributeEventsToFrames(pageData *models.TransactionPageData) {
+	if !pageData.IsFrameTx || pageData.FrameResultsMissing || len(pageData.Events) == 0 {
+		return
+	}
+
+	total := 0
+	for _, frame := range pageData.Frames {
+		total += int(frame.LogCount)
+	}
+
+	if total != len(pageData.Events) {
+		return
+	}
+
+	next := 0
+
+	for _, frame := range pageData.Frames {
+		for i := 0; i < int(frame.LogCount); i++ {
+			event := pageData.Events[next]
+			event.FrameIndex = frame.Index
+			event.HasFrame = true
+			next++
+		}
+	}
+}
+
+// attributeInternalTxsToFrames marks each traced call with the frame it was made from.
+//
+// A client that decomposes a frame transaction traces one top-level call per executed
+// frame, in frame order, and the indexer stores the trace only once it has verified that
+// shape. So each depth-0 call starts the next executed frame and everything below it
+// belongs to that frame.
+//
+// Nothing specifies this - the callTracer is not part of execution-apis and EIP-8141 says
+// nothing about debug tracing - so the shape is checked again here rather than assumed,
+// and a trace that does not match is left unattributed.
+func attributeInternalTxsToFrames(pageData *models.TransactionPageData) {
+	if !pageData.IsFrameTx || len(pageData.InternalTxs) == 0 {
+		return
+	}
+
+	executed := executedFrames(pageData.Frames)
+
+	roots := 0
+	for _, itx := range pageData.InternalTxs {
+		if itx.Depth == 0 {
+			roots++
+		}
+	}
+
+	if roots == 0 || roots != len(executed) {
+		return
+	}
+
+	current := -1
+
+	for _, itx := range pageData.InternalTxs {
+		if itx.Depth == 0 {
+			current++
+		}
+
+		if current < 0 {
+			continue
+		}
+
+		itx.FrameIndex = executed[current].Index
+		itx.HasFrame = true
+	}
 }
 
 // resolveFrameCalldata names what each frame calls.

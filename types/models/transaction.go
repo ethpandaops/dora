@@ -205,7 +205,12 @@ type TransactionPageData struct {
 	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags
 	EventsNotAvailable      bool                             `json:"events_not_available"`
 	InternalTxsNotAvailable bool                             `json:"internal_txs_not_available"`
-	InternalTxIndentPx      float64                          `json:"internal_tx_indent_px"`
+
+	// FrameCallsNotTraced marks a frame transaction whose client did not decompose it
+	// into its frames. The block stored call traces, this transaction just has none that
+	// say anything about it, which is a different thing from the data being gone.
+	FrameCallsNotTraced bool    `json:"frame_calls_not_traced"`
+	InternalTxIndentPx  float64 `json:"internal_tx_indent_px"`
 
 	// State changes tab (prestateTracer diffMode)
 	StateChanges             []*TransactionPageDataStateChangeAccount `json:"state_changes"`
@@ -340,6 +345,12 @@ type TransactionPageDataStateChangeSlot struct {
 type TransactionPageDataEvent struct {
 	EventIndex uint32 `json:"event_index"`
 
+	// FrameIndex is the frame of a frame transaction that emitted the event. A
+	// transaction's logs are the per-frame lists concatenated in frame order, so the
+	// per-frame counts say which frame each one came from.
+	FrameIndex uint32 `json:"frame_index"`
+	HasFrame   bool   `json:"has_frame"`
+
 	// Source contract
 	SourceAddr       []byte `json:"source_addr" ssz-size:"20"`
 	SourceIsContract bool   `json:"source_is_contract"`
@@ -395,6 +406,12 @@ type TransactionPageDataInternalTx struct {
 	Depth     uint16 `json:"depth"`
 	CallType  uint8  `json:"call_type"`
 	TypeName  string `json:"type_name"`
+
+	// FrameIndex is the frame of a frame transaction the call was made from. A client
+	// that decomposes such a transaction traces one root per executed frame, so every
+	// call below a root belongs to that frame.
+	FrameIndex uint32 `json:"frame_index"`
+	HasFrame   bool   `json:"has_frame"`
 
 	// From/To
 	FromAddr       []byte `json:"from_addr" ssz-size:"20"`
