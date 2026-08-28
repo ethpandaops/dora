@@ -387,7 +387,6 @@
           </div>
         </div>
       </div>
-      {{ if gt .InternalTxCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "frames" }} show active{{ end }}" id="frames" role="tabpanel" aria-labelledby="frames-tab" data-loaded="{{ if eq .TabView "frames" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "frames" }}
         {{ template "frames" . }}
@@ -399,42 +398,31 @@
           {{ template "internaltxs" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if gt .EventCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "events" }} show active{{ end }}" id="events" role="tabpanel" aria-labelledby="events-tab" data-loaded="{{ if eq .TabView "events" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "events" }}
           {{ template "events" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if gt .TokenTransferCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "transfers" }} show active{{ end }}" id="transfers" role="tabpanel" aria-labelledby="transfers-tab" data-loaded="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "transfers" }}
           {{ template "transfers" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if ne (bitwiseAnd (int .DataStatus) 4) 0 }}
       <div class="tab-pane fade{{ if eq .TabView "statechanges" }} show active{{ end }}" id="statechanges" role="tabpanel" aria-labelledby="statechanges-tab" data-loaded="{{ if eq .TabView "statechanges" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "statechanges" }}
           {{ template "statechanges" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if gt (len .Authorizations) 0 }}
       <div class="tab-pane fade{{ if eq .TabView "authorizations" }} show active{{ end }}" id="authorizations" role="tabpanel" aria-labelledby="authorizations-tab" data-loaded="{{ if eq .TabView "authorizations" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "authorizations" }}
           {{ template "authorizations" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if gt .BlobCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "blobs" }} show active{{ end }}" id="blobs" role="tabpanel" aria-labelledby="blobs-tab" data-loaded="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "blobs" }}
           {{ template "blobs" . }}
         {{ end }}
       </div>
-      {{ end }}
     </div>
   </div>
 {{ end }}
