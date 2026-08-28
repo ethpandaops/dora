@@ -115,15 +115,16 @@
         {{ if .FrameShape }}
         <span class="badge text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="Named by the transaction's validation prefix - the leading frames whose success settles who pays">{{ .FrameShape }}</span>
         {{ end }}
-        {{ if and (gt (len .PayerAddr) 0) (not .PayerIsSender) }}
-        <span class="badge text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="The fee was settled by an account other than the sender">
-          <i class="fas fa-hand-holding-dollar me-1"></i>fee paid by {{ formatEthAddress .PayerAddr }}
+        {{ if .HasExpiry }}
+        {{ if .ExpiryPassed }}
+        <span class="badge text-bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Deadline {{ .ExpiryTime.UTC }}. The expiry verifier frame checks it when the transaction executes, so a conforming client would not have included this.">
+          <i class="far fa-clock me-1"></i>deadline had passed {{ .ExpiryMargin }} before inclusion
+        </span>
+        {{ else if .ExpiryMargin }}
+        <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Deadline {{ .ExpiryTime.UTC }}, checked by the expiry verifier frame when the transaction executed">
+          <i class="far fa-clock me-1"></i>included {{ .ExpiryMargin }} before its deadline
         </span>
         {{ end }}
-        {{ if .HasExpiry }}
-        <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Deadline checked by the expiry verifier frame">
-          <i class="far fa-clock me-1"></i>expires {{ formatRecentTimeShort .ExpiryTime }}
-        </span>
         {{ end }}
         {{ if .FrameResultsMissing }}
         <span class="badge text-bg-light text-dark border" data-bs-toggle="tooltip" data-bs-placement="top" title="The transaction declares these frames; what each of them did is on its receipt, which is not retained for this block">
@@ -155,6 +156,12 @@
           <span class="frm-stat-label">Sender</span>
           <span class="frm-stat-value">{{ formatEthAddressShortLink .FromAddr false 5 }}</span>
         </div>
+        {{ if and (gt (len .PayerAddr) 0) (not .PayerIsSender) }}
+        <div class="frm-stat">
+          <span class="frm-stat-label" data-bs-toggle="tooltip" data-bs-placement="top" title="The account that settled the fee. A paymaster approved payment in the validation prefix, so the sender did not pay for this transaction.">Fee paid by</span>
+          <span class="frm-stat-value">{{ formatEthAddressShortLink .PayerAddr false 5 }}</span>
+        </div>
+        {{ end }}
       </div>
 
       <details class="frm-intro text-muted">
@@ -323,7 +330,10 @@
             {{ if $frame.HasExpiry }}
             <tr>
               <th>Deadline</th>
-              <td>{{ formatRecentTimeShort $frame.ExpiryTime }} <span class="text-muted">— the transaction is invalid after this time</span></td>
+              <td>
+                {{ $frame.ExpiryTime.UTC }}
+                <span class="text-muted">— {{ if $.ExpiryPassed }}{{ $.ExpiryMargin }} before the transaction was included, which this frame should have rejected{{ else if $.ExpiryMargin }}{{ $.ExpiryMargin }} after the transaction was included; this frame reverts once it passes, which would make the transaction invalid{{ else }}this frame reverts once it passes, which would make the transaction invalid{{ end }}</span>
+              </td>
             </tr>
             {{ end }}
             {{ if gt $frame.BatchSize 1 }}

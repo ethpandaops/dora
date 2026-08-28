@@ -188,8 +188,15 @@ type TransactionPageData struct {
 	PayerIsSender bool   `json:"payer_is_sender"`
 
 	// ExpiryTime is the deadline an expiry verifier frame checked against.
-	HasExpiry  bool      `json:"has_expiry"`
-	ExpiryTime time.Time `json:"expiry_time"`
+	//
+	// The frame checked it when the transaction executed, so on an included transaction
+	// the deadline only says how much room it had left. ExpiryMargin is that distance
+	// from the inclusion time, and ExpiryPassed marks the deadline as already gone by
+	// then - which a conforming client would not have included.
+	HasExpiry    bool      `json:"has_expiry"`
+	ExpiryTime   time.Time `json:"expiry_time"`
+	ExpiryMargin string    `json:"expiry_margin"`
+	ExpiryPassed bool      `json:"expiry_passed"`
 
 	// NonceIsAccount reports whether NonceSeq is the sender's ordinary account nonce,
 	// which is only so when the transaction names the zero nonce key alone. Otherwise it

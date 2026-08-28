@@ -3,6 +3,7 @@ package handlers
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
@@ -357,5 +358,60 @@ func TestFrameTransactionWithNoFailuresIsASuccess(t *testing.T) {
 
 	if pageData.FrameIncomplete {
 		t.Error("no frame failed, so nothing is incomplete")
+	}
+}
+
+// The expiry frame checks the deadline when the transaction executes, so on an included
+// transaction the deadline only says how much room it had left.
+func TestExpiryIsMeasuredFromInclusion(t *testing.T) {
+	included := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+
+	pageData := &models.TransactionPageData{
+		HasExpiry:  true,
+		BlockTime:  included,
+		ExpiryTime: included.Add(30 * time.Minute),
+	}
+
+	applyExpiryMargin(pageData)
+
+	if pageData.ExpiryPassed {
+		t.Error("the deadline was ahead of the inclusion, so it had not passed")
+	}
+
+	if pageData.ExpiryMargin != "30 min." {
+		t.Errorf("margin = %q, want 30 min.", pageData.ExpiryMargin)
+	}
+}
+
+// A deadline already gone when the transaction was included is an anomaly: the frame
+// should have rejected it.
+func TestExpiryAlreadyPassedAtInclusion(t *testing.T) {
+	included := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+
+	pageData := &models.TransactionPageData{
+		HasExpiry:  true,
+		BlockTime:  included,
+		ExpiryTime: included.Add(-2 * time.Minute),
+	}
+
+	applyExpiryMargin(pageData)
+
+	if !pageData.ExpiryPassed {
+		t.Error("the deadline was behind the inclusion, so it had passed")
+	}
+
+	if pageData.ExpiryMargin != "2 min." {
+		t.Errorf("margin = %q, want 2 min.", pageData.ExpiryMargin)
+	}
+}
+
+// Without a block time there is nothing to measure against, and no margin is claimed.
+func TestExpiryMarginNeedsAnInclusionTime(t *testing.T) {
+	pageData := &models.TransactionPageData{HasExpiry: true, ExpiryTime: time.Now()}
+
+	applyExpiryMargin(pageData)
+
+	if pageData.ExpiryMargin != "" {
+		t.Errorf("margin = %q, want none without an inclusion time", pageData.ExpiryMargin)
 	}
 }

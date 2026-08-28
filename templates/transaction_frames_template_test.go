@@ -108,7 +108,10 @@ func TestFramesTemplateMarksRolledBackFrames(t *testing.T) {
 }
 
 // The expiry deadline is one of the more useful things to show, and it comes from the
-// envelope rather than any row, so it is absent whenever the block has been pruned.
+// envelope rather than any row, so it is absent whenever the block has been pruned. It is
+// stated against the time the transaction was included, because that is when the frame
+// checked it - counting down to it from now would call a transaction that was never late
+// expired.
 func TestFramesTemplateShowsExpiryOnlyWhenKnown(t *testing.T) {
 	frames := []*models.TransactionPageDataFrame{
 		{Index: 0, Species: "Expiry check", Status: 1, StatusText: "Success", HasTarget: true, TargetAddr: []byte{0x81, 0x41}, BatchSize: 1},
@@ -116,16 +119,26 @@ func TestFramesTemplateShowsExpiryOnlyWhenKnown(t *testing.T) {
 
 	withExpiry := renderFrames(t, &models.TransactionPageData{
 		IsFrameTx: true, FrameCount: 1, Frames: frames,
-		HasExpiry: true, ExpiryTime: time.Now().Add(10 * time.Minute),
+		HasExpiry: true, ExpiryTime: time.Now().Add(10 * time.Minute), ExpiryMargin: "10 min.",
 	})
-	if !bytes.Contains([]byte(withExpiry), []byte("expires")) {
-		t.Error("a known deadline must be shown")
+	if !bytes.Contains([]byte(withExpiry), []byte("included 10 min. before its deadline")) {
+		t.Error("a known deadline must be shown against the inclusion time")
+	}
+
+	// A deadline already gone by inclusion is something a conforming client would not
+	// have included, so it is called out rather than shown as ordinary slack.
+	alreadyPassed := renderFrames(t, &models.TransactionPageData{
+		IsFrameTx: true, FrameCount: 1, Frames: frames,
+		HasExpiry: true, ExpiryTime: time.Now(), ExpiryMargin: "2 min.", ExpiryPassed: true,
+	})
+	if !bytes.Contains([]byte(alreadyPassed), []byte("deadline had passed 2 min. before inclusion")) {
+		t.Error("a deadline already gone at inclusion must say so")
 	}
 
 	withoutExpiry := renderFrames(t, &models.TransactionPageData{
 		IsFrameTx: true, FrameCount: 1, Frames: frames,
 	})
-	if bytes.Contains([]byte(withoutExpiry), []byte("expires")) {
+	if bytes.Contains([]byte(withoutExpiry), []byte("deadline")) {
 		t.Error("no deadline must be claimed when none is known")
 	}
 }

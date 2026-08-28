@@ -209,7 +209,41 @@ func finalizeTransactionPage(ctx context.Context, pageData *models.TransactionPa
 		resolveFrameCalldata(ctx, pageData)
 	}
 
+	applyExpiryMargin(pageData)
 	setTransactionEnsNames(ctx, pageData)
+}
+
+// applyExpiryMargin states an expiry deadline against the time the transaction was
+// included rather than against now.
+//
+// The expiry verifier frame checks the deadline when the transaction executes, so once it
+// is on chain the only thing the deadline says is how much room it had left. Counting
+// down to it from the present says nothing: a transaction included an hour ago with a
+// thirty minute deadline was never late, and reading "expired 30 min. ago" would suggest
+// it was.
+func applyExpiryMargin(pageData *models.TransactionPageData) {
+	if !pageData.HasExpiry || pageData.BlockTime.IsZero() {
+		return
+	}
+
+	margin := pageData.ExpiryTime.Sub(pageData.BlockTime)
+
+	pageData.ExpiryPassed = margin < 0
+	pageData.ExpiryMargin = shortDuration(margin.Abs())
+}
+
+// shortDuration renders a duration at the coarsest unit that still says something.
+func shortDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%d sec.", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%d min.", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d hr.", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d days", int(d.Hours()/24))
+	}
 }
 
 // setTransactionEnsNames collects every execution address shown on the transaction
@@ -857,8 +891,9 @@ func buildTransactionPageDataFromBlockdb(ctx context.Context, pageData *models.T
 		// Receipt metadata from blockdb (upgrades to full view if available).
 		applyReceiptMetaFromBlockdb(ctx, pageData, block.Slot, block.Root, txHash)
 
-		// Blob data for type 3 (blob) transactions.
-		if ethTx.Type() == txtypes.BlobTxType && len(ethTx.BlobHashes()) > 0 {
+		// Blob data. A frame transaction may carry blobs too, so what decides this is
+		// whether the transaction has any, not which type it is.
+		if len(ethTx.BlobHashes()) > 0 {
 			loadBlobData(pageData, ethTx, blockData)
 		}
 
@@ -1570,8 +1605,9 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 		applyFrameTxEnvelope(pageData, frameTx)
 	}
 
-	// Load blob data for type 3 transactions
-	if ethTx.Type() == txtypes.BlobTxType && len(ethTx.BlobHashes()) > 0 {
+	// Load blob data. EIP-8141 gives a frame transaction blob hashes and a blob fee cap
+	// of its own, so the type is not what decides whether there are blobs to show.
+	if len(ethTx.BlobHashes()) > 0 {
 		loadBlobData(pageData, ethTx, blockData)
 	}
 
