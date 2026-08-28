@@ -4,6 +4,7 @@ import { Modal } from 'react-bootstrap';
 
 import { IDeposit } from '../SubmitDepositsForm/DepositsTable';
 import { toReadableAmount } from '../../utils/ReadableAmount';
+import { BUILDER_DEPOSIT_REQUEST_GAS_LIMIT } from '../../utils/GasLimits';
 
 interface IBuilderDepositEntryProps {
   deposit: IDeposit;
@@ -84,7 +85,7 @@ const BuilderDepositEntry = (props: IBuilderDepositEntryProps): React.ReactEleme
       chainId: chain?.id,
       value: totalValue,
       data,
-      gas: 300000n,
+      gas: BUILDER_DEPOSIT_REQUEST_GAS_LIMIT,
     }).then(tx => {
       console.log(tx);
     }).catch(error => {

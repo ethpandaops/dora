@@ -5,6 +5,7 @@ import { IValidator } from './SubmitConsolidationsFormProps';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { Modal } from 'react-bootstrap';
 import { useQueueDataCache } from '../../hooks/useQueueDataCache';
+import { CONSOLIDATION_REQUEST_GAS_LIMIT } from '../../utils/GasLimits';
 
 interface IConsolidationReviewProps {
   sourceValidator: IValidator;
@@ -252,7 +253,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
       // https://eips.ethereum.org/EIPS/eip-7251#add-consolidation-request
       // calldata (96 bytes): sourceValidator.pubkey (48 bytes) + targetValidator.pubkey (48 bytes)
       data: "0x" + props.sourceValidator.pubkey.substring(2) + props.targetValidator.pubkey.substring(2),
-      gas: 200000n,
+      gas: CONSOLIDATION_REQUEST_GAS_LIMIT,
     }).then(tx => {
       console.log(tx);
     }).catch(error => {
