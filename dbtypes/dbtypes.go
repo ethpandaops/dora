@@ -659,65 +659,11 @@ const (
 // IsMultiTarget reports whether a transaction addresses more than one recipient.
 //
 // Such a transaction has no recipient of its own, so its el_transactions row carries
-// to_id 0 - the id no account has - and its targets live in el_tx_frames. Callers must
-// not read that as a contract creation, which is the other reason a row has no
-// recipient.
+// to_id 0 - the id no account has - and its targets are read from the transaction
+// itself. Callers must not read that as a contract creation, which is the other reason
+// a row has no recipient.
 func IsMultiTarget(txType uint8) bool {
 	return txType&ElTxTypeMask == ElTxTypeFrame
-}
-
-// ElFrameStatus* are the values of el_tx_frames.status. Zero through two are EIP-8141's
-// per-frame receipt statuses; the sentinel marks a frame whose result the client did not
-// report, which is neither a success nor a failure.
-const (
-	ElFrameStatusFailed  uint8 = 0
-	ElFrameStatusSuccess uint8 = 1
-	ElFrameStatusSkipped uint8 = 2
-	ElFrameStatusUnknown uint8 = 255
-)
-
-// ElTxFrame is one frame of an EIP-8141 frame transaction.
-//
-// A frame transaction is an ordered list of calls rather than a single one, so the
-// recipient, value, gas budget and status el_transactions holds once per transaction
-// exist once per frame here.
-type ElTxFrame struct {
-	TxUid      uint64 `db:"tx_uid"`
-	FrameIndex uint16 `db:"frame_index"`
-
-	Mode  uint8 `db:"mode"`  // 0 DEFAULT, 1 VERIFY, 2 SENDER
-	Flags uint8 `db:"flags"` // approval scope in bits 0-1, atomic batch in bit 2
-
-	// Status is the frame's own result; see ElFrameStatus*. RolledBack marks a frame
-	// whose atomic batch was undone after it ran: it may report success, but its state
-	// changes are gone and only the gas it spent remains.
-	Status     uint8 `db:"status"`
-	RolledBack bool  `db:"rolled_back"`
-
-	// ToID is the frame's resolved target. A frame that declares no target addresses the
-	// transaction's sender.
-	ToID uint64 `db:"to_id"`
-
-	Amount    float64 `db:"amount"`
-	AmountRaw []byte  `db:"amount_raw"`
-	MethodID  []byte  `db:"method_id"`
-	DataLen   uint32  `db:"data_len"`
-
-	// EIP-8037 budgets each frame in two gas dimensions, and the receipt reports both.
-	ExecGasLimit  uint64 `db:"exec_gas_limit"`
-	StateGasLimit uint64 `db:"state_gas_limit"`
-	ExecGasUsed   uint64 `db:"exec_gas_used"`
-	StateGasUsed  uint64 `db:"state_gas_used"`
-
-	// LogCount is the number of logs the frame emitted. The transaction's logs are the
-	// per-frame lists concatenated in frame order, so these counts partition the flat
-	// event index and attribute each log to the frame that emitted it.
-	LogCount uint16 `db:"log_count"`
-
-	// TraceCount is the number of call-trace frames belonging to this frame, and zero
-	// when the client's trace does not decompose the transaction into its frames. The
-	// trace is stored in frame order, so these counts partition it the same way.
-	TraceCount uint32 `db:"trace_count"`
 }
 
 // ElTransactionInternal is a per-account aggregate of internal calls within a

@@ -148,6 +148,12 @@ type TransactionPageData struct {
 	IsFrameTx  bool   `json:"is_frame_tx"`
 	FrameCount uint64 `json:"frame_count"`
 
+	// FrameResultsMissing marks frames shown as declared but not as executed. What each
+	// frame did is only on the receipt, which is kept for blocks indexed with execution
+	// details - so a deployment that indexes without them, or a block that predates the
+	// receipt being stored, leaves the frames without results.
+	FrameResultsMissing bool `json:"frame_results_missing"`
+
 	// FrameShape names the transaction by its validation prefix - the thing that makes a
 	// frame transaction legible at a glance.
 	FrameShape string `json:"frame_shape"`

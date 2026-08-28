@@ -137,6 +137,11 @@ const (
 	ReceiptMetaVersion2 = 2
 )
 
+// FrameStatusUnknown marks a frame the client reported no result for, which is neither
+// a success nor a failure. EIP-8141's own statuses start at zero, and zero is how a
+// failure is spelled, so the absence of a result needs a value of its own.
+const FrameStatusUnknown uint8 = 255
+
 // FrameReceiptEntry is the result a receipt reports for one frame.
 type FrameReceiptEntry struct {
 	// Status is EIP-8141's per-frame status: 0 failed, 1 success, 2 skipped. A skipped

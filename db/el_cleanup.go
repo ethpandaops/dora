@@ -14,7 +14,6 @@ type CleanupStats struct {
 	TransactionsDeleted   int64
 	InternalTxsDeleted    int64
 	TokenTransfersDeleted int64
-	TxFramesDeleted       int64
 	BlocksDeleted         int64
 	RevertReasonsDeleted  int64
 }
@@ -59,13 +58,6 @@ func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64) (
 		return stats, err
 	}
 	stats.TokenTransfersDeleted = deleted
-
-	// Delete frame transaction frames in batches (uses tx_uid column)
-	deleted, err = batchDeleteBefore(ctx, "el_tx_frames", "tx_uid", txUidThreshold, batchSize)
-	if err != nil {
-		return stats, err
-	}
-	stats.TxFramesDeleted = deleted
 
 	// Delete blocks in batches (uses block_uid column)
 	deleted, err = batchDeleteBefore(ctx, "el_blocks", "block_uid", blockUidThreshold, batchSize)

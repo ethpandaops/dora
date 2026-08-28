@@ -339,16 +339,10 @@ func TestCorrelateFrameTraceRejectsPlaceholderRoot(t *testing.T) {
 	if correlateFrameTrace(frames, roots) {
 		t.Error("a single self-addressed root must not be read as a decomposition of two frames")
 	}
-
-	for _, frame := range frames {
-		if frame.traceCount != 0 {
-			t.Errorf("frame %d claimed %d trace frames from a placeholder", frame.index, frame.traceCount)
-		}
-	}
 }
 
 // A client that does decompose the transaction reports one root per executed frame,
-// addressing that frame's target. Then the trace partitions cleanly by frame.
+// addressing that frame's target. Only then is the trace the transaction's frames.
 func TestCorrelateFrameTraceMapsRootsToFrames(t *testing.T) {
 	ctx := newFrameTestContext()
 	callee := ctx.ensureAccount(frameCallee, nil, false)
@@ -374,19 +368,6 @@ func TestCorrelateFrameTraceMapsRootsToFrames(t *testing.T) {
 	if !correlateFrameTrace(frames, roots) {
 		t.Fatal("one root per executed frame, addressing its target, must correlate")
 	}
-
-	if frames[0].traceCount != 1 {
-		t.Errorf("frame 0 trace count = %d, want 1", frames[0].traceCount)
-	}
-
-	if frames[1].traceCount != 0 {
-		t.Errorf("skipped frame 1 trace count = %d, want 0", frames[1].traceCount)
-	}
-
-	// The root, its two children and the grandchild below them.
-	if frames[2].traceCount != 4 {
-		t.Errorf("frame 2 trace count = %d, want 4", frames[2].traceCount)
-	}
 }
 
 // A root that addresses something other than the frame it lines up with is not that
@@ -402,84 +383,6 @@ func TestCorrelateFrameTraceRejectsMismatchedTargets(t *testing.T) {
 
 	if correlateFrameTrace(frames, roots) {
 		t.Error("a root addressing a different account must not be mapped onto the frame")
-	}
-}
-
-// A frame becomes its el_tx_frames row with the target account resolved by commit time.
-func TestPendingFrameToDbRow(t *testing.T) {
-	ctx := newFrameTestContext()
-	callee := ctx.ensureAccount(frameCallee, nil, false)
-	callee.id = 42
-
-	frame := &pendingFrame{
-		index:         3,
-		mode:          uint8(txtypes.FrameModeSender),
-		flags:         txtypes.AtomicBatchFlag,
-		target:        frameCallee,
-		toAccount:     callee,
-		value:         big.NewInt(1_000_000_000_000_000_000),
-		dataLen:       9,
-		methodID:      []byte{0xde, 0xad, 0xbe, 0xef},
-		execGasLimit:  30000,
-		stateGasLimit: 500,
-		hasResult:     true,
-		status:        txtypes.FrameStatusSuccess,
-		execGasUsed:   21000,
-		stateGasUsed:  40,
-		logCount:      2,
-		traceCount:    5,
-	}
-
-	row := frame.toDbRow(0xdeadbeef)
-
-	if row.TxUid != 0xdeadbeef || row.FrameIndex != 3 {
-		t.Errorf("row key = (%d, %d), want (%d, 3)", row.TxUid, row.FrameIndex, 0xdeadbeef)
-	}
-
-	if row.ToID != 42 {
-		t.Errorf("to id = %d, want the resolved account id 42", row.ToID)
-	}
-
-	if row.Status != dbtypes.ElFrameStatusSuccess {
-		t.Errorf("status = %d, want success", row.Status)
-	}
-
-	if row.Amount != 1.0 {
-		t.Errorf("amount = %v, want 1 ETH", row.Amount)
-	}
-
-	if row.ExecGasUsed != 21000 || row.StateGasUsed != 40 {
-		t.Errorf("gas = %d/%d, want 21000/40", row.ExecGasUsed, row.StateGasUsed)
-	}
-
-	if row.TraceCount != 5 {
-		t.Errorf("trace count = %d, want 5", row.TraceCount)
-	}
-}
-
-// A frame the client reported no result for is neither a success nor a failure, and a
-// zero status would claim it failed.
-func TestPendingFrameToDbRowMarksMissingResult(t *testing.T) {
-	frame := &pendingFrame{index: 0, value: new(big.Int)}
-
-	row := frame.toDbRow(1)
-	if row.Status != dbtypes.ElFrameStatusUnknown {
-		t.Errorf("status = %d, want the unknown sentinel %d", row.Status, dbtypes.ElFrameStatusUnknown)
-	}
-
-	if row.ToID != 0 {
-		t.Errorf("to id = %d, want 0 for an unresolved target", row.ToID)
-	}
-}
-
-// log_count is a SMALLINT, which postgres signs, so a frame that emitted more logs than
-// that holds has to be clamped rather than overflow the column.
-func TestPendingFrameToDbRowClampsLogCount(t *testing.T) {
-	frame := &pendingFrame{index: 0, value: new(big.Int), logCount: 100000}
-
-	row := frame.toDbRow(1)
-	if row.LogCount != 32767 {
-		t.Errorf("log count = %d, want it clamped to 32767", row.LogCount)
 	}
 }
 
@@ -510,8 +413,8 @@ func TestIsMultiTargetIdentifiesFrameTransactions(t *testing.T) {
 }
 
 // A transaction reporting more frames than EIP-8141 allows cannot be in a valid block.
-// Indexing all of them anyway would hand frame_index a value its column cannot hold, and
-// the block would fail to insert on every retry.
+// The stored frame list is bounded by the same cap, so keeping all of them anyway would
+// fail to encode and the block would fail on every retry.
 func TestResolveFramesCapsFrameCount(t *testing.T) {
 	ctx := newFrameTestContext()
 
@@ -538,36 +441,50 @@ func TestResolveFramesCapsFrameCount(t *testing.T) {
 	}
 }
 
-// Both stores record a frame's result, and a page is rebuilt from whichever still has
-// it: the relational rows while they exist, blockdb once they are pruned. They therefore
-// have to spell the result the same way, or a transaction changes its mind about what
-// happened to it when its rows age out.
-func TestFrameStoresAgreeOnStatus(t *testing.T) {
+// The receipt is the only place a frame's result is kept, and a page is rebuilt from it
+// for as long as the transaction is resolvable at all. It therefore has to carry every
+// frame's result, including the absence of one.
+func TestFrameReceiptDataRecordsEveryResult(t *testing.T) {
+	payer := framePaymaster
+
 	frames := []*pendingFrame{
-		{index: 0, value: new(big.Int), hasResult: true, status: txtypes.FrameStatusSuccess},
+		{index: 0, value: new(big.Int), hasResult: true, status: txtypes.FrameStatusSuccess, execGasUsed: 21000, stateGasUsed: 40, logCount: 2},
 		{index: 1, value: new(big.Int), hasResult: true, status: txtypes.FrameStatusFailed},
 		{index: 2, value: new(big.Int), hasResult: true, status: txtypes.FrameStatusSkipped},
 		// The client reported no result for this one.
 		{index: 3, value: new(big.Int)},
 	}
 
-	receiptData := frameReceiptData(frames, common.Address{})
+	receiptData := frameReceiptData(frames, payer)
 	if receiptData == nil || len(receiptData.Frames) != len(frames) {
 		t.Fatal("blockdb frame data was not built")
 	}
 
-	for i, frame := range frames {
-		row := frame.toDbRow(1)
-		stored := receiptData.Frames[i].Status
+	if common.Address(receiptData.Payer) != payer {
+		t.Errorf("payer = %x, want %x", receiptData.Payer, payer)
+	}
 
-		if row.Status != stored {
-			t.Errorf("frame %d: el_tx_frames says %d, blockdb says %d", i, row.Status, stored)
+	for i, frame := range frames {
+		if got := receiptData.Frames[i].Status; got != frame.storedStatus() {
+			t.Errorf("frame %d stored as %d, want %d", i, got, frame.storedStatus())
 		}
 	}
 
-	// The frame with no reported result must say so in both, rather than claim a failure.
-	if got := receiptData.Frames[3].Status; got != dbtypes.ElFrameStatusUnknown {
-		t.Errorf("unreported frame stored as %d, want the unknown sentinel %d", got, dbtypes.ElFrameStatusUnknown)
+	if got := receiptData.Frames[0]; got.ExecGasUsed != 21000 || got.StateGasUsed != 40 || got.LogCount != 2 {
+		t.Errorf("frame 0 recorded %d/%d gas and %d logs, want 21000/40 and 2", got.ExecGasUsed, got.StateGasUsed, got.LogCount)
+	}
+
+	// A frame with no reported result must say so, rather than claim the failure that a
+	// zero status spells.
+	if got := receiptData.Frames[3].Status; got != bdbtypes.FrameStatusUnknown {
+		t.Errorf("unreported frame stored as %d, want the unknown sentinel %d", got, bdbtypes.FrameStatusUnknown)
+	}
+}
+
+// A frame transaction has no frames of its own to record when it has none at all.
+func TestFrameReceiptDataIsNilWithoutFrames(t *testing.T) {
+	if frameReceiptData(nil, framePaymaster) != nil {
+		t.Error("a transaction with no frames has no frame receipt content")
 	}
 }
 

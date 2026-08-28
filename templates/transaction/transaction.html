@@ -122,9 +122,15 @@
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Receiving address">{{ if .IsCreate }}Created Contract:{{ else if .IsFrameTx }}Targets:{{ else }}To:{{ end }}</span></div>
           <div class="col-md-9 text-monospace text-break">
             {{ if .IsFrameTx }}
+            {{ if gt .FrameCount 0 }}
             <span data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction addresses each of its frames separately and has no recipient of its own">
               {{ .FrameCount }} frame{{ if ne .FrameCount 1 }}s{{ end }}
             </span>
+            {{ else }}
+            <span class="text-muted" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction addresses each of its frames separately and has no recipient of its own. Neither the transaction nor its receipt is retained for this block, so its frames cannot be read.">
+              multiple targets, no longer retained
+            </span>
+            {{ end }}
             {{ else if .HasTo }}
             {{ $toAddr := formatEthAddressFull .ToAddr }}
             {{ if .ToIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
@@ -373,7 +379,7 @@
               </div>
             </div>
             {{ end }}
-            {{ if .IsFrameTx }}
+            {{ if and .IsFrameTx (gt .FrameCount 0) }}
             {{ template "frames" . }}
             {{ end }}
           </div>

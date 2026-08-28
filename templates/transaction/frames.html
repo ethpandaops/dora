@@ -3,6 +3,11 @@
   <div class="col-12">
     <div class="d-flex align-items-center mb-2">
       <span class="me-2" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction is an ordered list of calls. Each frame declares its own target, value and gas budgets, and the receipt reports a result for each.">Frames:</span>
+      {{ if .FrameResultsMissing }}
+      <span class="text-muted" style="font-size: 0.85rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="The transaction declares these frames; what each of them did is on its receipt, which is not retained for this block">
+        <i class="fas fa-info-circle me-1"></i>declared only
+      </span>
+      {{ end }}
       {{ if .HasExpiry }}
       <span class="badge text-bg-secondary ms-auto" data-bs-toggle="tooltip" data-bs-placement="top" title="Deadline checked by the expiry verifier frame">
         <i class="far fa-clock me-1"></i>expires {{ formatRecentTimeShort .ExpiryTime }}
@@ -68,7 +73,7 @@
               {{ else if eq $frame.Status 2 }}
               <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="An earlier frame in this atomic batch failed, so this frame never ran. It is neither a success nor a failure.">{{ $frame.StatusText }}</span>
               {{ else }}
-              <span class="badge text-bg-light text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="The client reported no result for this frame">{{ $frame.StatusText }}</span>
+              <span class="badge text-bg-light text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if $.FrameResultsMissing }}Per-frame results are not stored for this block, so what this frame did is not known{{ else }}The client reported no result for this frame{{ end }}">{{ $frame.StatusText }}</span>
               {{ end }}
               {{ if gt $frame.LogCount 0 }}
               <span class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="Logs emitted by this frame">

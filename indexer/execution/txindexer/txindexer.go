@@ -803,7 +803,6 @@ func (t *TxIndexer) checkAndRunCleanup() {
 		addObj(PruneObjTransactions, retentionStats.TransactionsDeleted, 0)
 		addObj(PruneObjInternalTxs, retentionStats.InternalTxsDeleted, 0)
 		addObj(PruneObjTokenTransfers, retentionStats.TokenTransfersDeleted, 0)
-		addObj(PruneObjTxFrames, retentionStats.TxFramesDeleted, 0)
 		addObj(PruneObjBlocks, retentionStats.BlocksDeleted, 0)
 	}
 	addObj(PruneObjExecData, execPruned+sizeReset, execFreed+sizeFreed)
@@ -832,7 +831,6 @@ func (t *TxIndexer) checkAndRunCleanup() {
 			fields["transactions"] = retentionStats.TransactionsDeleted
 			fields["internalTxs"] = retentionStats.InternalTxsDeleted
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
-			fields["txFrames"] = retentionStats.TxFramesDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted
 		}
 		fields["blockdbPruned"] = execPruned + sizeReset

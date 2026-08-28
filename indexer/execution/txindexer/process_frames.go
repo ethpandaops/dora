@@ -6,7 +6,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
-	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/sirupsen/logrus"
 )
@@ -46,58 +45,18 @@ type pendingFrame struct {
 	// rolledBack marks a frame whose atomic batch was undone. Such a frame may still
 	// report success, but nothing it did survived.
 	rolledBack bool
-
-	// traceCount is the number of call-trace frames belonging to this frame, set only
-	// when the transaction's trace decomposes into its frames. The trace is stored in
-	// frame order, so the counts partition it and a reader can show each frame's calls
-	// under the frame that made them.
-	traceCount uint32
 }
 
-// storedStatus is the frame's result as both stores record it.
+// storedStatus is the frame's result as it is recorded.
 //
 // A client that reported no result for the frame leaves it neither succeeded nor failed,
 // which the sentinel says and a zero status would not - zero is how a failure is spelled.
 func (f *pendingFrame) storedStatus() uint8 {
 	if !f.hasResult {
-		return dbtypes.ElFrameStatusUnknown
+		return bdbtypes.FrameStatusUnknown
 	}
 
 	return uint8(f.status)
-}
-
-// toDbRow renders the frame as its el_tx_frames row. Account ids are resolved by then.
-func (f *pendingFrame) toDbRow(txUid uint64) *dbtypes.ElTxFrame {
-	// log_count is a SMALLINT, which postgres signs.
-	logCount := f.logCount
-	if logCount > 32767 {
-		logCount = 32767
-	}
-
-	row := &dbtypes.ElTxFrame{
-		TxUid:         txUid,
-		FrameIndex:    f.index,
-		Mode:          f.mode,
-		Flags:         f.flags,
-		Status:        f.storedStatus(),
-		RolledBack:    f.rolledBack,
-		Amount:        weiToFloat(f.value, 18),
-		AmountRaw:     f.value.Bytes(),
-		MethodID:      f.methodID,
-		DataLen:       f.dataLen,
-		ExecGasLimit:  f.execGasLimit,
-		StateGasLimit: f.stateGasLimit,
-		ExecGasUsed:   f.execGasUsed,
-		StateGasUsed:  f.stateGasUsed,
-		LogCount:      uint16(logCount),
-		TraceCount:    f.traceCount,
-	}
-
-	if f.toAccount != nil {
-		row.ToID = f.toAccount.id
-	}
-
-	return row
 }
 
 // frameReceiptData renders the frames as the receipt content stored in blockdb, or nil
@@ -152,8 +111,8 @@ func (ctx *txProcessingContext) resolveFrames(
 	extra := receipt.FrameExtra()
 
 	// EIP-8141 caps a transaction at MaxFrames, and a block carrying more than that is
-	// not valid. Trusting the count anyway would hand a frame index to a column that
-	// cannot hold it, failing the block's insert on every retry.
+	// not valid. The stored frame list is bounded by the same cap, so trusting the count
+	// anyway would fail to encode.
 	txFrames := frameTx.Frames
 	if len(txFrames) > txtypes.MaxFrames {
 		ctx.indexer.logger.WithFields(logrus.Fields{
@@ -316,8 +275,8 @@ func (ctx *txProcessingContext) aggregateFrames(
 	return aggregates
 }
 
-// correlateFrameTrace maps a frame transaction's call-trace roots onto its frames,
-// recording how much of the trace belongs to each, and reports whether it could.
+// correlateFrameTrace reports whether a frame transaction's call-trace roots are its
+// frames.
 //
 // EIP-8141 makes a transaction a list of calls rather than one, so a client that traces
 // such a transaction has one top-level call per frame that executed. Nothing specifies
@@ -348,22 +307,7 @@ func correlateFrameTrace(frames []*pendingFrame, roots []*exerpc.CallTraceCall) 
 		}
 	}
 
-	for i, root := range roots {
-		executed[i].traceCount = countCallFrames(root)
-	}
-
 	return true
-}
-
-// countCallFrames counts a call and every call below it.
-func countCallFrames(call *exerpc.CallTraceCall) uint32 {
-	count := uint32(1)
-
-	for i := range call.Calls {
-		count += countCallFrames(&call.Calls[i])
-	}
-
-	return count
 }
 
 // mergeInternalAggregates folds src into dst and returns the combined set. Accounts are
