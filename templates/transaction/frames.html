@@ -42,16 +42,35 @@
         color: var(--bs-secondary);
       }
 
-      .frm-section { border-top: 1px solid var(--bs-border-color); }
+      /* A gap before the rule, so the lists below read as their own thing rather than
+         as more frames. */
+      .frm-section { margin-top: 18px; border-top: 1px solid var(--bs-border-color); }
       .frm-section-head {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        padding: 8px 10px 4px;
+        padding: 7px 10px;
+        background: var(--bs-tertiary-bg);
+        border-bottom: 1px solid var(--bs-border-color);
         font-size: 0.85rem;
         font-weight: 600;
       }
       .frm-section-note { font-weight: 400; font-size: 0.8rem; color: var(--bs-secondary); }
+
+      /* Same row height, padding and type as the frame rows above. */
+      .frm-table { margin: 0; font-size: 0.88rem; }
+      .frm-table > :not(caption) > * > * { padding: 7px 10px; background: none; }
+      .frm-table thead th {
+        font-weight: 600;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--bs-secondary);
+        border-bottom: 1px solid var(--bs-border-color);
+      }
+      .frm-table tbody tr { border-bottom: 1px solid var(--bs-border-color); }
+      .frm-table tbody tr:last-child { border-bottom: none; }
+      .frm-table tbody tr:hover { background: var(--bs-tertiary-bg); }
 
       .frm-entry { border-bottom: 1px solid var(--bs-border-color); }
       .frm-entry:last-child { border-bottom: none; }
@@ -406,7 +425,7 @@
         <span class="frm-section-note">— checked before any frame ran. A frame transaction names its sender outright, so these are authorisations rather than what the sender is recovered from.</span>
       </div>
       <div class="table-responsive">
-        <table class="table table-nobr table-sm mb-0" style="font-size: 0.85rem;">
+        <table class="table table-nobr frm-table">
           <thead>
             <tr>
               <th style="width: 3rem;">#</th>
@@ -452,7 +471,7 @@
         <span class="frm-section-note">— EIP-8272. Declaring a root up front is what lets a frame read it while the transaction runs.</span>
       </div>
       <div class="table-responsive">
-        <table class="table table-nobr table-sm mb-0" style="font-size: 0.85rem;">
+        <table class="table table-nobr frm-table">
           <thead>
             <tr>
               <th style="width: 3rem;">#</th>
