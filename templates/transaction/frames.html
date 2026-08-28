@@ -1,92 +1,402 @@
 {{ define "frames" }}
-<div class="row p-2 mx-0">
-  <div class="col-12">
-    <div class="d-flex align-items-center mb-2">
-      <span class="me-2" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction is an ordered list of calls. Each frame declares its own target, value and gas budgets, and the receipt reports a result for each.">Frames:</span>
-      {{ if .FrameResultsMissing }}
-      <span class="text-muted" style="font-size: 0.85rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="The transaction declares these frames; what each of them did is on its receipt, which is not retained for this block">
-        <i class="fas fa-info-circle me-1"></i>declared only
-      </span>
-      {{ end }}
-      {{ if .HasExpiry }}
-      <span class="badge text-bg-secondary ms-auto" data-bs-toggle="tooltip" data-bs-placement="top" title="Deadline checked by the expiry verifier frame">
-        <i class="far fa-clock me-1"></i>expires {{ formatRecentTimeShort .ExpiryTime }}
-      </span>
-      {{ end }}
+<div class="card mt-0 border-top-0 rounded-top-0">
+  <div class="card-body p-0">
+    {{ if eq (len .Frames) 0 }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-archive fa-2x mb-2"></i>
+      <p>Neither this transaction nor its receipt is retained for this block, so its frames cannot be read.</p>
     </div>
-    <div class="table-responsive">
-      <table class="table table-nobr table-sm mb-0" style="font-size: 0.9rem;">
-        <thead>
-          <tr>
-            <th style="width: 3rem;">#</th>
-            <th>Kind</th>
-            <th>Target</th>
-            <th class="text-end">Value</th>
-            <th class="text-end">Data</th>
-            <th class="text-end" data-bs-toggle="tooltip" data-bs-placement="top" title="Execution gas used of the budget declared for this frame">Exec gas</th>
-            <th class="text-end" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-8037 state gas used of the budget declared for this frame. A later frame can retroactively reduce an earlier one through a state-gas refill.">State gas</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{ $prevBatch := -1 }}
-          {{ range $frame := .Frames }}
-          {{ $inBatch := gt $frame.BatchSize 1 }}
-          <tr{{ if $inBatch }} class="frame-batched" data-batch="{{ $frame.BatchIndex }}"{{ end }}>
-            <td class="text-muted">
-              {{ if and $inBatch (ne $frame.BatchIndex $prevBatch) }}
-              <i class="fas fa-link text-muted" style="font-size:0.7rem" data-bs-toggle="tooltip" data-bs-placement="top" title="Atomic batch of {{ $frame.BatchSize }} frames: if one fails the whole batch rolls back and the rest are skipped"></i>
-              {{ end }}
-              {{ $frame.Index }}
-            </td>
-            <td>
-              <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $frame.ModeName }} mode, flags 0x{{ printf "%x" $frame.Flags }}{{ if $frame.ApprovesPayment }} - approves payment{{ end }}{{ if $frame.ApprovesExecution }} - approves execution{{ end }}">
-                {{ if $frame.Species }}{{ $frame.Species }}{{ else }}{{ $frame.ModeName }}{{ end }}
-              </span>
-            </td>
-            <td class="text-monospace">
-              {{ if $frame.HasTarget }}
-              {{ $target := formatEthAddressFull $frame.TargetAddr }}
-              <a href="/address/{{ $target }}">{{ formatEthAddress $frame.TargetAddr }}</a>
-              {{ if $frame.TargetIsSender }}<span class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="The frame declares no target, which addresses the transaction's sender">(sender)</span>{{ end }}
-              {{ else }}
-              <span class="text-muted">-</span>
-              {{ end }}
-            </td>
-            <td class="text-end">{{ if gt $frame.Amount 0.0 }}{{ formatFloat $frame.Amount 6 }} ETH{{ else }}<span class="text-muted">-</span>{{ end }}</td>
-            <td class="text-end">
-              {{ if gt $frame.DataLen 0 }}
-              <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if gt (len $frame.MethodID) 0 }}Method 0x{{ printf "%x" $frame.MethodID }}{{ else }}Calldata{{ end }}">{{ $frame.DataLen }} B</span>
-              {{ else }}
-              <span class="text-muted">-</span>
-              {{ end }}
-            </td>
-            <td class="text-end">{{ formatAddCommas $frame.ExecGasUsed }}<span class="text-muted"> / {{ formatAddCommas $frame.ExecGasLimit }}</span></td>
-            <td class="text-end">{{ formatAddCommas $frame.StateGasUsed }}<span class="text-muted"> / {{ formatAddCommas $frame.StateGasLimit }}</span></td>
-            <td>
-              {{ if $frame.RolledBack }}
-              <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="This frame ran, but a later frame in its atomic batch failed. Its logs were discarded and its state gas zeroed, so nothing it did survived.">{{ $frame.StatusText }}</span>
-              {{ else if eq $frame.Status 1 }}
-              <span class="badge text-bg-success">{{ $frame.StatusText }}</span>
-              {{ else if eq $frame.Status 0 }}
-              <span class="badge text-bg-danger">{{ $frame.StatusText }}</span>
-              {{ else if eq $frame.Status 2 }}
-              <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="An earlier frame in this atomic batch failed, so this frame never ran. It is neither a success nor a failure.">{{ $frame.StatusText }}</span>
-              {{ else }}
-              <span class="badge text-bg-light text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if $.FrameResultsMissing }}Per-frame results are not stored for this block, so what this frame did is not known{{ else }}The client reported no result for this frame{{ end }}">{{ $frame.StatusText }}</span>
-              {{ end }}
-              {{ if gt $frame.LogCount 0 }}
-              <span class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="Logs emitted by this frame">
-                <i class="fa fa-list" style="font-size:0.7rem"></i> {{ $frame.LogCount }}
-              </span>
-              {{ end }}
-            </td>
-          </tr>
-          {{ $prevBatch = $frame.BatchIndex }}
+    {{ else }}
+    <style>
+      .frm-intro { font-size: 0.86rem; }
+      .frm-intro dt { font-weight: 600; white-space: nowrap; }
+      .frm-intro dd { margin-bottom: 0.35rem; }
+      .frm-stat { display: flex; flex-direction: column; line-height: 1.25; }
+      .frm-stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--bs-secondary); }
+      .frm-stat-value { font-size: 0.95rem; font-family: monospace; }
+
+      .frm-phase {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        background: var(--bs-tertiary-bg);
+        border-bottom: 1px solid var(--bs-border-color);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--bs-secondary);
+      }
+      .frm-phase-note { text-transform: none; letter-spacing: 0; font-size: 0.8rem; }
+
+      .frm-batch {
+        border-left: 3px solid var(--bs-warning);
+        background: rgba(var(--bs-warning-rgb), 0.04);
+      }
+      .frm-batch-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        font-size: 0.78rem;
+        color: var(--bs-secondary);
+      }
+
+      .frm-entry { border-bottom: 1px solid var(--bs-border-color); }
+      .frm-entry:last-child { border-bottom: none; }
+      .frm-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 7px 10px;
+        font-size: 0.88rem;
+      }
+      .frm-row:hover { background: var(--bs-tertiary-bg); }
+      .frm-row.expandable { cursor: pointer; }
+      .frm-idx {
+        flex-shrink: 0;
+        width: 2.1rem;
+        font-family: monospace;
+        color: var(--bs-secondary);
+      }
+      .frm-kind { display: inline-flex; align-items: center; gap: 5px; min-width: 190px; flex-shrink: 0; }
+      .frm-flow { display: inline-flex; align-items: center; gap: 5px; font-family: monospace; font-size: 0.84rem; }
+      .frm-arrow { color: var(--bs-secondary); font-size: 0.72rem; }
+      .frm-method { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+      .frm-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+      .frm-gas {
+        white-space: nowrap;
+        font-family: monospace;
+        font-size: 0.8rem;
+        color: var(--bs-secondary);
+        text-align: right;
+        min-width: 8.5rem;
+      }
+      .frm-gas-label { font-family: var(--bs-body-font-family); font-size: 0.72rem; opacity: 0.75; margin-right: 3px; }
+      .frm-status { min-width: 5.4rem; text-align: right; }
+      .frm-logs { min-width: 2.6rem; text-align: right; }
+      .frm-value { min-width: 6rem; text-align: right; }
+      .frm-expand-slot { width: 18px; flex-shrink: 0; text-align: center; }
+      .frm-expand-icon { color: var(--bs-primary); font-size: 0.72rem; transition: transform 0.15s ease; }
+      .frm-expand-icon.open { transform: rotate(90deg); }
+
+      .frm-panel { display: none; padding: 4px 10px 10px 3.1rem; background: var(--bs-tertiary-bg); }
+      .frm-panel.open { display: block; }
+      .frm-data-box {
+        border: 1px solid var(--bs-border-color);
+        border-radius: 4px;
+        padding: 6px 8px;
+        background: var(--bs-body-bg);
+        font-family: monospace;
+        font-size: 0.82rem;
+        word-break: break-all;
+        max-height: 160px;
+        overflow-y: auto;
+      }
+      .frm-decoded-table { font-size: 0.82rem; margin: 4px 0 0 0; }
+      .frm-decoded-table td, .frm-decoded-table th { padding: 2px 8px; vertical-align: top; }
+      .frm-decoded-table td.frm-decoded-val { word-break: break-all; font-family: monospace; }
+      .frm-meta-table { font-size: 0.82rem; margin: 0; }
+      .frm-meta-table th { font-weight: 600; white-space: nowrap; width: 10rem; color: var(--bs-secondary); }
+      .frm-meta-table td, .frm-meta-table th { padding: 2px 8px; vertical-align: top; border: none; }
+
+      @media (max-width: 991px) {
+        .frm-kind { min-width: 0; }
+        .frm-flow { flex-basis: 100%; padding-left: 2.1rem; }
+        .frm-right { margin-left: 0; flex-basis: 100%; padding-left: 2.1rem; }
+      }
+    </style>
+
+    {{/* ---------- what this transaction is, and how a frame transaction works ---------- */}}
+    <div class="p-3 border-bottom">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="fw-semibold">{{ .FrameCount }} frame{{ if ne .FrameCount 1 }}s{{ end }}</span>
+        {{ if .FrameShape }}
+        <span class="badge text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="Named by the transaction's validation prefix - the leading frames whose success settles who pays">{{ .FrameShape }}</span>
+        {{ end }}
+        {{ if and (gt (len .PayerAddr) 0) (not .PayerIsSender) }}
+        <span class="badge text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="The fee was settled by an account other than the sender">
+          <i class="fas fa-hand-holding-dollar me-1"></i>fee paid by {{ formatEthAddress .PayerAddr }}
+        </span>
+        {{ end }}
+        {{ if .HasExpiry }}
+        <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Deadline checked by the expiry verifier frame">
+          <i class="far fa-clock me-1"></i>expires {{ formatRecentTimeShort .ExpiryTime }}
+        </span>
+        {{ end }}
+        {{ if .FrameResultsMissing }}
+        <span class="badge text-bg-light text-dark border" data-bs-toggle="tooltip" data-bs-placement="top" title="The transaction declares these frames; what each of them did is on its receipt, which is not retained for this block">
+          <i class="fas fa-info-circle me-1"></i>declared only
+        </span>
+        {{ end }}
+      </div>
+
+      <div class="d-flex flex-wrap gap-4 mb-2">
+        <div class="frm-stat">
+          <span class="frm-stat-label">Results</span>
+          <span class="frm-stat-value">
+            {{ if .FrameResultsMissing }}
+            <span class="text-muted">not retained</span>
+            {{ else }}
+            <span class="text-success">{{ .FrameSuccessCount }} ok</span>{{ if gt .FrameFailedCount 0 }}, <span class="text-danger">{{ .FrameFailedCount }} failed</span>{{ end }}{{ if gt .FrameSkippedCount 0 }}, <span class="text-secondary">{{ .FrameSkippedCount }} skipped</span>{{ end }}
+            {{ end }}
+          </span>
+        </div>
+        <div class="frm-stat">
+          <span class="frm-stat-label" data-bs-toggle="tooltip" data-bs-placement="top" title="Gas spent executing the frames">Execution gas</span>
+          <span class="frm-stat-value">{{ formatAddCommas .FrameExecGasUsed }}</span>
+        </div>
+        <div class="frm-stat">
+          <span class="frm-stat-label" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-8037 state gas. A later frame can retroactively reduce an earlier frame's share through a state-gas refill, so this is a final attribution rather than a running total.">State gas</span>
+          <span class="frm-stat-value">{{ formatAddCommas .FrameStateGasUsed }}</span>
+        </div>
+        <div class="frm-stat">
+          <span class="frm-stat-label">Sender</span>
+          <span class="frm-stat-value">{{ formatEthAddressShortLink .FromAddr false 5 }}</span>
+        </div>
+      </div>
+
+      <details class="frm-intro text-muted">
+        <summary class="text-body-secondary" role="button">How a frame transaction works</summary>
+        <dl class="row mt-2 mb-0">
+          <dt class="col-sm-3 col-lg-2">Ordered calls</dt>
+          <dd class="col-sm-9 col-lg-10">A frame transaction is not one call but a list of them, run in order. Each frame names its own target, value and two gas budgets, and the receipt reports a result for each. The transaction has no recipient of its own.</dd>
+          <dt class="col-sm-3 col-lg-2">Who calls</dt>
+          <dd class="col-sm-9 col-lg-10"><code>SENDER</code> frames are entered by the sender. <code>DEFAULT</code> and <code>VERIFY</code> frames are entered by the <code>ENTRY_POINT</code> predeploy, which is what lets a verifier or a paymaster run without the sender calling it directly.</dd>
+          <dt class="col-sm-3 col-lg-2">Validation first</dt>
+          <dd class="col-sm-9 col-lg-10">The leading frames approve execution and payment. If one of them reverts the transaction is invalid and never reaches the chain, so every frame shown here got past that point.</dd>
+          <dt class="col-sm-3 col-lg-2">Atomic batches</dt>
+          <dd class="col-sm-9 col-lg-10">Frames can be batched so they take effect together. If one of a batch fails the whole batch is rolled back and the frames after it are skipped - neither a success nor a failure.</dd>
+          <dt class="col-sm-3 col-lg-2">Two gas dimensions</dt>
+          <dd class="col-sm-9 col-lg-10">Each frame budgets execution gas and, under EIP-8037, state gas. State gas is a final attribution rather than a running total: a later frame can retroactively reduce an earlier one through a refill.</dd>
+        </dl>
+      </details>
+    </div>
+
+    {{/* ---------- the frames themselves ---------- */}}
+    {{ $split := and (gt .FrameValidationCount 0) (lt .FrameValidationCount (len .Frames)) }}
+    {{ range $idx, $frame := .Frames }}
+
+    {{ if $split }}
+      {{ if eq $idx 0 }}
+      <div class="frm-phase">
+        <i class="fas fa-shield-halved"></i> Validation
+        <span class="frm-phase-note">— these frames settle whether the transaction runs and who pays for it</span>
+      </div>
+      {{ else if eq $idx $.FrameValidationCount }}
+      <div class="frm-phase">
+        <i class="fas fa-play"></i> Execution
+        <span class="frm-phase-note">— the operations the transaction was sent to perform</span>
+      </div>
+      {{ end }}
+    {{ end }}
+
+    {{ if and $frame.IsBatchStart (gt $frame.BatchSize 1) }}
+    <div class="frm-batch">
+      <div class="frm-batch-head">
+        <i class="fas fa-link"></i>
+        <span>Atomic batch of {{ $frame.BatchSize }} frames — they take effect together or not at all</span>
+        {{ if $frame.RolledBack }}
+        <span class="badge text-bg-warning text-dark ms-1">rolled back by frame #{{ $frame.BatchFailedIndex }}</span>
+        {{ end }}
+      </div>
+    {{ end }}
+
+    {{ $hasPanel := or (gt (len $frame.Data) 0) $frame.HasTarget }}
+    <div class="frm-entry">
+      <div class="frm-row{{ if $hasPanel }} expandable{{ end }}"{{ if $hasPanel }} onclick="toggleFramePanel({{ $idx }}, event)"{{ end }}>
+        <span class="frm-idx">#{{ $frame.Index }}</span>
+
+        <span class="frm-kind">
+          {{ if $frame.Species }}
+          <span class="badge text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="What this frame does within the transaction, derived from its mode and approval flags">{{ $frame.Species }}</span>
           {{ end }}
-        </tbody>
-      </table>
+          <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if eq $frame.Mode 1 }}VERIFY frames run with STATICCALL semantics and cannot change state{{ else if eq $frame.Mode 2 }}SENDER frames are the only ones that may carry value{{ else }}DEFAULT frames run general operations, such as a paymaster settling up{{ end }}">{{ $frame.ModeName }}</span>
+          {{ if $frame.ApprovesPayment }}<i class="fas fa-coins text-muted" style="font-size:0.72rem" data-bs-toggle="tooltip" data-bs-placement="top" title="Approves payment: its success is what makes the fee payable"></i>{{ end }}
+          {{ if $frame.ApprovesExecution }}<i class="fas fa-check-double text-muted" style="font-size:0.72rem" data-bs-toggle="tooltip" data-bs-placement="top" title="Approves execution: its success is what lets the later frames run"></i>{{ end }}
+        </span>
+
+        <span class="frm-flow">
+          {{ if $frame.CallerIsSender }}
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Entered by the transaction's sender">{{ formatEthAddressShortLink $frame.CallerAddr false 4 }}</span>
+          {{ else }}
+          <span class="badge text-bg-light text-dark border" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ formatEthAddressFull $frame.CallerAddr }} — the predeploy that enters DEFAULT and VERIFY frames. It never holds code.">{{ if $frame.CallerLabel }}{{ $frame.CallerLabel }}{{ else }}{{ formatEthAddress $frame.CallerAddr }}{{ end }}</span>
+          {{ end }}
+          <span class="frm-arrow"><i class="fas fa-long-arrow-alt-right"></i></span>
+          {{ if $frame.HasTarget }}
+            {{ if $frame.TargetLabel }}
+            <span class="badge text-bg-light text-dark border" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ formatEthAddressFull $frame.TargetAddr }} — a protocol predeploy">{{ $frame.TargetLabel }}</span>
+            {{ else }}
+            {{ formatEthAddressShortLink $frame.TargetAddr false 4 }}
+            {{ end }}
+            {{ if $frame.TargetIsSender }}<span class="text-muted" style="font-size:0.78rem" data-bs-toggle="tooltip" data-bs-placement="top" title="The frame declares no target, which addresses the transaction's sender">(sender)</span>{{ end }}
+          {{ else }}
+          <span class="text-muted">unknown</span>
+          {{ end }}
+        </span>
+
+        {{ if gt $frame.DataLen 0 }}
+        <span class="frm-method badge text-bg-secondary" style="font-size: 0.75rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if $frame.MethodSignature }}{{ $frame.MethodSignature }}{{ else if gt (len $frame.MethodID) 0 }}Method {{ formatHexBytes $frame.MethodID }}{{ else }}Calldata{{ end }}">
+          {{ if $frame.MethodName }}{{ $frame.MethodName }}{{ else if gt (len $frame.MethodID) 0 }}{{ formatHexBytes $frame.MethodID }}{{ else }}{{ $frame.DataLen }} B{{ end }}
+        </span>
+        {{ end }}
+
+        <span class="frm-right">
+          <span class="frm-value">
+            {{ if gt $frame.Amount 0.0 }}<span class="badge text-bg-light border">{{ formatTransactionValue $frame.Amount }}</span>{{ end }}
+          </span>
+
+          <span class="frm-logs text-muted" style="font-size:0.78rem"{{ if gt $frame.LogCount 0 }} data-bs-toggle="tooltip" data-bs-placement="top" title="Logs emitted by this frame. The transaction's logs are the per-frame lists concatenated in frame order."{{ end }}>
+            {{ if gt $frame.LogCount 0 }}<i class="fa fa-list" style="font-size:0.7rem"></i> {{ $frame.LogCount }}{{ end }}
+          </span>
+
+          <span class="frm-gas" data-bs-toggle="tooltip" data-bs-placement="top" title="Execution gas used of the budget this frame declared">
+            <span class="frm-gas-label">exec</span>{{ formatAddCommas $frame.ExecGasUsed }}<span class="text-muted"> / {{ formatAddCommas $frame.ExecGasLimit }}</span>
+          </span>
+          <span class="frm-gas" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-8037 state gas used of the budget this frame declared. A later frame can retroactively reduce this through a state-gas refill.">
+            <span class="frm-gas-label">state</span>{{ formatAddCommas $frame.StateGasUsed }}<span class="text-muted"> / {{ formatAddCommas $frame.StateGasLimit }}</span>
+          </span>
+
+          <span class="frm-status">
+          {{ if $frame.RolledBack }}
+          <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="This frame ran, but frame #{{ $frame.BatchFailedIndex }} in its atomic batch failed. Its logs were discarded and its state gas zeroed, so nothing it did survived.">{{ $frame.StatusText }}</span>
+          {{ else if eq $frame.Status 1 }}
+          <span class="badge text-bg-success">{{ $frame.StatusText }}</span>
+          {{ else if eq $frame.Status 0 }}
+          <span class="badge text-bg-danger">{{ $frame.StatusText }}</span>
+          {{ else if eq $frame.Status 2 }}
+          <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="An earlier frame in this atomic batch failed, so this frame never ran. It is neither a success nor a failure.">{{ $frame.StatusText }}</span>
+          {{ else }}
+          <span class="badge text-bg-light text-dark border" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if $.FrameResultsMissing }}Per-frame results are not retained for this block, so what this frame did is not known{{ else }}The client reported no result for this frame{{ end }}">{{ $frame.StatusText }}</span>
+          {{ end }}
+          </span>
+
+          <span class="frm-expand-slot">
+            {{ if $hasPanel }}
+            <span class="frm-expand-icon" id="frm-chevron-{{ $idx }}"><i class="fas fa-chevron-right"></i></span>
+            {{ end }}
+          </span>
+        </span>
+      </div>
+
+      {{ if $hasPanel }}
+      <div class="frm-panel" id="frm-panel-{{ $idx }}">
+        <table class="table table-sm frm-meta-table mb-2">
+          <tbody>
+            {{ if $frame.HasTarget }}
+            <tr>
+              <th>Target</th>
+              <td class="text-monospace">
+                {{ $target := formatEthAddressFull $frame.TargetAddr }}
+                <a href="/address/{{ $target }}">{{ $target }}</a>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ $target }}" style="font-size:0.75rem"></i>
+                {{ if $frame.TargetLabel }}<span class="badge text-bg-light text-dark border ms-1">{{ $frame.TargetLabel }}</span>{{ end }}
+              </td>
+            </tr>
+            {{ end }}
+            <tr>
+              <th>Caller</th>
+              <td class="text-monospace">
+                {{ $caller := formatEthAddressFull $frame.CallerAddr }}
+                {{ if $frame.CallerIsSender }}<a href="/address/{{ $caller }}">{{ $caller }}</a> <span class="text-muted">(the sender)</span>{{ else }}{{ $caller }} <span class="text-muted">({{ if $frame.CallerLabel }}{{ $frame.CallerLabel }}, {{ end }}a predeploy with no code)</span>{{ end }}
+              </td>
+            </tr>
+            <tr>
+              <th>Gas</th>
+              <td class="text-monospace">
+                {{ formatAddCommas $frame.ExecGasUsed }} / {{ formatAddCommas $frame.ExecGasLimit }} execution
+                &nbsp;·&nbsp;
+                {{ formatAddCommas $frame.StateGasUsed }} / {{ formatAddCommas $frame.StateGasLimit }} state
+              </td>
+            </tr>
+            <tr>
+              <th>Approves</th>
+              <td>
+                {{ if or $frame.ApprovesPayment $frame.ApprovesExecution }}
+                  {{ if $frame.ApprovesPayment }}payment{{ end }}{{ if and $frame.ApprovesPayment $frame.ApprovesExecution }} and {{ end }}{{ if $frame.ApprovesExecution }}execution{{ end }}
+                {{ else }}
+                <span class="text-muted">nothing — this frame only runs</span>
+                {{ end }}
+              </td>
+            </tr>
+            {{ if $frame.HasExpiry }}
+            <tr>
+              <th>Deadline</th>
+              <td>{{ formatRecentTimeShort $frame.ExpiryTime }} <span class="text-muted">— the transaction is invalid after this time</span></td>
+            </tr>
+            {{ end }}
+            {{ if gt $frame.BatchSize 1 }}
+            <tr>
+              <th>Atomic batch</th>
+              <td>
+                one of {{ $frame.BatchSize }} frames that take effect together
+                {{ if $frame.RolledBack }}<span class="text-warning"> — undone, because frame #{{ $frame.BatchFailedIndex }} failed</span>{{ end }}
+              </td>
+            </tr>
+            {{ end }}
+          </tbody>
+        </table>
+
+        {{ if gt (len $frame.Data) 0 }}
+        <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
+          <span class="text-muted small me-1">Calldata ({{ len $frame.Data }} bytes):</span>
+          <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy calldata" data-clipboard-text="{{ formatHexBytes $frame.Data }}" style="font-size: 0.75rem;"></i>
+          {{ if $frame.DecodedCalldata }}
+          <div class="btn-group btn-group-sm ms-auto" role="group">
+            <button type="button" class="btn btn-outline-secondary btn-xs active" onclick="showFrameDataView({{ $idx }}, 'decoded'); event.stopPropagation();">Decoded</button>
+            <button type="button" class="btn btn-outline-secondary btn-xs" onclick="showFrameDataView({{ $idx }}, 'hex'); event.stopPropagation();">Hex</button>
+          </div>
+          {{ end }}
+        </div>
+        {{ if $frame.DecodedCalldata }}
+        <div id="frm-data-decoded-{{ $idx }}">
+          {{ if $frame.MethodSignature }}<code class="small">{{ $frame.MethodSignature }}</code>{{ end }}
+          <table class="table table-sm table-bordered frm-decoded-table">
+            <thead><tr><th>#</th><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+            <tbody>
+            {{ range $pi, $p := $frame.DecodedCalldata }}
+              <tr><td>{{ $pi }}</td><td>{{ $p.Name }}</td><td><code>{{ $p.Type }}</code></td><td class="frm-decoded-val">{{ $p.Value }}</td></tr>
+            {{ end }}
+            </tbody>
+          </table>
+        </div>
+        <div id="frm-data-hex-{{ $idx }}" class="frm-data-box" style="display:none;">{{ formatHexBytes $frame.Data }}</div>
+        {{ else }}
+        <div id="frm-data-hex-{{ $idx }}" class="frm-data-box">{{ formatHexBytes $frame.Data }}</div>
+        {{ end }}
+        {{ end }}
+      </div>
+      {{ end }}
     </div>
+
+    {{ if and $frame.IsBatchEnd (gt $frame.BatchSize 1) }}
+    </div>
+    {{ end }}
+
+    {{ end }}
+
+    <script type="text/javascript">
+      function toggleFramePanel(idx, event) {
+        if (event && (event.target.closest('a') || event.target.closest('button') || event.target.closest('[data-clipboard-text]'))) return;
+        var panel = document.getElementById('frm-panel-' + idx);
+        var chevron = document.getElementById('frm-chevron-' + idx);
+        if (!panel) return;
+        panel.classList.toggle('open');
+        if (chevron) chevron.classList.toggle('open');
+      }
+
+      function showFrameDataView(idx, view) {
+        var decoded = document.getElementById('frm-data-decoded-' + idx);
+        var hex = document.getElementById('frm-data-hex-' + idx);
+        if (decoded) decoded.style.display = view === 'decoded' ? 'block' : 'none';
+        if (hex) hex.style.display = view === 'hex' ? 'block' : 'none';
+        var buttons = event.currentTarget.parentElement.querySelectorAll('button');
+        Array.prototype.forEach.call(buttons, function(btn) { btn.classList.remove('active'); });
+        event.currentTarget.classList.add('active');
+      }
+    </script>
+    {{ end }}
   </div>
 </div>
 {{ end }}

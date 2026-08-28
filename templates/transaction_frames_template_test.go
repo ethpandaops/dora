@@ -6,13 +6,22 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // frameTemplate parses the frames table on its own so a bad expression in it shows up
 // here rather than on a rendered transaction page.
 func frameTemplate(t *testing.T) *template.Template {
 	t.Helper()
+
+	// Address formatting reads the config to decide whether to link locally, and the
+	// template renders addresses.
+	if utils.Config == nil {
+		utils.Config = &types.Config{}
+		utils.Config.ExecutionIndexer.Enabled = true
+	}
 
 	body, err := Files.ReadFile("transaction/frames.html")
 	if err != nil {
@@ -68,8 +77,8 @@ func TestFramesTemplateMarksRolledBackFrames(t *testing.T) {
 		IsFrameTx:  true,
 		FrameCount: 2,
 		Frames: []*models.TransactionPageDataFrame{
-			{Index: 0, Status: 1, StatusText: "Rolled back", RolledBack: true, AtomicBatch: true, BatchIndex: 0, BatchSize: 2, HasTarget: true, TargetAddr: []byte{0x01}},
-			{Index: 1, Status: 0, StatusText: "Failed", RolledBack: true, BatchIndex: 0, BatchSize: 2, HasTarget: true, TargetAddr: []byte{0x02}},
+			{Index: 0, Status: 1, StatusText: "Rolled back", RolledBack: true, BatchFailedIndex: 1, AtomicBatch: true, BatchIndex: 0, BatchSize: 2, IsBatchStart: true, HasTarget: true, TargetAddr: []byte{0x01}},
+			{Index: 1, Status: 0, StatusText: "Failed", RolledBack: true, BatchFailedIndex: 1, BatchIndex: 0, BatchSize: 2, IsBatchEnd: true, HasTarget: true, TargetAddr: []byte{0x02}},
 		},
 	}
 
@@ -83,9 +92,18 @@ func TestFramesTemplateMarksRolledBackFrames(t *testing.T) {
 		t.Error("a rolled-back frame must not be styled as a plain success")
 	}
 
-	// The batch is marked once, on its first frame.
-	if n := bytes.Count([]byte(got), []byte("fa-link")); n != 1 {
+	// The batch is bracketed once, on its first frame, and names what undid it.
+	if n := bytes.Count([]byte(got), []byte(`class="frm-batch-head"`)); n != 1 {
 		t.Errorf("atomic batch marked %d times, want once", n)
+	}
+
+	if !bytes.Contains([]byte(got), []byte("rolled back by frame #1")) {
+		t.Error("the batch must name the frame whose failure undid it")
+	}
+
+	// An opened batch has to be closed, or every frame after it renders inside it.
+	if open, close := bytes.Count([]byte(got), []byte(`<div class="frm-batch">`)), bytes.Count([]byte(got), []byte("</div>")); open == 0 || close < open {
+		t.Errorf("batch wrapper opened %d times, closing tags %d", open, close)
 	}
 }
 

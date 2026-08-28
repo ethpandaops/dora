@@ -177,20 +177,20 @@ func buildTransactionPageData(ctx context.Context, txHash []byte, tabView string
 		if time.Since(blockTime) > 5*time.Minute {
 			cacheTimeout = 15 * time.Minute
 		}
-		setTransactionEnsNames(ctx, pageData)
+		finalizeTransactionPage(ctx, pageData)
 		return pageData, cacheTimeout
 	}
 
 	// Not in DB - reconstruct from blockdb (relational row pruned but still
 	// within the longer blockdb/details retention).
 	if buildTransactionPageDataFromBlockdb(ctx, pageData, txHash, chainState) {
-		setTransactionEnsNames(ctx, pageData)
+		finalizeTransactionPage(ctx, pageData)
 		return pageData, 15 * time.Minute
 	}
 
 	// Not in DB or blockdb - try to fetch from EL client
 	if buildTransactionPageDataFromEL(ctx, pageData, txHash, chainState) {
-		setTransactionEnsNames(ctx, pageData)
+		finalizeTransactionPage(ctx, pageData)
 		return pageData, 30 * time.Minute
 	}
 
@@ -198,6 +198,18 @@ func buildTransactionPageData(ctx context.Context, txHash []byte, tabView string
 	pageData.TxNotFound = true
 	pageData.ViewMode = models.TxViewModeNone
 	return pageData, 1 * time.Minute
+}
+
+// finalizeTransactionPage does the work that depends on the whole page being built,
+// whichever source it came from.
+func finalizeTransactionPage(ctx context.Context, pageData *models.TransactionPageData) {
+	// Naming what each frame calls costs a signature lookup, so it is done for the tab
+	// that shows the calls rather than on every view of the transaction.
+	if pageData.TabView == "frames" && len(pageData.Frames) > 0 {
+		resolveFrameCalldata(ctx, pageData)
+	}
+
+	setTransactionEnsNames(ctx, pageData)
 }
 
 // setTransactionEnsNames collects every execution address shown on the transaction
@@ -224,6 +236,9 @@ func setTransactionEnsNames(ctx context.Context, pageData *models.TransactionPag
 	}
 	for _, auth := range pageData.Authorizations {
 		ensAddrs = append(ensAddrs, auth.AuthorityAddr, auth.DelegateAddr)
+	}
+	for _, frame := range pageData.Frames {
+		ensAddrs = append(ensAddrs, frame.TargetAddr)
 	}
 	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 }
@@ -1832,6 +1847,15 @@ var frameModeNames = map[uint8]string{
 }
 
 // frameSpeciesNames turn the mempool rules' species names into readable ones.
+// framePredeployNames names the addresses EIP-8141 gives a role to, so a frame that
+// calls one reads as the protocol step it is rather than as an unknown account.
+var framePredeployNames = map[common.Address]string{
+	txtypes.EntryPoint:        "ENTRY_POINT",
+	txtypes.ExpiryVerifier:    "EXPIRY_VERIFIER",
+	txtypes.NonceManager:      "NONCE_MANAGER",
+	txtypes.RecentRootAddress: "RECENT_ROOTS",
+}
+
 var frameSpeciesNames = map[txtypes.FrameSpecies]string{
 	txtypes.SpeciesSelfVerify:   "Self verify",
 	txtypes.SpeciesOnlyVerify:   "Verify",
@@ -1871,8 +1895,11 @@ func frameStatusText(status uint8, rolledBack bool) string {
 func buildFramesFromEnvelope(pageData *models.TransactionPageData, frameTx *txtypes.FrameTx) {
 	frames := make([]*models.TransactionPageDataFrame, 0, len(frameTx.Frames))
 
+	validationLen := frameTx.ValidationPrefixLength()
+
 	for i, protocolFrame := range frameTx.Frames {
 		target := protocolFrame.ResolvedTarget(frameTx.Sender)
+		caller := frameCaller(protocolFrame, frameTx.Sender)
 
 		frame := &models.TransactionPageDataFrame{
 			Index:             uint32(i),
@@ -1883,14 +1910,21 @@ func buildFramesFromEnvelope(pageData *models.TransactionPageData, frameTx *txty
 			ApprovesPayment:   protocolFrame.Flags&txtypes.ApprovePayment != 0,
 			ApprovesExecution: protocolFrame.Flags&txtypes.ApproveExecution != 0,
 			AtomicBatch:       protocolFrame.IsAtomicBatch(),
+			IsValidation:      i < validationLen,
+			CallerAddr:        caller.Bytes(),
+			CallerIsSender:    caller == frameTx.Sender,
+			CallerLabel:       framePredeployNames[caller],
 			TargetAddr:        target.Bytes(),
 			HasTarget:         true,
 			TargetIsSender:    target == frameTx.Sender,
+			TargetLabel:       framePredeployNames[target],
 			DataLen:           uint32(len(protocolFrame.Data)),
+			Data:              protocolFrame.Data,
 			ExecGasLimit:      protocolFrame.Limits.Execution,
 			StateGasLimit:     protocolFrame.Limits.State,
 			Status:            bdbtypes.FrameStatusUnknown,
 			StatusText:        frameStatusText(bdbtypes.FrameStatusUnknown, false),
+			BatchFailedIndex:  -1,
 		}
 
 		if frame.ModeName == "" {
@@ -1913,6 +1947,7 @@ func buildFramesFromEnvelope(pageData *models.TransactionPageData, frameTx *txty
 	pageData.Frames = frames
 	pageData.FrameCount = uint64(len(frames))
 	pageData.FrameShape = frameShapeLabel(frameTx)
+	pageData.FrameValidationCount = validationLen
 
 	// The envelope declares the frames; what each of them did is on the receipt, which is
 	// overlaid separately and may not have been kept.
@@ -1933,10 +1968,11 @@ func applyFrameResults(pageData *models.TransactionPageData, results []bdbtypes.
 	for len(pageData.Frames) < len(results) {
 		index := len(pageData.Frames)
 		pageData.Frames = append(pageData.Frames, &models.TransactionPageDataFrame{
-			Index:      uint32(index),
-			ModeName:   "Unknown",
-			BatchIndex: index,
-			BatchSize:  1,
+			Index:            uint32(index),
+			ModeName:         "Unknown",
+			BatchIndex:       index,
+			BatchSize:        1,
+			BatchFailedIndex: -1,
 		})
 	}
 
@@ -1965,6 +2001,7 @@ func applyFrameResults(pageData *models.TransactionPageData, results []bdbtypes.
 	}
 
 	markRolledBackFrames(pageData.Frames)
+	summarizeFrames(pageData)
 
 	pageData.FrameResultsMissing = false
 }
@@ -2007,23 +2044,141 @@ func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
 		batch := frames[batchStart : i+1]
 		batchStart = i + 1
 
-		failed := false
+		failedIndex := -1
 
 		for _, member := range batch {
 			if uint64(member.Status) == txtypes.FrameStatusFailed {
-				failed = true
+				failedIndex = int(member.Index)
 
 				break
 			}
 		}
 
-		if !failed {
+		if failedIndex < 0 {
 			continue
 		}
 
 		for _, member := range batch {
 			member.RolledBack = true
+			member.BatchFailedIndex = failedIndex
 			member.StatusText = frameStatusText(member.Status, true)
+		}
+	}
+}
+
+// frameCaller is the account a frame's call comes from.
+//
+// Only a SENDER frame is entered by the sender. DEFAULT and VERIFY frames are entered by
+// the ENTRY_POINT predeploy, which is what lets a paymaster or a verifier run without the
+// sender calling it - and why the sender does not appear as the caller of most frames.
+func frameCaller(frame *txtypes.Frame, sender common.Address) common.Address {
+	if frame.Mode == txtypes.FrameModeSender {
+		return sender
+	}
+
+	return txtypes.EntryPoint
+}
+
+// resolveFrameCalldata names what each frame calls.
+//
+// A frame carries its own calldata, so each one has its own method rather than the
+// transaction having one - which is most of what makes a frame transaction readable:
+// without it a frame is an address and a byte count.
+func resolveFrameCalldata(ctx context.Context, pageData *models.TransactionPageData) {
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+
+	// One lookup for the whole transaction rather than one per frame.
+	sigSet := make(map[types.TxSignatureBytes]struct{}, len(pageData.Frames))
+
+	for _, frame := range pageData.Frames {
+		if len(frame.Data) < 4 || !frame.HasTarget {
+			continue
+		}
+
+		if skip, _ := utils.ShouldSkipSignatureLookup(frame.TargetAddr, false, sysContracts); skip {
+			continue
+		}
+
+		var sig types.TxSignatureBytes
+		copy(sig[:], frame.Data[:4])
+		sigSet[sig] = struct{}{}
+	}
+
+	sigBytes := make([]types.TxSignatureBytes, 0, len(sigSet))
+	for sig := range sigSet {
+		sigBytes = append(sigBytes, sig)
+	}
+
+	var sigLookups map[types.TxSignatureBytes]*services.TxSignaturesLookup
+	if len(sigBytes) > 0 {
+		sigLookups = services.GlobalTxSignaturesService.LookupSignatures(ctx, sigBytes)
+	}
+
+	for _, frame := range pageData.Frames {
+		if len(frame.Data) < 4 || !frame.HasTarget {
+			continue
+		}
+
+		target := common.BytesToAddress(frame.TargetAddr)
+
+		// The expiry verifier takes a raw deadline rather than a selector, and the page
+		// already shows the decoded time.
+		if target == txtypes.ExpiryVerifier {
+			frame.MethodName = "expiry check"
+
+			continue
+		}
+
+		if precompile := utils.GetPrecompileInfo(frame.TargetAddr); precompile != nil {
+			frame.MethodName = precompile.Name
+			frame.DecodedCalldata = utils.DecodePrecompileInput(precompile.Index, frame.Data)
+
+			continue
+		}
+
+		if name, ok := sysContracts[target]; ok && name != "Deposit Contract" {
+			frame.MethodName = name
+
+			continue
+		}
+
+		var sig types.TxSignatureBytes
+		copy(sig[:], frame.Data[:4])
+
+		lookup, found := sigLookups[sig]
+		if !found || lookup.Status != types.TxSigStatusFound {
+			continue
+		}
+
+		frame.MethodName = lookup.Name
+		frame.MethodSignature = lookup.Signature
+
+		if len(frame.Data) > 4 && lookup.Signature != "" {
+			frame.DecodedCalldata = utils.DecodeCalldata(lookup.Signature, frame.Data)
+		}
+	}
+}
+
+// summarizeFrames totals what the frames did, which is where a frame transaction's gas
+// goes and how much of it ran.
+func summarizeFrames(pageData *models.TransactionPageData) {
+	pageData.FrameExecGasUsed = 0
+	pageData.FrameStateGasUsed = 0
+	pageData.FrameSuccessCount = 0
+	pageData.FrameFailedCount = 0
+	pageData.FrameSkippedCount = 0
+
+	for _, frame := range pageData.Frames {
+		pageData.FrameExecGasUsed += frame.ExecGasUsed
+		pageData.FrameStateGasUsed += frame.StateGasUsed
+
+		switch uint64(frame.Status) {
+		case txtypes.FrameStatusSuccess:
+			pageData.FrameSuccessCount++
+		case txtypes.FrameStatusFailed:
+			pageData.FrameFailedCount++
+		case txtypes.FrameStatusSkipped:
+			pageData.FrameSkippedCount++
 		}
 	}
 }
@@ -2057,6 +2212,9 @@ func assignFrameBatches(frames []*models.TransactionPageDataFrame) {
 			member.BatchIndex = batchIndex
 			member.BatchSize = size
 		}
+
+		frames[batchStart].IsBatchStart = true
+		frame.IsBatchEnd = true
 
 		batchStart = i + 1
 		batchIndex++

@@ -123,9 +123,10 @@
           <div class="col-md-9 text-monospace text-break">
             {{ if .IsFrameTx }}
             {{ if gt .FrameCount 0 }}
-            <span data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction addresses each of its frames separately and has no recipient of its own">
+            <a href="?v=frames{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" onclick="document.getElementById('frames-tab').click(); return false;" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction addresses each of its frames separately and has no recipient of its own. Open the Frames tab to see them.">
               {{ .FrameCount }} frame{{ if ne .FrameCount 1 }}s{{ end }}
-            </span>
+            </a>
+            {{ if .FrameShape }}<span class="badge rounded-pill bg-secondary ms-1">{{ .FrameShape }}</span>{{ end }}
             {{ else }}
             <span class="text-muted" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction addresses each of its frames separately and has no recipient of its own. Neither the transaction nor its receipt is retained for this block, so its frames cannot be read.">
               multiple targets, no longer retained
@@ -164,6 +165,13 @@
           <i class="fa fa-cog me-2"></i> Details
         </a>
       </li>
+      {{ if .IsFrameTx }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "frames" }} active{{ end }}" id="frames-tab" data-lazy-tab="frames" data-bs-toggle="tab" data-bs-target="#frames" href="?v=frames{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="frames" aria-selected="{{ if eq .TabView "frames" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-layer-group me-2"></i> Frames{{ if gt .FrameCount 0 }} ({{ .FrameCount }}){{ end }}
+        </a>
+      </li>
+      {{ end }}
       {{ if .HasTrace }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
@@ -262,10 +270,7 @@
             {{ end }}
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction type">Type:</span></div>
-              <div class="col-md-9">
-                {{ .TxTypeName }} ({{ .TxType }})
-                {{ if .FrameShape }}<span class="badge rounded-pill bg-secondary ms-1">{{ .FrameShape }}</span>{{ end }}
-              </div>
+              <div class="col-md-9">{{ .TxTypeName }} ({{ .TxType }})</div>
             </div>
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction nonce">Nonce:</span></div>
@@ -379,13 +384,16 @@
               </div>
             </div>
             {{ end }}
-            {{ if and .IsFrameTx (gt .FrameCount 0) }}
-            {{ template "frames" . }}
-            {{ end }}
           </div>
         </div>
       </div>
       {{ if gt .InternalTxCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "frames" }} show active{{ end }}" id="frames" role="tabpanel" aria-labelledby="frames-tab" data-loaded="{{ if eq .TabView "frames" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "frames" }}
+        {{ template "frames" . }}
+        {{ end }}
+      </div>
+
       <div class="tab-pane fade{{ if eq .TabView "internaltxs" }} show active{{ end }}" id="internaltxs" role="tabpanel" aria-labelledby="internaltxs-tab" data-loaded="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "internaltxs" }}
           {{ template "internaltxs" . }}
@@ -432,7 +440,9 @@
 {{ end }}
 {{ define "lazyPage" }}
   <script type="application/json" class="ens-names">{{ ensNamesJson . }}</script>
-  {{ if eq .TabView "events" }}
+  {{ if eq .TabView "frames" }}
+    {{ template "frames" . }}
+  {{ else if eq .TabView "events" }}
     {{ template "events" . }}
   {{ else if eq .TabView "statechanges" }}
     {{ template "statechanges" . }}
@@ -545,6 +555,7 @@
     // Map tab IDs to view parameter values
     var tabToView = {
       'details': 'overview',
+      'frames': 'frames',
       'events': 'events',
       'statechanges': 'statechanges',
       'transfers': 'transfers',

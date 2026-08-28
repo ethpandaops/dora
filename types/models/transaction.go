@@ -158,6 +158,18 @@ type TransactionPageData struct {
 	// frame transaction legible at a glance.
 	FrameShape string `json:"frame_shape"`
 
+	// FrameValidationCount is how many leading frames form the validation prefix: the
+	// run whose success settles whether the transaction runs and who pays for it. The
+	// frames after it carry out the sender's operations.
+	FrameValidationCount int `json:"frame_validation_count"`
+
+	// Totals over the frames, which is where a frame transaction's gas actually goes.
+	FrameExecGasUsed  uint64 `json:"frame_exec_gas_used"`
+	FrameStateGasUsed uint64 `json:"frame_state_gas_used"`
+	FrameSuccessCount int    `json:"frame_success_count"`
+	FrameFailedCount  int    `json:"frame_failed_count"`
+	FrameSkippedCount int    `json:"frame_skipped_count"`
+
 	// PayerAddr settled the fee. Worth showing whenever it is not the sender, which is
 	// the whole point of a sponsored transaction.
 	PayerAddr     []byte `json:"payer_addr"`
@@ -220,17 +232,40 @@ type TransactionPageDataFrame struct {
 	// AtomicBatch marks a frame batched with the frame after it. BatchIndex groups the
 	// frames of one batch so they can be shown together; frames outside a batch each get
 	// their own.
-	AtomicBatch bool `json:"atomic_batch"`
-	BatchIndex  int  `json:"batch_index"`
-	BatchSize   int  `json:"batch_size"`
+	AtomicBatch  bool `json:"atomic_batch"`
+	BatchIndex   int  `json:"batch_index"`
+	BatchSize    int  `json:"batch_size"`
+	IsBatchStart bool `json:"is_batch_start"`
+	IsBatchEnd   bool `json:"is_batch_end"`
+
+	// IsValidation marks a frame in the validation prefix. Those frames decide whether
+	// the transaction runs at all; the ones after them do the work it was sent for.
+	IsValidation bool `json:"is_validation"`
+
+	// CallerAddr is where the frame's call comes from. DEFAULT and VERIFY frames are
+	// entered by the ENTRY_POINT predeploy rather than by the sender, which is what lets
+	// a frame run against an account without that account authorising it directly.
+	CallerAddr     []byte `json:"caller_addr"`
+	CallerIsSender bool   `json:"caller_is_sender"`
+	CallerLabel    string `json:"caller_label"`
 
 	TargetAddr     []byte `json:"target_addr"`
 	TargetIsSender bool   `json:"target_is_sender"`
 	HasTarget      bool   `json:"has_target"`
 
+	// TargetLabel names a target that is a protocol predeploy rather than an account.
+	TargetLabel string `json:"target_label"`
+
 	Amount   float64 `json:"amount"`
 	DataLen  uint32  `json:"data_len"`
 	MethodID []byte  `json:"method_id"`
+
+	// Data is the frame's calldata, which the transaction carries and the receipt does
+	// not - so it is present exactly when the transaction's block still is.
+	Data            []byte                        `json:"data"`
+	MethodName      string                        `json:"method_name"`
+	MethodSignature string                        `json:"method_signature"`
+	DecodedCalldata []*utils.DecodedCalldataParam `json:"decoded_calldata"`
 
 	// Status is EIP-8141's per-frame status. Skipped is neither a success nor a failure:
 	// an earlier frame in the same atomic batch failed and this one never ran. Unknown
@@ -240,8 +275,10 @@ type TransactionPageDataFrame struct {
 
 	// RolledBack marks a frame whose atomic batch was undone after it ran. It may report
 	// success, but its logs were discarded and its state gas zeroed - nothing it did
-	// survived, and a plain success would say otherwise.
-	RolledBack bool `json:"rolled_back"`
+	// survived, and a plain success would say otherwise. BatchFailedIndex names the
+	// frame that failed and took the batch with it.
+	RolledBack       bool `json:"rolled_back"`
+	BatchFailedIndex int  `json:"batch_failed_index"`
 
 	// EIP-8037 budgets and reports each frame in two gas dimensions.
 	ExecGasLimit  uint64 `json:"exec_gas_limit"`
