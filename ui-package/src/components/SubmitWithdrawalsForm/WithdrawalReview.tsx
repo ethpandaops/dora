@@ -5,6 +5,7 @@ import { IValidator } from './SubmitWithdrawalsFormProps';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { Modal } from 'react-bootstrap';
 import { useQueueDataCache } from '../../hooks/useQueueDataCache';
+import { WITHDRAWAL_REQUEST_GAS_LIMIT } from '../../utils/GasLimits';
 
 interface IWithdrawalReviewProps {
   validator: IValidator;
@@ -246,7 +247,7 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
       // https://eips.ethereum.org/EIPS/eip-7002#add-withdrawal-request
       // calldata (56 bytes): sourceValidator.pubkey (48 bytes) + amount (8 bytes)
       data: "0x" + props.validator.pubkey.substring(2) + props.withdrawalAmount.toString(16).padStart(16, "0"),
-      gas: 200000n,
+      gas: WITHDRAWAL_REQUEST_GAS_LIMIT,
     }).then(tx => {
       console.log(tx);
     }).catch(error => {
