@@ -80,15 +80,13 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction status">Status:</span></div>
           <div class="col-md-9">
-            {{ if .Status }}
-            <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
+            {{ if .FrameIncomplete }}
+            <span class="badge rounded-pill text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ .FrameStatusDetail }}"><i class="fas fa-circle-half-stroke me-1"></i>{{ .StatusText }}</span>
+            {{ else if .Status }}
+            <span class="badge rounded-pill text-bg-success"{{ if .IsFrameTx }} data-bs-toggle="tooltip" data-bs-placement="top" title="{{ .FrameStatusDetail }}"{{ end }}><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
             {{ else }}
             <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
-            {{ if and .IsFrameTx (gt .FrameFailedCount 0) }}
-            <span class="ms-2" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction has no revert reason of its own: it did not revert, one of its frames did.">
-              frame #{{ .FrameFailedIndex }} failed{{ if gt .FrameSkippedCount 0 }}, {{ .FrameSkippedCount }} skipped{{ end }}
-            </span>
-            {{ else if and (not .IsFrameTx) .RevertReason }}<span class="text-monospace text-break ms-2">{{ .RevertReason }}</span>{{ end }}
+            {{ if .RevertReason }}<span class="text-monospace text-break ms-2">{{ .RevertReason }}</span>{{ end }}
             {{ end }}
           </div>
         </div>

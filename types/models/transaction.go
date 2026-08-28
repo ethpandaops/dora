@@ -173,7 +173,14 @@ type TransactionPageData struct {
 	// FrameFailedIndex is the first frame that failed, meaningful only when
 	// FrameFailedCount is non-zero. A frame transaction has no revert reason of its own:
 	// it did not revert, one of its frames did.
-	FrameFailedIndex uint32 `json:"frame_failed_index"`
+	FrameFailedIndex   uint32 `json:"frame_failed_index"`
+	FrameRolledBackCnt int    `json:"frame_rolled_back_count"`
+
+	// FrameIncomplete marks a frame transaction that ran and paid but did not carry out
+	// everything it asked for. It is not a revert: what the other frames did stands.
+	// FrameStatusDetail says which frames did not, for the status tooltip.
+	FrameIncomplete   bool   `json:"frame_incomplete"`
+	FrameStatusDetail string `json:"frame_status_detail"`
 
 	// PayerAddr settled the fee. Worth showing whenever it is not the sender, which is
 	// the whole point of a sponsored transaction.

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -291,5 +292,70 @@ func TestTokenTransfersSharingALogShareItsFrame(t *testing.T) {
 		if transfer.FrameIndex != 1 {
 			t.Errorf("transfer %d attributed to frame %d, want 1", i, transfer.FrameIndex)
 		}
+	}
+}
+
+// A frame transaction only reaches the chain once its validation frames succeed, so one
+// that is on chain ran and paid. Frames within it failing is not the transaction
+// reverting - what the other frames did stands.
+func TestFrameTransactionWithAFailedFrameIsCompleteNotReverted(t *testing.T) {
+	pageData := &models.TransactionPageData{
+		IsFrameTx: true,
+		// What the relational row said before the frames were read.
+		Status:       false,
+		StatusText:   "Failed",
+		RevertReason: "unknown",
+		Frames: []*models.TransactionPageDataFrame{
+			{Index: 0, Status: uint8(txtypes.FrameStatusSuccess)},
+			{Index: 1, Status: uint8(txtypes.FrameStatusSuccess), RolledBack: true},
+			{Index: 2, Status: uint8(txtypes.FrameStatusFailed), RolledBack: true},
+			{Index: 3, Status: uint8(txtypes.FrameStatusSkipped)},
+		},
+	}
+
+	summarizeFrames(pageData)
+
+	if !pageData.Status {
+		t.Error("a frame transaction on chain ran and paid, so it did not revert")
+	}
+
+	if pageData.StatusText != "Complete" {
+		t.Errorf("status = %q, want Complete", pageData.StatusText)
+	}
+
+	if !pageData.FrameIncomplete {
+		t.Error("frames failed, so the transaction did not do everything it asked for")
+	}
+
+	if pageData.RevertReason != "" {
+		t.Errorf("revert reason = %q, want none: the transaction did not revert", pageData.RevertReason)
+	}
+
+	for _, want := range []string{"frame #2 failed", "1 succeeded but was undone", "1 never ran"} {
+		if !strings.Contains(pageData.FrameStatusDetail, want) {
+			t.Errorf("status detail %q does not mention %q", pageData.FrameStatusDetail, want)
+		}
+	}
+}
+
+// With every frame succeeding there is nothing to qualify, and the transaction reads as
+// an ordinary success.
+func TestFrameTransactionWithNoFailuresIsASuccess(t *testing.T) {
+	pageData := &models.TransactionPageData{
+		IsFrameTx: true,
+		Frames: []*models.TransactionPageDataFrame{
+			{Index: 0, Status: uint8(txtypes.FrameStatusSuccess)},
+			{Index: 1, Status: uint8(txtypes.FrameStatusSuccess)},
+		},
+	}
+
+	summarizeFrames(pageData)
+
+	if !pageData.Status || pageData.StatusText != "Success" {
+		t.Errorf("status = %v/%q, want true/Success", pageData.Status, pageData.StatusText)
+	}
+
+	if pageData.FrameIncomplete {
+		t.Error("no frame failed, so nothing is incomplete")
 	}
 }

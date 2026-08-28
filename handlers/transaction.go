@@ -2323,6 +2323,7 @@ func summarizeFrames(pageData *models.TransactionPageData) {
 	pageData.FrameSuccessCount = 0
 	pageData.FrameFailedCount = 0
 	pageData.FrameSkippedCount = 0
+	pageData.FrameRolledBackCnt = 0
 
 	for _, frame := range pageData.Frames {
 		pageData.FrameExecGasUsed += frame.ExecGasUsed
@@ -2331,6 +2332,13 @@ func summarizeFrames(pageData *models.TransactionPageData) {
 		switch uint64(frame.Status) {
 		case txtypes.FrameStatusSuccess:
 			pageData.FrameSuccessCount++
+
+			// Every member of a failed batch is marked rolled back, the one that failed
+			// and the ones that never ran included. Only a frame that succeeded had
+			// anything taken back from it.
+			if frame.RolledBack {
+				pageData.FrameRolledBackCnt++
+			}
 		case txtypes.FrameStatusFailed:
 			if pageData.FrameFailedCount == 0 {
 				pageData.FrameFailedIndex = frame.Index
@@ -2341,6 +2349,59 @@ func summarizeFrames(pageData *models.TransactionPageData) {
 			pageData.FrameSkippedCount++
 		}
 	}
+
+	applyFrameTxStatus(pageData)
+}
+
+// applyFrameTxStatus states the transaction's own outcome from its frames.
+//
+// A frame transaction that reached the chain ran and paid: its validation prefix
+// succeeded, or the transaction would be invalid and never included. Frames within it can
+// still fail, and that is not the transaction reverting - nothing the other frames did
+// was undone, and the fee was still owed. Reporting it as a revert would say that the
+// whole thing came to nothing, which is the opposite of what happened.
+//
+// So it completed, and how completely is what the tooltip is for.
+func applyFrameTxStatus(pageData *models.TransactionPageData) {
+	if !pageData.IsFrameTx {
+		return
+	}
+
+	pageData.Status = true
+	pageData.RevertReason = ""
+
+	parts := make([]string, 0, 3)
+
+	if pageData.FrameFailedCount == 1 {
+		parts = append(parts, fmt.Sprintf("frame #%d failed", pageData.FrameFailedIndex))
+	} else if pageData.FrameFailedCount > 1 {
+		parts = append(parts, fmt.Sprintf("%d frames failed, the first being #%d", pageData.FrameFailedCount, pageData.FrameFailedIndex))
+	}
+
+	if pageData.FrameRolledBackCnt == 1 {
+		parts = append(parts, "1 succeeded but was undone with its atomic batch")
+	} else if pageData.FrameRolledBackCnt > 1 {
+		parts = append(parts, fmt.Sprintf("%d succeeded but were undone with their atomic batch", pageData.FrameRolledBackCnt))
+	}
+
+	if pageData.FrameSkippedCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d never ran", pageData.FrameSkippedCount))
+	}
+
+	if len(parts) == 0 {
+		pageData.StatusText = "Success"
+		pageData.FrameIncomplete = false
+		pageData.FrameStatusDetail = "Every frame of this transaction succeeded."
+
+		return
+	}
+
+	pageData.StatusText = "Complete"
+	pageData.FrameIncomplete = true
+	pageData.FrameStatusDetail = fmt.Sprintf(
+		"The transaction ran and paid its fee - a frame transaction only reaches the chain once its validation frames succeed. Of its %d frames, %s. What the rest did stands.",
+		len(pageData.Frames), strings.Join(parts, ", "),
+	)
 }
 
 // weiToEth converts a wei amount to ether.

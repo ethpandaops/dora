@@ -203,13 +203,17 @@
                   {{ if $.DisplayNonce }}<td class="text-nowrap">{{ .Nonce }}</td>{{ end }}
                   <td class="text-nowrap">
                     {{ if .BlockOrphaned }}
-                      {{ if .Reverted }}
+                      {{ if and .Reverted .IsMultiTarget }}
+                        <span class="badge status-split" data-bs-toggle="tooltip" title="Orphaned block · not every frame succeeded">Orphaned</span>
+                      {{ else if .Reverted }}
                         <span class="badge status-split" data-bs-toggle="tooltip" title="Orphaned block · execution reverted">Orphaned</span>
                       {{ else }}
                         <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Orphaned block · executed successfully">Orphaned</span>
                       {{ end }}
                     {{ else }}
-                      {{ if .Reverted }}
+                      {{ if and .Reverted .IsMultiTarget }}
+                        <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" title="Included · the transaction ran and paid, but not every frame of it succeeded">Complete</span>
+                      {{ else if .Reverted }}
                         <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="{{ if .RevertReason }}Reverted: {{ .RevertReason }}{{ else }}Included · execution reverted{{ end }}">Reverted</span>
                       {{ else }}
                         <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Included · executed successfully">Success</span>
