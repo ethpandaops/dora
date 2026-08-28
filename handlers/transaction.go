@@ -517,6 +517,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	case "transfers":
 		transfers, _ := db.GetElTokenTransfersByTxUid(ctx, tx.TxUid)
 		loadTransactionTransfersFromData(ctx, pageData, transfers)
+		attributeTokenTransfersToFrames(pageData)
 	case "internaltxs":
 		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid, tx.TxUid)
 		computeInternalTxIndent(pageData)
@@ -1466,6 +1467,7 @@ func loadTransactionTransfersFromData(ctx context.Context, pageData *models.Tran
 	for i, t := range transfers {
 		transfer := &models.TransactionPageDataTokenTransfer{
 			TransferIndex: uint32(i),
+			EventIndex:    t.TxIdx,
 			TokenID:       t.TokenID,
 			TokenType:     t.TokenType,
 			Amount:        t.Amount,
@@ -1880,7 +1882,7 @@ var framePredeployNames = map[common.Address]string{
 
 var frameSpeciesNames = map[txtypes.FrameSpecies]string{
 	txtypes.SpeciesSelfVerify:   "Self verify",
-	txtypes.SpeciesOnlyVerify:   "Verify",
+	txtypes.SpeciesOnlyVerify:   "Execution check",
 	txtypes.SpeciesPay:          "Paymaster",
 	txtypes.SpeciesExpiryVerify: "Expiry check",
 	txtypes.SpeciesDeploy:       "Account deploy",
@@ -2116,19 +2118,19 @@ func executedFrames(frames []*models.TransactionPageDataFrame) []*models.Transac
 	return executed
 }
 
-// attributeEventsToFrames marks each event with the frame that emitted it.
+// frameLogOwners maps each of a frame transaction's logs to the frame that emitted it.
 //
 // A frame transaction's logs are the per-frame lists concatenated in frame order, so the
 // per-frame counts partition the flat list. A frame whose atomic batch rolled back had
 // its logs discarded by the client, so it owns none of them and its count is already
 // zero.
 //
-// The counts have to account for every event before any of them is claimed: a client
-// that reported a partial set would otherwise shift every log after the gap onto the
-// wrong frame, and a wrong attribution is worse than none.
-func attributeEventsToFrames(pageData *models.TransactionPageData) {
-	if !pageData.IsFrameTx || pageData.FrameResultsMissing || len(pageData.Events) == 0 {
-		return
+// The counts have to account for every log before any of them is claimed: a client that
+// reported a partial set would otherwise shift every log after the gap onto the wrong
+// frame, and a wrong attribution is worse than none.
+func frameLogOwners(pageData *models.TransactionPageData, logCount int) []uint32 {
+	if !pageData.IsFrameTx || pageData.FrameResultsMissing || logCount == 0 {
+		return nil
 	}
 
 	total := 0
@@ -2136,19 +2138,56 @@ func attributeEventsToFrames(pageData *models.TransactionPageData) {
 		total += int(frame.LogCount)
 	}
 
-	if total != len(pageData.Events) {
-		return
+	if total != logCount {
+		return nil
 	}
 
-	next := 0
+	owners := make([]uint32, 0, total)
 
 	for _, frame := range pageData.Frames {
 		for i := 0; i < int(frame.LogCount); i++ {
-			event := pageData.Events[next]
-			event.FrameIndex = frame.Index
-			event.HasFrame = true
-			next++
+			owners = append(owners, frame.Index)
 		}
+	}
+
+	return owners
+}
+
+// attributeEventsToFrames marks each event with the frame that emitted it.
+func attributeEventsToFrames(pageData *models.TransactionPageData) {
+	owners := frameLogOwners(pageData, len(pageData.Events))
+	if owners == nil {
+		return
+	}
+
+	for _, event := range pageData.Events {
+		if int(event.EventIndex) >= len(owners) {
+			continue
+		}
+
+		event.FrameIndex = owners[event.EventIndex]
+		event.HasFrame = true
+	}
+}
+
+// attributeTokenTransfersToFrames marks each token transfer with the frame that made it.
+//
+// A transfer is a decoded log, so it belongs to whichever frame emitted that log. The
+// number of logs comes from the transaction row rather than from the transfers, which are
+// only the subset of logs that decoded as one.
+func attributeTokenTransfersToFrames(pageData *models.TransactionPageData) {
+	owners := frameLogOwners(pageData, int(pageData.EventCount))
+	if owners == nil {
+		return
+	}
+
+	for _, transfer := range pageData.TokenTransfers {
+		if int(transfer.EventIndex) >= len(owners) {
+			continue
+		}
+
+		transfer.FrameIndex = owners[transfer.EventIndex]
+		transfer.HasFrame = true
 	}
 }
 
@@ -2293,6 +2332,10 @@ func summarizeFrames(pageData *models.TransactionPageData) {
 		case txtypes.FrameStatusSuccess:
 			pageData.FrameSuccessCount++
 		case txtypes.FrameStatusFailed:
+			if pageData.FrameFailedCount == 0 {
+				pageData.FrameFailedIndex = frame.Index
+			}
+
 			pageData.FrameFailedCount++
 		case txtypes.FrameStatusSkipped:
 			pageData.FrameSkippedCount++

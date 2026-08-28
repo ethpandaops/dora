@@ -234,3 +234,62 @@ func TestInternalTxsAreNotAttributedWhenTheTraceIsNotADecomposition(t *testing.T
 		t.Error("a placeholder root must not be read as a frame's calls")
 	}
 }
+
+// A token transfer is a decoded log, so it belongs to whichever frame emitted that log.
+// The transfers are only the subset of logs that decoded as one, so they are keyed on
+// the flat event index rather than on their own position.
+func TestTokenTransfersAreAttributedToTheirFrames(t *testing.T) {
+	pageData := &models.TransactionPageData{
+		IsFrameTx:  true,
+		EventCount: 4,
+		Frames: []*models.TransactionPageDataFrame{
+			{Index: 0, Status: uint8(txtypes.FrameStatusSuccess), LogCount: 1},
+			{Index: 1, Status: uint8(txtypes.FrameStatusSuccess), LogCount: 2},
+			{Index: 2, Status: uint8(txtypes.FrameStatusSuccess), LogCount: 1},
+		},
+		// Only three of the four logs decoded as transfers.
+		TokenTransfers: []*models.TransactionPageDataTokenTransfer{
+			{TransferIndex: 0, EventIndex: 0},
+			{TransferIndex: 1, EventIndex: 2},
+			{TransferIndex: 2, EventIndex: 3},
+		},
+	}
+
+	attributeTokenTransfersToFrames(pageData)
+
+	want := []uint32{0, 1, 2}
+	for i, transfer := range pageData.TokenTransfers {
+		if !transfer.HasFrame {
+			t.Fatalf("transfer %d was not attributed", i)
+		}
+
+		if transfer.FrameIndex != want[i] {
+			t.Errorf("transfer %d attributed to frame %d, want %d", i, transfer.FrameIndex, want[i])
+		}
+	}
+}
+
+// One log can decode into several transfers - an ERC1155 batch is a single log - and
+// they all belong to the frame that emitted it.
+func TestTokenTransfersSharingALogShareItsFrame(t *testing.T) {
+	pageData := &models.TransactionPageData{
+		IsFrameTx:  true,
+		EventCount: 2,
+		Frames: []*models.TransactionPageDataFrame{
+			{Index: 0, Status: uint8(txtypes.FrameStatusSuccess), LogCount: 1},
+			{Index: 1, Status: uint8(txtypes.FrameStatusSuccess), LogCount: 1},
+		},
+		TokenTransfers: []*models.TransactionPageDataTokenTransfer{
+			{TransferIndex: 0, EventIndex: 1},
+			{TransferIndex: 1, EventIndex: 1},
+		},
+	}
+
+	attributeTokenTransfersToFrames(pageData)
+
+	for i, transfer := range pageData.TokenTransfers {
+		if transfer.FrameIndex != 1 {
+			t.Errorf("transfer %d attributed to frame %d, want 1", i, transfer.FrameIndex)
+		}
+	}
+}

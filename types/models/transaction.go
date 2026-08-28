@@ -170,6 +170,11 @@ type TransactionPageData struct {
 	FrameFailedCount  int    `json:"frame_failed_count"`
 	FrameSkippedCount int    `json:"frame_skipped_count"`
 
+	// FrameFailedIndex is the first frame that failed, meaningful only when
+	// FrameFailedCount is non-zero. A frame transaction has no revert reason of its own:
+	// it did not revert, one of its frames did.
+	FrameFailedIndex uint32 `json:"frame_failed_index"`
+
 	// PayerAddr settled the fee. Worth showing whenever it is not the sender, which is
 	// the whole point of a sponsored transaction.
 	PayerAddr     []byte `json:"payer_addr"`
@@ -377,6 +382,14 @@ type TransactionPageDataEvent struct {
 // TransactionPageDataTokenTransfer represents a token transfer in the transaction
 type TransactionPageDataTokenTransfer struct {
 	TransferIndex uint32 `json:"transfer_index"`
+
+	// EventIndex is the transaction log the transfer was decoded from. Several transfers
+	// can share one - an ERC1155 batch is a single log - so it is not a key.
+	EventIndex uint32 `json:"event_index"`
+
+	// FrameIndex is the frame of a frame transaction whose log this was.
+	FrameIndex uint32 `json:"frame_index"`
+	HasFrame   bool   `json:"has_frame"`
 
 	// Token info
 	TokenID     uint64 `json:"token_id"`

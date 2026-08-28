@@ -84,7 +84,11 @@
             <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
             {{ else }}
             <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
-            {{ if .RevertReason }}<span class="text-monospace text-break ms-2">{{ .RevertReason }}</span>{{ end }}
+            {{ if and .IsFrameTx (gt .FrameFailedCount 0) }}
+            <span class="ms-2" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction has no revert reason of its own: it did not revert, one of its frames did.">
+              frame #{{ .FrameFailedIndex }} failed{{ if gt .FrameSkippedCount 0 }}, {{ .FrameSkippedCount }} skipped{{ end }}
+            </span>
+            {{ else if and (not .IsFrameTx) .RevertReason }}<span class="text-monospace text-break ms-2">{{ .RevertReason }}</span>{{ end }}
             {{ end }}
           </div>
         </div>
