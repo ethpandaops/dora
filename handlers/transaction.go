@@ -58,6 +58,7 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 		"transaction/authorizations.html",
 		"transaction/blobs.html",
 		"transaction/frames.html",
+		"transaction/signatures.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"transaction/notfound.html",
@@ -210,7 +211,7 @@ func finalizeTransactionPage(ctx context.Context, pageData *models.TransactionPa
 	}
 
 	applyExpiryMargin(pageData)
-	applyFrameSignatureRoles(pageData)
+	applySignatureRoles(pageData)
 	setTransactionEnsNames(ctx, pageData)
 }
 
@@ -275,7 +276,7 @@ func setTransactionEnsNames(ctx context.Context, pageData *models.TransactionPag
 	for _, frame := range pageData.Frames {
 		ensAddrs = append(ensAddrs, frame.TargetAddr, frame.CallerAddr)
 	}
-	for _, sig := range pageData.FrameSignatures {
+	for _, sig := range pageData.Signatures {
 		ensAddrs = append(ensAddrs, sig.SignerAddr)
 	}
 	ensAddrs = append(ensAddrs, pageData.PayerAddr, pageData.FeeRecipientAddr)
@@ -762,6 +763,8 @@ func applyEthTxFields(ctx context.Context, pageData *models.TransactionPageData,
 	if from, err := ethTx.From(ethTx.ChainId()); err == nil {
 		pageData.FromAddr = from.Bytes()
 	}
+
+	buildTxSignature(pageData, ethTx)
 
 	// A frame transaction reports the first SENDER frame's target, which is one of
 	// several and not the transaction's recipient - and its absence is not a creation.
@@ -1624,6 +1627,8 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 
 	// Generate JSON using proper marshaling
 	generateTxJSON(pageData, ethTx)
+
+	buildTxSignature(pageData, ethTx)
 
 	// A frame transaction's nonce domain and expiry deadline live in the envelope, so
 	// they are only available while the block it came in is still retained.
@@ -2667,7 +2672,7 @@ func buildFrameSignatures(pageData *models.TransactionPageData, frameTx *txtypes
 		return
 	}
 
-	signatures := make([]*models.TransactionPageDataFrameSignature, 0, len(frameTx.Signatures))
+	signatures := make([]*models.TransactionPageDataSignature, 0, len(frameTx.Signatures))
 
 	for i, entry := range frameTx.Signatures {
 		if entry == nil {
@@ -2676,7 +2681,7 @@ func buildFrameSignatures(pageData *models.TransactionPageData, frameTx *txtypes
 
 		scheme := uint8(entry.Scheme)
 
-		sig := &models.TransactionPageDataFrameSignature{
+		sig := &models.TransactionPageDataSignature{
 			Index:      uint32(i),
 			Scheme:     scheme,
 			SchemeName: frameSigSchemeNames[scheme],
@@ -2692,6 +2697,8 @@ func buildFrameSignatures(pageData *models.TransactionPageData, frameTx *txtypes
 			sig.VerificationGas = gas
 		}
 
+		sig.Parts = decodeFrameSignature(entry.Scheme, entry.Signature)
+
 		if signer, ok := entry.ResolvedSigner(frameTx.Sender); ok {
 			sig.SignerAddr = signer.Bytes()
 			sig.HasSigner = true
@@ -2701,19 +2708,107 @@ func buildFrameSignatures(pageData *models.TransactionPageData, frameTx *txtypes
 		signatures = append(signatures, sig)
 	}
 
-	pageData.FrameSignatures = signatures
+	pageData.Signatures = signatures
 }
 
-// applyFrameSignatureRoles names what each entry authorises, as far as the transaction
+// buildTxSignature records the single ECDSA signature every type but a frame transaction
+// is signed with.
+//
+// Unlike a frame transaction's list, this one is not an authorisation the protocol checks
+// alongside a named sender - it is what the sender is derived from, so there is no sender
+// to state until it has been verified.
+func buildTxSignature(pageData *models.TransactionPageData, ethTx *txtypes.Transaction) {
+	v, r, sVal := ethTx.RawSignatureValues()
+	if v == nil || r == nil || sVal == nil {
+		return
+	}
+
+	pad := func(n *big.Int) []byte { return common.LeftPadBytes(n.Bytes(), 32) }
+
+	sig := &models.TransactionPageDataSignature{
+		Scheme:     uint8(txtypes.SigSchemeSecp256k1),
+		SchemeName: "secp256k1",
+		Role:       "the sender, whose address is recovered from it",
+		Parts: []*models.TransactionPageDataSignaturePart{
+			{Name: "v", Value: common.LeftPadBytes(v.Bytes(), 1), Note: "recovery id"},
+			{Name: "r", Value: pad(r)},
+			{Name: "s", Value: pad(sVal)},
+		},
+	}
+
+	if len(pageData.FromAddr) > 0 {
+		sig.SignerAddr = pageData.FromAddr
+		sig.HasSigner = true
+		sig.SignerIsSender = true
+	}
+
+	if gas, err := (&txtypes.FrameSignature{Scheme: txtypes.SigSchemeSecp256k1}).VerificationGas(); err == nil {
+		sig.VerificationGas = gas
+	}
+
+	// The canonical encoding is r || s || v here, which is the order the raw bytes are
+	// shown in - and the opposite of a frame transaction's entries.
+	sig.Signature = append(append(pad(r), pad(sVal)...), common.LeftPadBytes(v.Bytes(), 1)...)
+
+	pageData.Signatures = []*models.TransactionPageDataSignature{sig}
+	pageData.SignaturesRecoverSender = true
+}
+
+// decodeFrameSignature splits an entry's raw bytes into the fields its scheme defines.
+//
+// EIP-8141 orders a secp256k1 entry as v || r || s, with v first - the opposite of
+// go-ethereum's r || s || v - so the bytes cannot be read by eye without splitting them.
+// Bytes that are not the length the scheme expects are left whole rather than carved up
+// into fields that would be wrong.
+func decodeFrameSignature(scheme txtypes.FrameSigScheme, sig []byte) []*models.TransactionPageDataSignaturePart {
+	part := func(name string, value []byte, note string) *models.TransactionPageDataSignaturePart {
+		return &models.TransactionPageDataSignaturePart{Name: name, Value: value, Note: note}
+	}
+
+	switch scheme {
+	case txtypes.SigSchemeSecp256k1:
+		if len(sig) != 65 {
+			return nil
+		}
+
+		return []*models.TransactionPageDataSignaturePart{
+			part("v", sig[0:1], "recovery id, 0 or 1"),
+			part("r", sig[1:33], ""),
+			part("s", sig[33:65], "must be the low value of the pair"),
+		}
+
+	case txtypes.SigSchemeP256:
+		if len(sig) != 128 {
+			return nil
+		}
+
+		return []*models.TransactionPageDataSignaturePart{
+			part("r", sig[0:32], ""),
+			part("s", sig[32:64], ""),
+			part("qx", sig[64:96], "public key, whose keccak hash gives the signer"),
+			part("qy", sig[96:128], ""),
+		}
+
+	default:
+		// An arbitrary entry is witness data with no shape the protocol knows.
+		return nil
+	}
+}
+
+// applySignatureRoles names what each entry authorises, as far as the transaction
 // itself says. The sender's entry authorises the transaction; the payer's, when the
 // receipt names one that is not the sender, is what let the fee be charged elsewhere.
 //
 // It runs after the receipt has been read, because the payer comes from there.
-func applyFrameSignatureRoles(pageData *models.TransactionPageData) {
+func applySignatureRoles(pageData *models.TransactionPageData) {
 	payer := common.BytesToAddress(pageData.PayerAddr)
 	sponsored := len(pageData.PayerAddr) > 0 && !pageData.PayerIsSender
 
-	for _, sig := range pageData.FrameSignatures {
+	for _, sig := range pageData.Signatures {
+		if sig.Role != "" {
+			continue
+		}
+
 		switch {
 		case !sig.HasSigner:
 			sig.Role = "witness for contract code, not checked by the protocol"

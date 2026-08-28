@@ -414,52 +414,6 @@
 
     {{ end }}
 
-    {{/* ---------- what the protocol checked before any frame ran ---------- */}}
-    {{ if .FrameSignatures }}
-    <div class="frm-section">
-      <div class="frm-section-head">
-        <i class="fas fa-signature"></i>
-        <span>Signatures</span>
-        <span class="frm-section-note">— checked before any frame ran. A frame transaction names its sender outright, so these are authorisations rather than what the sender is recovered from.</span>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-nobr frm-table">
-          <thead>
-            <tr>
-              <th style="width: 3rem;">#</th>
-              <th style="width: 7rem;">Scheme</th>
-              <th>Signer</th>
-              <th>Authorises</th>
-              <th class="text-end" style="width: 7rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="What the protocol charges to verify this entry">Verify gas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {{ range $sig := .FrameSignatures }}
-            <tr>
-              <td class="text-muted">{{ $sig.Index }}</td>
-              <td><span class="badge text-bg-secondary">{{ $sig.SchemeName }}</span></td>
-              <td class="text-monospace">
-                {{ if $sig.HasSigner }}
-                {{ formatEthAddressShortLink $sig.SignerAddr false 5 }}
-                {{ else }}
-                <span class="text-muted">none</span>
-                {{ end }}
-              </td>
-              <td class="text-muted">
-                {{ $sig.Role }}
-                {{ if gt (len $sig.Msg) 0 }}
-                <span class="badge text-bg-light text-dark border ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="This entry signs the digest {{ formatHexBytes $sig.Msg }} rather than the transaction's canonical signature hash">explicit digest</span>
-                {{ end }}
-              </td>
-              <td class="text-end text-monospace text-muted">{{ formatAddCommas $sig.VerificationGas }}</td>
-            </tr>
-            {{ end }}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    {{ end }}
-
     {{/* ---------- EIP-8272 roots the transaction declared ---------- */}}
     {{ if .FrameRecentRoots }}
     <div class="frm-section">
@@ -494,14 +448,16 @@
     {{ end }}
 
     <script type="text/javascript">
-      function toggleFramePanel(idx, event) {
+      function togglePanel(prefix, idx, event) {
         if (event && (event.target.closest('a') || event.target.closest('button') || event.target.closest('[data-clipboard-text]'))) return;
-        var panel = document.getElementById('frm-panel-' + idx);
-        var chevron = document.getElementById('frm-chevron-' + idx);
+        var panel = document.getElementById(prefix + '-panel-' + idx);
+        var chevron = document.getElementById(prefix + '-chevron-' + idx);
         if (!panel) return;
         panel.classList.toggle('open');
         if (chevron) chevron.classList.toggle('open');
       }
+
+      function toggleFramePanel(idx, event) { togglePanel('frm', idx, event); }
 
       function showFrameDataView(idx, view) {
         var decoded = document.getElementById('frm-data-decoded-' + idx);

@@ -434,13 +434,13 @@ func TestFrameSignaturesAreNamedForWhatTheyAuthorise(t *testing.T) {
 	}
 
 	buildFrameSignatures(pageData, frameTx)
-	applyFrameSignatureRoles(pageData)
+	applySignatureRoles(pageData)
 
-	if len(pageData.FrameSignatures) != 3 {
-		t.Fatalf("built %d entries, want 3", len(pageData.FrameSignatures))
+	if len(pageData.Signatures) != 3 {
+		t.Fatalf("built %d entries, want 3", len(pageData.Signatures))
 	}
 
-	sender, payer, witness := pageData.FrameSignatures[0], pageData.FrameSignatures[1], pageData.FrameSignatures[2]
+	sender, payer, witness := pageData.Signatures[0], pageData.Signatures[1], pageData.Signatures[2]
 
 	// An entry naming no signer authorises for the sender.
 	if !sender.SignerIsSender || sender.Role != "the sender, authorising the transaction" {
@@ -514,5 +514,72 @@ func TestSenderPayingItsOwnFeeIsNotAPaymaster(t *testing.T) {
 
 	if pageData.StateChanges[0].IsPayer {
 		t.Error("the sender paying its own fee is not a paymaster")
+	}
+}
+
+// EIP-8141 orders a secp256k1 entry v || r || s, with v first - the opposite of
+// go-ethereum's r || s || v - so the split has to follow the spec rather than the habit.
+func TestSecp256k1SignatureSplitsIntoVRS(t *testing.T) {
+	sig := make([]byte, 65)
+	sig[0] = 1                    // v
+	sig[1], sig[32] = 0xaa, 0xbb  // r, first and last byte
+	sig[33], sig[64] = 0xcc, 0xdd // s, first and last byte
+
+	parts := decodeFrameSignature(txtypes.SigSchemeSecp256k1, sig)
+	if len(parts) != 3 {
+		t.Fatalf("split into %d parts, want 3", len(parts))
+	}
+
+	for i, want := range []struct {
+		name        string
+		size        int
+		first, last byte
+	}{
+		{"v", 1, 1, 1},
+		{"r", 32, 0xaa, 0xbb},
+		{"s", 32, 0xcc, 0xdd},
+	} {
+		got := parts[i]
+		if got.Name != want.name || len(got.Value) != want.size {
+			t.Errorf("part %d = %q of %d bytes, want %q of %d", i, got.Name, len(got.Value), want.name, want.size)
+
+			continue
+		}
+
+		if got.Value[0] != want.first || got.Value[len(got.Value)-1] != want.last {
+			t.Errorf("part %q spans the wrong bytes: %x…%x", got.Name, got.Value[0], got.Value[len(got.Value)-1])
+		}
+	}
+}
+
+// A P256 entry carries the public key alongside the signature, which is what the signer
+// address is derived from.
+func TestP256SignatureSplitsIntoRSAndPublicKey(t *testing.T) {
+	parts := decodeFrameSignature(txtypes.SigSchemeP256, make([]byte, 128))
+
+	names := make([]string, 0, len(parts))
+	for _, part := range parts {
+		names = append(names, part.Name)
+
+		if len(part.Value) != 32 {
+			t.Errorf("part %q is %d bytes, want 32", part.Name, len(part.Value))
+		}
+	}
+
+	if strings.Join(names, ",") != "r,s,qx,qy" {
+		t.Errorf("parts = %v, want r,s,qx,qy", names)
+	}
+}
+
+// Bytes that are not the length the scheme expects are left whole: carving them up would
+// name fields that are not there.
+func TestSignatureOfTheWrongLengthIsNotSplit(t *testing.T) {
+	if parts := decodeFrameSignature(txtypes.SigSchemeSecp256k1, make([]byte, 64)); parts != nil {
+		t.Errorf("a 64-byte secp256k1 entry was split into %d parts", len(parts))
+	}
+
+	// An arbitrary entry is witness data with no shape the protocol knows.
+	if parts := decodeFrameSignature(txtypes.SigSchemeArbitrary, []byte("witness")); parts != nil {
+		t.Errorf("an arbitrary entry was split into %d parts", len(parts))
 	}
 }

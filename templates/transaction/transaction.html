@@ -216,6 +216,13 @@
         </a>
       </li>
       {{ end }}
+      {{ if gt (len .Signatures) 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "signatures" }} active{{ end }}" id="signatures-tab" data-lazy-tab="signatures" data-bs-toggle="tab" data-bs-target="#signatures" href="?v=signatures{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="signatures" aria-selected="{{ if eq .TabView "signatures" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-signature me-2"></i> Signatures{{ if gt (len .Signatures) 1 }} ({{ len .Signatures }}){{ end }}
+        </a>
+      </li>
+      {{ end }}
     </ul>
 
     <div class="tab-content" id="tabContent">
@@ -425,6 +432,12 @@
           {{ template "blobs" . }}
         {{ end }}
       </div>
+
+      <div class="tab-pane fade{{ if eq .TabView "signatures" }} show active{{ end }}" id="signatures" role="tabpanel" aria-labelledby="signatures-tab" data-loaded="{{ if eq .TabView "signatures" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "signatures" }}
+        {{ template "signatures" . }}
+        {{ end }}
+      </div>
     </div>
   </div>
 {{ end }}
@@ -432,6 +445,8 @@
   <script type="application/json" class="ens-names">{{ ensNamesJson . }}</script>
   {{ if eq .TabView "frames" }}
     {{ template "frames" . }}
+  {{ else if eq .TabView "signatures" }}
+    {{ template "signatures" . }}
   {{ else if eq .TabView "events" }}
     {{ template "events" . }}
   {{ else if eq .TabView "statechanges" }}
@@ -546,6 +561,7 @@
     var tabToView = {
       'details': 'overview',
       'frames': 'frames',
+      'signatures': 'signatures',
       'events': 'events',
       'statechanges': 'statechanges',
       'transfers': 'transfers',

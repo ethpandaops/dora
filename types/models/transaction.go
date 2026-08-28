@@ -209,10 +209,15 @@ type TransactionPageData struct {
 
 	Frames []*TransactionPageDataFrame `json:"frames"`
 
-	// Signatures the protocol validated before any frame ran, and the recent roots the
-	// transaction declared. Both live in the envelope, so they are present exactly while
-	// the block the transaction came in still is.
-	FrameSignatures  []*TransactionPageDataFrameSignature  `json:"frame_signatures"`
+	// Signatures is what authenticated the transaction: the one ECDSA signature an
+	// ordinary transaction is signed with, or the list a frame transaction carries. It
+	// lives in the envelope, so it is present exactly while the block is.
+	Signatures []*TransactionPageDataSignature `json:"signatures"`
+
+	// SignaturesRecoverSender reports whether the sender is recovered from the signature,
+	// as it is for every type but a frame transaction, which names its sender outright.
+	SignaturesRecoverSender bool `json:"signatures_recover_sender"`
+
 	FrameRecentRoots []*TransactionPageDataFrameRecentRoot `json:"frame_recent_roots"`
 
 	// Tab view
@@ -247,12 +252,13 @@ type TransactionPageData struct {
 	EnsNameData
 }
 
-// TransactionPageDataFrameSignature is one entry of a frame transaction's signature list.
+// TransactionPageDataSignature is a signature that authenticated the transaction.
 //
-// A frame transaction does not recover its sender from a signature: the sender is an
-// explicit field, and the signature list is a set of authorisations the protocol checks
-// before any frame runs. That is how an account other than the sender agrees to pay.
-type TransactionPageDataFrameSignature struct {
+// Every type but a frame transaction carries exactly one, and the sender is recovered
+// from it. A frame transaction names its sender outright and carries a list instead: a
+// set of authorisations the protocol checks before any frame runs, which is how an
+// account other than the sender agrees to pay.
+type TransactionPageDataSignature struct {
 	Index uint32 `json:"index"`
 
 	Scheme     uint8  `json:"scheme"`
@@ -275,6 +281,20 @@ type TransactionPageDataFrameSignature struct {
 
 	Signature       []byte `json:"signature"`
 	VerificationGas uint64 `json:"verification_gas"`
+
+	// Parts are the signature's raw bytes split into the fields its scheme defines, or
+	// nil when the bytes are not the length that scheme expects.
+	Parts []*TransactionPageDataSignaturePart `json:"parts"`
+}
+
+// TransactionPageDataSignaturePart is one named field of a signature entry, decoded
+// according to the entry's scheme.
+type TransactionPageDataSignaturePart struct {
+	Name  string `json:"name"`
+	Value []byte `json:"value"`
+
+	// Note carries anything about the field worth saying beside it.
+	Note string `json:"note"`
 }
 
 // TransactionPageDataFrameRecentRoot is an EIP-8272 recent root the transaction declared,
