@@ -145,6 +145,14 @@
         {{ if .FrameShape }}
         <span class="badge text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="Named by the transaction's validation prefix - the leading frames whose success settles who pays">{{ .FrameShape }}</span>
         {{ end }}
+        {{ if .FrameExtensions }}
+        <span class="badge text-bg-light text-dark border" data-bs-toggle="tooltip" data-bs-placement="top" title="Which of EIP-8141's extensions this payload used. EIP-8250 replaces the nonce with a keyed sequence and EIP-8272 declares recent roots; a chain can run either, both or neither, so the shape is read off the transaction.">{{ .FrameExtensions }}</span>
+        {{ end }}
+        {{ if .FrameBodyReverted }}
+        <span class="badge text-bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="An assertion frame failed, which reverts everything after the validation frames. The transaction still reached the chain and the fee was still owed.">
+          <i class="fas fa-rotate-left me-1"></i>body reverted
+        </span>
+        {{ end }}
         {{ if .HasExpiry }}
         {{ if .ExpiryPassed }}
         <span class="badge text-bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Deadline {{ .ExpiryTime.UTC }}. The expiry verifier frame checks it when the transaction executes, so a conforming client would not have included this.">
@@ -192,6 +200,12 @@
           <span class="frm-stat-value">{{ formatEthAddressShortLink .PayerAddr false 5 }}</span>
         </div>
         {{ end }}
+        {{ if not .NonceIsAccount }}
+        <div class="frm-stat">
+          <span class="frm-stat-label" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-8250. The transaction is sequenced against the keys it selects rather than the sender's account nonce, so it does not queue behind the sender's other transactions. Every selected key had to be at this sequence, and inclusion moved all of them on together.">Nonce keys</span>
+          <span class="frm-stat-value">{{ range $i, $key := .NonceKeys }}{{ if $i }}, {{ end }}{{ $key }}{{ end }} <span class="text-muted">at sequence {{ formatAddCommas .Nonce }}</span></span>
+        </div>
+        {{ end }}
       </div>
 
       <details class="frm-intro text-muted">
@@ -205,6 +219,8 @@
           <dd class="col-sm-9 col-lg-10">The leading frames approve execution and payment. If one of them reverts the transaction is invalid and never reaches the chain, so every frame shown here got past that point.</dd>
           <dt class="col-sm-3 col-lg-2">Atomic batches</dt>
           <dd class="col-sm-9 col-lg-10">Frames can be batched so they take effect together. If one of a batch fails the whole batch is rolled back and the frames after it are skipped - neither a success nor a failure.</dd>
+          <dt class="col-sm-3 col-lg-2">Envelope</dt>
+          <dd class="col-sm-9 col-lg-10">EIP-8250 replaces the sender's nonce with a keyed sequence, and EIP-8272 lets a transaction declare recent roots for its frames to read. A chain can run either, both or neither, so the badge above says which shape this payload is.</dd>
           <dt class="col-sm-3 col-lg-2">Two gas dimensions</dt>
           <dd class="col-sm-9 col-lg-10">Each frame budgets execution gas and, under EIP-8037, state gas. State gas is a final attribution rather than a running total: a later frame can retroactively reduce an earlier one through a refill.</dd>
         </dl>
@@ -296,7 +312,9 @@
           </span>
 
           <span class="frm-status">
-          {{ if $frame.RolledBack }}
+          {{ if and $frame.RolledBack $.FrameBodyReverted }}
+          <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="This frame ran, but an assertion frame failed and reverted the whole execution body. Nothing it did survived.">{{ $frame.StatusText }}</span>
+          {{ else if $frame.RolledBack }}
           <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="This frame ran, but frame #{{ $frame.BatchFailedIndex }} in its atomic batch failed. Its logs were discarded and its state gas zeroed, so nothing it did survived.">{{ $frame.StatusText }}</span>
           {{ else if eq $frame.Status 1 }}
           <span class="badge text-bg-success">{{ $frame.StatusText }}</span>

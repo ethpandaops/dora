@@ -169,53 +169,31 @@ func (ctx *txProcessingContext) resolveFrames(
 		frames = append(frames, pending)
 	}
 
-	markRolledBackBatches(frames)
+	markUndoneFrames(frames, extra, frameTx)
 
 	return frames
 }
 
-// markRolledBackBatches flags the frames whose effects were undone.
+// markUndoneFrames flags the frames whose effects did not survive.
 //
-// An atomic batch is a maximal run of frames in which every frame but the last carries
-// the batch flag. When one frame of a batch fails the whole batch rolls back: the frames
-// after it are reported as skipped, but the ones before it keep the success status and
-// execution gas they earned, with only their logs discarded and their state gas zeroed.
-// Their state changes are gone all the same, so a success inside a rolled-back batch must
-// not be read as having moved anything.
-func markRolledBackBatches(frames []*pendingFrame) {
-	batchStart := 0
+// A frame's status says whether it ran, not whether what it did lasted: an atomic batch
+// that fails is unrolled, and a failing POST_TX frame reverts the whole execution body.
+// Both rules live in txtypes, which owns them, so the answer is asked for rather than
+// restated here.
+func markUndoneFrames(frames []*pendingFrame, extra *txtypes.FrameReceiptExtra, frameTx *txtypes.FrameTx) {
+	if extra == nil {
+		return
+	}
+
+	durable := extra.DurableFrames(frameTx)
 
 	for i, frame := range frames {
-		if frame.isAtomicBatch() && i+1 < len(frames) {
-			continue
+		if i >= len(durable) {
+			break
 		}
 
-		batch := frames[batchStart : i+1]
-		batchStart = i + 1
-
-		failed := false
-
-		for _, member := range batch {
-			if member.hasResult && member.status == txtypes.FrameStatusFailed {
-				failed = true
-
-				break
-			}
-		}
-
-		if !failed {
-			continue
-		}
-
-		for _, member := range batch {
-			// Only a frame that succeeded had anything taken back from it; the one that
-			// failed and the ones that never ran are described by their own status.
-			if !member.hasResult || member.status != txtypes.FrameStatusSuccess {
-				continue
-			}
-
-			member.rolledBack = true
-		}
+		// Only a frame that succeeded had anything taken back from it.
+		frame.rolledBack = frame.hasResult && frame.status == txtypes.FrameStatusSuccess && !durable[i]
 	}
 }
 

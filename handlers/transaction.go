@@ -1192,6 +1192,8 @@ func annotateStateChangeRoles(pageData *models.TransactionPageData) {
 
 		// The sender paying its own fee is the ordinary case and says nothing.
 		account.IsPayer = !pageData.PayerIsSender && sameAddress(account.Address, pageData.PayerAddr)
+
+		account.PredeployName = framePredeployNames[common.BytesToAddress(account.Address)]
 	}
 }
 
@@ -1948,6 +1950,7 @@ var frameModeNames = map[uint8]string{
 	uint8(txtypes.FrameModeDefault): "Default",
 	uint8(txtypes.FrameModeVerify):  "Verify",
 	uint8(txtypes.FrameModeSender):  "Sender",
+	uint8(txtypes.FrameModePostTx):  "Post-tx",
 }
 
 // frameSpeciesNames turn the mempool rules' species names into readable ones.
@@ -1968,6 +1971,7 @@ var frameSpeciesNames = map[txtypes.FrameSpecies]string{
 	txtypes.SpeciesDeploy:       "Account deploy",
 	txtypes.SpeciesUserOp:       "User operation",
 	txtypes.SpeciesPostOp:       "Settlement",
+	txtypes.SpeciesPostTx:       "Assertion",
 	txtypes.SpeciesOther:        "Other",
 }
 
@@ -1995,6 +1999,10 @@ var frameSpeciesInfo = map[txtypes.FrameSpecies]string{
 
 	txtypes.SpeciesPostOp: "A call made after the operations have run, entered by the ENTRY_POINT predeploy rather " +
 		"than by the sender. It is where a paymaster squares up once the real cost is known.",
+
+	txtypes.SpeciesPostTx: "Runs after the transaction's operations, reading what they did through TXTRACE and " +
+		"asserting something about it. If it reverts, the whole execution body is reverted with it - not just " +
+		"its own atomic batch - though the transaction still reaches the chain and its fee is still owed.",
 
 	txtypes.SpeciesOther: "The frame's mode and approval flags match none of the shapes the mempool rules name.",
 }
@@ -2135,6 +2143,7 @@ func applyFrameResults(pageData *models.TransactionPageData, results []bdbtypes.
 	}
 
 	markRolledBackFrames(pageData.Frames)
+	applyFrameBodyReverted(pageData)
 	summarizeFrames(pageData)
 
 	pageData.FrameResultsMissing = false
@@ -2162,12 +2171,67 @@ func applyFrameReceiptExtra(pageData *models.TransactionPageData, receipt *txtyp
 	applyFrameResults(pageData, results)
 }
 
-// markRolledBackFrames flags the frames of every atomic batch that failed.
+// markRolledBackFrames flags the frames whose effects did not survive the transaction.
 //
-// A frame that ran before the failure keeps the success status it earned, but the batch
-// took its state changes back with it, so showing a plain success would say it did
-// something it did not.
+// A frame's status says whether it ran, not whether what it did lasted. Two rules discard
+// the effects of a frame that reports success: an atomic batch that fails is unrolled,
+// and a failing POST_TX frame reverts the whole execution body. Both live in txtypes,
+// which owns the rules, so the shapes and statuses the page already holds are handed back
+// to it rather than the rules being restated here.
 func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
+	durable := frameDurability(frames)
+
+	// A batch names what undid it, which the durability answer alone does not carry.
+	undoneBy := batchFailures(frames)
+
+	for i, frame := range frames {
+		if durable[i] || uint64(frame.Status) != txtypes.FrameStatusSuccess {
+			continue
+		}
+
+		frame.RolledBack = true
+		frame.StatusText = frameStatusText(frame.Status, true)
+
+		if idx, ok := undoneBy[i]; ok {
+			frame.BatchFailedIndex = int(idx)
+		}
+	}
+}
+
+// frameDurability asks txtypes which frames' effects survived, rebuilding the shapes it
+// needs from what the page holds: a frame's mode and flags decide the validation prefix,
+// the atomic batches and whether a POST_TX frame is present.
+//
+// Frames raised from a receipt alone carry no mode or flags, which reads as a transaction
+// with no prefix and no batches - and the answer is then simply whether each frame
+// succeeded, which is all that can be known without the transaction.
+func frameDurability(frames []*models.TransactionPageDataFrame) []bool {
+	tx := &txtypes.FrameTx{Frames: make([]*txtypes.Frame, len(frames))}
+	extra := &txtypes.FrameReceiptExtra{Frames: make([]*txtypes.FrameReceipt, len(frames))}
+
+	for i, frame := range frames {
+		// The batch bit is rebuilt from AtomicBatch rather than read out of Flags: the
+		// two are the same fact, and taking the meaning rather than the encoding keeps
+		// this right whichever of them a caller filled in.
+		flags := frame.Flags & txtypes.ApproveScopeMask
+		if frame.AtomicBatch {
+			flags |= txtypes.AtomicBatchFlag
+		}
+
+		tx.Frames[i] = &txtypes.Frame{
+			Mode:  txtypes.FrameMode(frame.Mode),
+			Flags: flags,
+		}
+		extra.Frames[i] = &txtypes.FrameReceipt{Status: uint64(frame.Status)}
+	}
+
+	return extra.DurableFrames(tx)
+}
+
+// batchFailures maps each frame of a failed atomic batch to the frame whose failure undid
+// it, so a rolled-back frame can name its cause.
+func batchFailures(frames []*models.TransactionPageDataFrame) map[int]uint32 {
+	undoneBy := make(map[int]uint32, len(frames))
 	batchStart := 0
 
 	for i, frame := range frames {
@@ -2176,36 +2240,23 @@ func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
 		}
 
 		batch := frames[batchStart : i+1]
+		start := batchStart
 		batchStart = i + 1
 
-		failedIndex := -1
-
 		for _, member := range batch {
-			if uint64(member.Status) == txtypes.FrameStatusFailed {
-				failedIndex = int(member.Index)
-
-				break
-			}
-		}
-
-		if failedIndex < 0 {
-			continue
-		}
-
-		for _, member := range batch {
-			// Only a frame that succeeded had anything taken back from it. The frame
-			// that failed, and the ones after it that never ran, are told by their own
-			// status - and a lone failed frame is not a batch that rolled back, it is
-			// just a failure.
-			if uint64(member.Status) != txtypes.FrameStatusSuccess {
+			if uint64(member.Status) != txtypes.FrameStatusFailed {
 				continue
 			}
 
-			member.RolledBack = true
-			member.BatchFailedIndex = failedIndex
-			member.StatusText = frameStatusText(member.Status, true)
+			for offset := range batch {
+				undoneBy[start+offset] = member.Index
+			}
+
+			break
 		}
 	}
+
+	return undoneBy
 }
 
 // frameSpecies classifies a frame for display.
@@ -2234,6 +2285,7 @@ func frameCaller(frame *txtypes.Frame, sender common.Address) common.Address {
 		return sender
 	}
 
+	// DEFAULT, VERIFY and POST_TX frames are all entered by the predeploy.
 	return txtypes.EntryPoint
 }
 
@@ -2487,6 +2539,19 @@ func summarizeFrames(pageData *models.TransactionPageData) {
 	applyFrameTxStatus(pageData)
 }
 
+// applyFrameBodyReverted records whether an assertion frame took the whole execution body
+// with it, which the frame statuses alone do not say: the frames it reverted still report
+// the success they earned.
+func applyFrameBodyReverted(pageData *models.TransactionPageData) {
+	for _, frame := range pageData.Frames {
+		if frame.Mode == uint8(txtypes.FrameModePostTx) && uint64(frame.Status) == txtypes.FrameStatusFailed {
+			pageData.FrameBodyReverted = true
+
+			return
+		}
+	}
+}
+
 // applyFrameTxStatus states the transaction's own outcome from its frames.
 //
 // A frame transaction that reached the chain ran and paid: its validation prefix
@@ -2520,6 +2585,19 @@ func applyFrameTxStatus(pageData *models.TransactionPageData) {
 
 	if pageData.FrameSkippedCount > 0 {
 		parts = append(parts, fmt.Sprintf("%d never ran", pageData.FrameSkippedCount))
+	}
+
+	if pageData.FrameBodyReverted {
+		pageData.StatusText = "Reverted"
+		pageData.FrameIncomplete = true
+		pageData.FrameStatusDetail = fmt.Sprintf(
+			"An assertion frame failed, which reverts everything the transaction did after its validation "+
+				"frames - not just its own atomic batch. The transaction still reached the chain and its fee "+
+				"was still owed: of its %d frames, only the validation ones left anything behind.",
+			len(pageData.Frames),
+		)
+
+		return
 	}
 
 	if len(parts) == 0 {
@@ -2641,6 +2719,11 @@ func applyFrameTxEnvelope(pageData *models.TransactionPageData, frameTx *txtypes
 
 	buildFrameSignatures(pageData, frameTx)
 	buildFrameRecentRoots(pageData, frameTx)
+
+	// Which of EIP-8141's extensions the payload used. A chain can run 8250 and 8272
+	// independently, so this is a property of the transaction rather than of the chain.
+	pageData.FrameExtensions = frameTx.Extensions.String()
+	pageData.FrameHasKeyedNonces = frameTx.HasKeyedNonces()
 
 	if !pageData.NonceIsAccount {
 		pageData.NonceKeys = make([]string, 0, len(frameTx.NonceKeys))

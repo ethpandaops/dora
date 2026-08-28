@@ -154,6 +154,18 @@ type TransactionPageData struct {
 	// receipt being stored, leaves the frames without results.
 	FrameResultsMissing bool `json:"frame_results_missing"`
 
+	// FrameExtensions names which of EIP-8141's extensions the payload used - EIP-8250's
+	// keyed nonces and EIP-8272's recent roots are independent, so four shapes exist and
+	// the transaction says which one it is. FrameHasKeyedNonces is the structural
+	// question, as against NonceIsAccount, which asks whether the sequence is the
+	// sender's account nonce.
+	FrameExtensions     string `json:"frame_extensions"`
+	FrameHasKeyedNonces bool   `json:"frame_has_keyed_nonces"`
+
+	// FrameBodyReverted marks a transaction whose POST_TX frame failed, which reverts
+	// everything after the validation prefix rather than only its own atomic batch.
+	FrameBodyReverted bool `json:"frame_body_reverted"`
+
 	// FrameShape names the transaction by its validation prefix - the thing that makes a
 	// frame transaction legible at a glance.
 	FrameShape string `json:"frame_shape"`
@@ -404,6 +416,11 @@ type TransactionPageDataStateChangeAccount struct {
 	IsSender       bool `json:"is_sender"`
 	IsPayer        bool `json:"is_payer"`
 	IsFeeRecipient bool `json:"is_fee_recipient"`
+
+	// PredeployName names the protocol's own account, where the account is one. Storage
+	// on NONCE_MANAGER or RECENT_ROOTS is written by the protocol rather than by any
+	// frame, and says nothing without the name.
+	PredeployName string `json:"predeploy_name"`
 
 	// High level flags (precomputed from the binary flags)
 	AccountCreated bool `json:"account_created"`

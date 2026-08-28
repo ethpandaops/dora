@@ -623,3 +623,230 @@ func TestOnlyUndoneSuccessesAreMarkedRolledBack(t *testing.T) {
 		t.Error("the failed and skipped frames say what happened to them themselves")
 	}
 }
+
+// An assertion frame that fails reverts everything after the validation prefix, not just
+// its own atomic batch. The frames it reverted still report the success they earned, so
+// nothing but the mode says what happened.
+func TestFailedAssertionFrameRevertsTheWholeBody(t *testing.T) {
+	pageData := &models.TransactionPageData{
+		IsFrameTx: true,
+		Frames: []*models.TransactionPageDataFrame{
+			// The validation prefix: a self-verify frame approves payment and ends it.
+			{Index: 0, Mode: uint8(txtypes.FrameModeVerify), Flags: txtypes.ApproveExecutionAndPayment, Status: uint8(txtypes.FrameStatusSuccess)},
+			{Index: 1, Mode: uint8(txtypes.FrameModeSender), Status: uint8(txtypes.FrameStatusSuccess)},
+			{Index: 2, Mode: uint8(txtypes.FrameModeSender), Status: uint8(txtypes.FrameStatusSuccess)},
+			{Index: 3, Mode: uint8(txtypes.FrameModePostTx), Status: uint8(txtypes.FrameStatusFailed)},
+		},
+	}
+
+	markRolledBackFrames(pageData.Frames)
+	applyFrameBodyReverted(pageData)
+	summarizeFrames(pageData)
+
+	if !pageData.FrameBodyReverted {
+		t.Fatal("a failed assertion frame reverts the body")
+	}
+
+	// The prefix commits even when the body reverts - that is what the payer paid for.
+	if pageData.Frames[0].RolledBack {
+		t.Error("a validation frame's changes are committed regardless of the body")
+	}
+
+	for _, i := range []int{1, 2} {
+		if !pageData.Frames[i].RolledBack {
+			t.Errorf("frame %d reports success but the body was reverted under it", i)
+		}
+	}
+
+	if pageData.StatusText != "Reverted" {
+		t.Errorf("status = %q, want Reverted - this is not a partial completion", pageData.StatusText)
+	}
+}
+
+// Without an assertion frame the batch rule applies as before, and the body stands.
+func TestBatchUnwindIsNotABodyRevert(t *testing.T) {
+	pageData := &models.TransactionPageData{
+		IsFrameTx: true,
+		Frames: []*models.TransactionPageDataFrame{
+			{Index: 0, Mode: uint8(txtypes.FrameModeVerify), Flags: txtypes.ApproveExecutionAndPayment, Status: uint8(txtypes.FrameStatusSuccess)},
+			{Index: 1, Mode: uint8(txtypes.FrameModeSender), AtomicBatch: true, Status: uint8(txtypes.FrameStatusSuccess)},
+			{Index: 2, Mode: uint8(txtypes.FrameModeSender), Status: uint8(txtypes.FrameStatusFailed)},
+			{Index: 3, Mode: uint8(txtypes.FrameModeSender), Status: uint8(txtypes.FrameStatusSuccess)},
+		},
+	}
+
+	markRolledBackFrames(pageData.Frames)
+	applyFrameBodyReverted(pageData)
+	summarizeFrames(pageData)
+
+	if pageData.FrameBodyReverted {
+		t.Error("no assertion frame failed, so the body stands")
+	}
+
+	if !pageData.Frames[1].RolledBack || pageData.Frames[1].BatchFailedIndex != 2 {
+		t.Errorf("the batched success should be undone by frame 2, got %v/%d",
+			pageData.Frames[1].RolledBack, pageData.Frames[1].BatchFailedIndex)
+	}
+
+	// Outside the batch, and after it, this one survived.
+	if pageData.Frames[3].RolledBack {
+		t.Error("a frame outside the failed batch keeps its effects")
+	}
+
+	if pageData.StatusText != "Complete" {
+		t.Errorf("status = %q, want Complete", pageData.StatusText)
+	}
+}
+
+// envelopeTx is a frame transaction in a chosen envelope shape, carrying nothing but what
+// the shape itself contributes.
+func envelopeTx(extensions txtypes.FrameExtensions) *txtypes.FrameTx {
+	target := frameTestCallee
+
+	return &txtypes.FrameTx{
+		Extensions: extensions,
+		ChainID:    uint256.NewInt(1),
+		Sender:     frameTestSender,
+		NonceSeq:   4,
+		Frames: []*txtypes.Frame{{
+			Mode:   txtypes.FrameModeSender,
+			Target: &target,
+			Limits: txtypes.FrameLimits{Execution: 21000},
+			Value:  uint256.NewInt(0),
+		}},
+		Fees: txtypes.FrameFees{
+			GasTipCap:  uint256.NewInt(1),
+			GasFeeCap:  uint256.NewInt(2),
+			BlobFeeCap: uint256.NewInt(0),
+		},
+	}
+}
+
+// A chain can run EIP-8250 and EIP-8272 independently, so which extensions a payload used
+// is a property of the transaction. The badge naming them is read off the envelope.
+func TestEnvelopeShapeIsNamedFromTheTransaction(t *testing.T) {
+	for _, tc := range []struct {
+		extensions txtypes.FrameExtensions
+		want       string
+	}{
+		{0, "8141"},
+		{txtypes.FrameExtKeyedNonces, "8141+8250"},
+		{txtypes.FrameExtRecentRoots, "8141+8272"},
+		{txtypes.FrameExtAll, "8141+8250+8272"},
+	} {
+		pageData := &models.TransactionPageData{}
+		applyFrameTxEnvelope(pageData, envelopeTx(tc.extensions))
+
+		if pageData.FrameExtensions != tc.want {
+			t.Errorf("extensions = %q, want %q", pageData.FrameExtensions, tc.want)
+		}
+
+		if got := pageData.FrameHasKeyedNonces; got != tc.extensions.Has(txtypes.FrameExtKeyedNonces) {
+			t.Errorf("%s: keyed nonces = %v", tc.want, got)
+		}
+	}
+}
+
+// A transaction sequenced in a nonce domain of its own does not run against the sender's
+// account nonce, so the keys it selects are what the sequence number means.
+func TestKeyedNoncesNameTheDomainsTheySequenceIn(t *testing.T) {
+	frameTx := envelopeTx(txtypes.FrameExtKeyedNonces)
+	frameTx.NonceKeys = []*uint256.Int{uint256.NewInt(7), uint256.NewInt(9)}
+
+	pageData := &models.TransactionPageData{}
+	applyFrameTxEnvelope(pageData, frameTx)
+
+	if pageData.NonceIsAccount {
+		t.Error("a transaction selecting key 7 is not sequenced against the account nonce")
+	}
+
+	if len(pageData.NonceKeys) != 2 || pageData.NonceKeys[0] != "7" || pageData.NonceKeys[1] != "9" {
+		t.Errorf("nonce keys = %v, want [7 9]", pageData.NonceKeys)
+	}
+}
+
+// Key zero is the sender's account nonce by definition, so a transaction selecting only
+// that one is sequenced no differently from a transaction predating keyed nonces - and
+// the page says nothing about domains for it.
+func TestKeyZeroAloneIsTheAccountNonce(t *testing.T) {
+	frameTx := envelopeTx(txtypes.FrameExtKeyedNonces)
+	frameTx.NonceKeys = []*uint256.Int{uint256.NewInt(0)}
+
+	pageData := &models.TransactionPageData{}
+	applyFrameTxEnvelope(pageData, frameTx)
+
+	if !pageData.NonceIsAccount {
+		t.Error("key zero alone is the account nonce")
+	}
+
+	if len(pageData.NonceKeys) != 0 {
+		t.Errorf("nonce keys = %v, want none to be named", pageData.NonceKeys)
+	}
+}
+
+// A frame can only read a root the transaction declared up front, so the declarations are
+// listed whether or not any frame went on to use them.
+func TestRecentRootsAreListedAsDeclared(t *testing.T) {
+	frameTx := envelopeTx(txtypes.FrameExtRecentRoots)
+	frameTx.RecentRoots = []*txtypes.RecentRootReference{
+		{SourceID: common.HexToHash("0xaa"), Slot: 1234, Root: common.HexToHash("0xbb")},
+		{SourceID: common.HexToHash("0xcc"), Slot: 1235, Root: common.HexToHash("0xdd")},
+	}
+
+	pageData := &models.TransactionPageData{}
+	applyFrameTxEnvelope(pageData, frameTx)
+
+	if len(pageData.FrameRecentRoots) != 2 {
+		t.Fatalf("roots = %d, want 2", len(pageData.FrameRecentRoots))
+	}
+
+	first := pageData.FrameRecentRoots[0]
+	if first.Index != 0 || first.Slot != 1234 {
+		t.Errorf("first root = index %d slot %d, want index 0 slot 1234", first.Index, first.Slot)
+	}
+
+	if !strings.EqualFold(common.BytesToHash(first.Root).Hex(), common.HexToHash("0xbb").Hex()) {
+		t.Errorf("first root = %x, want ...bb", first.Root)
+	}
+
+	if pageData.FrameRecentRoots[1].Index != 1 {
+		t.Errorf("second root index = %d, want 1", pageData.FrameRecentRoots[1].Index)
+	}
+}
+
+// An envelope that declares no roots has no section to show.
+func TestNoRecentRootsWithoutDeclarations(t *testing.T) {
+	pageData := &models.TransactionPageData{}
+	applyFrameTxEnvelope(pageData, envelopeTx(txtypes.FrameExtRecentRoots))
+
+	if pageData.FrameRecentRoots != nil {
+		t.Errorf("roots = %v, want none", pageData.FrameRecentRoots)
+	}
+}
+
+// Storage on the protocol's own accounts is written by the transaction's validation
+// rather than by any frame, so those accounts are named for what they are.
+func TestProtocolAccountsAreNamedInStateChanges(t *testing.T) {
+	pageData := &models.TransactionPageData{
+		FromAddr: frameTestSender.Bytes(),
+		StateChanges: []*models.TransactionPageDataStateChangeAccount{
+			{Address: txtypes.NonceManager.Bytes()},
+			{Address: txtypes.RecentRootAddress.Bytes()},
+			{Address: frameTestCallee.Bytes()},
+		},
+	}
+
+	annotateStateChangeRoles(pageData)
+
+	if got := pageData.StateChanges[0].PredeployName; got != "NONCE_MANAGER" {
+		t.Errorf("keyed nonce storage = %q, want NONCE_MANAGER", got)
+	}
+
+	if got := pageData.StateChanges[1].PredeployName; got != "RECENT_ROOTS" {
+		t.Errorf("recent root storage = %q, want RECENT_ROOTS", got)
+	}
+
+	if got := pageData.StateChanges[2].PredeployName; got != "" {
+		t.Errorf("an ordinary account = %q, want no name", got)
+	}
+}

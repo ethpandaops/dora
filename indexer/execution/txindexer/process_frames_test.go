@@ -149,7 +149,9 @@ func TestResolveFramesToleratesShortReceipt(t *testing.T) {
 	}
 }
 
-func TestMarkRolledBackBatches(t *testing.T) {
+// The batch rules are txtypes'; what is checked here is that a frame is called undone
+// only when a success of its own was taken back.
+func TestMarkUndoneFrames(t *testing.T) {
 	const batched = txtypes.AtomicBatchFlag
 
 	tests := []struct {
@@ -207,7 +209,15 @@ func TestMarkRolledBackBatches(t *testing.T) {
 				}
 			}
 
-			markRolledBackBatches(frames)
+			frameTx := &txtypes.FrameTx{Frames: make([]*txtypes.Frame, len(frames))}
+			extra := &txtypes.FrameReceiptExtra{Frames: make([]*txtypes.FrameReceipt, len(frames))}
+
+			for i := range frames {
+				frameTx.Frames[i] = &txtypes.Frame{Flags: tt.flags[i], Value: uint256.NewInt(0)}
+				extra.Frames[i] = &txtypes.FrameReceipt{Status: tt.status[i]}
+			}
+
+			markUndoneFrames(frames, extra, frameTx)
 
 			for i, want := range tt.want {
 				if frames[i].rolledBack != want {

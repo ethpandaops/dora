@@ -46,6 +46,7 @@
                     </span>
                     <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull $a.Address }}" style="font-size: 0.85rem;"></i>
 
+                    {{ if $a.PredeployName }}<span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" title="An account the protocol itself writes: its storage is changed by the transaction's own validation, not by any frame">{{ $a.PredeployName }}</span>{{ end }}
                     {{ if $a.IsSender }}<span class="badge rounded-pill text-bg-primary" data-bs-toggle="tooltip" title="The transaction's sender">sender</span>{{ end }}
                     {{ if $a.IsPayer }}<span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" title="Settled the fee instead of the sender">paymaster</span>{{ end }}
                     {{ if $a.IsFeeRecipient }}<span class="badge rounded-pill text-bg-warning text-dark" data-bs-toggle="tooltip" title="The account the block paid its transaction fees to">fee recipient</span>{{ end }}
