@@ -210,6 +210,7 @@ func finalizeTransactionPage(ctx context.Context, pageData *models.TransactionPa
 	}
 
 	applyExpiryMargin(pageData)
+	applyFrameSignatureRoles(pageData)
 	setTransactionEnsNames(ctx, pageData)
 }
 
@@ -273,6 +274,9 @@ func setTransactionEnsNames(ctx context.Context, pageData *models.TransactionPag
 	}
 	for _, frame := range pageData.Frames {
 		ensAddrs = append(ensAddrs, frame.TargetAddr)
+	}
+	for _, sig := range pageData.FrameSignatures {
+		ensAddrs = append(ensAddrs, sig.SignerAddr)
 	}
 	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 }
@@ -503,9 +507,16 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// Blobs
 	pageData.BlobCount = tx.BlobCount
 
-	// Check data_status for this block (for blockdb availability)
+	// Check data_status for this block (for blockdb availability), and who the block paid
+	// its transaction fees to, so a balance moving for that reason can say so.
 	if elBlock, err := db.GetElBlock(ctx, tx.BlockUid); err == nil {
 		pageData.DataStatus = elBlock.DataStatus
+
+		if elBlock.FeeAccountID != nil && *elBlock.FeeAccountID != 0 {
+			if accounts, err := db.GetElAccountsByIDs(ctx, []uint64{*elBlock.FeeAccountID}); err == nil && len(accounts) > 0 {
+				pageData.FeeRecipientAddr = accounts[0].Address
+			}
+		}
 	}
 	// A call trace exists for this tx whenever its block stored call traces, even
 	// if it has only the single root frame (no internal calls aggregated).
@@ -557,6 +568,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 		computeInternalTxIndent(pageData)
 	case "statechanges":
 		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
+		annotateStateChangeRoles(pageData)
 	case "authorizations":
 		if pageData.TxType == txtypes.SetCodeTxType && len(pageData.Authorizations) > 0 {
 			resolveAuthorizationValidity(ctx, pageData, tx.BlockUid)
@@ -1151,6 +1163,23 @@ func loadTransactionStateChangesFromBlockdb(ctx context.Context, pageData *model
 	}
 
 	pageData.StateChanges = buildStateChangesFromBlockdb(accounts)
+}
+
+// annotateStateChangeRoles marks the accounts whose balance moved for a reason the
+// numbers do not show: the sender for what it spent, the fee recipient for what the block
+// paid it, and a frame transaction's payer for a fee its sender did not owe.
+func annotateStateChangeRoles(pageData *models.TransactionPageData) {
+	sameAddress := func(a, b []byte) bool {
+		return len(a) > 0 && len(b) > 0 && bytes.Equal(a, b)
+	}
+
+	for _, account := range pageData.StateChanges {
+		account.IsSender = sameAddress(account.Address, pageData.FromAddr)
+		account.IsFeeRecipient = sameAddress(account.Address, pageData.FeeRecipientAddr)
+
+		// The sender paying its own fee is the ordinary case and says nothing.
+		account.IsPayer = !pageData.PayerIsSender && sameAddress(account.Address, pageData.PayerAddr)
+	}
 }
 
 func buildStateChangesFromBlockdb(accounts []bdbtypes.StateChangeAccount) []*models.TransactionPageDataStateChangeAccount {
@@ -1965,7 +1994,7 @@ func buildFramesFromEnvelope(pageData *models.TransactionPageData, frameTx *txty
 			Index:             uint32(i),
 			Mode:              uint8(protocolFrame.Mode),
 			ModeName:          frameModeNames[uint8(protocolFrame.Mode)],
-			Species:           frameSpeciesNames[protocolFrame.Species(frameTx.Sender)],
+			Species:           frameSpeciesNames[frameSpecies(protocolFrame, frameTx.Sender, i < validationLen)],
 			Flags:             protocolFrame.Flags,
 			ApprovesPayment:   protocolFrame.Flags&txtypes.ApprovePayment != 0,
 			ApprovesExecution: protocolFrame.Flags&txtypes.ApproveExecution != 0,
@@ -2124,6 +2153,22 @@ func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
 			member.StatusText = frameStatusText(member.Status, true)
 		}
 	}
+}
+
+// frameSpecies classifies a frame for display.
+//
+// The species names come from the mempool's prefix-matching rules, which only decide
+// anything within the validation prefix. A DEFAULT frame there deploys the sender's
+// account code; the same frame after the prefix does not, and calling it a deployment
+// would name it for a position it does not hold. After the prefix it is a settlement,
+// which is what a DEFAULT frame is for once the operations have run.
+func frameSpecies(frame *txtypes.Frame, sender common.Address, inValidationPrefix bool) txtypes.FrameSpecies {
+	species := frame.Species(sender)
+	if species == txtypes.SpeciesDeploy && !inValidationPrefix {
+		return txtypes.SpeciesPostOp
+	}
+
+	return species
 }
 
 // frameCaller is the account a frame's call comes from.
@@ -2541,6 +2586,9 @@ func applyFrameTxEnvelope(pageData *models.TransactionPageData, frameTx *txtypes
 	pageData.IsFrameTx = true
 	pageData.NonceIsAccount = frameTx.UsesLegacyNonce()
 
+	buildFrameSignatures(pageData, frameTx)
+	buildFrameRecentRoots(pageData, frameTx)
+
 	if !pageData.NonceIsAccount {
 		pageData.NonceKeys = make([]string, 0, len(frameTx.NonceKeys))
 		for _, key := range frameTx.NonceKeys {
@@ -2568,6 +2616,109 @@ func applyFrameTxEnvelope(pageData *models.TransactionPageData, frameTx *txtypes
 
 		break
 	}
+}
+
+// frameSigSchemeNames name the signature schemes EIP-8141 validates.
+var frameSigSchemeNames = map[uint8]string{
+	uint8(txtypes.SigSchemeArbitrary): "Arbitrary",
+	uint8(txtypes.SigSchemeSecp256k1): "secp256k1",
+	uint8(txtypes.SigSchemeP256):      "P256",
+}
+
+// buildFrameSignatures lists the authorisations the protocol checked before any frame ran.
+//
+// A frame transaction does not recover its sender from a signature - the sender is an
+// explicit field - so the list is not a formality: it is where an account other than the
+// sender agrees to be charged, which is the whole mechanism behind a sponsored
+// transaction and is otherwise invisible on the page.
+func buildFrameSignatures(pageData *models.TransactionPageData, frameTx *txtypes.FrameTx) {
+	if len(frameTx.Signatures) == 0 {
+		return
+	}
+
+	signatures := make([]*models.TransactionPageDataFrameSignature, 0, len(frameTx.Signatures))
+
+	for i, entry := range frameTx.Signatures {
+		if entry == nil {
+			continue
+		}
+
+		scheme := uint8(entry.Scheme)
+
+		sig := &models.TransactionPageDataFrameSignature{
+			Index:      uint32(i),
+			Scheme:     scheme,
+			SchemeName: frameSigSchemeNames[scheme],
+			Msg:        entry.Msg,
+			Signature:  entry.Signature,
+		}
+
+		if sig.SchemeName == "" {
+			sig.SchemeName = fmt.Sprintf("scheme 0x%x", scheme)
+		}
+
+		if gas, err := entry.VerificationGas(); err == nil {
+			sig.VerificationGas = gas
+		}
+
+		if signer, ok := entry.ResolvedSigner(frameTx.Sender); ok {
+			sig.SignerAddr = signer.Bytes()
+			sig.HasSigner = true
+			sig.SignerIsSender = signer == frameTx.Sender
+		}
+
+		signatures = append(signatures, sig)
+	}
+
+	pageData.FrameSignatures = signatures
+}
+
+// applyFrameSignatureRoles names what each entry authorises, as far as the transaction
+// itself says. The sender's entry authorises the transaction; the payer's, when the
+// receipt names one that is not the sender, is what let the fee be charged elsewhere.
+//
+// It runs after the receipt has been read, because the payer comes from there.
+func applyFrameSignatureRoles(pageData *models.TransactionPageData) {
+	payer := common.BytesToAddress(pageData.PayerAddr)
+	sponsored := len(pageData.PayerAddr) > 0 && !pageData.PayerIsSender
+
+	for _, sig := range pageData.FrameSignatures {
+		switch {
+		case !sig.HasSigner:
+			sig.Role = "witness for contract code, not checked by the protocol"
+		case sig.SignerIsSender:
+			sig.Role = "the sender, authorising the transaction"
+		case sponsored && common.BytesToAddress(sig.SignerAddr) == payer:
+			sig.Role = "the paymaster, agreeing to be charged"
+		default:
+			sig.Role = "a co-signer"
+		}
+	}
+}
+
+// buildFrameRecentRoots lists the EIP-8272 roots the transaction declared, which is what
+// lets a frame read them while it runs.
+func buildFrameRecentRoots(pageData *models.TransactionPageData, frameTx *txtypes.FrameTx) {
+	if len(frameTx.RecentRoots) == 0 {
+		return
+	}
+
+	roots := make([]*models.TransactionPageDataFrameRecentRoot, 0, len(frameTx.RecentRoots))
+
+	for i, ref := range frameTx.RecentRoots {
+		if ref == nil {
+			continue
+		}
+
+		roots = append(roots, &models.TransactionPageDataFrameRecentRoot{
+			Index:    uint32(i),
+			SourceID: ref.SourceID.Bytes(),
+			Slot:     ref.Slot,
+			Root:     ref.Root.Bytes(),
+		})
+	}
+
+	pageData.FrameRecentRoots = roots
 }
 
 // loadFrameReceiptFromBlockdb overlays what only a frame transaction's receipt reports:

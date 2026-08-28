@@ -187,6 +187,9 @@ type TransactionPageData struct {
 	PayerAddr     []byte `json:"payer_addr"`
 	PayerIsSender bool   `json:"payer_is_sender"`
 
+	// FeeRecipientAddr was paid the block's transaction fees.
+	FeeRecipientAddr []byte `json:"fee_recipient_addr"`
+
 	// ExpiryTime is the deadline an expiry verifier frame checked against.
 	//
 	// The frame checked it when the transaction executed, so on an included transaction
@@ -205,6 +208,12 @@ type TransactionPageData struct {
 	NonceKeys      []string `json:"nonce_keys"`
 
 	Frames []*TransactionPageDataFrame `json:"frames"`
+
+	// Signatures the protocol validated before any frame ran, and the recent roots the
+	// transaction declared. Both live in the envelope, so they are present exactly while
+	// the block the transaction came in still is.
+	FrameSignatures  []*TransactionPageDataFrameSignature  `json:"frame_signatures"`
+	FrameRecentRoots []*TransactionPageDataFrameRecentRoot `json:"frame_recent_roots"`
 
 	// Tab view
 	TabView string `json:"tab_view"`
@@ -236,6 +245,45 @@ type TransactionPageData struct {
 	StateChangesNotAvailable bool                                     `json:"state_changes_not_available"`
 
 	EnsNameData
+}
+
+// TransactionPageDataFrameSignature is one entry of a frame transaction's signature list.
+//
+// A frame transaction does not recover its sender from a signature: the sender is an
+// explicit field, and the signature list is a set of authorisations the protocol checks
+// before any frame runs. That is how an account other than the sender agrees to pay.
+type TransactionPageDataFrameSignature struct {
+	Index uint32 `json:"index"`
+
+	Scheme     uint8  `json:"scheme"`
+	SchemeName string `json:"scheme_name"`
+
+	// SignerAddr is the account the entry authorises for. An entry that names none
+	// authorises for the sender; an arbitrary witness authorises for nobody and carries
+	// no signer at all.
+	SignerAddr     []byte `json:"signer_addr"`
+	HasSigner      bool   `json:"has_signer"`
+	SignerIsSender bool   `json:"signer_is_sender"`
+
+	// Role names what the entry does in this transaction, where that can be told from
+	// the accounts it names.
+	Role string `json:"role"`
+
+	// Msg is an explicit digest when the entry signs one rather than the transaction's
+	// canonical signature hash.
+	Msg []byte `json:"msg"`
+
+	Signature       []byte `json:"signature"`
+	VerificationGas uint64 `json:"verification_gas"`
+}
+
+// TransactionPageDataFrameRecentRoot is an EIP-8272 recent root the transaction declared,
+// so that a frame can read it while the transaction executes.
+type TransactionPageDataFrameRecentRoot struct {
+	Index    uint32 `json:"index"`
+	SourceID []byte `json:"source_id"`
+	Slot     uint64 `json:"slot"`
+	Root     []byte `json:"root"`
 }
 
 // TransactionPageDataFrame is one frame of an EIP-8141 frame transaction.
@@ -326,6 +374,14 @@ type TransactionAccessListEntry struct {
 // TransactionPageDataStateChangeAccount represents state changes for a single account.
 type TransactionPageDataStateChangeAccount struct {
 	Address []byte `json:"address" ssz-size:"20"`
+
+	// The part the account played in the transaction, where it played one. Balances move
+	// for reasons that are not visible from the numbers alone: the sender's for what it
+	// spent, the fee recipient's for what it was paid, and a frame transaction's payer
+	// for a fee its sender did not owe.
+	IsSender       bool `json:"is_sender"`
+	IsPayer        bool `json:"is_payer"`
+	IsFeeRecipient bool `json:"is_fee_recipient"`
 
 	// High level flags (precomputed from the binary flags)
 	AccountCreated bool `json:"account_created"`

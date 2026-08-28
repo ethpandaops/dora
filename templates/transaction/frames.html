@@ -42,6 +42,17 @@
         color: var(--bs-secondary);
       }
 
+      .frm-section { border-top: 1px solid var(--bs-border-color); }
+      .frm-section-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 8px 10px 4px;
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+      .frm-section-note { font-weight: 400; font-size: 0.8rem; color: var(--bs-secondary); }
+
       .frm-entry { border-bottom: 1px solid var(--bs-border-color); }
       .frm-entry:last-child { border-bottom: none; }
       .frm-row {
@@ -384,6 +395,85 @@
     </div>
     {{ end }}
 
+    {{ end }}
+
+    {{/* ---------- what the protocol checked before any frame ran ---------- */}}
+    {{ if .FrameSignatures }}
+    <div class="frm-section">
+      <div class="frm-section-head">
+        <i class="fas fa-signature"></i>
+        <span>Signatures</span>
+        <span class="frm-section-note">— checked before any frame ran. A frame transaction names its sender outright, so these are authorisations rather than what the sender is recovered from.</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-nobr table-sm mb-0" style="font-size: 0.85rem;">
+          <thead>
+            <tr>
+              <th style="width: 3rem;">#</th>
+              <th style="width: 7rem;">Scheme</th>
+              <th>Signer</th>
+              <th>Authorises</th>
+              <th class="text-end" style="width: 7rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="What the protocol charges to verify this entry">Verify gas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ range $sig := .FrameSignatures }}
+            <tr>
+              <td class="text-muted">{{ $sig.Index }}</td>
+              <td><span class="badge text-bg-secondary">{{ $sig.SchemeName }}</span></td>
+              <td class="text-monospace">
+                {{ if $sig.HasSigner }}
+                {{ formatEthAddressShortLink $sig.SignerAddr false 5 }}
+                {{ else }}
+                <span class="text-muted">none</span>
+                {{ end }}
+              </td>
+              <td class="text-muted">
+                {{ $sig.Role }}
+                {{ if gt (len $sig.Msg) 0 }}
+                <span class="badge text-bg-light text-dark border ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="This entry signs the digest {{ formatHexBytes $sig.Msg }} rather than the transaction's canonical signature hash">explicit digest</span>
+                {{ end }}
+              </td>
+              <td class="text-end text-monospace text-muted">{{ formatAddCommas $sig.VerificationGas }}</td>
+            </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {{ end }}
+
+    {{/* ---------- EIP-8272 roots the transaction declared ---------- */}}
+    {{ if .FrameRecentRoots }}
+    <div class="frm-section">
+      <div class="frm-section-head">
+        <i class="fas fa-anchor"></i>
+        <span>Recent roots</span>
+        <span class="frm-section-note">— EIP-8272. Declaring a root up front is what lets a frame read it while the transaction runs.</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-nobr table-sm mb-0" style="font-size: 0.85rem;">
+          <thead>
+            <tr>
+              <th style="width: 3rem;">#</th>
+              <th style="width: 7rem;">Slot</th>
+              <th>Source</th>
+              <th>Root</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ range $root := .FrameRecentRoots }}
+            <tr>
+              <td class="text-muted">{{ $root.Index }}</td>
+              <td class="text-monospace">{{ formatAddCommas $root.Slot }}</td>
+              <td class="text-monospace text-break">{{ formatHexBytes $root.SourceID }}</td>
+              <td class="text-monospace text-break">{{ formatHexBytes $root.Root }}</td>
+            </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+    </div>
     {{ end }}
 
     <script type="text/javascript">

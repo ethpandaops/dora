@@ -39,6 +39,10 @@
                     </span>
                     <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull $a.Address }}" style="font-size: 0.85rem;"></i>
 
+                    {{ if $a.IsSender }}<span class="badge rounded-pill text-bg-primary ms-2" data-bs-toggle="tooltip" title="The transaction's sender">sender</span>{{ end }}
+                    {{ if $a.IsPayer }}<span class="badge rounded-pill text-bg-info ms-1" data-bs-toggle="tooltip" title="Settled the fee instead of the sender">paymaster</span>{{ end }}
+                    {{ if $a.IsFeeRecipient }}<span class="badge rounded-pill text-bg-warning text-dark ms-1" data-bs-toggle="tooltip" title="The account the block paid its transaction fees to">fee recipient</span>{{ end }}
+
                     {{ if $a.AccountCreated }}<span class="badge rounded-pill text-bg-success ms-2">created</span>{{ end }}
                     {{ if $a.AccountKilled }}<span class="badge rounded-pill text-bg-danger ms-1">killed</span>{{ end }}
 

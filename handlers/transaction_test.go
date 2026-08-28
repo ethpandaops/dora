@@ -415,3 +415,104 @@ func TestExpiryMarginNeedsAnInclusionTime(t *testing.T) {
 		t.Errorf("margin = %q, want none without an inclusion time", pageData.ExpiryMargin)
 	}
 }
+
+// The signature list is where an account other than the sender agrees to be charged, so
+// each entry is named for what it authorises rather than left as opaque bytes.
+func TestFrameSignaturesAreNamedForWhatTheyAuthorise(t *testing.T) {
+	paymaster := common.HexToAddress("0x3333333333333333333333333333333333333333")
+
+	frameTx := frameTestTx()
+	frameTx.Signatures = []*txtypes.FrameSignature{
+		txtypes.SenderSignature(),
+		txtypes.SignerSignature(paymaster),
+		txtypes.ArbitrarySignature([]byte("witness")),
+	}
+
+	pageData := &models.TransactionPageData{
+		FromAddr:  frameTestSender.Bytes(),
+		PayerAddr: paymaster.Bytes(),
+	}
+
+	buildFrameSignatures(pageData, frameTx)
+	applyFrameSignatureRoles(pageData)
+
+	if len(pageData.FrameSignatures) != 3 {
+		t.Fatalf("built %d entries, want 3", len(pageData.FrameSignatures))
+	}
+
+	sender, payer, witness := pageData.FrameSignatures[0], pageData.FrameSignatures[1], pageData.FrameSignatures[2]
+
+	// An entry naming no signer authorises for the sender.
+	if !sender.SignerIsSender || sender.Role != "the sender, authorising the transaction" {
+		t.Errorf("entry 0 = %+v, want the sender's", sender)
+	}
+
+	if payer.Role != "the paymaster, agreeing to be charged" {
+		t.Errorf("entry 1 role = %q, want the paymaster's", payer.Role)
+	}
+
+	// An arbitrary entry is witness data for contract code and has no protocol signer.
+	if witness.HasSigner {
+		t.Error("an arbitrary entry has no protocol-assigned signer")
+	}
+
+	if witness.VerificationGas != 100 || sender.VerificationGas != 2800 {
+		t.Errorf("verification gas = %d/%d, want 100/2800", witness.VerificationGas, sender.VerificationGas)
+	}
+}
+
+// A balance moves for reasons the numbers alone do not show, so the accounts that had a
+// part in the transaction are named.
+func TestStateChangeRolesNameTheAccountsThatHadAPart(t *testing.T) {
+	sender := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	paymaster := common.HexToAddress("0x2222222222222222222222222222222222222222")
+	feeRecipient := common.HexToAddress("0x3333333333333333333333333333333333333333")
+	bystander := common.HexToAddress("0x4444444444444444444444444444444444444444")
+
+	pageData := &models.TransactionPageData{
+		FromAddr:         sender.Bytes(),
+		PayerAddr:        paymaster.Bytes(),
+		FeeRecipientAddr: feeRecipient.Bytes(),
+		StateChanges: []*models.TransactionPageDataStateChangeAccount{
+			{Address: sender.Bytes()},
+			{Address: paymaster.Bytes()},
+			{Address: feeRecipient.Bytes()},
+			{Address: bystander.Bytes()},
+		},
+	}
+
+	annotateStateChangeRoles(pageData)
+
+	for i, want := range []struct{ isSender, isPayer, isFee bool }{
+		{isSender: true},
+		{isPayer: true},
+		{isFee: true},
+		{},
+	} {
+		got := pageData.StateChanges[i]
+		if got.IsSender != want.isSender || got.IsPayer != want.isPayer || got.IsFeeRecipient != want.isFee {
+			t.Errorf("account %d = sender:%v payer:%v fee:%v, want %v/%v/%v",
+				i, got.IsSender, got.IsPayer, got.IsFeeRecipient, want.isSender, want.isPayer, want.isFee)
+		}
+	}
+}
+
+// A sender paying its own fee is the ordinary case and is not worth calling a paymaster.
+func TestSenderPayingItsOwnFeeIsNotAPaymaster(t *testing.T) {
+	sender := common.HexToAddress("0x1111111111111111111111111111111111111111")
+
+	pageData := &models.TransactionPageData{
+		FromAddr:      sender.Bytes(),
+		PayerAddr:     sender.Bytes(),
+		PayerIsSender: true,
+		StateChanges: []*models.TransactionPageDataStateChangeAccount{
+			{Address: sender.Bytes()},
+		},
+	}
+
+	annotateStateChangeRoles(pageData)
+
+	if pageData.StateChanges[0].IsPayer {
+		t.Error("the sender paying its own fee is not a paymaster")
+	}
+}
