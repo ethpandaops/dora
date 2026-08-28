@@ -284,6 +284,13 @@
       <div class="frm-panel" id="frm-panel-{{ $idx }}">
         <table class="table table-sm frm-meta-table mb-2">
           <tbody>
+            <tr>
+              <th>Caller</th>
+              <td class="text-monospace">
+                {{ $caller := formatEthAddressFull $frame.CallerAddr }}
+                {{ if $frame.CallerIsSender }}<a href="/address/{{ $caller }}">{{ $caller }}</a> <span class="text-muted">(the sender)</span>{{ else }}{{ $caller }} <span class="text-muted">({{ if $frame.CallerLabel }}{{ $frame.CallerLabel }}, {{ end }}a predeploy with no code)</span>{{ end }}
+              </td>
+            </tr>
             {{ if $frame.HasTarget }}
             <tr>
               <th>Target</th>
@@ -295,13 +302,6 @@
               </td>
             </tr>
             {{ end }}
-            <tr>
-              <th>Caller</th>
-              <td class="text-monospace">
-                {{ $caller := formatEthAddressFull $frame.CallerAddr }}
-                {{ if $frame.CallerIsSender }}<a href="/address/{{ $caller }}">{{ $caller }}</a> <span class="text-muted">(the sender)</span>{{ else }}{{ $caller }} <span class="text-muted">({{ if $frame.CallerLabel }}{{ $frame.CallerLabel }}, {{ end }}a predeploy with no code)</span>{{ end }}
-              </td>
-            </tr>
             <tr>
               <th>Gas</th>
               <td class="text-monospace">
