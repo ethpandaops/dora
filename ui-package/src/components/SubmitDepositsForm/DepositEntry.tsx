@@ -7,6 +7,7 @@ import { IDeposit } from './DepositsTable';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { DepositContractAbi } from './DepositContract';
 import { GatingContractData, PREFIX_TO_DEPOSIT_TYPE } from './GatingContract';
+import { DEPOSIT_GAS_LIMIT } from '../../utils/GasLimits';
 
 interface IDepositEntryProps {
   deposit: IDeposit;
@@ -243,7 +244,7 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
       functionName: "deposit",
       args: args,
       value: BigInt(props.deposit.amount) * BigInt(10 ** 9),
-      gas: 150000n,
+      gas: DEPOSIT_GAS_LIMIT,
     }).then(tx => {
       console.log(tx);
     }).catch(error => {

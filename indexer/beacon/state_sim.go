@@ -633,21 +633,8 @@ func (sim *stateSimulator) applyConsolidation(consolidation *electra.Consolidati
 		return dbtypes.ConsolidationRequestResultTgtNotCompounding
 	}
 
-	// get_balance_churn_limit
-	balanceChurnLimit := uint64(sim.epochStatsValues.EffectiveBalance) / chainSpec.ChurnLimitQuotient
-	if chainSpec.MinPerEpochChurnLimitElectra > balanceChurnLimit {
-		balanceChurnLimit = chainSpec.MinPerEpochChurnLimitElectra
-	}
-	balanceChurnLimit = balanceChurnLimit - (balanceChurnLimit % chainSpec.EffectiveBalanceIncrement)
-
-	// get_activation_exit_churn_limit
-	activationExitChurnLimit := balanceChurnLimit
-	if chainSpec.MaxPerEpochActivationExitChurnLimit < activationExitChurnLimit {
-		activationExitChurnLimit = chainSpec.MaxPerEpochActivationExitChurnLimit
-	}
-
 	// get_consolidation_churn_limit
-	consolidationChurnLimit := balanceChurnLimit - activationExitChurnLimit
+	consolidationChurnLimit := chainState.GetConsolidationChurnLimit(sim.epochStats.epoch, uint64(sim.epochStatsValues.EffectiveBalance))
 
 	// check consolidationChurnLimit
 	if consolidationChurnLimit <= chainSpec.MinActivationBalance {

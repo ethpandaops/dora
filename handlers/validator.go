@@ -671,7 +671,7 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 				elConsolidationData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
 				elConsolidationData.Status = uint64(1)
 				elConsolidationData.Result = request.Result
-				elConsolidationData.ResultMessage = getConsolidationResultMessage(request.Result, chainState.GetSpecs())
+				elConsolidationData.ResultMessage = getConsolidationResultMessage(request.Result, chainState, chainState.EpochOfSlot(phase0.Slot(request.SlotNumber)))
 				if consolidation.RequestOrphaned {
 					elConsolidationData.Status = uint64(2)
 				}

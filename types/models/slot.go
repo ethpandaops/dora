@@ -482,12 +482,12 @@ type SlotPagePtcAggregate struct {
 
 // SlotPageInclusionList holds data for an inclusion list entry on the slot page.
 type SlotPageInclusionList struct {
-	Validator                  types.NamedValidator   `json:"validator"`
-	InclusionListCommitteeRoot []byte                 `json:"inclusion_list_committee_root"`
-	Transactions               []*SlotPageTransaction `json:"transactions"`
-	TransactionsCount          uint64                 `json:"transactions_count"`
-	TransactionsIncluded       []bool                 `json:"transactions_included"`
-	Signature                  []byte                 `json:"signature"`
+	Validator            types.NamedValidator   `json:"validator"`
+	DependentRoot        []byte                 `json:"dependent_root"`
+	Transactions         []*SlotPageTransaction `json:"transactions"`
+	TransactionsCount    uint64                 `json:"transactions_count"`
+	TransactionsIncluded []bool                 `json:"transactions_included"`
+	Signature            []byte                 `json:"signature"`
 }
 
 type SlotPageExecutionProof struct {

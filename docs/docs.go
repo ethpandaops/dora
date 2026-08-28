@@ -4915,7 +4915,7 @@ const docTemplate = `{
         "api.APISlotInclusionList": {
             "type": "object",
             "properties": {
-                "inclusion_list_committee_root": {
+                "dependent_root": {
                     "type": "string"
                 },
                 "signature": {

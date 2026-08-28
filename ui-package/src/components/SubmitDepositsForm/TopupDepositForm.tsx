@@ -11,6 +11,7 @@ import { toReadableAmount } from '../../utils/ReadableAmount';
 import { topupRoot } from './TopUpRoot';
 import { GatingContractData, DEPOSIT_TYPES } from './GatingContract';
 import { GatingStatusBanner } from './GatingStatusBanner';
+import { DEPOSIT_GAS_LIMIT } from '../../utils/GasLimits';
 
 // Define SSZ types for deposit data root calculation
 const DepositMessage = new ContainerType({
@@ -142,7 +143,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
       functionName: "deposit",
       args: args,
       value: amountWei,
-      gas: 150000n,
+      gas: DEPOSIT_GAS_LIMIT,
     }).then(tx => {
       console.log(tx);
     }).catch(error => {

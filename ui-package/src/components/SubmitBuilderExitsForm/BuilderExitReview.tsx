@@ -4,6 +4,7 @@ import { Modal } from 'react-bootstrap';
 
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { useQueueDataCache } from '../../hooks/useQueueDataCache';
+import { BUILDER_EXIT_REQUEST_GAS_LIMIT } from '../../utils/GasLimits';
 
 interface IBuilderExitReviewProps {
   pubkey: string;
@@ -199,7 +200,7 @@ const BuilderExitReview = (props: IBuilderExitReviewProps) => {
       value: requestFee,
       // calldata (48 bytes): builder pubkey. source_address = msg.sender.
       data: ("0x" + props.pubkey.replace(/^0x/, "")) as `0x${string}`,
-      gas: 200000n,
+      gas: BUILDER_EXIT_REQUEST_GAS_LIMIT,
     }).then(tx => {
       console.log(tx);
     }).catch(error => {

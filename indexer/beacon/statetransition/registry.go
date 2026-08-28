@@ -50,13 +50,14 @@ func initiateValidatorExit(s *stateAccessor, index phase0.ValidatorIndex) {
 // the given balance can be processed, while updating state.earliest_exit_epoch
 // and state.exit_balance_to_consume in place. Handles multi-epoch overflow.
 //
+// Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-compute_exit_epoch_and_update_churn
 // New in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-compute_exit_epoch_and_update_churn
 func computeExitEpochAndUpdateChurn(s *stateAccessor, exitBalance phase0.Gwei) phase0.Epoch {
 	earliestExitEpoch := computeActivationExitEpoch(s.currentEpoch(), s.specs)
 	if s.EarliestExitEpoch > earliestExitEpoch {
 		earliestExitEpoch = s.EarliestExitEpoch
 	}
-	perEpochChurn := s.getActivationExitChurnLimit()
+	perEpochChurn := s.getExitChurnLimit()
 
 	var exitBalanceToConsume phase0.Gwei
 	if s.EarliestExitEpoch < earliestExitEpoch {
