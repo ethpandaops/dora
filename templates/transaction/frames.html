@@ -324,17 +324,15 @@
             <tr>
               <th>Caller</th>
               <td class="text-monospace">
-                {{ $caller := formatEthAddressFull $frame.CallerAddr }}
-                {{ if $frame.CallerIsSender }}<a href="/address/{{ $caller }}">{{ $caller }}</a> <span class="text-muted">(the sender)</span>{{ else }}{{ $caller }} <span class="text-muted">({{ if $frame.CallerLabel }}{{ $frame.CallerLabel }}, {{ end }}a predeploy with no code)</span>{{ end }}
+                {{ if $frame.CallerIsSender }}{{ formatEthAddressFullLink $frame.CallerAddr }} <span class="text-muted">(the sender)</span>{{ else }}{{ formatEthAddressFull $frame.CallerAddr }} <span class="text-muted">({{ if $frame.CallerLabel }}{{ $frame.CallerLabel }}, {{ end }}a predeploy with no code)</span>{{ end }}
               </td>
             </tr>
             {{ if $frame.HasTarget }}
             <tr>
               <th>Target</th>
               <td class="text-monospace">
-                {{ $target := formatEthAddressFull $frame.TargetAddr }}
-                <a href="/address/{{ $target }}">{{ $target }}</a>
-                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ $target }}" style="font-size:0.75rem"></i>
+                {{ formatEthAddressFullLink $frame.TargetAddr }}
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull $frame.TargetAddr }}" style="font-size:0.75rem"></i>
                 {{ if $frame.TargetLabel }}<span class="badge text-bg-light text-dark border ms-1">{{ $frame.TargetLabel }}</span>{{ end }}
               </td>
             </tr>

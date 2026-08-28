@@ -49,7 +49,7 @@
                 {{ if gt (len $evt.SourceAddr) 0 }}
                   {{ $addr := formatEthAddressFull $evt.SourceAddr }}
                   {{ if $evt.SourceIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
-                  <a href="/address/{{ $addr }}" class="text-monospace text-break">{{ $addr }}</a>
+                  <span class="text-monospace text-break">{{ formatEthAddressFullLink $evt.SourceAddr }}</span>
                 {{ else }}
                   <span class="text-muted">Unknown</span>
                 {{ end }}
@@ -63,11 +63,11 @@
                 <span class="text-muted small">{{ $evt.EthTransferValue }}</span>
                 <div class="mt-1">
                   <span class="text-muted small me-1">From:</span>
-                  <a href="/address/{{ formatEthAddressFull $evt.EthTransferFrom }}" class="text-monospace small">{{ formatEthAddressFull $evt.EthTransferFrom }}</a>
+                  <span class="text-monospace small">{{ formatEthAddressFullLink $evt.EthTransferFrom }}</span>
                 </div>
                 <div>
                   <span class="text-muted small me-3">To:</span>
-                  <a href="/address/{{ formatEthAddressFull $evt.EthTransferTo }}" class="text-monospace small">{{ formatEthAddressFull $evt.EthTransferTo }}</a>
+                  <span class="text-monospace small">{{ formatEthAddressFullLink $evt.EthTransferTo }}</span>
                 </div>
               </div>
               {{ end }}

@@ -273,11 +273,12 @@ func setTransactionEnsNames(ctx context.Context, pageData *models.TransactionPag
 		ensAddrs = append(ensAddrs, auth.AuthorityAddr, auth.DelegateAddr)
 	}
 	for _, frame := range pageData.Frames {
-		ensAddrs = append(ensAddrs, frame.TargetAddr)
+		ensAddrs = append(ensAddrs, frame.TargetAddr, frame.CallerAddr)
 	}
 	for _, sig := range pageData.FrameSignatures {
 		ensAddrs = append(ensAddrs, sig.SignerAddr)
 	}
+	ensAddrs = append(ensAddrs, pageData.PayerAddr, pageData.FeeRecipientAddr)
 	pageData.SetEnsNames(resolveEnsNames(ctx, ensAddrs))
 }
 

@@ -103,7 +103,7 @@
             {{ if gt (len .FromAddr) 0 }}
             {{ $fromAddr := formatEthAddressFull .FromAddr }}
             {{ if .FromIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
-            <a href="/address/{{ $fromAddr }}">{{ $fromAddr }}</a>
+            {{ formatEthAddressFullLink .FromAddr }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $fromAddr }}"></i>
             {{ else }}
             <span class="text-muted">Unknown</span>
@@ -115,7 +115,7 @@
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The account that settled the fee, which for a sponsored transaction is not the sender">Payer:</span></div>
           <div class="col-md-9 text-monospace text-break">
             {{ $payerAddr := formatEthAddressFull .PayerAddr }}
-            <a href="/address/{{ $payerAddr }}">{{ $payerAddr }}</a>
+            {{ formatEthAddressFullLink .PayerAddr }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $payerAddr }}"></i>
           </div>
         </div>
@@ -137,7 +137,7 @@
             {{ else if .HasTo }}
             {{ $toAddr := formatEthAddressFull .ToAddr }}
             {{ if .ToIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
-            <a href="/address/{{ $toAddr }}">{{ $toAddr }}</a>
+            {{ formatEthAddressFullLink .ToAddr }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $toAddr }}"></i>
             {{ else if .IsCreate }}
             {{ formatContractCreationLink .FromAddr .Nonce }}
@@ -304,7 +304,7 @@
                 <div class="mt-2" style="font-size:0.85rem; font-family:monospace;">
                   {{ range $i, $entry := .AccessListEntries }}
                   <div class="py-1{{ if not (eq $i (add (len $.AccessListEntries) -1)) }} border-bottom{{ end }}">
-                    <a href="/address/{{ formatEthAddressFull $entry.Address }}" class="text-monospace">{{ formatEthAddressFull $entry.Address }}</a>
+                    <span class="text-monospace">{{ formatEthAddressFullLink $entry.Address }}</span>
                     {{ if $entry.StorageKeys }}
                     <ul class="mb-0 mt-1" style="list-style:none; padding-left:1.5em;">
                       {{ range $entry.StorageKeys }}
