@@ -287,7 +287,7 @@
                 {{ formatAddCommas .Nonce }}
                 {{ if and .IsFrameTx (not .NonceIsAccount) }}
                 <span class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="This transaction is sequenced in its own nonce domain rather than against the sender's account nonce">
-                  in nonce key{{ if ne (len .NonceKeys) 1 }}s{{ end }} {{ range $i, $key := .NonceKeys }}{{ if $i }}, {{ end }}{{ $key }}{{ end }}
+                  in nonce key{{ if ne (len .NonceKeys) 1 }}s{{ end }} {{ range $i, $key := .NonceKeys }}{{ if lt $i 4 }}{{ if $i }}, {{ end }}<span class="text-monospace">{{ $key.Short }}</span>{{ end }}{{ end }}{{ if gt (len .NonceKeys) 4 }} and {{ sub (len .NonceKeys) 4 }} more{{ end }}
                 </span>
                 {{ end }}
               </div>

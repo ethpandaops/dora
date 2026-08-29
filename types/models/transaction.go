@@ -216,8 +216,8 @@ type TransactionPageData struct {
 	// NonceIsAccount reports whether NonceSeq is the sender's ordinary account nonce,
 	// which is only so when the transaction names the zero nonce key alone. Otherwise it
 	// is sequenced in a domain of its own and NonceKeys names which.
-	NonceIsAccount bool     `json:"nonce_is_account"`
-	NonceKeys      []string `json:"nonce_keys"`
+	NonceIsAccount bool                           `json:"nonce_is_account"`
+	NonceKeys      []*TransactionPageDataNonceKey `json:"nonce_keys"`
 
 	Frames []*TransactionPageDataFrame `json:"frames"`
 
@@ -307,6 +307,15 @@ type TransactionPageDataSignaturePart struct {
 
 	// Note carries anything about the field worth saying beside it.
 	Note string `json:"note"`
+}
+
+// TransactionPageDataNonceKey is one EIP-8250 nonce key the transaction selects. A key is
+// an opaque 256-bit identifier rather than a quantity - applications derive them from
+// things like nullifiers - so it is carried as hex, with a short form for inline use.
+type TransactionPageDataNonceKey struct {
+	Index uint32 `json:"index"`
+	Key   string `json:"key"`
+	Short string `json:"short"`
 }
 
 // TransactionPageDataFrameRecentRoot is an EIP-8272 recent root the transaction declared,

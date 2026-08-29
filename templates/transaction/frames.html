@@ -203,7 +203,7 @@
         {{ if not .NonceIsAccount }}
         <div class="frm-stat">
           <span class="frm-stat-label" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-8250. The transaction is sequenced against the keys it selects rather than the sender's account nonce, so it does not queue behind the sender's other transactions. Every selected key had to be at this sequence, and inclusion moved all of them on together.">Nonce keys</span>
-          <span class="frm-stat-value">{{ range $i, $key := .NonceKeys }}{{ if $i }}, {{ end }}{{ $key }}{{ end }} <span class="text-muted">at sequence {{ formatAddCommas .Nonce }}</span></span>
+          <span class="frm-stat-value">{{ len .NonceKeys }} key{{ if ne (len .NonceKeys) 1 }}s{{ end }} <span class="text-muted">at sequence {{ formatAddCommas .Nonce }}</span></span>
         </div>
         {{ end }}
       </div>
@@ -430,6 +430,38 @@
     </div>
     {{ end }}
 
+    {{ end }}
+
+    {{/* ---------- EIP-8250 nonce domains ---------- */}}
+    {{ if .NonceKeys }}
+    <div class="frm-section">
+      <div class="frm-section-head">
+        <i class="fas fa-key"></i>
+        <span>Nonce keys</span>
+        <span class="frm-section-note">— EIP-8250. Every one of these had to be at sequence {{ formatAddCommas .Nonce }} for the transaction to be valid, and inclusion moved them all on together.</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-nobr frm-table">
+          <thead>
+            <tr>
+              <th style="width: 3rem;">#</th>
+              <th>Key</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ range $key := .NonceKeys }}
+            <tr>
+              <td class="text-muted">{{ $key.Index }}</td>
+              <td class="text-monospace text-break">
+                {{ $key.Key }}
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy" data-clipboard-text="{{ $key.Key }}" style="font-size:0.75rem"></i>
+              </td>
+            </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+    </div>
     {{ end }}
 
     {{/* ---------- EIP-8272 roots the transaction declared ---------- */}}

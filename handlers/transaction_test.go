@@ -760,8 +760,47 @@ func TestKeyedNoncesNameTheDomainsTheySequenceIn(t *testing.T) {
 		t.Error("a transaction selecting key 7 is not sequenced against the account nonce")
 	}
 
-	if len(pageData.NonceKeys) != 2 || pageData.NonceKeys[0] != "7" || pageData.NonceKeys[1] != "9" {
-		t.Errorf("nonce keys = %v, want [7 9]", pageData.NonceKeys)
+	if len(pageData.NonceKeys) != 2 || pageData.NonceKeys[0].Key != "0x7" || pageData.NonceKeys[1].Key != "0x9" {
+		t.Errorf("nonce keys = %v, want [0x7 0x9]", pageData.NonceKeys)
+	}
+}
+
+// A key is a 256-bit identifier, and applications are meant to derive it from something
+// like a nullifier, so the usual key fills the full width. Sixteen of those are allowed in
+// one transaction, so the inline form is bounded while the full value stays available.
+func TestFullWidthNonceKeysAreAbbreviatedInline(t *testing.T) {
+	full := uint256.MustFromHex("0x6f5d3ab1c2d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e")
+
+	frameTx := envelopeTx(txtypes.FrameExtKeyedNonces)
+	frameTx.NonceKeys = []*uint256.Int{full}
+
+	pageData := &models.TransactionPageData{}
+	applyFrameTxEnvelope(pageData, frameTx)
+
+	key := pageData.NonceKeys[0]
+	if key.Key != full.Hex() {
+		t.Errorf("key = %s, want the full %s", key.Key, full.Hex())
+	}
+
+	if len(key.Short) > 15 {
+		t.Errorf("inline form %q is %d characters, want no more than 15", key.Short, len(key.Short))
+	}
+
+	if !strings.HasPrefix(key.Short, "0x6f5d3a") || !strings.HasSuffix(key.Short, "6d7e") {
+		t.Errorf("inline form = %q, want it to keep both ends of the key", key.Short)
+	}
+}
+
+// A key short enough to read whole is not abbreviated, so nothing is hidden needlessly.
+func TestShortNonceKeysAreNotAbbreviated(t *testing.T) {
+	frameTx := envelopeTx(txtypes.FrameExtKeyedNonces)
+	frameTx.NonceKeys = []*uint256.Int{uint256.NewInt(7)}
+
+	pageData := &models.TransactionPageData{}
+	applyFrameTxEnvelope(pageData, frameTx)
+
+	if got := pageData.NonceKeys[0].Short; got != "0x7" {
+		t.Errorf("inline form = %q, want the key itself", got)
 	}
 }
 

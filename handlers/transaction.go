@@ -2726,13 +2726,18 @@ func applyFrameTxEnvelope(pageData *models.TransactionPageData, frameTx *txtypes
 	pageData.FrameHasKeyedNonces = frameTx.HasKeyedNonces()
 
 	if !pageData.NonceIsAccount {
-		pageData.NonceKeys = make([]string, 0, len(frameTx.NonceKeys))
+		pageData.NonceKeys = make([]*models.TransactionPageDataNonceKey, 0, len(frameTx.NonceKeys))
 		for _, key := range frameTx.NonceKeys {
 			if key == nil {
 				continue
 			}
 
-			pageData.NonceKeys = append(pageData.NonceKeys, key.Dec())
+			hex := key.Hex()
+			pageData.NonceKeys = append(pageData.NonceKeys, &models.TransactionPageDataNonceKey{
+				Index: uint32(len(pageData.NonceKeys)),
+				Key:   hex,
+				Short: shortNonceKey(hex),
+			})
 		}
 	}
 
@@ -2759,6 +2764,22 @@ var frameSigSchemeNames = map[uint8]string{
 	uint8(txtypes.SigSchemeArbitrary): "Arbitrary",
 	uint8(txtypes.SigSchemeSecp256k1): "secp256k1",
 	uint8(txtypes.SigSchemeP256):      "P256",
+}
+
+// shortNonceKey abbreviates a nonce key for inline use.
+//
+// A key is a 256-bit identifier and applications are expected to derive it from something
+// like a nullifier, so the usual case fills the full width. Sixteen of those are allowed
+// in one transaction, which no line can hold; the full value stays available where the
+// keys are listed.
+func shortNonceKey(hex string) string {
+	const inlineLimit = 15
+
+	if len(hex) <= inlineLimit {
+		return hex
+	}
+
+	return hex[:8] + "\u2026" + hex[len(hex)-4:]
 }
 
 // buildFrameSignatures lists the authorisations the protocol checked before any frame ran.
