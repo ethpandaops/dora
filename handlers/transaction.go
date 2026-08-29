@@ -2895,7 +2895,7 @@ func decodeFrameSignature(scheme txtypes.FrameSigScheme, sig []byte) []*models.T
 		return []*models.TransactionPageDataSignaturePart{
 			part("v", sig[0:1], "recovery id, 0 or 1"),
 			part("r", sig[1:33], ""),
-			part("s", sig[33:65], "must be the low value of the pair"),
+			part("s", sig[33:65], ""),
 		}
 
 	case txtypes.SigSchemeP256:
@@ -2906,7 +2906,7 @@ func decodeFrameSignature(scheme txtypes.FrameSigScheme, sig []byte) []*models.T
 		return []*models.TransactionPageDataSignaturePart{
 			part("r", sig[0:32], ""),
 			part("s", sig[32:64], ""),
-			part("qx", sig[64:96], "public key, whose keccak hash gives the signer"),
+			part("qx", sig[64:96], ""),
 			part("qy", sig[96:128], ""),
 		}
 
