@@ -29,6 +29,14 @@
       .sig-expand-icon.open { transform: rotate(90deg); }
       .sig-panel { display: none; padding: 4px 10px 10px 3.1rem; background: var(--bs-tertiary-bg); }
       .sig-panel.open { display: block; }
+      /* Entries stay on one line each, but an expanded panel holds values far wider than
+         the page - a P256 signature is 128 bytes - and those have to wrap. Left to widen
+         the table instead, one open panel scrolls the whole list sideways and takes the
+         columns of every collapsed entry with it. */
+      .table.table-nobr tbody td.sig-panel-cell,
+      .table.table-nobr tbody td.sig-panel-cell td {
+        white-space: normal;
+      }
       .sig-meta-table { font-size: 0.82rem; margin: 0; }
       .sig-meta-table th { font-weight: 600; white-space: nowrap; width: 6rem; color: var(--bs-secondary); }
       .sig-meta-table td, .sig-meta-table th { padding: 2px 8px; vertical-align: top; border: none; }
@@ -90,7 +98,7 @@
             </td>
           </tr>
           <tr class="sig-panel-row">
-            <td colspan="5" class="p-0">
+            <td colspan="5" class="p-0 sig-panel-cell">
               <div class="sig-panel" id="sig-panel-{{ $idx }}">
                 <table class="table table-sm sig-meta-table mb-2">
                   <tbody>
