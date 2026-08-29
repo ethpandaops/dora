@@ -524,6 +524,11 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// if it has only the single root frame (no internal calls aggregated).
 	pageData.HasTrace = pageData.DataStatus&dbtypes.ElBlockDataCallTraces != 0
 
+	// The state diff is stored independently of the call trace: a trace that cannot be
+	// reconciled with a frame transaction's frames is discarded, and the diff it came
+	// with is not.
+	pageData.HasStateChanges = pageData.DataStatus&dbtypes.ElBlockDataStateChanges != 0
+
 	// Frames of a frame transaction. They are the transaction's recipients, values and
 	// statuses, so they belong on the overview rather than behind a tab that has to be
 	// opened. The frames themselves come from the transaction, which loadFullTransactionData

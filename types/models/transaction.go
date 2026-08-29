@@ -244,7 +244,8 @@ type TransactionPageData struct {
 	TokenTransferCount uint64                              `json:"token_transfer_count"`
 
 	// Internal transactions tab
-	HasTrace                bool                             `json:"has_trace"` // a call trace exists (>=1 frame)
+	HasTrace                bool                             `json:"has_trace"`         // a call trace exists (>=1 frame)
+	HasStateChanges         bool                             `json:"has_state_changes"` // a state diff was stored for this block
 	InternalTxs             []*TransactionPageDataInternalTx `json:"internal_txs"`
 	InternalTxCount         uint64                           `json:"internal_tx_count"`
 	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags
