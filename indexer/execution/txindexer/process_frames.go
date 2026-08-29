@@ -84,11 +84,6 @@ func frameReceiptData(frames []*pendingFrame, payer common.Address) *bdbtypes.Fr
 	return data
 }
 
-// isAtomicBatch reports whether the frame is batched with the frames that follow it.
-func (f *pendingFrame) isAtomicBatch() bool {
-	return f.flags&txtypes.AtomicBatchFlag != 0
-}
-
 // executed reports whether the frame ran at all. A skipped frame never did, and a frame
 // with no reported result cannot be claimed to have.
 func (f *pendingFrame) executed() bool {
