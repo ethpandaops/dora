@@ -22,8 +22,12 @@ func TestArrivalTemplateExecutes(t *testing.T) {
 	}
 
 	data := &models.SlotPageData{
-		Slot:  12345,
-		Block: &models.SlotPageBlockData{BlockRoot: []byte{0xab, 0xcd}},
+		Slot:         12345,
+		ProposerName: "proposer-node",
+		Block: &models.SlotPageBlockData{
+			BlockRoot:    []byte{0xab, 0xcd},
+			PayloadHeader: &models.SlotPagePayloadHeader{BuilderName: "builder-node"},
+		},
 	}
 
 	var out bytes.Buffer
@@ -32,7 +36,14 @@ func TestArrivalTemplateExecutes(t *testing.T) {
 	}
 
 	got := out.String()
-	for _, want := range []string{`var arrivalSlot = 12345`, `var arrivalBlockRoot = "0xabcd"`, `'?root=' + encodeURIComponent(arrivalBlockRoot)`, `'/arrival' + params`} {
+	for _, want := range []string{
+		`var arrivalSlot = 12345`,
+		`var arrivalBlockRoot = "0xabcd"`,
+		`var arrivalProposer = "proposer-node"`,
+		`var arrivalBuilder = "builder-node"`,
+		`'?root=' + encodeURIComponent(arrivalBlockRoot)`,
+		`'/arrival' + params`,
+	} {
 		if !bytes.Contains([]byte(got), []byte(want)) {
 			t.Errorf("rendered output missing %q", want)
 		}
