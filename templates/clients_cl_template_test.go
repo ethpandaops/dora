@@ -22,12 +22,12 @@ func TestClientsCLTemplateEmbedsNoNodeData(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 
-	const externalPeerID = "16Uiu2HAmExternalPeerOnlyKnownFromTheNodeList"
+	const externalPeerID = "peer-external-only-known-from-node-list"
 	const externalENR = "enr:-external-peer-record"
 
 	data := &models.ClientsCLPageData{
 		Clients: []*models.ClientsCLPageDataClient{
-			{Index: 1, Name: "client-1", PeerID: "16Uiu2HAmClientOne", Status: "online", HeadRoot: []byte{0x01}, SafeRoot: []byte{0x01}},
+			{Index: 1, Name: "client-1", PeerID: "peer-client-one", Status: "online", HeadRoot: []byte{0x01}, SafeRoot: []byte{0x01}},
 		},
 		ClientCount:            1,
 		PeerMap:                &models.ClientCLPageDataPeerMap{},
@@ -43,7 +43,7 @@ func TestClientsCLTemplateEmbedsNoNodeData(t *testing.T) {
 			},
 		},
 		Nodes: []*models.ClientCLPageDataNode{
-			{PeerID: "16Uiu2HAmClientOne", Alias: "client-1", Type: "internal", PeerDAS: &models.ClientCLPageDataNodePeerDAS{Columns: []uint64{1, 2}}},
+			{PeerID: "peer-client-one", Alias: "client-1", Type: "internal", PeerDAS: &models.ClientCLPageDataNodePeerDAS{Columns: []uint64{1, 2}}},
 			{PeerID: externalPeerID, Alias: externalPeerID, Type: "external", ENR: externalENR, PeerDAS: &models.ClientCLPageDataNodePeerDAS{Columns: []uint64{3}}},
 		},
 		Sorting: "name",
