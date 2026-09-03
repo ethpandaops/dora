@@ -84,14 +84,7 @@
                     <input class="form-control" list="datalistOptions" id="searchDASTablePeers" placeholder="Type to search...">
                     <button class="btn btn-outline-secondary" type="button" id="clearSearchButton">Clear</button>
                   </div>
-                  <datalist id="datalistOptions">
-                    {{ range $k, $p := $root.Nodes }}
-                      <option value="{{ $p.PeerID }}">
-                      {{ if ne $p.Alias $p.PeerID }}
-                      <option value="{{ $p.Alias }}">
-                      {{ end }}
-                    {{ end }}
-                  </datalist>
+                  <datalist id="datalistOptions"></datalist>
                 </p>
               </div>
 
@@ -161,60 +154,23 @@
               <!-- PeerDAS table will be rendered here when accordion is opened -->
             </div>
 
-            <!-- Hidden template for PeerDAS table -->
-            <div id="peerdas-table-template" style="display: none;">
-              {{ range $i := until (int $root.PeerDASInfos.TotalRows) }}
-              <div class="table-responsive">
-                <table class="bg-dark text-white-50" style="margin: 0 auto; text-align: center; border: 1px solid">
-                  <thead>
-                    <tr style="border-bottom: 1px dashed;">
-                      {{ range $j := until 32 }}
-                        {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
-                        {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution $idx }}
-                        {{ $peerCount := len $peersPerColumn }}
-                        <th style="border-right: 1px solid; font-size: 0.8rem;"
-                          class="
-                          {{ if eq $peerCount 0 }}
-                            bg-danger
-                            text-light
-                          {{ else if lt $peerCount 2 }}
-                            bg-warning
-                            text-dark
-                          {{ end }}">
-                          <span class="text-light">{{ $idx }}</span>
-                          <div class="dastablepeercount">({{ $peerCount }})</div>
-                        </th>
-                      {{ end }}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      {{ range $j := until 32 }}
-                        {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
-                        {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution $idx }}
-                        {{ $peerCount := len $peersPerColumn }}
-                        <td style="border-right: 1px solid; vertical-align: top; min-width: 39px;">
-                          <div style="display: flex; flex-flow: wrap; margin: 0 auto;">
-                          {{ with $peers := $peersPerColumn }}
-                            {{ range $i, $p := $peers}}
-                              {{ $peerData := index $nodeMap $p }}
-                              <svg class="peer-table-icon dastablenode node-{{ $p }} {{ $peerData.Type}} {{ if $peerData.PeerDAS.IsSuperNode }}supernode{{end}}"
-                                   data-jdenticon-value="{{ $p }}"
-                                   data-peerid="{{ $p }}" data-alias="{{ $peerData.Alias }}"
-                                   data-toggle="tooltip"
-                                   data-placement="top"
-                                   title="{{ $peerData.Alias }}"
-                                   data-animation=false>
-                              </svg>
-                            {{ end }}
-                          {{ end }}
-                          </div>
-                        </td>
-                      {{ end }}
-                    </tr>
-                </table>
+            <!-- Supernodes list modal (opened from the per-column supernode chip) -->
+            <div class="modal fade" id="dasSupernodesModal" tabindex="-1" role="dialog" aria-labelledby="dasSupernodesModalTitle" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="dasSupernodesModalTitle">Supernodes</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <p class="text-muted">Supernodes custody every column and are collapsed into a single counter per column. Click a node to show its details.</p>
+                    <ul class="list-unstyled mb-0" id="dasSupernodesList"></ul>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                  </div>
+                </div>
               </div>
-              {{ end }}
             </div>
             </div>
           </div>
@@ -518,13 +474,13 @@
                 </div>
                 {{ html "<!-- ko if: $root.showSensitivePeerInfos -->" }}
                   <div class="client-node-peer-details" data-bind="let: {$node: $root.getNode(peer_id)}">
-                    {{ html "<!-- ko if: $node.enr != enr -->" }}
+                    {{ html "<!-- ko if: enr_stale -->" }}
                       <div style="padding:10px; margin: 0; margin-left:10px; margin-right: 25px; word-break: break-all; text-wrap: pretty;" class="alert alert-warning" role="alert">
                         <p>
                           <i class="fa-solid fa-circle-exclamation" style="margin-right: 10px;"></i>The ENR information was obtained from another node.
                         </p>
                         <p>
-                          The node <code data-bind="text: $root.getNodeName($parent.peer_id)"></code> did not have the most up-to-date ENR for this peer.
+                          The node <code data-bind="text: $root.getNodeName(ko.unwrap($parent.peer_id))"></code> did not have the most up-to-date ENR for this peer.
                           {{ html "<!-- ko if: enr == '' -->" }}
                             The reported ENR was empty (nil).
                           {{ html "<!-- /ko -->" }}
@@ -956,7 +912,6 @@
 <script src="/js/vendor/cytoscape-fcose.js?v={{ assetVersion }}"></script>
 <script src="/js/cytoscape-network-aux.js?v={{ assetVersion }}"></script>
 <script type="text/javascript">
-  var peerGraphData = {{ .PeerMap }};
   var peerGraph, peerGraphRendered = false;
 
   // Rebuild an object keyed by a JSON-encoded [{key, value}] list. Used to
@@ -971,16 +926,105 @@
     return obj;
   }
 
-  var nodesList = {{ .Nodes }};
+  // ---- Lazy page data ----
+  // The node list, the peer map and the per-client peer lists are fetched from
+  // JSON endpoints on demand instead of being embedded into the document.
   var nodes = {};
-  (nodesList || []).forEach(function(node) {
-    if (node.client_specs) node.client_specs = specListToObject(node.client_specs);
-    nodes[node.peer_id] = node;
+  var nodesList = [];
+  var peerGraphData = { nodes: [], edges: [] };
+  var peerLinks = {}; // peer id -> { peers_in: [...], peers_out: [...] } derived from the peer map edges
+  var nodesPromise = null;
+  var peerMapPromise = null;
+  var nodePeersPromises = {};
+
+  function fetchJSON(url) {
+    return fetch(url, { headers: { 'Accept': 'application/json' } }).then(function(res) {
+      if (!res.ok) throw new Error('request to ' + url + ' failed: ' + res.status);
+      return res.json();
+    });
+  }
+
+  function loadNodes() {
+    if (!nodesPromise) {
+      nodesPromise = fetchJSON('/clients/consensus/nodes').then(function(data) {
+        nodesList = data.nodes || [];
+        nodes = {};
+        nodesList.forEach(function(node) {
+          if (node.client_specs) node.client_specs = specListToObject(node.client_specs);
+          nodes[node.peer_id] = node;
+        });
+        return nodes;
+      }).catch(function(err) {
+        nodesPromise = null;
+        console.error('failed to load node list', err);
+        throw err;
+      });
+    }
+    return nodesPromise;
+  }
+
+  function loadPeerMap() {
+    if (!peerMapPromise) {
+      peerMapPromise = fetchJSON('/clients/consensus/peermap').then(function(data) {
+        peerGraphData = { nodes: data.nodes || [], edges: data.edges || [] };
+        peerLinks = {};
+        peerGraphData.edges.forEach(function(edge) {
+          if (!peerLinks[edge.from]) peerLinks[edge.from] = { peers_in: [], peers_out: [] };
+          if (!peerLinks[edge.to]) peerLinks[edge.to] = { peers_in: [], peers_out: [] };
+          peerLinks[edge.from].peers_out.push(edge.to);
+          peerLinks[edge.to].peers_in.push(edge.from);
+        });
+        return peerGraphData;
+      }).catch(function(err) {
+        peerMapPromise = null;
+        console.error('failed to load peer map', err);
+        throw err;
+      });
+    }
+    return peerMapPromise;
+  }
+
+  function loadNodePeers(peerId) {
+    if (!nodePeersPromises[peerId]) {
+      nodePeersPromises[peerId] = fetchJSON('/clients/consensus/nodes/' + encodeURIComponent(peerId) + '/peers').then(function(data) {
+        return data.peers || [];
+      }).catch(function(err) {
+        delete nodePeersPromises[peerId];
+        console.error('failed to load peers of ' + peerId, err);
+        throw err;
+      });
+    }
+    return nodePeersPromises[peerId];
+  }
+
+  // The node list is needed for the spec comparison icons in the client table,
+  // so it is requested right away; everything else loads on demand.
+  var nodesReady = loadNodes();
+
+  nodesReady.then(function() {
+    var datalist = document.getElementById('datalistOptions');
+    if (!datalist) return;
+    var fragment = document.createDocumentFragment();
+    nodesList.forEach(function(node) {
+      var option = document.createElement('option');
+      option.value = node.peer_id;
+      fragment.appendChild(option);
+      if (node.alias !== node.peer_id) {
+        option = document.createElement('option');
+        option.value = node.alias;
+        fragment.appendChild(option);
+      }
+    });
+    datalist.appendChild(fragment);
   });
 
   function renderPeerGraph() {
     var container = document.getElementById("nodemap");
-    peerGraph = $_network.create(container, peerGraphData);
+    loadPeerMap().then(function() {
+      peerGraph = $_network.create(container, peerGraphData);
+    }).catch(function() {
+      $('#nodemap-loading').replaceWith('<div class="text-danger p-3">Failed to load the peer map.</div>');
+    });
   }
 
   // Always keep graph collapsed by default - render only when opened
@@ -993,112 +1037,190 @@
 
   var lastClickedNode = null;
 
-  // PeerDASTable Filter
-  function filterDASTablePeers() {
-    // Get the status of each checkbox
-    var showExternal = $('#showExternalPeersDAS').is(':checked');
-    var showInternal = $('#showInternalPeersDAS').is(':checked');
-    var showSupernode = $('#showSupernodePeersDAS').is(':checked');
+  // ---- PeerDAS column custody table ----
+  // Rendered client-side from each node's custody columns once the accordion is
+  // opened. Nodes custodying every column (supernodes) are collapsed into one
+  // counter per column, since drawing them individually multiplies the node
+  // count by the number of columns.
+  var dasTable = {
+    numberOfColumns: {{ .PeerDASInfos.NumberOfColumns }},
+    columnsPerRow: 32,
+    maxPinnedSupernodes: 16,
+    columns: null,     // per column: sorted list of partial-custody nodes
+    supernodes: null,  // sorted list of supernodes (identical for every column)
+    pinned: [],        // supernodes drawn individually because they match the search
+    built: false,
+  };
 
-    console.log(showExternal, showInternal, showSupernode);
-
-    // For each node, show or hide based on the filter status
-    $('.dastablenode').each(function() {
-      var isExternal = $(this).hasClass('external');
-      var isInternal = $(this).hasClass('internal');
-      var isSupernode = $(this).hasClass('supernode');
-
-
-      console.log(isExternal, isInternal, isSupernode);
-
-      // Show supernodes if the checkbox is checked
-      if (isSupernode && showSupernode) {
-        $(this).show();
-        return;
-      } else if (isSupernode && !showSupernode) {
-        $(this).hide();
-        return;
-      }
-
-      // Show the node if it matches any of the active types
-      if ((showExternal && isExternal) ||
-          (showInternal && isInternal)) {
-        $(this).show();
-      } else {
-        $(this).hide();
-      }
-
-    });
-
-    // Update column counts and coloring based on visible peers
-    updateColumnCounts();
+  function compareDASNodes(a, b) {
+    if (a.type !== b.type) return a.type > b.type ? -1 : 1; // internal before external
+    var lenA = a.peer_das.columns.length, lenB = b.peer_das.columns.length;
+    if (lenA !== lenB) return lenB - lenA;
+    return a.alias < b.alias ? -1 : (a.alias > b.alias ? 1 : 0);
   }
 
-  // Function to update column counts and header coloring based on visible peers
-  function updateColumnCounts() {
-    // For each column, count visible peers and update header styling
-    $('table thead th').each(function() {
-      var columnHeader = $(this);
-      var columnIndex = columnHeader.find('span').text(); // Get column number from span
-      
-      if (columnIndex) {
-        // Find the corresponding table cell in the same column
-        var columnCell = columnHeader.closest('table').find('tbody td').eq(columnHeader.index());
-        
-        // Count visible peers in this column
-        var visiblePeerCount = columnCell.find('.dastablenode:visible').length;
-        
-        // Update the count display
-        columnHeader.find('.dastablepeercount').text('(' + visiblePeerCount + ')');
-        
-        // Remove existing background classes
-        columnHeader.removeClass('bg-danger bg-warning text-light text-dark');
-        
-        // Apply new coloring based on visible peer count
-        if (visiblePeerCount === 0) {
-          columnHeader.addClass('bg-danger text-light');
-        } else if (visiblePeerCount < 2) {
-          columnHeader.addClass('bg-warning text-dark');
-        }
+  function buildDASColumns() {
+    var columns = [];
+    for (var i = 0; i < dasTable.numberOfColumns; i++) columns.push([]);
+    var supernodes = [];
+    nodesList.forEach(function(node) {
+      var das = node.peer_das;
+      if (!das || !das.columns) return;
+      if (das.is_super_node) {
+        supernodes.push(node);
+        return;
       }
-    });
-  }
-
-  // PeerDAS search and clear handlers (always active)
-  $('#searchDASTablePeers').on('input', function() {
-    var searchText = $(this).val();
-    if(searchText) searchText = searchText.trim().toLowerCase();
-
-    if (searchText) {
-      $('.dastablenode').each(function() {
-        const peerId = $(this).data('peerid').toString().toLowerCase();
-        const alias = $(this).data('alias').toString().toLowerCase();
-        if (peerId.includes(searchText) || alias.includes(searchText)) {
-          $(this).addClass('highlight').removeClass('blur');
-        } else {
-          $(this).addClass('blur').removeClass('highlight');
-        }
+      das.columns.forEach(function(column) {
+        if (columns[column]) columns[column].push(node);
       });
-    } else {
-      $('.dastablenode').removeClass('blur highlight');
+    });
+    columns.forEach(function(column) { column.sort(compareDASNodes); });
+    supernodes.sort(compareDASNodes);
+    dasTable.columns = columns;
+    dasTable.supernodes = supernodes;
+    dasTable.built = true;
+  }
+
+  function getDASFilters() {
+    return {
+      external: $('#showExternalPeersDAS').is(':checked'),
+      internal: $('#showInternalPeersDAS').is(':checked'),
+      supernode: $('#showSupernodePeersDAS').is(':checked'),
+    };
+  }
+
+  function dasNodeVisible(node, filters) {
+    return (node.type === 'internal' && filters.internal) || (node.type === 'external' && filters.external);
+  }
+
+  function dasNodeMatches(node, searchText) {
+    return node.peer_id.toLowerCase().includes(searchText) || node.alias.toLowerCase().includes(searchText);
+  }
+
+  function dasNodeIcon(node, searchText) {
+    var classes = ['peer-table-icon', 'dastablenode', node.type];
+    if (node.peer_das.is_super_node) classes.push('supernode');
+    if (searchText) classes.push(dasNodeMatches(node, searchText) ? 'highlight' : 'blur');
+    return '<svg class="' + classes.join(' ') + '"' +
+      ' data-jdenticon-value="' + escapeAttr(node.peer_id) + '"' +
+      ' data-peerid="' + escapeAttr(node.peer_id) + '"' +
+      ' data-toggle="tooltip" data-placement="top" data-animation="false"' +
+      ' title="' + escapeAttr(node.alias) + '"></svg>';
+  }
+
+  function escapeAttr(text) {
+    return String(text).replace(/[&<>"']/g, function(c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function renderDASTable() {
+    var container = $('#peerdas-table-container');
+    if (!dasTable.built) return;
+
+    // dispose tooltips of the icons that are about to be replaced
+    container.find('[data-toggle="tooltip"]').each(function() {
+      var tooltip = bootstrap.Tooltip.getInstance(this);
+      if (tooltip) tooltip.dispose();
+    });
+
+    var filters = getDASFilters();
+    var searchText = ($('#searchDASTablePeers').val() || '').trim().toLowerCase();
+    var visibleSupernodes = dasTable.supernodes.filter(function(node) { return dasNodeVisible(node, filters); });
+    var supernodeCount = filters.supernode ? visibleSupernodes.length : 0;
+    var pinned = filters.supernode ? dasTable.pinned.filter(function(node) { return dasNodeVisible(node, filters); }) : [];
+    var pinnedIds = {};
+    pinned.forEach(function(node) { pinnedIds[node.peer_id] = true; });
+    var chipCount = supernodeCount - pinned.length;
+
+    var html = '';
+    var rows = Math.ceil(dasTable.numberOfColumns / dasTable.columnsPerRow);
+    for (var row = 0; row < rows; row++) {
+      var first = row * dasTable.columnsPerRow;
+      var last = Math.min(first + dasTable.columnsPerRow, dasTable.numberOfColumns);
+      var head = '', body = '';
+      for (var column = first; column < last; column++) {
+        var columnNodes = dasTable.columns[column].filter(function(node) { return dasNodeVisible(node, filters); });
+        var count = columnNodes.length + supernodeCount;
+        var headClass = count === 0 ? ' bg-danger text-light' : (count < 2 ? ' bg-warning text-dark' : '');
+        head += '<th style="border-right: 1px solid; font-size: 0.8rem;" class="' + headClass + '">' +
+          '<span class="text-light">' + column + '</span>' +
+          '<div class="dastablepeercount">(' + count + ')</div></th>';
+
+        var cell = '';
+        pinned.forEach(function(node) { cell += dasNodeIcon(node, searchText); });
+        columnNodes.forEach(function(node) { cell += dasNodeIcon(node, searchText); });
+        if (chipCount > 0) {
+          cell += '<span class="dastablesupernodes" role="button" data-toggle="tooltip" data-placement="top" data-animation="false"' +
+            ' title="' + chipCount + ' supernode' + (chipCount === 1 ? '' : 's') + ' custody every column">+' + chipCount + '</span>';
+        }
+        body += '<td style="border-right: 1px solid; vertical-align: top; min-width: 39px;">' +
+          '<div style="display: flex; flex-flow: wrap; margin: 0 auto;">' + cell + '</div></td>';
+      }
+      html += '<div class="table-responsive">' +
+        '<table class="bg-dark text-white-50" style="margin: 0 auto; text-align: center; border: 1px solid">' +
+        '<thead><tr style="border-bottom: 1px dashed;">' + head + '</tr></thead>' +
+        '<tbody><tr>' + body + '</tr></tbody></table></div>';
     }
-  });
+
+    container.html(html);
+    jdenticon.update('#peerdas-table-container .peer-table-icon');
+    container.find('[data-toggle="tooltip"]').tooltip();
+  }
+
+  // PeerDASTable Filter (checkbox switches)
+  function filterDASTablePeers() {
+    renderDASTable();
+  }
+
+  function updateDASSearch() {
+    var searchText = ($('#searchDASTablePeers').val() || '').trim().toLowerCase();
+    var pinned = [];
+    if (searchText && dasTable.built) {
+      for (var i = 0; i < dasTable.supernodes.length && pinned.length < dasTable.maxPinnedSupernodes; i++) {
+        if (dasNodeMatches(dasTable.supernodes[i], searchText)) pinned.push(dasTable.supernodes[i]);
+      }
+    }
+    dasTable.pinned = pinned;
+    renderDASTable();
+  }
+
+  // PeerDAS search and clear handlers
+  $('#searchDASTablePeers').on('input', updateDASSearch);
 
   $('#clearSearchButton').click(function(){
     $('#searchDASTablePeers').val('');
-    $('.dastablenode').removeClass('blur highlight');
+    lastClickedNode = null;
+    updateDASSearch();
   });
 
-  // Event listener to remove highlight when clicking outside (always active)
+  // Event listener to remove highlight when clicking outside
   $(document).on('click', function(event) {
-    var searchText = $('#searchDASTablePeers').val();
-    if(searchText) searchText = searchText.trim().toLowerCase();
-
+    var searchText = ($('#searchDASTablePeers').val() || '').trim();
     if (!searchText && !$(event.target).closest('.dastablenode').length) {
       $('.dastablenode').removeClass('highlight blur');
       lastClickedNode = null;
     }
   });
+
+  function showDASSupernodesModal() {
+    var filters = getDASFilters();
+    var list = $('#dasSupernodesList').empty();
+    dasTable.supernodes.forEach(function(node) {
+      if (!dasNodeVisible(node, filters)) return;
+      var item = $('<li class="py-1"></li>');
+      var link = $('<span class="peerdetails-modal-peer"></span>').attr('data-peerid', node.peer_id);
+      link.append($('<code></code>').text(node.peer_id));
+      if (node.alias !== node.peer_id) {
+        link.append(' ').append($('<span class="badge text-bg-secondary"></span>').text(node.alias));
+      }
+      link.on('click', function() { showPeerDetailsModal(node.peer_id); });
+      item.append(link);
+      list.append(item);
+    });
+    $('#dasSupernodesModalTitle').text('Supernodes (' + list.children().length + ')');
+    $('#dasSupernodesModal').modal('show');
+  }
 
   // Client search functionality
   $('#clientSearchInput').on('input', function() {
@@ -1191,16 +1313,28 @@
 
         var peerId = detailsContainer.data('peerid');
         detailsContainer.data('loaded', true);
-        var template = $(".peer-details-content").html();
-        detailsContainer.html(template);
+        detailsContainer.html('<div class="text-muted px-3"><span class="spinner-border spinner-border-sm me-2" role="status"></span>Loading peer details...</div>');
 
-        var viewModel = createModel(nodes[peerId]);
-        ko.applyBindings(viewModel, detailsContainer.get(0));
-        window.explorer.initControls();
-        jdenticon.update(".peer-table-icon",null);
-        
-        // Initialize peer collapse handlers for this instance
-        initPeerCollapseHandlers(detailsContainer);
+        Promise.all([loadNodes(), loadNodePeers(peerId)]).then(function(results) {
+          var node = nodes[peerId];
+          if (!node) {
+            detailsContainer.html('<div class="text-muted px-3">No details available for this node.</div>');
+            return;
+          }
+          var template = $(".peer-details-content").html();
+          detailsContainer.html(template);
+
+          var viewModel = createModel(Object.assign({}, node, { peers: results[1] }));
+          ko.applyBindings(viewModel, detailsContainer.get(0));
+          window.explorer.initControls();
+          jdenticon.update(".peer-table-icon",null);
+
+          // Initialize peer collapse handlers for this instance
+          initPeerCollapseHandlers(detailsContainer);
+        }).catch(function() {
+          detailsContainer.data('loaded', false);
+          detailsContainer.html('<div class="text-danger px-3">Failed to load peer details.</div>');
+        });
       });
 
     })();
@@ -1246,11 +1380,17 @@
           peerId = $(this).data('peerid');
         }
 
-        updateModel(nodes[peerId]);
-        jdenticon.update("#peerDetailsModalTitleImage", peerId);
-        jdenticon.update(".peer-details-jdenticon",null)
+        Promise.all([loadNodes(), loadPeerMap()]).then(function() {
+          var node = nodes[peerId];
+          if (!node) return;
+          var links = peerLinks[peerId] || { peers_in: [], peers_out: [] };
 
-        $("#peerDetailsModal").modal('show');
+          updateModel(Object.assign({}, node, { peers_in: links.peers_in, peers_out: links.peers_out }));
+          jdenticon.update("#peerDetailsModalTitleImage", peerId);
+          jdenticon.update(".peer-details-jdenticon",null)
+
+          $("#peerDetailsModal").modal('show');
+        });
       };
 
       window.hidePeerDetailsModal = function() {
@@ -1268,8 +1408,9 @@
     window.expectedPresetFields = JSON.parse({{ includeJSON .ExpectedPresetFields false }});
     window.expectedDomainTypeFields = JSON.parse({{ includeJSON .ExpectedDomainTypeFields false }});
 
-    // Initialize tooltips for spec mismatch icons and show specs buttons
-    $(document).ready(function() {
+    // Initialize tooltips for spec mismatch icons and show specs buttons once the
+    // node list (which carries the client specs) is available
+    nodesReady.then(function() {
       $('.spec-mismatch-icon, .show-specs-btn').each(function() {
         var clientName = $(this).data('client-name');
         var client = null;
@@ -1818,60 +1959,51 @@
     });
   }
 
-  // PeerDAS accordion handler - render table only when opened
-  var peerDASTableRendered = false;
+  // PeerDAS accordion handler - build and render the table only when opened
   $('#collapseColumnInfos').on('shown.bs.collapse', function () {
-    if (!peerDASTableRendered) {
-      var template = $('#peerdas-table-template').html();
-      $('#peerdas-table-container').html(template);
-      
-      // Initialize jdenticon for the newly added SVG elements
-      jdenticon.update(".peer-table-icon", null);
-      
-      // Re-initialize all PeerDAS table interactions
-      initializePeerDASTableInteractions();
-      
-      peerDASTableRendered = true;
-    }
+    if (dasTable.built) return;
+    var container = $('#peerdas-table-container');
+    container.html('<div class="text-muted p-3"><span class="spinner-border spinner-border-sm me-2" role="status"></span>Loading column custody...</div>');
+    loadNodes().then(function() {
+      buildDASColumns();
+      updateDASSearch();
+    }).catch(function() {
+      container.html('<div class="text-danger p-3">Failed to load the node list.</div>');
+    });
   });
 
-  // Initialize PeerDAS table interactions (moved from inline)
-  function initializePeerDASTableInteractions() {
-    // PeerDASTable Hover
-    let hoverTimeout;
-    $('.dastablenode').hover(
-      function() {
-        hoverTimeout = setTimeout(() => {
-          var searchText = $('#searchDASTablePeers').val();
-          if(searchText) searchText = searchText.trim().toLowerCase();
+  // PeerDAS table interactions (delegated, so re-renders need no rebinding)
+  (function() {
+    var container = $('#peerdas-table-container');
+    var hoverTimeout;
 
-          if (!searchText && lastClickedNode == null) {
-            const $target = $(this);
-            const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
-            $(selector).addClass('highlight');
-            $('.dastablenode').addClass('blur');
-          }
-        }, 500);
-      },
-      function() {
-        clearTimeout(hoverTimeout);
-        var searchText = $('#searchDASTablePeers').val();
-        if(searchText) searchText = searchText.trim().toLowerCase();
+    function sameNodeSelector(el) {
+      return '.dastablenode[data-peerid="' + $(el).data('peerid') + '"]';
+    }
 
+    container.on('mouseenter', '.dastablenode', function() {
+      var el = this;
+      hoverTimeout = setTimeout(function() {
+        var searchText = ($('#searchDASTablePeers').val() || '').trim();
         if (!searchText && lastClickedNode == null) {
-          const $target = $(this);
-          const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
-          $(selector).removeClass('highlight');
-          $('.dastablenode').removeClass('blur');
+          $(sameNodeSelector(el)).addClass('highlight');
+          $('.dastablenode').addClass('blur');
         }
-      }
-    );
+      }, 500);
+    });
 
-    // PeerDASTable Click
-    $('.dastablenode').on('click', function() {
-      const $target = $(this);
-      const selector = $target.attr('class').split(/\s+/).map(cls => '.' + cls).join('');
-      const peerID = $target.data('peerid').toString();
+    container.on('mouseleave', '.dastablenode', function() {
+      clearTimeout(hoverTimeout);
+      var searchText = ($('#searchDASTablePeers').val() || '').trim();
+      if (!searchText && lastClickedNode == null) {
+        $(sameNodeSelector(this)).removeClass('highlight');
+        $('.dastablenode').removeClass('blur');
+      }
+    });
+
+    container.on('click', '.dastablenode', function() {
+      var selector = sameNodeSelector(this);
+      var peerID = $(this).data('peerid').toString();
 
       showPeerDetailsModal(peerID);
 
@@ -1889,9 +2021,14 @@
       lastClickedNode = selector;
 
       // Add node to searchtext
-      $('#searchDASTablePeers').val(nodes[peerID].alias).trigger("input");
+      var node = nodes[peerID];
+      $('#searchDASTablePeers').val(node ? node.alias : peerID).trigger("input");
     });
-  }
+
+    container.on('click', '.dastablesupernodes', function() {
+      showDASSupernodesModal();
+    });
+  })();
 
   // Function to toggle all peer info sections (right button)
   function toggleAllPeers() {

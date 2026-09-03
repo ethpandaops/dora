@@ -40,35 +40,41 @@ func ClientsCL(w http.ResponseWriter, r *http.Request) {
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	var pageData *models.ClientsCLPageData
 	if pageError == nil {
-		data.Data, pageError = getCLClientsPageData(sortOrder)
+		pageData, pageError = getCLClientsPageData()
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
 	}
+	data.Data = sortedCLClientsPageData(pageData, sortOrder)
 	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "clients_cl.go", "Consensus clients", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-// clClientsPageCacheKeyPrefix is the shared prefix of every cached consensus clients page
-// variant. Each request caches under "<prefix><sortOrder>", so deleting the prefix evicts
-// all variants regardless of which sort orders were requested.
+// clClientsPageCacheKeyPrefix is the prefix of the cached consensus clients page model.
+// The model is cached once, unsorted; sorting is applied per request on a copy so the
+// page and the JSON data endpoints share a single cache entry.
 const clClientsPageCacheKeyPrefix = "clients_consensus:"
 
-// InvalidateCLClientsPageCache evicts all cached variants of the consensus clients page
-// so the next request rebuilds them from freshly refreshed client data.
+// clClientsPageCacheKey is the cache key of the consensus clients page model.
+const clClientsPageCacheKey = clClientsPageCacheKeyPrefix + "data"
+
+// InvalidateCLClientsPageCache evicts the cached consensus clients page model so the
+// next request rebuilds it from freshly refreshed client data.
 func InvalidateCLClientsPageCache() {
 	services.GlobalFrontendCache.RemoveCacheByPrefix(clClientsPageCacheKeyPrefix)
 }
 
-func getCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, error) {
+// getCLClientsPageData returns the cached consensus clients page model. The returned
+// model may be shared with concurrent requests and must not be mutated.
+func getCLClientsPageData() (*models.ClientsCLPageData, error) {
 	pageData := &models.ClientsCLPageData{}
-	pageCacheKey := fmt.Sprintf("%s%s", clClientsPageCacheKeyPrefix, sortOrder)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildCLClientsPageData(sortOrder)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(clClientsPageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildCLClientsPageData()
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -80,6 +86,16 @@ func getCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, error) {
 		pageData = resData
 	}
 	return pageData, pageErr
+}
+
+// sortedCLClientsPageData returns a shallow copy of the cached page model with the
+// client list sorted by sortOrder. The cached model itself is left untouched.
+func sortedCLClientsPageData(pageData *models.ClientsCLPageData, sortOrder string) *models.ClientsCLPageData {
+	sortedData := *pageData
+	sortedData.Clients = make([]*models.ClientsCLPageDataClient, len(pageData.Clients))
+	copy(sortedData.Clients, pageData.Clients)
+	sortedData.Sorting, sortedData.IsDefaultSorting = sortCLClients(sortedData.Clients, sortOrder)
+	return &sortedData
 }
 
 func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
@@ -167,7 +183,7 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 	return peerMap
 }
 
-func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.Duration) {
+func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	logrus.Debugf("clients page called")
 	pageData := &models.ClientsCLPageData{
 		Clients:                []*models.ClientsCLPageDataClient{},
@@ -199,13 +215,16 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		cacheTime = 1 * time.Second
 	}
 
-	aliases := map[string]string{}
-	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
+	consensusClients := services.GlobalBeaconService.GetConsensusClients()
+	aliases := make(map[string]string, len(consensusClients))
+	identities := make(map[string]*rpc.NodeIdentity, len(consensusClients))
+	for _, client := range consensusClients {
 		id := client.GetNodeIdentity()
 		if id == nil {
 			continue
 		}
 		aliases[id.PeerID] = client.GetName()
+		identities[id.PeerID] = id
 	}
 
 	enrMap := map[string]*enr.Record{}
@@ -306,7 +325,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		}
 	}
 
-	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
+	for _, client := range consensusClients {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 		safeSlot, safeRoot, lastFastConfirmation := client.GetLastFastConfirmation()
 
@@ -363,30 +382,20 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		}
 
 		peers := client.GetNodePeers()
-		resPeers := []*models.ClientCLPageDataNodePeers{}
+		resPeers := make([]*models.ClientCLPageDataNodePeers, 0, len(peers))
 
 		var inPeerCount, outPeerCount uint32
 		for _, peer := range peers {
 			addPeerNode(peer)
 
+			// The reported ENR is kept temporarily to detect outdated records once the
+			// best known ENR of every node is settled; it is cleared again below.
 			peerNode := &models.ClientCLPageDataNodePeers{
 				PeerID:             peer.PeerID,
 				State:              peer.State,
 				Direction:          peer.Direction,
+				ENR:                peer.Enr,
 				LastSeenP2PAddress: peer.LastSeenP2PAddress,
-			}
-
-			if pageData.ShowSensitivePeerInfos {
-				peerENRKeyValues := map[string]interface{}{}
-				if peer.Enr != "" {
-					rec := parseEnrRecord(peer.Enr)
-					if rec != nil {
-						peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
-					}
-				}
-
-				peerNode.ENR = peer.Enr
-				peerNode.ENRKeyValues = getEnrValues(peerENRKeyValues)
 			}
 
 			resPeers = append(resPeers, peerNode)
@@ -444,14 +453,37 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	}
 	pageData.ClientCount = uint64(len(pageData.Clients))
 
-	// Add peer in/out infos to global nodes map
-	for _, edge := range pageData.PeerMap.ClientDataMapEdges {
-		nodes[edge.From].PeersOut = append(nodes[edge.From].PeersOut, edge.To)
-		nodes[edge.To].PeersIn = append(nodes[edge.To].PeersIn, edge.From)
+	// Mark per-peer ENR records that are older than the best known ENR of the peer.
+	// Only those keep their ENR (and decoded fields); up-to-date records reference the
+	// node's ENR instead, which avoids repeating every ENR once per connection.
+	for _, node := range nodes {
+		for _, peerNode := range node.Peers {
+			peerENR := peerNode.ENR
+			peerNode.ENR = ""
+			if !pageData.ShowSensitivePeerInfos {
+				continue
+			}
+			bestENR := ""
+			if peer, ok := nodes[peerNode.PeerID]; ok {
+				bestENR = peer.ENR
+			}
+			if peerENR == bestENR {
+				continue
+			}
+			peerNode.ENRStale = true
+			peerNode.ENR = peerENR
+			peerENRKeyValues := map[string]interface{}{}
+			if peerENR != "" {
+				if rec := parseEnrRecord(peerENR); rec != nil {
+					peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
+				}
+			}
+			peerNode.ENRKeyValues = getEnrValues(peerENRKeyValues)
+		}
 	}
 
-	columnDistribution := make(map[uint64]map[string]bool)
-	resultColumnDistribution := make(map[uint64][]string)
+	// coveredColumns tracks which columns have at least one custodying node.
+	coveredColumns := make(map[uint64]bool)
 
 	// Verify and parse PeerDAS spec config
 	if specs != nil {
@@ -501,12 +533,8 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 
 		if pageData.ShowSensitivePeerInfos {
 			v.ENRKeyValues = getEnrValues(enrValues)
-			// Find the client for this node to get metadata
-			for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-				if id := client.GetNodeIdentity(); id != nil && id.PeerID == v.PeerID {
-					v.MetadataKeyValues = getMetadataValuesFromIdentity(id)
-					break
-				}
+			if id, ok := identities[v.PeerID]; ok {
+				v.MetadataKeyValues = getMetadataValuesFromIdentity(id)
 			}
 		}
 
@@ -542,12 +570,8 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			logrus.WithFields(logrus.Fields{"client": v.Alias, "node_id": nodeID}).Error("failed to get custody column subnets. ", err)
 		}
 
-		// Transform the custody columns to a map for easier access
 		for _, idx := range resColumns {
-			if _, ok := columnDistribution[idx]; !ok {
-				columnDistribution[idx] = make(map[string]bool)
-			}
-			columnDistribution[idx][v.PeerID] = true
+			coveredColumns[idx] = true
 		}
 
 		peerDASInfo := models.ClientCLPageDataNodePeerDAS{
@@ -559,60 +583,13 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		v.PeerDAS = &peerDASInfo
 	}
 
-	// Transform the column distribution to a slice
-	for k, v := range columnDistribution {
-		for key := range v {
-			if _, ok := resultColumnDistribution[k]; !ok {
-				resultColumnDistribution[k] = []string{}
-			}
-			resultColumnDistribution[k] = append(resultColumnDistribution[k], key)
-		}
-
-		// Sort the peer IDs by type and alias
-		sort.Slice(resultColumnDistribution[k], func(i, j int) bool {
-			pA := resultColumnDistribution[k][i]
-			pB := resultColumnDistribution[k][j]
-			nodeA := nodes[pA]
-			nodeB := nodes[pB]
-
-			// Compare supernodes
-			if nodeA.PeerDAS.IsSuperNode != nodeB.PeerDAS.IsSuperNode {
-				return nodeA.PeerDAS.IsSuperNode
-			}
-			// Compare node types
-			if nodeA.Type != nodeB.Type {
-				return nodeA.Type > nodeB.Type
-			}
-
-			// If types are the same, compare CustodyColumns length
-			lenA := len(nodeA.PeerDAS.Columns)
-			lenB := len(nodeB.PeerDAS.Columns)
-			if lenA != lenB {
-				return lenA > lenB
-			}
-
-			// If both types and CustodyColumns lengths are the same, compare aliases
-			return nodeA.Alias < nodeB.Alias
-		})
-	}
-
 	// Check for empty columns
 	for i := uint64(0); i < pageData.PeerDASInfos.NumberOfColumns; i++ {
-		if _, ok := resultColumnDistribution[i]; !ok {
+		if !coveredColumns[i] {
 			pageData.PeerDASInfos.Warnings.EmptyColumns = append(pageData.PeerDASInfos.Warnings.EmptyColumns, i)
 			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 	}
-
-	pageData.PeerDASInfos.TotalRows = int32(pageData.PeerDASInfos.NumberOfColumns) / 32
-
-	// Materialize the column distribution into a slice indexed by column so the
-	// page model stays SSZ-compatible (no maps).
-	columnSlice := make([][]string, pageData.PeerDASInfos.NumberOfColumns)
-	for i := uint64(0); i < pageData.PeerDASInfos.NumberOfColumns; i++ {
-		columnSlice[i] = resultColumnDistribution[i]
-	}
-	pageData.PeerDASInfos.ColumnDistribution = columnSlice
 
 	if !pageData.ShowSensitivePeerInfos {
 		for _, node := range nodes {
@@ -620,100 +597,6 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			node.ENRKeyValues = nil
 		}
 	}
-
-	// Apply sorting
-	switch sortOrder {
-	case "index-d":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].Index > pageData.Clients[j].Index
-		})
-	case "name":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].Name < pageData.Clients[j].Name
-		})
-	case "name-d":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].Name > pageData.Clients[j].Name
-		})
-	case "peers":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].PeerCount < pageData.Clients[j].PeerCount
-		})
-	case "peers-d":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].PeerCount > pageData.Clients[j].PeerCount
-		})
-	case "headslot":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].HeadSlot < pageData.Clients[j].HeadSlot
-		})
-	case "headslot-d":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].HeadSlot > pageData.Clients[j].HeadSlot
-		})
-	case "safeslot":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].SafeSlot < pageData.Clients[j].SafeSlot
-		})
-	case "safeslot-d":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].SafeSlot > pageData.Clients[j].SafeSlot
-		})
-	case "headroot":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return string(pageData.Clients[i].HeadRoot) < string(pageData.Clients[j].HeadRoot)
-		})
-	case "headroot-d":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return string(pageData.Clients[i].HeadRoot) > string(pageData.Clients[j].HeadRoot)
-		})
-	case "status":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			statusOrder := map[string]int{"online": 0, "synchronizing": 1, "optimistic": 2, "offline": 3}
-			aVal, aExists := statusOrder[pageData.Clients[i].Status]
-			bVal, bExists := statusOrder[pageData.Clients[j].Status]
-			if !aExists {
-				aVal = 4
-			}
-			if !bExists {
-				bVal = 4
-			}
-			return aVal < bVal
-		})
-	case "status-d":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			statusOrder := map[string]int{"online": 0, "synchronizing": 1, "optimistic": 2, "offline": 3}
-			aVal, aExists := statusOrder[pageData.Clients[i].Status]
-			bVal, bExists := statusOrder[pageData.Clients[j].Status]
-			if !aExists {
-				aVal = 4
-			}
-			if !bExists {
-				bVal = 4
-			}
-			return aVal > bVal
-		})
-	case "version":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].Version < pageData.Clients[j].Version
-		})
-	case "version-d":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].Version > pageData.Clients[j].Version
-		})
-	case "index":
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].Index < pageData.Clients[j].Index
-		})
-	default:
-		// Default sort by name ascending
-		sort.Slice(pageData.Clients, func(i, j int) bool {
-			return pageData.Clients[i].Name < pageData.Clients[j].Name
-		})
-		pageData.IsDefaultSorting = true
-		sortOrder = "name"
-	}
-	pageData.Sorting = sortOrder
 
 	// Add current fork digest
 	forkDigest := chainState.GetForkDigestForEpoch(chainState.CurrentEpoch())
@@ -745,6 +628,102 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	})
 
 	return pageData, cacheTime
+}
+
+// sortCLClients sorts clients in place by sortOrder and returns the effective sort
+// order and whether it is the default (name ascending) one.
+func sortCLClients(clients []*models.ClientsCLPageDataClient, sortOrder string) (string, bool) {
+	switch sortOrder {
+	case "index-d":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].Index > clients[j].Index
+		})
+	case "name":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].Name < clients[j].Name
+		})
+	case "name-d":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].Name > clients[j].Name
+		})
+	case "peers":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].PeerCount < clients[j].PeerCount
+		})
+	case "peers-d":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].PeerCount > clients[j].PeerCount
+		})
+	case "headslot":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].HeadSlot < clients[j].HeadSlot
+		})
+	case "headslot-d":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].HeadSlot > clients[j].HeadSlot
+		})
+	case "safeslot":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].SafeSlot < clients[j].SafeSlot
+		})
+	case "safeslot-d":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].SafeSlot > clients[j].SafeSlot
+		})
+	case "headroot":
+		sort.Slice(clients, func(i, j int) bool {
+			return string(clients[i].HeadRoot) < string(clients[j].HeadRoot)
+		})
+	case "headroot-d":
+		sort.Slice(clients, func(i, j int) bool {
+			return string(clients[i].HeadRoot) > string(clients[j].HeadRoot)
+		})
+	case "status":
+		sort.Slice(clients, func(i, j int) bool {
+			statusOrder := map[string]int{"online": 0, "synchronizing": 1, "optimistic": 2, "offline": 3}
+			aVal, aExists := statusOrder[clients[i].Status]
+			bVal, bExists := statusOrder[clients[j].Status]
+			if !aExists {
+				aVal = 4
+			}
+			if !bExists {
+				bVal = 4
+			}
+			return aVal < bVal
+		})
+	case "status-d":
+		sort.Slice(clients, func(i, j int) bool {
+			statusOrder := map[string]int{"online": 0, "synchronizing": 1, "optimistic": 2, "offline": 3}
+			aVal, aExists := statusOrder[clients[i].Status]
+			bVal, bExists := statusOrder[clients[j].Status]
+			if !aExists {
+				aVal = 4
+			}
+			if !bExists {
+				bVal = 4
+			}
+			return aVal > bVal
+		})
+	case "version":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].Version < clients[j].Version
+		})
+	case "version-d":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].Version > clients[j].Version
+		})
+	case "index":
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].Index < clients[j].Index
+		})
+	default:
+		// Default sort by name ascending
+		sort.Slice(clients, func(i, j int) bool {
+			return clients[i].Name < clients[j].Name
+		})
+		return "name", true
+	}
+	return sortOrder, false
 }
 
 // specMapToList converts a chain spec value map into an SSZ-compatible list of
