@@ -10,9 +10,30 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
+// newTestValidatorNames builds a ValidatorNames with the given index-based and resolved
+// names published, mirroring what the loaders and the resolver produce.
+func newTestValidatorNames(names map[uint64]string, resolved map[uint64]string) *ValidatorNames {
+	vn := &ValidatorNames{
+		namesByWithdrawal:    make(map[common.Address]*validatorNameEntry),
+		namesByDepositOrigin: make(map[common.Address]*validatorNameEntry),
+		namesByDepositTarget: make(map[common.Address]*validatorNameEntry),
+	}
+	ranges := make([]validatorNameRange, 0, len(names))
+	for index, name := range names {
+		ranges = append(ranges, validatorNameRange{startIndex: index, endIndex: index, name: name})
+	}
+	vn.nameRanges = normalizeNameRanges(ranges)
+	if resolved != nil {
+		vn.resolvedNamesByIndex = make(map[uint64]*validatorNameEntry, len(resolved))
+		for index, name := range resolved {
+			vn.resolvedNamesByIndex[index] = &validatorNameEntry{name: name}
+		}
+	}
+	vn.publishNameIndex()
+	return vn
+}
+
 func TestGetValidatorName(t *testing.T) {
-	// Create a test validator name entry
-	testEntry := &validatorNameEntry{name: "test-validator"}
 
 	tests := []struct {
 		name                string
@@ -21,46 +42,42 @@ func TestGetValidatorName(t *testing.T) {
 		expectedResult      string
 	}{
 		{
-			name:  "returns empty when namesByIndex is nil",
+			name:  "returns empty when nothing is published",
 			index: 123,
 			setupValidatorNames: func() *ValidatorNames {
-				return &ValidatorNames{
-					namesMutex: sync.RWMutex{},
-				}
+				return &ValidatorNames{}
 			},
 			expectedResult: "",
 		},
 		{
-			name:  "returns name from namesByIndex when found",
+			name:  "returns name from ranges when found",
 			index: 123,
 			setupValidatorNames: func() *ValidatorNames {
-				return &ValidatorNames{
-					namesMutex:   sync.RWMutex{},
-					namesByIndex: map[uint64]*validatorNameEntry{123: testEntry},
-				}
+				return newTestValidatorNames(map[uint64]string{123: "test-validator"}, nil)
 			},
 			expectedResult: "test-validator",
 		},
 		{
-			name:  "returns empty when resolvedNamesByIndex is nil",
+			name:  "returns empty when index is not covered",
 			index: 123,
 			setupValidatorNames: func() *ValidatorNames {
-				return &ValidatorNames{
-					namesMutex:   sync.RWMutex{},
-					namesByIndex: map[uint64]*validatorNameEntry{},
-				}
+				return newTestValidatorNames(map[uint64]string{124: "other"}, nil)
 			},
 			expectedResult: "",
 		},
 		{
-			name:  "returns name from resolvedNamesByIndex when found",
+			name:  "returns name from resolved names when found",
 			index: 123,
 			setupValidatorNames: func() *ValidatorNames {
-				return &ValidatorNames{
-					namesMutex:           sync.RWMutex{},
-					namesByIndex:         map[uint64]*validatorNameEntry{},
-					resolvedNamesByIndex: map[uint64]*validatorNameEntry{123: testEntry},
-				}
+				return newTestValidatorNames(map[uint64]string{}, map[uint64]string{123: "test-validator"})
+			},
+			expectedResult: "test-validator",
+		},
+		{
+			name:  "range name wins over resolved name",
+			index: 123,
+			setupValidatorNames: func() *ValidatorNames {
+				return newTestValidatorNames(map[uint64]string{123: "test-validator"}, map[uint64]string{123: "resolved"})
 			},
 			expectedResult: "test-validator",
 		},
@@ -99,10 +116,7 @@ func TestGetValidatorNameAt(t *testing.T) {
 		},
 	}
 
-	vn := &ValidatorNames{
-		namesMutex:   sync.RWMutex{},
-		namesByIndex: map[uint64]*validatorNameEntry{50: currentEntry, 5000: currentEntry},
-	}
+	vn := newTestValidatorNames(map[uint64]string{50: currentEntry.name, 5000: currentEntry.name}, nil)
 	vn.nameHistory.Store(&history)
 
 	tests := []struct {
@@ -144,10 +158,7 @@ func TestGetValidatorNameAtTime(t *testing.T) {
 		},
 	}
 
-	vn := &ValidatorNames{
-		namesMutex:   sync.RWMutex{},
-		namesByIndex: map[uint64]*validatorNameEntry{50: {name: "current-node"}},
-	}
+	vn := newTestValidatorNames(map[uint64]string{50: "current-node"}, nil)
 	vn.nameHistory.Store(&history)
 
 	tests := []struct {
@@ -170,10 +181,7 @@ func TestGetValidatorNameAtTime(t *testing.T) {
 }
 
 func TestGetValidatorNameAt_NoHistory(t *testing.T) {
-	vn := &ValidatorNames{
-		namesMutex:   sync.RWMutex{},
-		namesByIndex: map[uint64]*validatorNameEntry{123: {name: "test-validator"}},
-	}
+	vn := newTestValidatorNames(map[uint64]string{123: "test-validator"}, nil)
 
 	if result := vn.GetValidatorNameAt(123, 42); result != "test-validator" {
 		t.Errorf("GetValidatorNameAt() without history = %q, want %q", result, "test-validator")
@@ -249,14 +257,7 @@ func TestParseValidatorNameRanges(t *testing.T) {
 }
 
 func TestGetValidatorName_Concurrency(t *testing.T) {
-	vn := &ValidatorNames{
-		namesMutex:           sync.RWMutex{},
-		namesByIndex:         make(map[uint64]*validatorNameEntry),
-		namesByWithdrawal:    make(map[common.Address]*validatorNameEntry),
-		namesByDepositOrigin: make(map[common.Address]*validatorNameEntry),
-		namesByDepositTarget: make(map[common.Address]*validatorNameEntry),
-		resolvedNamesByIndex: make(map[uint64]*validatorNameEntry),
-	}
+	vn := newTestValidatorNames(map[uint64]string{}, map[uint64]string{})
 
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
@@ -281,9 +282,9 @@ func TestGetValidatorName_Concurrency(t *testing.T) {
 				return
 			default:
 				vn.namesMutex.Lock()
-				vn.namesByIndex = make(map[uint64]*validatorNameEntry)
-				vn.namesByIndex[123] = &validatorNameEntry{name: "test"}
+				vn.nameRanges = nil
 				vn.namesMutex.Unlock()
+				vn.parseNamesMap(map[string]string{"123": "test"})
 			}
 		}
 	})
@@ -299,6 +300,7 @@ func TestGetValidatorName_Concurrency(t *testing.T) {
 				newResolved[123] = &validatorNameEntry{name: "resolved"}
 				vn.namesMutex.Lock()
 				vn.resolvedNamesByIndex = newResolved
+				vn.publishNameIndex()
 				vn.namesMutex.Unlock()
 			}
 		}

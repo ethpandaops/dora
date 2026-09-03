@@ -161,6 +161,7 @@ func buildValidatorsOfflinePageData(ctx context.Context, pageIdx uint64, pageSiz
 	// collect offline validators
 	offlineIndices := []phase0.ValidatorIndex{}
 	currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
+	livenessCounts := services.GlobalBeaconService.GetValidatorLivenessCounts(3)
 
 	services.GlobalBeaconService.StreamActiveValidatorData(true, func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
 		var validatorGroupKey string
@@ -190,7 +191,7 @@ func buildValidatorsOfflinePageData(ctx context.Context, pageIdx uint64, pageSiz
 
 		if activeData != nil && activeData.ActivationEpoch <= currentEpoch {
 			if activeData.ExitEpoch > currentEpoch {
-				votingActivity := services.GlobalBeaconService.GetValidatorLiveness(index, 3)
+				votingActivity := services.ValidatorLivenessAt(livenessCounts, index)
 
 				if votingActivity == 0 {
 					// This is an offline validator

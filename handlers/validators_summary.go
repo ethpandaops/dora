@@ -10,12 +10,11 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution"
-	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -109,19 +108,7 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	epochDuration := time.Duration(specs.SlotsPerEpoch*specs.SlotDurationMs) * time.Millisecond
 	cacheTime := epochDuration
 
-	// Get all validators (we'll filter out exited ones in processing)
-	validatorFilter := dbtypes.ValidatorFilter{
-		Status: []v1.ValidatorState{
-			v1.ValidatorStateActiveOngoing,
-			v1.ValidatorStateActiveExiting,
-			v1.ValidatorStateActiveSlashed,
-		},
-	}
-	validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &validatorFilter, false)
-
-	if len(validators) == 0 {
-		return pageData, cacheTime
-	}
+	currentEpoch := chainState.CurrentEpoch()
 
 	// Parse client types from validator names and group by client combinations
 	clientCombinations := make(map[execution.ClientType]map[consensus.ClientType]*models.ValidatorsSummaryMatrixCell)
@@ -170,6 +157,18 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 
 	dutyStats := services.GlobalBeaconService.GetValidatorDutyStats(ctx, proposalLookbackEpochs, ptcLookbackEpochs)
 
+	// per-validator liveness and inclusion stats are read in bulk: the summary walks the
+	// whole validator set, and a lookup per validator would dominate the build
+	livenessCounts := services.GlobalBeaconService.GetValidatorLivenessCounts(livenessLookbackEpochs)
+	inclusionStats := services.GlobalBeaconService.GetValidatorInclusionDistances(attestationLookbackEpochs)
+
+	// validator names repeat per node, so the client type parsing is memoized by name
+	type clientTypes struct {
+		execution execution.ClientType
+		consensus consensus.ClientType
+	}
+	clientTypesByName := map[string]clientTypes{}
+
 	pageData.ProposalWindowLabel = fmt.Sprintf("the last %v epochs", proposalLookbackEpochs)
 	pageData.AttestationWindowLabel = fmt.Sprintf("the last %v epochs", attestationLookbackEpochs)
 	pageData.OnlineWindowLabel = fmt.Sprintf("attested in %v+ of the last %v epochs", livenessOnlineThreshold, livenessLookbackEpochs)
@@ -192,13 +191,22 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	onlineEffectiveBalance := uint64(0)
 	activeValidators := uint64(0)
 
-	for _, validator := range validators {
-		if validator.Validator == nil {
-			continue
+	// The active set is streamed straight from the validator cache: the summary only needs
+	// index, effective balance and the active/slashed state, which the cache carries for
+	// every validator without loading the full validator objects.
+	services.GlobalBeaconService.StreamActiveValidatorData(false, func(validatorIndex phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, _ *phase0.Validator) error {
+		if activeData == nil || activeData.ActivationEpoch > currentEpoch || activeData.ExitEpoch <= currentEpoch {
+			return nil
 		}
+		isSlashed := validatorFlags&beacon.ValidatorStatusSlashed != 0
 
-		validatorName := services.GlobalBeaconService.GetValidatorName(uint64(validator.Index))
-		executionClient, consensusClient := parseClientTypesFromName(validatorName)
+		validatorName := services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
+		types, ok := clientTypesByName[validatorName]
+		if !ok {
+			types.execution, types.consensus = parseClientTypesFromName(validatorName)
+			clientTypesByName[validatorName] = types
+		}
+		executionClient, consensusClient := types.execution, types.consensus
 
 		executionClients[executionClient] = true
 		consensusClients[consensusClient] = true
@@ -222,24 +230,22 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 			clClientBalances[consensusClient] = &validatorsSummaryClientBalances{}
 		}
 
+		effectiveBalance := uint64(activeData.EffectiveBalance())
+
 		cell := clientCombinations[executionClient][consensusClient]
 		cell.ValidatorCount++
-		cell.EffectiveBalance += uint64(validator.Validator.EffectiveBalance)
-		totalEffectiveBalance += uint64(validator.Validator.EffectiveBalance)
+		cell.EffectiveBalance += effectiveBalance
+		totalEffectiveBalance += effectiveBalance
 
-		effectiveBalance := uint64(validator.Validator.EffectiveBalance)
-
-		// Check if validator is online - only for active validators
+		// Check if validator is online - slashed validators always count as offline
 		isOnline := false
-		if validator.Status == v1.ValidatorStateActiveOngoing || validator.Status == v1.ValidatorStateActiveExiting {
-			liveness := services.GlobalBeaconService.GetValidatorLiveness(validator.Index, livenessLookbackEpochs)
+		if !isSlashed {
+			liveness := services.ValidatorLivenessAt(livenessCounts, validatorIndex)
 			if liveness >= livenessOnlineThreshold {
 				isOnline = true
 				onlineEffectiveBalance += effectiveBalance
 			}
 		}
-		// For pending validators, consider them as "offline" (not yet active)
-		// For slashed validators, they can still be online if actively attesting
 
 		if isOnline {
 			cell.OnlineValidators++
@@ -254,7 +260,11 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 		}
 
 		// accumulate inclusion distance stats from cached blocks (attestation window)
-		inclCount, inclTotalDelay := services.GlobalBeaconService.GetValidatorInclusionDistance(validator.Index, attestationLookbackEpochs)
+		inclCount, inclTotalDelay := uint64(0), uint64(0)
+		if uint64(validatorIndex) < uint64(len(inclusionStats)) {
+			inclCount = uint64(inclusionStats[validatorIndex].Count)
+			inclTotalDelay = uint64(inclusionStats[validatorIndex].TotalDelay)
+		}
 		if inclCount > 0 {
 			if elInclStats[executionClient] == nil {
 				elInclStats[executionClient] = &validatorsSummaryInclusionStats{}
@@ -281,7 +291,7 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 			totalInclDelay += inclTotalDelay
 		}
 
-		dutyStat := dutyStats.Validators[validator.Index]
+		dutyStat := dutyStats.Validators[validatorIndex]
 
 		// accumulate block proposal stats (proposal lookback window)
 		if dutyStat != nil && dutyStat.ProposalsExpected > 0 {
@@ -346,6 +356,11 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 		}
 
 		activeValidators++
+		return nil
+	})
+
+	if activeValidators == 0 {
+		return pageData, cacheTime
 	}
 
 	// Calculate percentages, health status and avg inclusion delay per cell

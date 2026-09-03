@@ -162,8 +162,31 @@ func GetMaxValidatorIndex(ctx context.Context) (uint64, error) {
 	return maxIndex, nil
 }
 
-// GetValidatorIndexesByFilter returns validator indexes matching a filter
-func GetValidatorIndexesByFilter(ctx context.Context, filter dbtypes.ValidatorFilter, currentEpoch uint64) ([]uint64, error) {
+// GetValidatorCountByFilter returns the number of validators matching the filter.
+func GetValidatorCountByFilter(ctx context.Context, filter dbtypes.ValidatorFilter, currentEpoch uint64) (uint64, error) {
+	var sql strings.Builder
+	args := []interface{}{}
+	fmt.Fprint(&sql, `
+	SELECT
+		COUNT(*)
+	FROM validators
+	`)
+
+	args = buildValidatorFilterSql(filter, currentEpoch, &sql, args)
+
+	count := uint64(0)
+	err := ReaderDb.GetContext(ctx, &count, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while counting validators by filter: %v", err)
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// GetValidatorIndexesByFilter returns the indexes of the validators matching the filter in
+// the requested order. A limit greater than zero caps the number of returned indexes.
+func GetValidatorIndexesByFilter(ctx context.Context, filter dbtypes.ValidatorFilter, currentEpoch uint64, limit uint64) ([]uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
@@ -199,6 +222,11 @@ func GetValidatorIndexesByFilter(ctx context.Context, filter dbtypes.ValidatorFi
 		fmt.Fprintf(&sql, " ORDER BY withdrawable_epoch ASC")
 	case dbtypes.ValidatorOrderWithdrawableEpochDesc:
 		fmt.Fprintf(&sql, " ORDER BY withdrawable_epoch DESC")
+	}
+
+	if limit > 0 {
+		args = append(args, limit)
+		fmt.Fprintf(&sql, " LIMIT $%v", len(args))
 	}
 
 	validatorIds := []uint64{}

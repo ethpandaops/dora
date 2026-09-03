@@ -179,6 +179,74 @@ func (cache *validatorActivityCache) getValidatorInclusionDistance(validatorInde
 	return
 }
 
+// ValidatorInclusionStats holds the attestation count and summed inclusion delay of one
+// validator over a lookback window.
+type ValidatorInclusionStats struct {
+	Count      uint32
+	TotalDelay uint32
+}
+
+// getValidatorInclusionDistances returns the inclusion stats of every validator over the
+// last lookbackEpochs epochs, indexed by validator index, in a single pass over the cache.
+// Validators without cached attestations have a zero entry.
+func (cache *validatorActivityCache) getValidatorInclusionDistances(lookbackEpochs phase0.Epoch) []ValidatorInclusionStats {
+	cache.activityMutex.RLock()
+	defer cache.activityMutex.RUnlock()
+
+	chainState := cache.indexer.consensusPool.GetChainState()
+	currentEpoch := chainState.CurrentEpoch()
+
+	startEpoch := phase0.Epoch(0)
+	if currentEpoch > lookbackEpochs {
+		startEpoch = currentEpoch - lookbackEpochs
+	}
+
+	startSlot := chainState.EpochToSlot(startEpoch)
+	stats := make([]ValidatorInclusionStats, cache.indexer.validatorCache.getValidatorSetSize())
+
+	for validatorIndex, activities := range cache.activityMap {
+		if uint64(validatorIndex) >= uint64(len(stats)) {
+			stats = append(stats, make([]ValidatorInclusionStats, uint64(validatorIndex)-uint64(len(stats))+1)...)
+		}
+		for _, activity := range activities {
+			if activity.VoteBlock == nil {
+				continue
+			}
+			if activity.VoteBlock.Slot-phase0.Slot(activity.VoteDelay) < startSlot {
+				continue
+			}
+			stats[validatorIndex].Count++
+			stats[validatorIndex].TotalDelay += uint32(activity.VoteDelay)
+		}
+	}
+
+	return stats
+}
+
+// getValidatorActivityCounts returns the activity count of every validator since
+// startEpoch, indexed by validator index, in a single pass over the cache. Validators
+// without cached attestations have a zero entry.
+func (cache *validatorActivityCache) getValidatorActivityCounts(startEpoch phase0.Epoch) []uint8 {
+	cache.activityMutex.RLock()
+	defer cache.activityMutex.RUnlock()
+
+	startSlot := cache.indexer.consensusPool.GetChainState().EpochToSlot(startEpoch)
+	counts := make([]uint8, cache.indexer.validatorCache.getValidatorSetSize())
+
+	for validatorIndex, activities := range cache.activityMap {
+		if uint64(validatorIndex) >= uint64(len(counts)) {
+			counts = append(counts, make([]uint8, uint64(validatorIndex)-uint64(len(counts))+1)...)
+		}
+		for _, activity := range activities {
+			if activity.VoteBlock != nil && activity.VoteBlock.Slot-phase0.Slot(activity.VoteDelay) >= startSlot && counts[validatorIndex] < math.MaxUint8 {
+				counts[validatorIndex]++
+			}
+		}
+	}
+
+	return counts
+}
+
 // getValidatorActivityCount returns the number of validator activity for a given validator index.
 func (cache *validatorActivityCache) getValidatorActivityCount(validatorIndex phase0.ValidatorIndex, startEpoch phase0.Epoch) (count uint64) {
 	cache.activityMutex.RLock()

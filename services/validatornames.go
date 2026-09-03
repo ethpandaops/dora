@@ -48,7 +48,7 @@ type ValidatorNames struct {
 	lastInventoryRefresh  time.Time
 	updaterRunning        bool
 	namesMutex            sync.RWMutex
-	namesByIndex          map[uint64]*validatorNameEntry
+	nameRanges            []validatorNameRange // index-based names, sorted & disjoint
 	namesByWithdrawal     map[common.Address]*validatorNameEntry
 	namesByDepositOrigin  map[common.Address]*validatorNameEntry
 	namesByDepositTarget  map[common.Address]*validatorNameEntry
@@ -61,10 +61,26 @@ type ValidatorNames struct {
 	// nameHistory holds the published slot-bounded snapshots. Snapshots are immutable
 	// once published, so lookups load the pointer and search without any locking.
 	nameHistory atomic.Pointer[[]validatorNameSnapshot]
+
+	// nameIndex holds the published current name assignment. Like the history, it is
+	// immutable once published, so the per-validator lookups on hot paths (which run
+	// once per validator over the whole set) need no locking.
+	nameIndex atomic.Pointer[validatorNameIndex]
 }
 
 type validatorNameEntry struct {
 	name string
+}
+
+// validatorNameIndex is the immutable, published view of the current name assignment.
+// Index-based names are kept as sorted, disjoint ranges and resolved by binary search:
+// a range list stays small and cache-friendly, whereas a per-index map for a large
+// validator set costs a cache miss per lookup.
+type validatorNameIndex struct {
+	ranges     []validatorNameRange
+	resolved   map[uint64]*validatorNameEntry
+	nameCount  uint64 // number of validators covered by ranges
+	extraCount uint64 // number of address-based name sources
 }
 
 type validatorNameRange struct {
@@ -199,10 +215,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	if vn.namesByDepositTarget != nil {
 		namesByDepositTargetCopy = maps.Clone(vn.namesByDepositTarget)
 	}
-	var resolvedNamesByIndexCopy map[uint64]*validatorNameEntry
-	if vn.resolvedNamesByIndex != nil {
-		resolvedNamesByIndexCopy = maps.Clone(vn.resolvedNamesByIndex)
-	}
+	resolvedNamesByIndexCopy := vn.resolvedNamesByIndex // replaced wholesale, never mutated
 	vn.namesMutex.RUnlock()
 
 	newResolvedNames := map[uint64]*validatorNameEntry{}
@@ -288,32 +301,81 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	if hasUpdates {
 		vn.namesMutex.Lock()
 		vn.resolvedNamesByIndex = newResolvedNames
+		vn.publishNameIndex()
 		vn.namesMutex.Unlock()
 	}
 
 	return hasUpdates, nil
 }
 
+// publishNameIndex publishes the current range list and resolved names as an immutable
+// index for lock-free lookups. Must be called with namesMutex held for writing.
+func (vn *ValidatorNames) publishNameIndex() {
+	index := &validatorNameIndex{
+		ranges:     vn.nameRanges,
+		resolved:   vn.resolvedNamesByIndex,
+		extraCount: uint64(len(vn.namesByWithdrawal)),
+	}
+	for _, nameRange := range vn.nameRanges {
+		index.nameCount += nameRange.endIndex - nameRange.startIndex + 1
+	}
+	vn.nameIndex.Store(index)
+}
+
+// lookupRangeName finds the name of index in sorted, disjoint ranges.
+func lookupRangeName(ranges []validatorNameRange, index uint64) (string, bool) {
+	rangeIdx := sort.Search(len(ranges), func(i int) bool { return ranges[i].startIndex > index }) - 1
+	if rangeIdx >= 0 && index <= ranges[rangeIdx].endIndex {
+		return ranges[rangeIdx].name, true
+	}
+	return "", false
+}
+
+// normalizeNameRanges sorts ranges by start index and makes them disjoint: where two
+// ranges overlap, the one starting first keeps the overlapping indexes. Adjacent ranges
+// with the same name are merged.
+func normalizeNameRanges(ranges []validatorNameRange) []validatorNameRange {
+	sort.Slice(ranges, func(i, j int) bool {
+		if ranges[i].startIndex != ranges[j].startIndex {
+			return ranges[i].startIndex < ranges[j].startIndex
+		}
+		return ranges[i].endIndex > ranges[j].endIndex
+	})
+
+	result := make([]validatorNameRange, 0, len(ranges))
+	for _, nameRange := range ranges {
+		if len(result) > 0 {
+			prev := &result[len(result)-1]
+			if nameRange.startIndex <= prev.endIndex {
+				if prev.endIndex == math.MaxUint64 {
+					continue
+				}
+				nameRange.startIndex = prev.endIndex + 1
+				if nameRange.startIndex > nameRange.endIndex {
+					continue
+				}
+			}
+			if nameRange.startIndex == prev.endIndex+1 && nameRange.name == prev.name {
+				prev.endIndex = nameRange.endIndex
+				continue
+			}
+		}
+		result = append(result, nameRange)
+	}
+	return result
+}
+
 func (vn *ValidatorNames) GetValidatorName(index uint64) string {
-	if !vn.namesMutex.TryRLock() {
-		return ""
-	}
-	defer vn.namesMutex.RUnlock()
-	if vn.namesByIndex == nil {
+	nameIndex := vn.nameIndex.Load()
+	if nameIndex == nil {
 		return ""
 	}
 
-	name := vn.namesByIndex[index]
-	if name != nil {
-		return name.name
+	if name, found := lookupRangeName(nameIndex.ranges, index); found {
+		return name
 	}
 
-	if vn.resolvedNamesByIndex == nil {
-		return ""
-	}
-
-	name = vn.resolvedNamesByIndex[index]
-	if name != nil {
+	if name := nameIndex.resolved[index]; name != nil {
 		return name.name
 	}
 
@@ -602,14 +664,11 @@ func (vn *ValidatorNames) GetValidatorNameByPubkey(pubkey []byte) string {
 }
 
 func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {
-	if !vn.namesMutex.TryRLock() {
+	nameIndex := vn.nameIndex.Load()
+	if nameIndex == nil {
 		return 0
 	}
-	defer vn.namesMutex.RUnlock()
-	if vn.namesByIndex == nil {
-		return 0
-	}
-	return uint64(len(maps.Keys(vn.namesByIndex)) + len(maps.Keys(vn.namesByWithdrawal)))
+	return nameIndex.nameCount + nameIndex.extraCount
 }
 
 func (vn *ValidatorNames) LoadValidatorNames() chan bool {
@@ -629,8 +688,10 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 			vn.lastInventoryRefresh = time.Now()
 		}()
 
+		// The published index stays live until the first source has been parsed, so a
+		// reload never blanks the names in between.
 		vn.namesMutex.Lock()
-		vn.namesByIndex = make(map[uint64]*validatorNameEntry)
+		vn.nameRanges = nil
 		vn.namesByWithdrawal = make(map[common.Address]*validatorNameEntry)
 		vn.namesByDepositOrigin = make(map[common.Address]*validatorNameEntry)
 		vn.namesByDepositTarget = make(map[common.Address]*validatorNameEntry)
@@ -719,6 +780,8 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 	vn.namesMutex.Lock()
 	defer vn.namesMutex.Unlock()
 	nameCount := 0
+	ranges := make([]validatorNameRange, 0, len(vn.nameRanges)+len(names))
+	ranges = append(ranges, vn.nameRanges...)
 	for idxStr, name := range names {
 		rangeParts := strings.Split(idxStr, ":")
 		nameEntry := &validatorNameEntry{
@@ -758,12 +821,16 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 				logger_vn.Warnf("invalid validator name range bounds: %v", idxStr)
 				continue
 			}
-			for idx := minIdx; idx <= maxIdx; idx++ {
-				vn.namesByIndex[idx] = nameEntry
-				nameCount++
-			}
+			ranges = append(ranges, validatorNameRange{
+				startIndex: minIdx,
+				endIndex:   maxIdx,
+				name:       name,
+			})
+			nameCount += int(maxIdx - minIdx + 1)
 		}
 	}
+	vn.nameRanges = normalizeNameRanges(ranges)
+	vn.publishNameIndex()
 	return nameCount
 }
 
@@ -817,18 +884,21 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 }
 
 func (vn *ValidatorNames) UpdateDb(ctx context.Context) error {
-	vn.namesMutex.RLock()
-	nameRows := make([]*dbtypes.ValidatorName, 0)
-	hasName := map[uint64]bool{}
-	for index, name := range vn.namesByIndex {
-		hasName[index] = true
-		nameRows = append(nameRows, &dbtypes.ValidatorName{
-			Index: index,
-			Name:  name.name,
-		})
+	nameIndex := vn.nameIndex.Load()
+	if nameIndex == nil {
+		nameIndex = &validatorNameIndex{}
 	}
-	for index, name := range vn.resolvedNamesByIndex {
-		if hasName[index] {
+	nameRows := make([]*dbtypes.ValidatorName, 0, nameIndex.nameCount+uint64(len(nameIndex.resolved)))
+	for _, nameRange := range nameIndex.ranges {
+		for index := nameRange.startIndex; index <= nameRange.endIndex; index++ {
+			nameRows = append(nameRows, &dbtypes.ValidatorName{
+				Index: index,
+				Name:  nameRange.name,
+			})
+		}
+	}
+	for index, name := range nameIndex.resolved {
+		if _, found := lookupRangeName(nameIndex.ranges, index); found {
 			continue
 		}
 		nameRows = append(nameRows, &dbtypes.ValidatorName{
@@ -836,7 +906,6 @@ func (vn *ValidatorNames) UpdateDb(ctx context.Context) error {
 			Name:  name.name,
 		})
 	}
-	vn.namesMutex.RUnlock()
 
 	sort.Slice(nameRows, func(a, b int) bool {
 		return nameRows[a].Index < nameRows[b].Index
