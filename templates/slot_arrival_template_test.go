@@ -25,7 +25,7 @@ func TestArrivalTemplateExecutes(t *testing.T) {
 		Slot:         12345,
 		ProposerName: "proposer-node",
 		Block: &models.SlotPageBlockData{
-			BlockRoot:    []byte{0xab, 0xcd},
+			BlockRoot:     []byte{0xab, 0xcd},
 			PayloadHeader: &models.SlotPagePayloadHeader{BuilderName: "builder-node"},
 		},
 	}
