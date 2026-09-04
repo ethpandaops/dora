@@ -410,8 +410,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 
 	cachedResults := make([]ValidatorWithIndex, 0, 1000)
 	cachedIndexes := newValidatorIndexSet(bs.beaconIndexer.GetValidatorSetSize())
-	cachedCount := uint64(0)
-	cachedBeyondPersisted := uint64(0)
+	cachedWithinPersisted := uint64(0) // cached entries that supersede a db row
 
 	// get matching entries from cached validators
 	bs.beaconIndexer.StreamActiveValidatorDataForRoot(canonicalHead.Root, false, &currentEpoch, func(index phase0.ValidatorIndex, flags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
@@ -419,9 +418,8 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			return nil
 		}
 		cachedIndexes.add(index)
-		cachedCount++
-		if uint64(index) >= persistedCount {
-			cachedBeyondPersisted++
+		if uint64(index) < persistedCount {
+			cachedWithinPersisted++
 		}
 
 		if filter.MinIndex != nil && index < phase0.ValidatorIndex(*filter.MinIndex) {
@@ -486,39 +484,18 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 
 	// get matching entries from DB. With a limit, only the rows the requested window can
 	// reach are fetched and the total count is computed separately instead of by walking
-	// all matches. A cached entry pushes a db row back by at most one position, so
-	// offset+limit plus the number of cached entries sorting before db rows covers the
-	// window. For index ordering a cached entry with a db row replaces it in place, and
-	// the entries beyond the persisted rows sort after (ascending) resp. before
-	// (descending) every db row - in the descending case they fill the window on their
-	// own until the offset reaches past them. For other orderings every cached entry may
-	// sort elsewhere than its db row.
+	// all matches. The window needs at most offset+limit db rows that are not superseded
+	// by a cached state (cached matches only take positions away from db rows), and only
+	// cached entries with a db row can supersede one, so fetching that many extra rows
+	// covers the window for every sort order.
 	dbLimit := uint64(0)
-	skipDb := false
 	if filter.Limit > 0 {
-		window := filter.Offset + filter.Limit
-		switch filter.OrderBy {
-		case dbtypes.ValidatorOrderIndexAsc:
-			dbLimit = window
-		case dbtypes.ValidatorOrderIndexDesc:
-			if window > cachedBeyondPersisted {
-				dbLimit = window - cachedBeyondPersisted
-			} else {
-				skipDb = true
-			}
-		default:
-			dbLimit = window + cachedCount
-		}
+		dbLimit = filter.Offset + filter.Limit + cachedWithinPersisted
 	}
-
-	var dbIndexes []uint64
-	if !skipDb {
-		var err error
-		dbIndexes, err = db.GetValidatorIndexesByFilter(ctx, *filter, uint64(currentEpoch), dbLimit)
-		if err != nil {
-			bs.logger.Warnf("error getting validator indexes by filter: %v", err)
-			return nil, 0
-		}
+	dbIndexes, err := db.GetValidatorIndexesByFilter(ctx, *filter, uint64(currentEpoch), dbLimit)
+	if err != nil {
+		bs.logger.Warnf("error getting validator indexes by filter: %v", err)
+		return nil, 0
 	}
 
 	// sort results

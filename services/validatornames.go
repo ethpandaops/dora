@@ -331,37 +331,73 @@ func lookupRangeName(ranges []validatorNameRange, index uint64) (string, bool) {
 	return "", false
 }
 
-// normalizeNameRanges sorts ranges by start index and makes them disjoint: where two
-// ranges overlap, the one starting first keeps the overlapping indexes. Adjacent ranges
-// with the same name are merged.
+// normalizeNameRanges turns ranges into a sorted, disjoint list. Where ranges overlap,
+// the one appearing later in the input wins the overlapping indexes, matching the
+// precedence of sources loaded one after another. Adjacent ranges with the same name
+// are merged.
 func normalizeNameRanges(ranges []validatorNameRange) []validatorNameRange {
-	sort.Slice(ranges, func(i, j int) bool {
-		if ranges[i].startIndex != ranges[j].startIndex {
-			return ranges[i].startIndex < ranges[j].startIndex
+	if len(ranges) == 0 {
+		return nil
+	}
+
+	// sweep over the range boundaries; between two boundaries the last-added active
+	// range determines the name
+	type boundary struct {
+		position uint64 // first index the change applies to
+		rangeIdx int
+		start    bool
+	}
+	boundaries := make([]boundary, 0, len(ranges)*2)
+	for i, nameRange := range ranges {
+		boundaries = append(boundaries, boundary{position: nameRange.startIndex, rangeIdx: i, start: true})
+		if nameRange.endIndex < math.MaxUint64 {
+			boundaries = append(boundaries, boundary{position: nameRange.endIndex + 1, rangeIdx: i})
 		}
-		return ranges[i].endIndex > ranges[j].endIndex
+	}
+	sort.Slice(boundaries, func(i, j int) bool {
+		return boundaries[i].position < boundaries[j].position
 	})
 
 	result := make([]validatorNameRange, 0, len(ranges))
-	for _, nameRange := range ranges {
-		if len(result) > 0 {
-			prev := &result[len(result)-1]
-			if nameRange.startIndex <= prev.endIndex {
-				if prev.endIndex == math.MaxUint64 {
-					continue
-				}
-				nameRange.startIndex = prev.endIndex + 1
-				if nameRange.startIndex > nameRange.endIndex {
-					continue
-				}
-			}
-			if nameRange.startIndex == prev.endIndex+1 && nameRange.name == prev.name {
-				prev.endIndex = nameRange.endIndex
-				continue
+	active := make(map[int]bool)
+	winner := -1
+	segmentStart := uint64(0)
+	closeSegment := func(end uint64) {
+		if winner < 0 || end < segmentStart {
+			return
+		}
+		name := ranges[winner].name
+		if last := len(result) - 1; last >= 0 && result[last].name == name && result[last].endIndex+1 == segmentStart {
+			result[last].endIndex = end
+			return
+		}
+		result = append(result, validatorNameRange{startIndex: segmentStart, endIndex: end, name: name})
+	}
+
+	for i := 0; i < len(boundaries); {
+		position := boundaries[i].position
+		for ; i < len(boundaries) && boundaries[i].position == position; i++ {
+			if boundaries[i].start {
+				active[boundaries[i].rangeIdx] = true
+			} else {
+				delete(active, boundaries[i].rangeIdx)
 			}
 		}
-		result = append(result, nameRange)
+
+		newWinner := -1
+		for rangeIdx := range active {
+			if rangeIdx > newWinner {
+				newWinner = rangeIdx
+			}
+		}
+		if newWinner != winner {
+			closeSegment(position - 1)
+			winner = newWinner
+			segmentStart = position
+		}
 	}
+	closeSegment(math.MaxUint64)
+
 	return result
 }
 

@@ -191,6 +191,111 @@ func TestGetValidatorNameAt_NoHistory(t *testing.T) {
 	}
 }
 
+func TestNormalizeNameRanges(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []validatorNameRange
+		expected []validatorNameRange
+	}{
+		{
+			name:     "empty",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name: "sorts disjoint ranges",
+			input: []validatorNameRange{
+				{startIndex: 100, endIndex: 199, name: "b"},
+				{startIndex: 0, endIndex: 99, name: "a"},
+			},
+			expected: []validatorNameRange{
+				{startIndex: 0, endIndex: 99, name: "a"},
+				{startIndex: 100, endIndex: 199, name: "b"},
+			},
+		},
+		{
+			name: "later range wins inside an earlier one",
+			input: []validatorNameRange{
+				{startIndex: 0, endIndex: 100, name: "a"},
+				{startIndex: 50, endIndex: 60, name: "b"},
+			},
+			expected: []validatorNameRange{
+				{startIndex: 0, endIndex: 49, name: "a"},
+				{startIndex: 50, endIndex: 60, name: "b"},
+				{startIndex: 61, endIndex: 100, name: "a"},
+			},
+		},
+		{
+			name: "later range wins on partial overlap",
+			input: []validatorNameRange{
+				{startIndex: 0, endIndex: 100, name: "a"},
+				{startIndex: 80, endIndex: 120, name: "b"},
+			},
+			expected: []validatorNameRange{
+				{startIndex: 0, endIndex: 79, name: "a"},
+				{startIndex: 80, endIndex: 120, name: "b"},
+			},
+		},
+		{
+			name: "later identical range replaces the earlier one",
+			input: []validatorNameRange{
+				{startIndex: 0, endIndex: 9, name: "a"},
+				{startIndex: 0, endIndex: 9, name: "b"},
+			},
+			expected: []validatorNameRange{
+				{startIndex: 0, endIndex: 9, name: "b"},
+			},
+		},
+		{
+			name: "merges adjacent ranges with the same name",
+			input: []validatorNameRange{
+				{startIndex: 0, endIndex: 9, name: "a"},
+				{startIndex: 10, endIndex: 19, name: "a"},
+				{startIndex: 5, endIndex: 5, name: "a"},
+			},
+			expected: []validatorNameRange{
+				{startIndex: 0, endIndex: 19, name: "a"},
+			},
+		},
+		{
+			name: "single index entries",
+			input: []validatorNameRange{
+				{startIndex: 7, endIndex: 7, name: "x"},
+				{startIndex: 3, endIndex: 3, name: "y"},
+			},
+			expected: []validatorNameRange{
+				{startIndex: 3, endIndex: 3, name: "y"},
+				{startIndex: 7, endIndex: 7, name: "x"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeNameRanges(tt.input)
+			if len(got) != len(tt.expected) {
+				t.Fatalf("normalizeNameRanges() = %v, want %v", got, tt.expected)
+			}
+			for i := range got {
+				if got[i] != tt.expected[i] {
+					t.Errorf("normalizeNameRanges()[%d] = %v, want %v", i, got[i], tt.expected[i])
+				}
+			}
+			for index := uint64(0); index < 130; index++ {
+				want := ""
+				for _, nameRange := range tt.input {
+					if index >= nameRange.startIndex && index <= nameRange.endIndex {
+						want = nameRange.name
+					}
+				}
+				if name, _ := lookupRangeName(got, index); name != want {
+					t.Errorf("lookup(%d) = %q, want %q", index, name, want)
+				}
+			}
+		})
+	}
+}
+
 func TestBuildNameSnapshots(t *testing.T) {
 	// 12s slots starting at genesis time 1000
 	timeToSlot := func(ts int64) phase0.Slot {
