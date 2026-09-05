@@ -12,6 +12,7 @@ const (
 	CallTypeCreate       = 3
 	CallTypeCreate2      = 4
 	CallTypeSelfDestruct = 5
+	CallTypeFrame        = 6
 )
 
 // Call status constants for binary encoding.
@@ -129,7 +130,48 @@ type BlockReceiptMeta struct {
 // Receipt metadata version. Bump when adding new fields.
 const (
 	ReceiptMetaVersion1 = 1
+
+	// ReceiptMetaVersion2 marks a section that carries frame content after the fixed
+	// metadata: the payer and per-frame results of an EIP-8141 frame transaction, which
+	// a receipt reports and no other section holds.
+	ReceiptMetaVersion2 = 2
 )
+
+// FrameStatusUnknown marks a frame the client reported no result for, which is neither
+// a success nor a failure. EIP-8141's own statuses start at zero, and zero is how a
+// failure is spelled, so the absence of a result needs a value of its own.
+const FrameStatusUnknown uint8 = 255
+
+// FrameReceiptEntry is the result a receipt reports for one frame.
+type FrameReceiptEntry struct {
+	// Status is EIP-8141's per-frame status: 0 failed, 1 success, 2 skipped. A skipped
+	// frame is neither - an earlier frame in its atomic batch failed and it never ran.
+	Status uint8
+
+	// EIP-8037 accounts for gas in two dimensions, and the receipt reports both per
+	// frame. State gas is a final attribution rather than a running total: a later frame
+	// can retroactively reduce an earlier one through a state-gas refill.
+	ExecGasUsed  uint64
+	StateGasUsed uint64
+
+	// LogCount is how many logs the frame emitted. The transaction's logs are the
+	// per-frame lists concatenated in frame order, so these counts partition the events
+	// section and attribute each log to the frame that emitted it.
+	LogCount uint32
+}
+
+// FrameReceiptData is the frame-transaction content of a receipt.
+//
+// A frame transaction's own fields - its targets, values, calldata and gas budgets - are
+// recoverable from the transaction in the beacon block. What only the receipt holds is
+// who paid and what each frame did, so that is what is kept here.
+type FrameReceiptData struct {
+	// Payer settled the transaction's fee. For a sponsored transaction it is a paymaster
+	// rather than the sender, which is the point of the field.
+	Payer [20]byte
+
+	Frames []FrameReceiptEntry `ssz-max:"64"`
+}
 
 // ReceiptMetaData holds per-transaction receipt metadata needed to
 // reconstruct a full eth_getTransactionReceipt JSON response.

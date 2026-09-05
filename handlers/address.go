@@ -519,8 +519,11 @@ func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, 
 				txData.HasTo = true
 			}
 		}
-		// Deployment is flagged on tx_type at index time (raw recipient was null).
-		isCreate := tx.TxType&dbtypes.ElTxFlagCreate != 0
+		// Deployment is flagged on tx_type at index time (raw recipient was null). A
+		// transaction that addresses several recipients has none of its own and is not
+		// one, however much a missing recipient looks like it.
+		txData.IsMultiTarget = dbtypes.IsMultiTarget(tx.TxType)
+		isCreate := !txData.IsMultiTarget && tx.TxType&dbtypes.ElTxFlagCreate != 0
 
 		// Extract method ID from stored method_id field (first 4 bytes only)
 		if len(tx.MethodID) >= 4 {
@@ -975,6 +978,7 @@ var callTypeBitNames = []string{
 	"CREATE",       // 3
 	"CREATE2",      // 4
 	"SELFDESTRUCT", // 5
+	"FRAME",        // 6 - a consensus frame of an EIP-8141 transaction, not a traced call
 }
 
 func expandCallTypeMask(mask uint16) []models.AddressPageDataInternalTransactionCallType {

@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
@@ -117,7 +118,7 @@ func (bi *BuilderExitIndexer) runBuilderExitIndexerLoop() {
 }
 
 // processFinalTx parses a finalized builder exit log into a request tx.
-func (bi *BuilderExitIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, _ []*dbtypes.BuilderExitTx) (*dbtypes.BuilderExitTx, error) {
+func (bi *BuilderExitIndexer) processFinalTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, _ []*dbtypes.BuilderExitTx) (*dbtypes.BuilderExitTx, error) {
 	requestTx := bi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid builder exit log")
@@ -134,7 +135,7 @@ func (bi *BuilderExitIndexer) processFinalTx(log *types.Log, tx *types.Transacti
 }
 
 // processRecentTx parses a recent (unfinalized) builder exit log into a request tx.
-func (bi *BuilderExitIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.BuilderExitTx) (*dbtypes.BuilderExitTx, error) {
+func (bi *BuilderExitIndexer) processRecentTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.BuilderExitTx) (*dbtypes.BuilderExitTx, error) {
 	requestTx := bi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid builder exit log")

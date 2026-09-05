@@ -62,12 +62,12 @@ func decodeCallTraceResult(dec *json.Decoder, result *CallTraceResult, payloadLi
 			return decodeScalar(dec, key, &result.TxHash)
 
 		case "result":
-			call, err := decodeCallFrame(dec, payloadLimit)
+			roots, err := decodeCallFrameRoots(dec, payloadLimit)
 			if err != nil {
 				return err
 			}
 
-			result.Result = call
+			result.Roots = roots
 
 			return nil
 
@@ -85,7 +85,79 @@ func decodeCallTraceResult(dec *json.Decoder, result *CallTraceResult, payloadLi
 func decodeCallFrame(dec *json.Decoder, payloadLimit int) (*CallTraceCall, error) {
 	call := &CallTraceCall{}
 
-	present, err := decodeJSONObject(dec, "call frame", func(key string) error {
+	present, err := decodeJSONObject(dec, "call frame", callFrameField(dec, call, payloadLimit))
+	if err != nil {
+		return nil, err
+	}
+
+	if !present {
+		return nil, nil
+	}
+
+	return call, nil
+}
+
+// decodeCallFrameBody decodes a call frame whose opening brace has already been read.
+func decodeCallFrameBody(dec *json.Decoder, payloadLimit int) (*CallTraceCall, error) {
+	call := &CallTraceCall{}
+
+	if err := decodeJSONObjectBody(dec, "call frame", callFrameField(dec, call, payloadLimit)); err != nil {
+		return nil, err
+	}
+
+	return call, nil
+}
+
+// decodeCallFrameRoots decodes a transaction's trace result: either one root call frame,
+// or a list of them for a transaction whose client decomposes it into several.
+func decodeCallFrameRoots(dec *json.Decoder, payloadLimit int) ([]*CallTraceCall, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, asDecodeError(fmt.Errorf("read trace result start: %w", err))
+	}
+
+	switch tok {
+	case nil:
+		return nil, nil
+
+	case json.Delim('{'):
+		call, err := decodeCallFrameBody(dec, payloadLimit)
+		if err != nil {
+			return nil, err
+		}
+
+		return []*CallTraceCall{call}, nil
+
+	case json.Delim('['):
+		roots := make([]*CallTraceCall, 0, 4)
+
+		for dec.More() {
+			call, err := decodeCallFrame(dec, payloadLimit)
+			if err != nil {
+				return nil, err
+			}
+
+			if call != nil {
+				roots = append(roots, call)
+			}
+		}
+
+		if _, err := dec.Token(); err != nil {
+			return nil, asDecodeError(fmt.Errorf("read trace result end: %w", err))
+		}
+
+		return roots, nil
+
+	default:
+		return nil, &ResponseDecodeError{
+			Err: fmt.Errorf("expected '{' or '[' for trace result, got %v", tok),
+		}
+	}
+}
+
+// callFrameField returns the field decoder for one call frame's members.
+func callFrameField(dec *json.Decoder, call *CallTraceCall, payloadLimit int) func(key string) error {
+	return func(key string) error {
 		switch key {
 		case "type":
 			return decodeScalar(dec, key, &call.Type)
@@ -99,6 +171,12 @@ func decodeCallFrame(dec *json.Decoder, payloadLimit int) (*CallTraceCall, error
 			return decodeScalar(dec, key, &call.Gas)
 		case "gasUsed":
 			return decodeScalar(dec, key, &call.GasUsed)
+		case "regularGasUsed":
+			return decodeScalar(dec, key, &call.RegularGasUsed)
+		case "stateGasUsed":
+			return decodeScalar(dec, key, &call.StateGasUsed)
+		case "gasRefund":
+			return decodeScalar(dec, key, &call.GasRefund)
 		case "error":
 			return decodeScalar(dec, key, &call.Error)
 
@@ -122,16 +200,7 @@ func decodeCallFrame(dec *json.Decoder, payloadLimit int) (*CallTraceCall, error
 		default:
 			return skipJSONValue(dec)
 		}
-	})
-	if err != nil {
-		return nil, err
 	}
-
-	if !present {
-		return nil, nil
-	}
-
-	return call, nil
 }
 
 // decodeCallFrames decodes the nested "calls" array of a call frame.
@@ -186,29 +255,39 @@ func decodeJSONObject(dec *json.Decoder, what string, decodeField func(key strin
 		return false, &ResponseDecodeError{Err: fmt.Errorf("expected '{' for %s, got %v", what, tok)}
 	}
 
+	if err := decodeJSONObjectBody(dec, what, decodeField); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// decodeJSONObjectBody reads the members of an object whose opening brace has already
+// been read, invoking decodeField for every key.
+func decodeJSONObjectBody(dec *json.Decoder, what string, decodeField func(key string) error) error {
 	for dec.More() {
 		keyTok, err := dec.Token()
 		if err != nil {
-			return false, asDecodeError(fmt.Errorf("read %s key: %w", what, err))
+			return asDecodeError(fmt.Errorf("read %s key: %w", what, err))
 		}
 
 		key, ok := keyTok.(string)
 		if !ok {
-			return false, &ResponseDecodeError{
+			return &ResponseDecodeError{
 				Err: fmt.Errorf("expected string key in %s, got %T", what, keyTok),
 			}
 		}
 
 		if err := decodeField(key); err != nil {
-			return false, err
+			return err
 		}
 	}
 
 	if _, err := dec.Token(); err != nil {
-		return false, asDecodeError(fmt.Errorf("read %s end: %w", what, err))
+		return asDecodeError(fmt.Errorf("read %s end: %w", what, err))
 	}
 
-	return true, nil
+	return nil
 }
 
 // decodeScalar decodes the value of a single object field.

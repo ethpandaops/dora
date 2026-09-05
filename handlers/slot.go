@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
@@ -39,6 +38,7 @@ import (
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/types/models"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/spamoor/txtypes"
 )
 
 // Index will return the main "index" page using a go template
@@ -1155,6 +1155,7 @@ var slotTxTypeNames = map[uint8]string{
 	2: "EIP-1559",
 	3: "Blob",
 	4: "EIP-7702",
+	6: "Frame",
 }
 
 func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction, blockUid uint64) {
@@ -1168,9 +1169,7 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
 
 	for idx, txBytes := range transactions {
-		var tx ethtypes.Transaction
-
-		err := tx.UnmarshalBinary(txBytes)
+		tx, err := txtypes.DecodeTx(txBytes)
 		if err != nil {
 			logrus.Warnf("error decoding transaction 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
 			continue
@@ -1198,18 +1197,23 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 		}
 		txData.DataLen = uint64(len(txData.Data))
 
-		chainId := tx.ChainId()
-		if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
-			chainId = nil
-		}
-		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainId), &tx)
+		txFrom, err := tx.From(tx.ChainId())
 		if err != nil {
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
 		} else {
 			txData.From = txFrom.Bytes()
 		}
+
+		// A frame transaction addresses each of its frames separately. What To() reports
+		// for one is the first SENDER frame's target, which is neither the transaction's
+		// recipient nor, when it is absent, a contract creation.
 		txTo := tx.To()
-		if txTo != nil {
+
+		if frameTx, ok := tx.Inner().(*txtypes.FrameTx); ok {
+			txData.IsMultiTarget = true
+			txData.FrameCount = uint64(len(frameTx.Frames))
+			txTo = nil
+		} else if txTo != nil {
 			txData.To = txTo.Bytes()
 		}
 
@@ -1217,7 +1221,7 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 		txHashMap[string(txHash[:])] = txData
 
 		// check call fn signature
-		isCreate := txTo == nil
+		isCreate := txTo == nil && !txData.IsMultiTarget
 		if txData.DataLen >= 4 {
 			// Skip fn signature lookup for deployments, precompiles, and system contracts
 			if skip, altName := utils.ShouldSkipSignatureLookup(txData.To, isCreate, sysContracts); skip {
@@ -1791,9 +1795,7 @@ func decodeInclusionListTransactions(il *v1.SignedInclusionList, sysContracts ma
 	txList := make([]*models.SlotPageTransaction, 0, len(il.Message.Transactions))
 
 	for idx, txBytes := range il.Message.Transactions {
-		var tx ethtypes.Transaction
-
-		err := tx.UnmarshalBinary(txBytes)
+		tx, err := txtypes.DecodeTx(txBytes)
 		if err != nil {
 			logrus.Warnf("error decoding inclusion list transaction %v.%v: %v", il.Message.ValidatorIndex, idx, err)
 			continue
@@ -1821,21 +1823,25 @@ func decodeInclusionListTransactions(il *v1.SignedInclusionList, sysContracts ma
 		}
 		txData.DataLen = uint64(len(txData.Data))
 
-		chainId := tx.ChainId()
-		if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
-			chainId = nil
-		}
-		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainId), &tx)
+		txFrom, err := tx.From(tx.ChainId())
 		if err == nil {
 			txData.From = txFrom.Bytes()
 		}
+		// A frame transaction addresses each of its frames separately, exactly as on the
+		// block's own transaction list: To() reports the first SENDER frame's target,
+		// which is not the recipient, and its absence is not a creation.
 		txTo := tx.To()
-		if txTo != nil {
+
+		if frameTx, ok := tx.Inner().(*txtypes.FrameTx); ok {
+			txData.IsMultiTarget = true
+			txData.FrameCount = uint64(len(frameTx.Frames))
+			txTo = nil
+		} else if txTo != nil {
 			txData.To = txTo.Bytes()
 		}
 
 		// Check call fn signature
-		isCreate := txTo == nil
+		isCreate := txTo == nil && !txData.IsMultiTarget
 		if txData.DataLen >= 4 {
 			if skip, altName := utils.ShouldSkipSignatureLookup(txData.To, isCreate, sysContracts); skip {
 				txData.FuncSigStatus = 10

@@ -143,6 +143,95 @@ type TransactionPageData struct {
 	// EIP-7976: calldata floor gas cost = 21000 + 64 × len(calldata); 0 if no calldata
 	CalldataFloorGas uint64 `json:"calldata_floor_gas"`
 
+	// Frame transaction (EIP-8141). A frame transaction is an ordered list of calls
+	// rather than one, so it has no recipient, value or status of its own.
+	IsFrameTx  bool   `json:"is_frame_tx"`
+	FrameCount uint64 `json:"frame_count"`
+
+	// FrameResultsMissing marks frames shown as declared but not as executed. What each
+	// frame did is only on the receipt, which is kept for blocks indexed with execution
+	// details - so a deployment that indexes without them, or a block that predates the
+	// receipt being stored, leaves the frames without results.
+	FrameResultsMissing bool `json:"frame_results_missing"`
+
+	// FrameExtensions names which of EIP-8141's extensions the payload used - EIP-8250's
+	// keyed nonces and EIP-8272's recent roots are independent, so four shapes exist and
+	// the transaction says which one it is. FrameHasKeyedNonces is the structural
+	// question, as against NonceIsAccount, which asks whether the sequence is the
+	// sender's account nonce.
+	FrameExtensions     string `json:"frame_extensions"`
+	FrameHasKeyedNonces bool   `json:"frame_has_keyed_nonces"`
+
+	// FrameBodyReverted marks a transaction whose POST_TX frame failed, which reverts
+	// everything after the validation prefix rather than only its own atomic batch.
+	FrameBodyReverted bool `json:"frame_body_reverted"`
+
+	// FrameShape names the transaction by its validation prefix - the thing that makes a
+	// frame transaction legible at a glance.
+	FrameShape string `json:"frame_shape"`
+
+	// FrameValidationCount is how many leading frames form the validation prefix: the
+	// run whose success settles whether the transaction runs and who pays for it. The
+	// frames after it carry out the sender's operations.
+	FrameValidationCount int `json:"frame_validation_count"`
+
+	// Totals over the frames, which is where a frame transaction's gas actually goes.
+	FrameExecGasUsed  uint64 `json:"frame_exec_gas_used"`
+	FrameStateGasUsed uint64 `json:"frame_state_gas_used"`
+	FrameSuccessCount int    `json:"frame_success_count"`
+	FrameFailedCount  int    `json:"frame_failed_count"`
+	FrameSkippedCount int    `json:"frame_skipped_count"`
+
+	// FrameFailedIndex is the first frame that failed, meaningful only when
+	// FrameFailedCount is non-zero. A frame transaction has no revert reason of its own:
+	// it did not revert, one of its frames did.
+	FrameFailedIndex   uint32 `json:"frame_failed_index"`
+	FrameRolledBackCnt int    `json:"frame_rolled_back_count"`
+
+	// FrameIncomplete marks a frame transaction that ran and paid but did not carry out
+	// everything it asked for. It is not a revert: what the other frames did stands.
+	// FrameStatusDetail says which frames did not, for the status tooltip.
+	FrameIncomplete   bool   `json:"frame_incomplete"`
+	FrameStatusDetail string `json:"frame_status_detail"`
+
+	// PayerAddr settled the fee. Worth showing whenever it is not the sender, which is
+	// the whole point of a sponsored transaction.
+	PayerAddr     []byte `json:"payer_addr"`
+	PayerIsSender bool   `json:"payer_is_sender"`
+
+	// FeeRecipientAddr was paid the block's transaction fees.
+	FeeRecipientAddr []byte `json:"fee_recipient_addr"`
+
+	// ExpiryTime is the deadline an expiry verifier frame checked against.
+	//
+	// The frame checked it when the transaction executed, so on an included transaction
+	// the deadline only says how much room it had left. ExpiryMargin is that distance
+	// from the inclusion time, and ExpiryPassed marks the deadline as already gone by
+	// then - which a conforming client would not have included.
+	HasExpiry    bool      `json:"has_expiry"`
+	ExpiryTime   time.Time `json:"expiry_time"`
+	ExpiryMargin string    `json:"expiry_margin"`
+	ExpiryPassed bool      `json:"expiry_passed"`
+
+	// NonceIsAccount reports whether NonceSeq is the sender's ordinary account nonce,
+	// which is only so when the transaction names the zero nonce key alone. Otherwise it
+	// is sequenced in a domain of its own and NonceKeys names which.
+	NonceIsAccount bool                           `json:"nonce_is_account"`
+	NonceKeys      []*TransactionPageDataNonceKey `json:"nonce_keys"`
+
+	Frames []*TransactionPageDataFrame `json:"frames"`
+
+	// Signatures is what authenticated the transaction: the one ECDSA signature an
+	// ordinary transaction is signed with, or the list a frame transaction carries. It
+	// lives in the envelope, so it is present exactly while the block is.
+	Signatures []*TransactionPageDataSignature `json:"signatures"`
+
+	// SignaturesRecoverSender reports whether the sender is recovered from the signature,
+	// as it is for every type but a frame transaction, which names its sender outright.
+	SignaturesRecoverSender bool `json:"signatures_recover_sender"`
+
+	FrameRecentRoots []*TransactionPageDataFrameRecentRoot `json:"frame_recent_roots"`
+
 	// Tab view
 	TabView string `json:"tab_view"`
 
@@ -155,19 +244,169 @@ type TransactionPageData struct {
 	TokenTransferCount uint64                              `json:"token_transfer_count"`
 
 	// Internal transactions tab
-	HasTrace                bool                             `json:"has_trace"` // a call trace exists (>=1 frame)
+	HasTrace                bool                             `json:"has_trace"`         // a call trace exists (>=1 frame)
+	HasStateChanges         bool                             `json:"has_state_changes"` // a state diff was stored for this block
 	InternalTxs             []*TransactionPageDataInternalTx `json:"internal_txs"`
 	InternalTxCount         uint64                           `json:"internal_tx_count"`
 	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags
 	EventsNotAvailable      bool                             `json:"events_not_available"`
 	InternalTxsNotAvailable bool                             `json:"internal_txs_not_available"`
-	InternalTxIndentPx      float64                          `json:"internal_tx_indent_px"`
+
+	// FrameCallsNotTraced marks a frame transaction whose client did not decompose it
+	// into its frames. The block stored call traces, this transaction just has none that
+	// say anything about it, which is a different thing from the data being gone.
+	FrameCallsNotTraced bool    `json:"frame_calls_not_traced"`
+	InternalTxIndentPx  float64 `json:"internal_tx_indent_px"`
 
 	// State changes tab (prestateTracer diffMode)
 	StateChanges             []*TransactionPageDataStateChangeAccount `json:"state_changes"`
 	StateChangesNotAvailable bool                                     `json:"state_changes_not_available"`
 
 	EnsNameData
+}
+
+// TransactionPageDataSignature is a signature that authenticated the transaction.
+//
+// Every type but a frame transaction carries exactly one, and the sender is recovered
+// from it. A frame transaction names its sender outright and carries a list instead: a
+// set of authorisations the protocol checks before any frame runs, which is how an
+// account other than the sender agrees to pay.
+type TransactionPageDataSignature struct {
+	Index uint32 `json:"index"`
+
+	Scheme     uint8  `json:"scheme"`
+	SchemeName string `json:"scheme_name"`
+
+	// SignerAddr is the account the entry authorises for. An entry that names none
+	// authorises for the sender; an arbitrary witness authorises for nobody and carries
+	// no signer at all.
+	SignerAddr     []byte `json:"signer_addr"`
+	HasSigner      bool   `json:"has_signer"`
+	SignerIsSender bool   `json:"signer_is_sender"`
+
+	// Role names what the entry does in this transaction, where that can be told from
+	// the accounts it names.
+	Role string `json:"role"`
+
+	// Msg is an explicit digest when the entry signs one rather than the transaction's
+	// canonical signature hash.
+	Msg []byte `json:"msg"`
+
+	Signature       []byte `json:"signature"`
+	VerificationGas uint64 `json:"verification_gas"`
+
+	// Parts are the signature's raw bytes split into the fields its scheme defines, or
+	// nil when the bytes are not the length that scheme expects.
+	Parts []*TransactionPageDataSignaturePart `json:"parts"`
+}
+
+// TransactionPageDataSignaturePart is one named field of a signature entry, decoded
+// according to the entry's scheme.
+type TransactionPageDataSignaturePart struct {
+	Name  string `json:"name"`
+	Value []byte `json:"value"`
+
+	// Note carries anything about the field worth saying beside it.
+	Note string `json:"note"`
+}
+
+// TransactionPageDataNonceKey is one EIP-8250 nonce key the transaction selects. A key is
+// an opaque 256-bit identifier rather than a quantity - applications derive them from
+// things like nullifiers - so it is carried as hex, with a short form for inline use.
+type TransactionPageDataNonceKey struct {
+	Index uint32 `json:"index"`
+	Key   string `json:"key"`
+	Short string `json:"short"`
+}
+
+// TransactionPageDataFrameRecentRoot is an EIP-8272 recent root the transaction declared,
+// so that a frame can read it while the transaction executes.
+type TransactionPageDataFrameRecentRoot struct {
+	Index    uint32 `json:"index"`
+	SourceID []byte `json:"source_id"`
+	Slot     uint64 `json:"slot"`
+	Root     []byte `json:"root"`
+}
+
+// TransactionPageDataFrame is one frame of an EIP-8141 frame transaction.
+type TransactionPageDataFrame struct {
+	Index uint32 `json:"index"`
+
+	Mode     uint8  `json:"mode"`
+	ModeName string `json:"mode_name"`
+
+	// Species names what the frame does within the transaction - a deadline check, a
+	// paymaster approving payment, the user's own operation - and SpeciesInfo says what
+	// that kind of frame is for.
+	Species     string `json:"species"`
+	SpeciesInfo string `json:"species_info"`
+
+	Flags             uint8 `json:"flags"`
+	ApprovesPayment   bool  `json:"approves_payment"`
+	ApprovesExecution bool  `json:"approves_execution"`
+
+	// AtomicBatch marks a frame batched with the frame after it. BatchIndex groups the
+	// frames of one batch so they can be shown together; frames outside a batch each get
+	// their own.
+	AtomicBatch  bool `json:"atomic_batch"`
+	BatchIndex   int  `json:"batch_index"`
+	BatchSize    int  `json:"batch_size"`
+	IsBatchStart bool `json:"is_batch_start"`
+	IsBatchEnd   bool `json:"is_batch_end"`
+
+	// IsValidation marks a frame in the validation prefix. Those frames decide whether
+	// the transaction runs at all; the ones after them do the work it was sent for.
+	IsValidation bool `json:"is_validation"`
+
+	// CallerAddr is where the frame's call comes from. DEFAULT and VERIFY frames are
+	// entered by the ENTRY_POINT predeploy rather than by the sender, which is what lets
+	// a frame run against an account without that account authorising it directly.
+	CallerAddr     []byte `json:"caller_addr"`
+	CallerIsSender bool   `json:"caller_is_sender"`
+	CallerLabel    string `json:"caller_label"`
+
+	TargetAddr     []byte `json:"target_addr"`
+	TargetIsSender bool   `json:"target_is_sender"`
+	HasTarget      bool   `json:"has_target"`
+
+	// TargetLabel names a target that is a protocol predeploy rather than an account.
+	TargetLabel string `json:"target_label"`
+
+	Amount   float64 `json:"amount"`
+	DataLen  uint32  `json:"data_len"`
+	MethodID []byte  `json:"method_id"`
+
+	// Data is the frame's calldata, which the transaction carries and the receipt does
+	// not - so it is present exactly when the transaction's block still is.
+	Data            []byte                        `json:"data"`
+	MethodName      string                        `json:"method_name"`
+	MethodSignature string                        `json:"method_signature"`
+	DecodedCalldata []*utils.DecodedCalldataParam `json:"decoded_calldata"`
+
+	// Status is EIP-8141's per-frame status. Skipped is neither a success nor a failure:
+	// an earlier frame in the same atomic batch failed and this one never ran. Unknown
+	// means the client reported no result for it.
+	Status     uint8  `json:"status"`
+	StatusText string `json:"status_text"`
+
+	// RolledBack marks a frame whose atomic batch was undone after it ran. It may report
+	// success, but its logs were discarded and its state gas zeroed - nothing it did
+	// survived, and a plain success would say otherwise. BatchFailedIndex names the
+	// frame that failed and took the batch with it.
+	RolledBack       bool `json:"rolled_back"`
+	BatchFailedIndex int  `json:"batch_failed_index"`
+
+	// EIP-8037 budgets and reports each frame in two gas dimensions.
+	ExecGasLimit  uint64 `json:"exec_gas_limit"`
+	StateGasLimit uint64 `json:"state_gas_limit"`
+	ExecGasUsed   uint64 `json:"exec_gas_used"`
+	StateGasUsed  uint64 `json:"state_gas_used"`
+
+	LogCount uint16 `json:"log_count"`
+
+	// ExpiryTime is set on an expiry verifier frame, whose calldata is the deadline.
+	HasExpiry  bool      `json:"has_expiry"`
+	ExpiryTime time.Time `json:"expiry_time"`
 }
 
 // TransactionAccessListEntry is one address+storage-keys pair from an EIP-2930 access list.
@@ -179,6 +418,19 @@ type TransactionAccessListEntry struct {
 // TransactionPageDataStateChangeAccount represents state changes for a single account.
 type TransactionPageDataStateChangeAccount struct {
 	Address []byte `json:"address" ssz-size:"20"`
+
+	// The part the account played in the transaction, where it played one. Balances move
+	// for reasons that are not visible from the numbers alone: the sender's for what it
+	// spent, the fee recipient's for what it was paid, and a frame transaction's payer
+	// for a fee its sender did not owe.
+	IsSender       bool `json:"is_sender"`
+	IsPayer        bool `json:"is_payer"`
+	IsFeeRecipient bool `json:"is_fee_recipient"`
+
+	// PredeployName names the protocol's own account, where the account is one. Storage
+	// on NONCE_MANAGER or RECENT_ROOTS is written by the protocol rather than by any
+	// frame, and says nothing without the name.
+	PredeployName string `json:"predeploy_name"`
 
 	// High level flags (precomputed from the binary flags)
 	AccountCreated bool `json:"account_created"`
@@ -217,6 +469,12 @@ type TransactionPageDataStateChangeSlot struct {
 type TransactionPageDataEvent struct {
 	EventIndex uint32 `json:"event_index"`
 
+	// FrameIndex is the frame of a frame transaction that emitted the event. A
+	// transaction's logs are the per-frame lists concatenated in frame order, so the
+	// per-frame counts say which frame each one came from.
+	FrameIndex uint32 `json:"frame_index"`
+	HasFrame   bool   `json:"has_frame"`
+
 	// Source contract
 	SourceAddr       []byte `json:"source_addr" ssz-size:"20"`
 	SourceIsContract bool   `json:"source_is_contract"`
@@ -243,6 +501,14 @@ type TransactionPageDataEvent struct {
 // TransactionPageDataTokenTransfer represents a token transfer in the transaction
 type TransactionPageDataTokenTransfer struct {
 	TransferIndex uint32 `json:"transfer_index"`
+
+	// EventIndex is the transaction log the transfer was decoded from. Several transfers
+	// can share one - an ERC1155 batch is a single log - so it is not a key.
+	EventIndex uint32 `json:"event_index"`
+
+	// FrameIndex is the frame of a frame transaction whose log this was.
+	FrameIndex uint32 `json:"frame_index"`
+	HasFrame   bool   `json:"has_frame"`
 
 	// Token info
 	TokenID     uint64 `json:"token_id"`
@@ -272,6 +538,12 @@ type TransactionPageDataInternalTx struct {
 	Depth     uint16 `json:"depth"`
 	CallType  uint8  `json:"call_type"`
 	TypeName  string `json:"type_name"`
+
+	// FrameIndex is the frame of a frame transaction the call was made from. A client
+	// that decomposes such a transaction traces one root per executed frame, so every
+	// call below a root belongs to that frame.
+	FrameIndex uint32 `json:"frame_index"`
+	HasFrame   bool   `json:"has_frame"`
 
 	// From/To
 	FromAddr       []byte `json:"from_addr" ssz-size:"20"`

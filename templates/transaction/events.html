@@ -33,6 +33,9 @@
           <tr data-topic0="{{ formatHexBytes $evt.Topic0 }}">
             <td class="px-3 text-center align-top">
               <span class="badge text-bg-secondary">{{ $evt.EventIndex }}</span>
+              {{ if $evt.HasFrame }}
+              <br><span class="badge text-bg-primary mt-1" style="font-size: 0.65rem;" data-bs-toggle="tooltip" title="Emitted by frame #{{ $evt.FrameIndex }} of this frame transaction. The transaction's logs are the per-frame lists concatenated in frame order.">frame #{{ $evt.FrameIndex }}</span>
+              {{ end }}
               {{ if $evt.EventName }}
               <br><span class="badge bg-warning text-dark mt-1" style="font-size: 0.65rem; white-space: normal; word-break: break-word;" data-bs-toggle="tooltip" title="{{ $evt.EventName }}">{{ $evt.EventName }}</span>
               {{ if $evt.EthTransferValue }}
@@ -46,7 +49,7 @@
                 {{ if gt (len $evt.SourceAddr) 0 }}
                   {{ $addr := formatEthAddressFull $evt.SourceAddr }}
                   {{ if $evt.SourceIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
-                  <a href="/address/{{ $addr }}" class="text-monospace text-break">{{ $addr }}</a>
+                  <span class="text-monospace text-break">{{ formatEthAddressFullLink $evt.SourceAddr }}</span>
                 {{ else }}
                   <span class="text-muted">Unknown</span>
                 {{ end }}
@@ -60,11 +63,11 @@
                 <span class="text-muted small">{{ $evt.EthTransferValue }}</span>
                 <div class="mt-1">
                   <span class="text-muted small me-1">From:</span>
-                  <a href="/address/{{ formatEthAddressFull $evt.EthTransferFrom }}" class="text-monospace small">{{ formatEthAddressFull $evt.EthTransferFrom }}</a>
+                  <span class="text-monospace small">{{ formatEthAddressFullLink $evt.EthTransferFrom }}</span>
                 </div>
                 <div>
                   <span class="text-muted small me-3">To:</span>
-                  <a href="/address/{{ formatEthAddressFull $evt.EthTransferTo }}" class="text-monospace small">{{ formatEthAddressFull $evt.EthTransferTo }}</a>
+                  <span class="text-monospace small">{{ formatEthAddressFullLink $evt.EthTransferTo }}</span>
                 </div>
               </div>
               {{ end }}

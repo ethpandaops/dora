@@ -32,7 +32,9 @@
               <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull $transaction.From }}"></i>
             </td>
             <td class="text-monospace">
-              {{ if gt (len $transaction.To) 0 }}
+              {{ if $transaction.IsMultiTarget }}
+                <span class="text-muted" data-bs-toggle="tooltip" title="This transaction addresses each of its frames separately and has no recipient of its own">{{ $transaction.FrameCount }} frame{{ if ne $transaction.FrameCount 1 }}s{{ end }}</span>
+              {{ else if gt (len $transaction.To) 0 }}
                 {{ formatEthAddressShortLink $transaction.To false }}
                 <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull $transaction.To }}"></i>
               {{ else }}

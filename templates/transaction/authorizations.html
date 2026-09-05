@@ -19,7 +19,7 @@
             <td class="text-monospace text-break">
               {{ if .AuthorityOk }}
               {{ $authAddr := formatEthAddressFull .AuthorityAddr }}
-              <a href="/address/{{ $authAddr }}">{{ $authAddr }}</a>
+              {{ formatEthAddressFullLink .AuthorityAddr }}
               <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ $authAddr }}" style="font-size: 0.75rem;"></i>
               {{ else }}
               <span class="text-muted">Recovery failed</span>
@@ -27,7 +27,7 @@
             </td>
             <td class="text-monospace text-break">
               {{ $delegateAddr := formatEthAddressFull .DelegateAddr }}
-              <a href="/address/{{ $delegateAddr }}">{{ $delegateAddr }}</a>
+              {{ formatEthAddressFullLink .DelegateAddr }}
               <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ $delegateAddr }}" style="font-size: 0.75rem;"></i>
             </td>
             <td class="text-center px-3">

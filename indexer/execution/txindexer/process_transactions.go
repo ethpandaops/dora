@@ -14,11 +14,11 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/snappy"
 	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
+	"github.com/sirupsen/logrus"
 
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/execution"
@@ -26,6 +26,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/spamoor/txtypes"
 )
 
 // Event topic signatures for token transfers
@@ -139,6 +140,16 @@ type txProcessingResult struct {
 	// Call trace data (populated in Mode Full + tracesEnabled)
 	internalAggregates map[*pendingAccount]*pendingInternalAggregate
 	callTraceData      []bdbtypes.FlatCallFrame // Flattened call trace for blockdb serialization
+
+	// Frames of an EIP-8141 frame transaction, nil for every other type, and the account
+	// its receipt names as having settled the fee.
+	frames     []*pendingFrame
+	framePayer common.Address
+
+	// internalFromFrames marks internalAggregates as derived from a frame transaction's
+	// own frames rather than from a call trace. Those come from the receipt, so they are
+	// stored whether or not tracing is enabled.
+	internalFromFrames bool
 
 	// State changes data (populated in Mode Full + tracesEnabled)
 	stateChangesData []bdbtypes.StateChangeAccount
@@ -300,9 +311,9 @@ func newTxProcessingContext(
 // processTransaction processes a single transaction within the context.
 // callTrace may be nil if traces are not available or not configured.
 func (ctx *txProcessingContext) processTransaction(
-	tx *types.Transaction,
-	receipt *types.Receipt,
-	callTrace *exerpc.CallTraceCall,
+	tx *txtypes.Transaction,
+	receipt *txtypes.Receipt,
+	callTrace []*exerpc.CallTraceCall,
 	stateDiff *exerpc.StateDiff,
 ) (dbCommitCallback, error) {
 	result := &txProcessingResult{
@@ -311,28 +322,41 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 
 	txHash := tx.Hash()
-	chainID := tx.ChainId()
-	if chainID.Cmp(big.NewInt(0)) == 0 {
-		chainID = nil
-	}
-	from, err := types.Sender(types.LatestSignerForChainID(chainID), tx)
+
+	// A transaction decoded from a client's JSON already carries the sender the node
+	// reported; one decoded from the beacon block's wire bytes has it recovered here.
+	from, err := tx.From(tx.ChainId())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve sender of transaction %s: %w", txHash.Hex(), err)
 	}
 
 	// 1. First ensure "from" account exists (no funder for sender)
 	fromAccount := ctx.ensureAccount(from, nil, false)
 
+	// A frame transaction addresses each of its frames separately and has no recipient
+	// of its own. What To() reports for one is the first SENDER frame's target, which is
+	// neither the transaction's recipient nor - when the transaction has no SENDER frame
+	// and To() is therefore nil - a contract creation.
+	frameTx, isFrameTx := tx.Inner().(*txtypes.FrameTx)
+
 	// 2. Process "to" account (funder is the "from" account)
 	var toAddr common.Address
 	var toAccount *pendingAccount
-	isContractCreation := tx.To() == nil
+	isContractCreation := !isFrameTx && tx.To() == nil
 
-	if isContractCreation {
+	switch {
+	case isFrameTx:
+		// The recipient stays unset; the targets are resolved per frame below.
+		result.frames = ctx.resolveFrames(frameTx, receipt, fromAccount)
+
+		if extra := receipt.FrameExtra(); extra != nil {
+			result.framePayer = extra.Payer
+		}
+	case isContractCreation:
 		// Calculate contract address for contract creation
 		toAddr = crypto.CreateAddress(from, tx.Nonce())
 		toAccount = ctx.ensureAccount(toAddr, fromAccount, true)
-	} else {
+	default:
 		toAddr = *tx.To()
 		toAccount = ctx.ensureAccount(toAddr, fromAccount, false)
 	}
@@ -341,9 +365,16 @@ func (ctx *txProcessingContext) processTransaction(
 	txValue := tx.Value()
 	txNonce := tx.Nonce()
 
-	// Track sender's highest nonce for batch update
-	if existingNonce, exists := ctx.senderNonces[from]; !exists || txNonce > existingNonce {
-		ctx.senderNonces[from] = txNonce
+	// Track sender's highest nonce for batch update.
+	//
+	// EIP-8250 gives a frame transaction one nonce sequence per key it names. Only the
+	// zero key aliases the sender's ordinary account nonce; any other key sequences the
+	// transaction in a domain of its own, and recording that sequence as an account
+	// nonce would corrupt the account index.
+	if !isFrameTx || frameTx.UsesLegacyNonce() {
+		if existingNonce, exists := ctx.senderNonces[from]; !exists || txNonce > existingNonce {
+			ctx.senderNonces[from] = txNonce
+		}
 	}
 
 	// Calculate gas prices in Gwei (1 Gwei = 10^9 wei)
@@ -378,7 +409,6 @@ func (ctx *txProcessingContext) processTransaction(
 		BlockUid:    ctx.block.BlockUID,
 		TxHash:      txHash[:],
 		FromID:      fromAccount.id,
-		ToID:        toAccount.id,
 		Nonce:       txNonce,
 		Amount:      weiToFloat(txValue, 18), // ETH uses 18 decimals
 		AmountRaw:   txValue.Bytes(),
@@ -398,8 +428,28 @@ func (ctx *txProcessingContext) processTransaction(
 	result.fromAccount = fromAccount
 	result.toAccount = toAccount
 
-	// Track ETH transfer for balance updates (only if successful and value > 0)
-	if receipt.Status == 1 && txValue.Sign() > 0 {
+	// Track ETH transfer for balance updates (only if successful and value > 0).
+	// A frame transaction moves value per frame rather than once, so each frame that
+	// carried value and durably succeeded contributes its own transfer.
+	if isFrameTx {
+		for _, frame := range result.frames {
+			if !frame.succeeded() || frame.value.Sign() == 0 {
+				continue
+			}
+
+			ctx.pendingTransfers = append(ctx.pendingTransfers, &pendingBalanceTransfer{
+				fromAddr:    from,
+				toAddr:      frame.target,
+				tokenAddr:   common.Address{}, // Zero address = native ETH
+				amount:      frame.value,
+				isERC20:     false,
+				tokenID:     0, // Native ETH
+				fromAccount: fromAccount,
+				toAccount:   frame.toAccount,
+				token:       nil,
+			})
+		}
+	} else if receipt.Status == 1 && txValue.Sign() > 0 {
 		ctx.pendingTransfers = append(ctx.pendingTransfers, &pendingBalanceTransfer{
 			fromAddr:    from,
 			toAddr:      toAddr,
@@ -425,15 +475,27 @@ func (ctx *txProcessingContext) processTransaction(
 		big.NewInt(int64(receipt.GasUsed)),
 		effectiveGasPrice,
 	)
+
+	// The fee comes out of whoever settled it. A frame transaction names that account on
+	// its receipt, and for a sponsored transaction - the reason the field exists - it is
+	// a paymaster rather than the sender.
+	feeAddr := from
+	feeAccount := fromAccount
+
+	if extra := receipt.FrameExtra(); extra != nil && extra.Payer != (common.Address{}) {
+		feeAddr = extra.Payer
+		feeAccount = ctx.ensureAccount(feeAddr, nil, false)
+	}
+
 	if txFeeWei.Sign() > 0 {
 		ctx.pendingTransfers = append(ctx.pendingTransfers, &pendingBalanceTransfer{
-			fromAddr:    from,
+			fromAddr:    feeAddr,
 			toAddr:      common.Address{}, // No receiver - fee goes to validator/burned
 			tokenAddr:   common.Address{}, // Native ETH
 			amount:      txFeeWei,
 			isERC20:     false,
 			tokenID:     0, // Native ETH
-			fromAccount: fromAccount,
+			fromAccount: feeAccount,
 			toAccount:   nil, // nil indicates fee-only deduction
 			token:       nil,
 		})
@@ -451,8 +513,38 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 
 	// 6. Process call trace if available (Mode Full + tracesEnabled)
-	if callTrace != nil {
-		result.callTraceData, result.internalAggregates = ctx.processCallTrace(callTrace, fromAccount)
+	framesTraced := false
+
+	if len(callTrace) > 0 {
+		if isFrameTx {
+			framesTraced = correlateFrameTrace(result.frames, callTrace)
+		}
+
+		callTraceData, aggregates := ctx.processCallTrace(callTrace, fromAccount)
+
+		if !isFrameTx || framesTraced {
+			result.callTraceData = callTraceData
+			result.internalAggregates = aggregates
+		} else {
+			// The trace says nothing about the frames it was asked about. Keeping it
+			// would show a call the transaction never made.
+			ctx.indexer.logger.WithFields(logrus.Fields{
+				"txHash": txHash.Hex(),
+				"frames": len(result.frames),
+				"roots":  len(callTrace),
+			}).Debug("call trace does not decompose into the transaction's frames, discarding it")
+		}
+	}
+
+	// A frame transaction's frames always come from its receipt, so its account activity
+	// reads the same whether or not tracing runs and whichever client served the trace.
+	// The trace adds only the calls made from within the frames.
+	if isFrameTx {
+		result.internalAggregates = mergeInternalAggregates(
+			result.internalAggregates,
+			ctx.aggregateFrames(result.frames, fromAccount),
+		)
+		result.internalFromFrames = true
 	}
 
 	// Decode the revert reason from the root call frame (index 0 = depth 0).
@@ -716,7 +808,7 @@ func (ctx *txProcessingContext) resolveTokensFromDB() error {
 // processEvent collects event data for the event index (DB) and blockdb storage.
 func (ctx *txProcessingContext) processEvent(
 	index uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) *pendingTxEvent {
 	// Ensure source account exists
@@ -754,7 +846,7 @@ func (ctx *txProcessingContext) processEvent(
 func (ctx *txProcessingContext) detectTokenTransfers(
 	eventIndex uint32,
 	txPos uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) []*pendingTokenTransfer {
 	if len(log.Topics) == 0 {
@@ -794,7 +886,7 @@ func (ctx *txProcessingContext) detectTokenTransfers(
 func (ctx *txProcessingContext) parseERC20or721Transfer(
 	eventIndex uint32,
 	txPos uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) *pendingTokenTransfer {
 	// Need at least 3 topics for ERC20/721
@@ -834,7 +926,7 @@ func (ctx *txProcessingContext) parseERC20or721Transfer(
 func (ctx *txProcessingContext) parseERC1155TransferSingle(
 	eventIndex uint32,
 	txPos uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) *pendingTokenTransfer {
 	// Need 4 topics and at least 64 bytes of data
@@ -860,7 +952,7 @@ func (ctx *txProcessingContext) parseERC1155TransferSingle(
 func (ctx *txProcessingContext) parseERC1155TransferBatch(
 	eventIndex uint32,
 	txPos uint32,
-	log *types.Log,
+	log *txtypes.Log,
 	funderAccount *pendingAccount,
 ) []*pendingTokenTransfer {
 	// Need 4 topics and data for arrays
@@ -1216,7 +1308,13 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 	// 3. Insert transaction (resolve account IDs now that they're set)
 	if result.transaction != nil {
 		result.transaction.FromID = result.fromAccount.id
-		result.transaction.ToID = result.toAccount.id
+
+		// A transaction that addresses more than one recipient has none of its own, and
+		// keeps the id 0 that no account carries. Its targets are reachable through its
+		// frames and through the per-account rows written below.
+		if result.toAccount != nil {
+			result.transaction.ToID = result.toAccount.id
+		}
 
 		// Resolve the revert reason to a revert_id. Well-known EVM errors use a
 		// reserved id directly; other reverts dedup into el_revert_reason; reverts
@@ -1268,9 +1366,14 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 		}
 	}
 
-	// 6. Insert per-account internal-tx aggregates (Mode Full + tracesEnabled).
+	// 6. Insert per-account internal-tx aggregates.
 	// One row per touched account regardless of how many sub-calls involved it.
-	if ctx.indexer.mode == ModeFull && utils.Config.ExecutionIndexer.TracesEnabled && len(result.internalAggregates) > 0 {
+	//
+	// Call-trace aggregates exist only where tracing runs. A frame transaction's come
+	// from its receipt, so they are written wherever the transaction itself is - without
+	// them a frame transaction would appear on no address page but its sender's.
+	tracesAvailable := ctx.indexer.mode == ModeFull && utils.Config.ExecutionIndexer.TracesEnabled
+	if len(result.internalAggregates) > 0 && (result.internalFromFrames || tracesAvailable) {
 		internalEntries := make([]*dbtypes.ElTransactionInternal, 0, len(result.internalAggregates))
 		for _, agg := range result.internalAggregates {
 			inCount := agg.inCount
@@ -1306,16 +1409,15 @@ func (ctx *txProcessingContext) commitTransaction(commitCtx context.Context, dbT
 // and builds per-account aggregates over sub-calls (skipping index 0) for
 // the DB index.
 func (ctx *txProcessingContext) processCallTrace(
-	traceResult *exerpc.CallTraceCall,
+	roots []*exerpc.CallTraceCall,
 	funderAccount *pendingAccount,
 ) ([]bdbtypes.FlatCallFrame, map[*pendingAccount]*pendingInternalAggregate) {
-	if traceResult == nil {
+	if len(roots) == 0 {
 		return nil, nil
 	}
 
 	frames := make([]bdbtypes.FlatCallFrame, 0, 16)
 	aggregates := make(map[*pendingAccount]*pendingInternalAggregate, 8)
-	callIdx := uint32(0)
 
 	getAgg := func(acc *pendingAccount) *pendingInternalAggregate {
 		agg, ok := aggregates[acc]
@@ -1328,9 +1430,6 @@ func (ctx *txProcessingContext) processCallTrace(
 
 	var walkTrace func(call *exerpc.CallTraceCall, depth uint16)
 	walkTrace = func(call *exerpc.CallTraceCall, depth uint16) {
-		currentIdx := callIdx
-		callIdx++
-
 		// Determine call status
 		status := uint8(bdbtypes.CallStatusSuccess)
 		if call.Error != "" {
@@ -1346,9 +1445,9 @@ func (ctx *txProcessingContext) processCallTrace(
 		// frame-local gas (this frame's execution only) by subtracting direct
 		// children's cumulative gasUsed. Saturating subtract guards against
 		// rounding/clamping quirks from non-Geth tracers.
-		selfGas := uint64(call.GasUsed)
+		selfGas := call.TotalGasUsed()
 		for i := range call.Calls {
-			childGas := uint64(call.Calls[i].GasUsed)
+			childGas := call.Calls[i].TotalGasUsed()
 			if childGas >= selfGas {
 				selfGas = 0
 				break
@@ -1374,9 +1473,13 @@ func (ctx *txProcessingContext) processCallTrace(
 
 		frames = append(frames, frame)
 
-		// Aggregate per touched account (skip index 0 = top-level call,
-		// which duplicates el_transactions).
-		if currentIdx > 0 {
+		// Aggregate per touched account, leaving out the root calls. An ordinary
+		// transaction's root restates what el_transactions already holds. A decomposed
+		// frame transaction's roots are its frames, which the receipt describes and
+		// aggregateFrames records - taking them here too would count each frame twice,
+		// and would enter ENTRY_POINT, the predeploy that calls DEFAULT and VERIFY
+		// frames, as an account that took part in the transaction.
+		if depth > 0 {
 			fromAccount := ctx.ensureAccount(call.From, funderAccount, false)
 			toAccount := ctx.ensureAccount(call.To, fromAccount, false)
 			callType := exerpc.CallTypeFromString(call.Type)
@@ -1419,7 +1522,10 @@ func (ctx *txProcessingContext) processCallTrace(
 		}
 	}
 
-	walkTrace(traceResult, 0)
+	for _, root := range roots {
+		walkTrace(root, 0)
+	}
+
 	return frames, aggregates
 }
 
@@ -1471,9 +1577,11 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 			}
 		}
 
-		// Encode receipt metadata section
+		// Encode receipt metadata section, with the frame content of a frame
+		// transaction after it. The frames' own fields come back from the transaction in
+		// the beacon block; who paid and what each frame did are only on the receipt.
 		if result.receiptMeta != nil {
-			raw, err := ds.MarshalSSZ(result.receiptMeta)
+			raw, err := bdbtypes.EncodeReceiptMetaSection(result.receiptMeta, frameReceiptData(result.frames, result.framePayer))
 			if err != nil {
 				return nil, 0
 			}
