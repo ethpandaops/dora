@@ -378,7 +378,17 @@ func balanceAt(balances []phase0.Gwei, index phase0.ValidatorIndex) phase0.Gwei 
 	return 0
 }
 
-// getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
+// sortsByCurrentBalance reports whether a filtered validator set is ordered by the
+// current balances from the beacon cache rather than by a column the db can order by.
+func sortsByCurrentBalance(orderBy dbtypes.ValidatorOrder, balances []phase0.Gwei) bool {
+	if balances == nil {
+		return false
+	}
+	return orderBy == dbtypes.ValidatorOrderBalanceAsc || orderBy == dbtypes.ValidatorOrderBalanceDesc
+}
+
+// GetFilteredValidatorSet returns the validators matching the filter in the requested
+// order, merged from the beacon cache and the db, together with the total match count.
 func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
 	var overrideForkId *beacon.ForkKey
 
@@ -487,9 +497,13 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 	// all matches. The window needs at most offset+limit db rows that are not superseded
 	// by a cached state (cached matches only take positions away from db rows), and only
 	// cached entries with a db row can supersede one, so fetching that many extra rows
-	// covers the window for every sort order.
+	// covers the window whenever the db orders by the same key the merge sorts by. The
+	// balance orders merge by the current balance from the beacon cache while the db can
+	// only order by effective balance (a whole-ETH quantity most validators tie on), so a
+	// bounded fetch would pick an arbitrary slice of that tie group; they keep the full
+	// fetch.
 	dbLimit := uint64(0)
-	if filter.Limit > 0 {
+	if filter.Limit > 0 && !sortsByCurrentBalance(filter.OrderBy, balances) {
 		dbLimit = filter.Offset + filter.Limit + cachedWithinPersisted
 	}
 	dbIndexes, err := db.GetValidatorIndexesByFilter(ctx, *filter, uint64(currentEpoch), dbLimit)
