@@ -199,9 +199,10 @@ type Config struct {
 		// ParallelLoadDelay controls how a block that is not in the indexer cache is
 		// fetched. The beacon nodes are asked first; once this delay has passed
 		// without a result, the same block is requested from the block db in
-		// parallel and whichever answer arrives first is used. 0 starts both loads
+		// parallel and whichever answer arrives first is used. 0s starts both loads
 		// at once, a negative value or an explicit null keeps the sequential
-		// node-then-block-db order. Defaults to 5s.
+		// node-then-block-db order. Defaults to 5s. (yaml needs a duration string
+		// such as "0s"; a bare 0 does not parse into a time.Duration.)
 		ParallelLoadDelay *time.Duration `yaml:"parallelLoadDelay" envconfig:"BLOCKDB_PARALLEL_LOAD_DELAY"`
 	} `yaml:"blockDb"`
 
