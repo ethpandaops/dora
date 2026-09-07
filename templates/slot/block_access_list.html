@@ -218,7 +218,7 @@
       </div>
       <div id="balError" class="alert alert-danger" style="display: none;"></div>
       <div id="balEntries"></div>
-      <div id="balPager" class="d-flex justify-content-between align-items-center flex-wrap gap-2 mx-2 mt-2" style="display: none;">
+      <div id="balPager" class="d-none justify-content-between align-items-center flex-wrap gap-2 mx-2 mt-2">
         <span class="text-muted small" id="balPagerInfo"></span>
         <nav aria-label="Access list pages">
           <ul class="pagination pagination-sm mb-0">
@@ -904,7 +904,9 @@
         this.wireCards(container);
 
         if (pager) {
-          pager.style.display = this.filtered.length > this.pageSize ? 'flex' : 'none';
+          const pagerVisible = this.filtered.length > this.pageSize;
+          pager.classList.toggle('d-flex', pagerVisible);
+          pager.classList.toggle('d-none', !pagerVisible);
           const info = document.getElementById('balPagerInfo');
           if (info) {
             info.textContent = 'Showing ' + (this.filtered.length === 0 ? 0 : start + 1).toLocaleString() + '–' +
@@ -1017,7 +1019,7 @@
     // the block's transactions (index 0 and txCount+1 are the pre/post execution
     // system operations, which have no transaction page).
     function balTxHref(txIndex) {
-      if (!window.balTxLinkBase || typeof transactionDetails === 'undefined') return '';
+      if (!window.balTxLinkBase || typeof transactionDetails === 'undefined' || !Array.isArray(transactionDetails)) return '';
       if (txIndex < 1 || txIndex > transactionDetails.length) return '';
       const tx = transactionDetails[txIndex - 1];
       if (!tx || !tx.hash) return '';
