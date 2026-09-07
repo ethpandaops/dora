@@ -6,6 +6,7 @@
       <table class="table table-hover mb-0 el-data-table">
         <thead>
           <tr>
+            {{ if $.IsFrameTx }}<th class="px-3" style="width: 6rem;">Frame</th>{{ end }}
             <th class="px-3">Token Address</th>
             <th>Token Name</th>
             <th>From</th>
@@ -17,6 +18,15 @@
         <tbody>
           {{ range .TokenTransfers }}
           <tr>
+            {{ if $.IsFrameTx }}
+            <td class="px-3">
+              {{ if .HasFrame }}
+              <span class="badge text-bg-primary" data-bs-toggle="tooltip" title="Decoded from a log emitted by frame #{{ .FrameIndex }} of this frame transaction">frame #{{ .FrameIndex }}</span>
+              {{ else }}
+              <span class="text-muted">-</span>
+              {{ end }}
+            </td>
+            {{ end }}
             <td class="text-monospace px-3 addr-cell">
               {{ formatEthAddressShortLink .Contract true }}
             </td>

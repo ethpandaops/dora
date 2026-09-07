@@ -76,6 +76,7 @@ func parseTransactionsFilterForm(q url.Values) (*models.TransactionsFilter, stri
 			form.Type2 = tb&0x4 != 0
 			form.Type3 = tb&0x8 != 0
 			form.Type4 = tb&0x10 != 0
+			form.Type6 = tb&0x40 != 0
 			keep("type", tv)
 		}
 	}
@@ -151,6 +152,9 @@ func resolveTransactionFilter(ctx context.Context, form *models.TransactionsFilt
 	}
 	if form.Type4 {
 		filter.TxTypes = append(filter.TxTypes, 4)
+	}
+	if form.Type6 {
+		filter.TxTypes = append(filter.TxTypes, dbtypes.ElTxTypeFrame)
 	}
 	return filter
 }
@@ -379,6 +383,7 @@ func enrichElTransactionRows(ctx context.Context, dbTxs []*dbtypes.ElTransaction
 			}
 		}
 		txData.IsCreate = tx.TxType&dbtypes.ElTxFlagCreate != 0
+		txData.IsMultiTarget = dbtypes.IsMultiTarget(tx.TxType)
 
 		if len(tx.MethodID) >= 4 {
 			txData.MethodID = tx.MethodID[:4]

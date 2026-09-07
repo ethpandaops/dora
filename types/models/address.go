@@ -104,15 +104,18 @@ type AddressPageDataTransaction struct {
 	ToID           uint64    `json:"to_id"`
 	ToIsContract   bool      `json:"to_is_contract"`
 	HasTo          bool      `json:"has_to"` // false for contract creation
-	IsOutgoing     bool      `json:"is_outgoing"`
-	Nonce          uint64    `json:"nonce"`
-	Amount         float64   `json:"amount"`
-	AmountRaw      []byte    `json:"amount_raw"`
-	TxFee          float64   `json:"tx_fee"` // Transaction fee in ETH
-	Reverted       bool      `json:"reverted"`
-	RevertReason   string    `json:"revert_reason,omitempty"`
-	MethodID       []byte    `json:"method_id"`
-	MethodName     string    `json:"method_name"`
+	// IsMultiTarget marks a transaction that addresses several recipients rather than
+	// one, so a missing recipient is not a contract creation.
+	IsMultiTarget bool    `json:"is_multi_target"`
+	IsOutgoing    bool    `json:"is_outgoing"`
+	Nonce         uint64  `json:"nonce"`
+	Amount        float64 `json:"amount"`
+	AmountRaw     []byte  `json:"amount_raw"`
+	TxFee         float64 `json:"tx_fee"` // Transaction fee in ETH
+	Reverted      bool    `json:"reverted"`
+	RevertReason  string  `json:"revert_reason,omitempty"`
+	MethodID      []byte  `json:"method_id"`
+	MethodName    string  `json:"method_name"`
 }
 
 // AddressPageDataTokenTransfer represents a token transfer

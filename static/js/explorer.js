@@ -252,9 +252,12 @@
     });
   }
 
-  // initAddrHighlight highlights all equal address links within the hovered
-  // scope (an EL data table or the internal-tx tree). Uses event delegation so
-  // it also covers rows/nodes that are loaded lazily after page load.
+  // initAddrHighlight highlights every link to the address being hovered, so the same
+  // account can be followed through a page that mentions it in several places - the
+  // frames of a transaction, its state changes, the row it came from. It prefers the
+  // nearest list (an EL data table or the internal-tx tree) and otherwise takes the
+  // whole page, since an address that appears twice on a page is the same account
+  // wherever it appears. Uses event delegation so lazily loaded content is covered.
   function initAddrHighlight() {
     var current = null;
     function clear() {
@@ -265,8 +268,7 @@
     document.addEventListener('mouseover', function(ev) {
       var a = ev.target.closest ? ev.target.closest('a[href^="/address/0x"]') : null;
       if (!a) { return; }
-      var scope = a.closest('.el-data-table, .itx-wrap');
-      if (!scope) { return; }
+      var scope = a.closest('.el-data-table, .itx-wrap') || document.body;
       var href = a.getAttribute('href');
       if (href === current) { return; }
       clear();
@@ -701,7 +703,9 @@
           header: '<h3 class="h5">Transactions:</h3>',
           suggestion: function (data) {
             var status = "";
-            if (data.reverted) {
+            if (data.frame_incomplete) {
+              status = `<span class="search-cell"><span class="badge rounded-pill text-bg-warning text-dark">Complete</span></span>`;
+            } else if (data.reverted) {
               status = `<span class="search-cell"><span class="badge rounded-pill text-bg-danger">Failed</span></span>`;
             }
             var blockInfo = data.block_number ? `<span class="search-cell text-muted">Block ${data.block_number}</span>` : "";
