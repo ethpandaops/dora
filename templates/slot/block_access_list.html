@@ -190,72 +190,46 @@
   </style>
 
   <div class="bal-content">
-    {{ if .Block.ExecutionData.BlockAccessList }}
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="h6 mb-0">Block Access List Entries</h4>
-        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#compareAccessListModal">
-          <i class="fas fa-exchange-alt me-2"></i>Compare Access List
-        </button>
-      </div>
-      {{ range $i, $entry := .Block.ExecutionData.BlockAccessList }}
-        <div class="bal-address-card">
-          <div class="bal-address-header" data-bs-toggle="collapse" data-bs-target="#bal-collapse-{{ $i }}" aria-expanded="false" aria-controls="bal-collapse-{{ $i }}">
-            <div>
-              <i class="fas fa-chevron-down chevron me-2"></i>
-              <i class="fas fa-wallet me-2"></i>
-              {{ ethAddressLink $entry.Address }}
-              {{ if isSystemContract $entry.Address $.SystemContracts }}
-                <span class="bal-system-badge">
-                  <i class="fas fa-cog me-1"></i>{{ getSystemContractName $entry.Address $.SystemContracts }}
-                </span>
-              {{ end }}
-            </div>
-            <div class="bal-address-summary">
-              {{ if $entry.StorageChanges }}
-                <span class="bal-summary-badge storage-write">
-                  <i class="fas fa-database"></i>
-                  {{ len $entry.StorageChanges }} writes
-                </span>
-              {{ end }}
-              {{ if $entry.StorageReads }}
-                <span class="bal-summary-badge storage-read">
-                  <i class="fas fa-eye"></i>
-                  {{ len $entry.StorageReads }} reads
-                </span>
-              {{ end }}
-              {{ if $entry.BalanceChanges }}
-                <span class="bal-summary-badge balance-change">
-                  <i class="fas fa-coins"></i>
-                  {{ len $entry.BalanceChanges }} balance
-                </span>
-              {{ end }}
-              {{ if $entry.NonceChanges }}
-                <span class="bal-summary-badge nonce-change">
-                  <i class="fas fa-hashtag"></i>
-                  {{ len $entry.NonceChanges }} nonce
-                </span>
-              {{ end }}
-              {{ if $entry.CodeChanges }}
-                <span class="bal-summary-badge code-change">
-                  <i class="fas fa-code"></i>
-                  {{ len $entry.CodeChanges }} code
-                </span>
-              {{ end }}
-              {{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) (not $entry.CodeChanges) }}
-                <span class="bal-summary-badge text-muted">
-                  <i class="fas fa-ghost"></i>
-                  no changes
-                </span>
-              {{ end }}
-            </div>
+    {{ if .Block.ExecutionData.BALSummary }}
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h4 class="h6 mb-0">Block Access List Entries <span class="badge bg-secondary text-white">{{ formatAddCommas .Block.ExecutionData.BALSummary.UniqueAddresses }}</span></h4>
+        <div class="d-flex align-items-center flex-wrap gap-2">
+          <input type="text" class="form-control form-control-sm font-monospace" id="balAddressFilter" placeholder="Filter by address" style="width: 20rem;" autocomplete="off">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="balHideUnchanged">
+            <label class="form-check-label small" for="balHideUnchanged">Hide addresses without changes</label>
           </div>
-          <div class="collapse" id="bal-collapse-{{ $i }}" data-address-index="{{ $i }}">
-            <div class="bal-address-content" data-rendered="false">
-              <!-- Content will be rendered on demand -->
-            </div>
-          </div>
+          <select class="form-select form-select-sm" id="balPageSize" style="width: auto;" aria-label="Entries per page">
+            <option value="50">50 per page</option>
+            <option value="100" selected>100 per page</option>
+            <option value="250">250 per page</option>
+            <option value="1000">1000 per page</option>
+          </select>
+          <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#compareAccessListModal">
+            <i class="fas fa-exchange-alt me-2"></i>Compare Access List
+          </button>
         </div>
-      {{ end }}
+      </div>
+      <div id="balLoading" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <div class="mt-2 text-muted">Loading access list...</div>
+      </div>
+      <div id="balError" class="alert alert-danger" style="display: none;"></div>
+      <div id="balEntries"></div>
+      <div id="balPager" class="d-none justify-content-between align-items-center flex-wrap gap-2 mx-2 mt-2">
+        <span class="text-muted small" id="balPagerInfo"></span>
+        <nav aria-label="Access list pages">
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item" data-bal-page="first"><a class="page-link" href="#accessList" aria-label="First">&laquo;</a></li>
+            <li class="page-item" data-bal-page="prev"><a class="page-link" href="#accessList" aria-label="Previous">&lsaquo;</a></li>
+            <li class="page-item disabled"><span class="page-link" id="balPagerPage"></span></li>
+            <li class="page-item" data-bal-page="next"><a class="page-link" href="#accessList" aria-label="Next">&rsaquo;</a></li>
+            <li class="page-item" data-bal-page="last"><a class="page-link" href="#accessList" aria-label="Last">&raquo;</a></li>
+          </ul>
+        </nav>
+      </div>
     {{ else }}
       <div class="alert alert-info">
         <i class="fas fa-info-circle me-2"></i>
@@ -547,8 +521,8 @@
         tabPane.innerHTML = html;
         tabPane.dataset.rendered = 'true';
         
-        // Re-attach transaction callout handlers
-        tabPane.querySelectorAll('.bal-tx-index').forEach(badge => {
+        // Re-attach transaction callout handlers (linked badges navigate instead)
+        tabPane.querySelectorAll('.bal-tx-index:not(a)').forEach(badge => {
           badge.addEventListener('click', function(event) {
             event.stopPropagation();
             const match = this.textContent.match(/Tx (\d+)/);
@@ -588,7 +562,7 @@
               const value = arrayToHex(change.value);
               html += `
                 <div class="bal-change-item">
-                  <span class="bal-tx-index">Tx ${change.block_access_index}</span>
+                  ${renderTxIndexLabel(change.block_access_index, 'Tx ' + change.block_access_index)}
                   <span class="bal-value-text">${value}</span>
                 </div>
               `;
@@ -624,7 +598,7 @@
           
           html += `
             <div class="bal-change-item">
-              <span class="bal-tx-index">${txLabel}</span>
+              ${renderTxIndexLabel(change.block_access_index, txLabel)}
               <span class="bal-balance-value">${formatBalance(change.balance)}</span>
           `;
           
@@ -650,7 +624,7 @@
           
           html += `
             <div class="bal-change-item">
-              <span class="bal-tx-index">${txLabel}</span>
+              ${renderTxIndexLabel(change.block_access_index, txLabel)}
               <span class="bal-value-text">Nonce: ${change.nonce}</span>
             </div>
           `;
@@ -673,7 +647,7 @@
           html += `
             <div class="mb-3">
               <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="bal-tx-index">${txLabel}</span>
+                ${renderTxIndexLabel(change.block_access_index, txLabel)}
                 <span class="text-muted">${codeLength} bytes</span>
               </div>
               <div class="bal-change-item text-break" style="max-height: 200px; overflow-y: auto;">
@@ -811,9 +785,262 @@
       return obj;
     }
     
-    // Store current block access list data with base64 to hex conversion
-    window.currentBlockAccessList = {{ if .Block.ExecutionData.BlockAccessList }}convertBase64ToHex(JSON.parse({{ includeJSON .Block.ExecutionData.BlockAccessList false }})){{ else }}[]{{ end }};
+    // The entries are fetched from /slot/{slotOrHash}/bal when the tab is opened (see
+    // balLoader below) and converted from base64 to hex on arrival.
+    window.currentBlockAccessList = [];
     window.currentSlot = {{ .Slot }};
+    window.currentBlockRoot = {{ if .Block }}"0x{{ printf "%x" .Block.BlockRoot }}"{{ else }}""{{ end }};
+    window.balHasEntries = {{ if .Block.ExecutionData.BALSummary }}true{{ else }}false{{ end }};
+    window.balAddressLinkBase = {{ ethAddressLinkBase }};
+    window.balTxLinkBase = {{ ethTransactionLinkBase }};
+    window.balSystemContracts = (function() {
+      const contracts = {};
+      (JSON.parse({{ includeJSON .SystemContracts false }}) || []).forEach(function(contract) {
+        if (contract && contract.address) {
+          contracts[contract.address.toLowerCase()] = contract.name;
+        }
+      });
+      return contracts;
+    })();
+
+    // Lazy loader for the access list entries. Loads once per page, on the first
+    // request, and resolves with the entry list for every caller.
+    const balLoader = {
+      promise: null,
+      load() {
+        if (!this.promise) {
+          this.promise = this.fetch();
+        }
+        return this.promise;
+      },
+      async fetch() {
+        const loadingEl = document.getElementById('balLoading');
+        const errorEl = document.getElementById('balError');
+        try {
+          if (!window.balHasEntries || !window.currentBlockRoot) {
+            return window.currentBlockAccessList;
+          }
+          const response = await fetch('/slot/' + window.currentBlockRoot + '/bal');
+          if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+          }
+          const data = await response.json();
+          window.currentBlockAccessList = convertBase64ToHex(data.entries || []);
+          balList.setEntries(window.currentBlockAccessList);
+          return window.currentBlockAccessList;
+        } catch (error) {
+          this.promise = null;
+          if (errorEl) {
+            errorEl.textContent = 'Failed to load the block access list: ' + error.message;
+            errorEl.style.display = 'block';
+          }
+          throw error;
+        } finally {
+          if (loadingEl) loadingEl.style.display = 'none';
+        }
+      }
+    };
+
+    // Paged, filterable card list. Card indices are positions in the full entry
+    // list, so the on-demand detail renderer keeps addressing entries by index.
+    const balList = {
+      entries: [],
+      filtered: [],
+      page: 0,
+      pageSize: 100,
+      filter: '',
+      hideUnchanged: false,
+
+      setEntries(entries) {
+        this.entries = entries;
+        this.applyFilter();
+      },
+
+      hasChanges(entry) {
+        return !!(entry.storage_changes || entry.storage_reads || entry.balance_changes ||
+                  entry.nonce_changes || entry.code_changes);
+      },
+
+      applyFilter() {
+        const filter = this.filter.toLowerCase().replace(/^0x/, '');
+        const hideUnchanged = this.hideUnchanged;
+        this.filtered = [];
+        this.entries.forEach((entry, index) => {
+          if (hideUnchanged && !this.hasChanges(entry)) return;
+          if (filter && String(entry.address || '').toLowerCase().indexOf(filter) === -1) return;
+          this.filtered.push(index);
+        });
+        this.page = 0;
+        this.renderPage();
+      },
+
+      pageCount() {
+        return Math.max(1, Math.ceil(this.filtered.length / this.pageSize));
+      },
+
+      goToPage(page) {
+        this.page = Math.min(Math.max(0, page), this.pageCount() - 1);
+        this.renderPage();
+      },
+
+      renderPage() {
+        const container = document.getElementById('balEntries');
+        const pager = document.getElementById('balPager');
+        if (!container) return;
+
+        accessListRenderer.openAddresses.clear();
+
+        const start = this.page * this.pageSize;
+        const end = Math.min(start + this.pageSize, this.filtered.length);
+        let html = '';
+        for (let i = start; i < end; i++) {
+          const index = this.filtered[i];
+          html += this.renderCard(index, this.entries[index]);
+        }
+        if (this.filtered.length === 0) {
+          html = '<div class="p-3 text-center text-muted">No access list entries match the current filter.</div>';
+        }
+        container.innerHTML = html;
+        this.wireCards(container);
+
+        if (pager) {
+          const pagerVisible = this.filtered.length > this.pageSize;
+          pager.classList.toggle('d-flex', pagerVisible);
+          pager.classList.toggle('d-none', !pagerVisible);
+          const info = document.getElementById('balPagerInfo');
+          if (info) {
+            info.textContent = 'Showing ' + (this.filtered.length === 0 ? 0 : start + 1).toLocaleString() + '–' +
+              end.toLocaleString() + ' of ' + this.filtered.length.toLocaleString() + ' entries';
+          }
+          const pageLabel = document.getElementById('balPagerPage');
+          if (pageLabel) {
+            pageLabel.textContent = 'Page ' + (this.page + 1).toLocaleString() + ' of ' + this.pageCount().toLocaleString();
+          }
+          const first = this.page === 0;
+          const last = this.page >= this.pageCount() - 1;
+          pager.querySelectorAll('[data-bal-page]').forEach((item) => {
+            const kind = item.dataset.balPage;
+            item.classList.toggle('disabled', (kind === 'first' || kind === 'prev') ? first : last);
+          });
+        }
+
+        if (window.explorer && typeof window.explorer.initControls === 'function') {
+          window.explorer.initControls();
+        }
+      },
+
+      renderAddress(address) {
+        const full = String(address || '0x').toLowerCase();
+        const short = full.length > 18 ? full.slice(0, 10) + '…' + full.slice(-8) : full;
+        const attrs = 'class="ens-addr" data-address="' + full + '" data-bs-toggle="tooltip" title="' + full + '"';
+        if (window.balAddressLinkBase) {
+          return '<a ' + attrs + ' href="' + window.balAddressLinkBase + full + '">' + short + '</a>';
+        }
+        return '<span ' + attrs + '>' + short + '</span>';
+      },
+
+      renderCard(index, entry) {
+        const address = String(entry.address || '').toLowerCase();
+        const systemName = window.balSystemContracts[address];
+        let badges = '';
+        if (entry.storage_changes) {
+          badges += '<span class="bal-summary-badge storage-write"><i class="fas fa-database"></i> ' + entry.storage_changes.length + ' writes</span>';
+        }
+        if (entry.storage_reads) {
+          badges += '<span class="bal-summary-badge storage-read"><i class="fas fa-eye"></i> ' + entry.storage_reads.length + ' reads</span>';
+        }
+        if (entry.balance_changes) {
+          badges += '<span class="bal-summary-badge balance-change"><i class="fas fa-coins"></i> ' + entry.balance_changes.length + ' balance</span>';
+        }
+        if (entry.nonce_changes) {
+          badges += '<span class="bal-summary-badge nonce-change"><i class="fas fa-hashtag"></i> ' + entry.nonce_changes.length + ' nonce</span>';
+        }
+        if (entry.code_changes) {
+          badges += '<span class="bal-summary-badge code-change"><i class="fas fa-code"></i> ' + entry.code_changes.length + ' code</span>';
+        }
+        if (!badges) {
+          badges = '<span class="bal-summary-badge text-muted"><i class="fas fa-ghost"></i> no changes</span>';
+        }
+
+        return '<div class="bal-address-card">' +
+          '<div class="bal-address-header collapsed" data-bal-target="#bal-collapse-' + index + '" role="button" aria-expanded="false" aria-controls="bal-collapse-' + index + '">' +
+            '<div>' +
+              '<i class="fas fa-chevron-down chevron me-2"></i>' +
+              '<i class="fas fa-wallet me-2"></i>' +
+              this.renderAddress(address) +
+              (systemName ? '<span class="bal-system-badge"><i class="fas fa-cog me-1"></i>' + escapeBalHtml(systemName) + '</span>' : '') +
+            '</div>' +
+            '<div class="bal-address-summary">' + badges + '</div>' +
+          '</div>' +
+          '<div class="collapse" id="bal-collapse-' + index + '" data-address-index="' + index + '">' +
+            '<div class="bal-address-content" data-rendered="false"></div>' +
+          '</div>' +
+        '</div>';
+      },
+
+      // Handle expand/collapse, chevron rotation and on-demand rendering of the
+      // expanded card. The header toggles the collapse itself instead of using
+      // Bootstrap's data-api, which cancels the default action of any link inside
+      // a toggle: clicks on the address link (and the ENS icon) must still navigate.
+      wireCards(container) {
+        container.querySelectorAll('.bal-address-header').forEach(function(header) {
+          const collapse = container.querySelector(header.getAttribute('data-bal-target'));
+          if (!collapse) return;
+          const addressIndex = parseInt(collapse.dataset.addressIndex);
+
+          header.addEventListener('click', function(event) {
+            if (event.target.closest('a, .ens-icon')) return;
+            bootstrap.Collapse.getOrCreateInstance(collapse, { toggle: false }).toggle();
+          });
+
+          collapse.addEventListener('show.bs.collapse', function() {
+            header.classList.remove('collapsed');
+            header.setAttribute('aria-expanded', 'true');
+            accessListRenderer.renderAddressContent(addressIndex);
+          });
+
+          collapse.addEventListener('hide.bs.collapse', function() {
+            header.classList.add('collapsed');
+            header.setAttribute('aria-expanded', 'false');
+          });
+
+          collapse.addEventListener('hidden.bs.collapse', function() {
+            // Clear content after collapse animation completes to free memory
+            // Only clear if we have many addresses open to maintain good UX
+            if (accessListRenderer.openAddresses.size > 10) {
+              accessListRenderer.clearAddressContent(addressIndex);
+            }
+          });
+        });
+      }
+    };
+
+    // balTxHref returns the link target of a block access index that maps to one of
+    // the block's transactions (index 0 and txCount+1 are the pre/post execution
+    // system operations, which have no transaction page).
+    function balTxHref(txIndex) {
+      if (!window.balTxLinkBase || typeof transactionDetails === 'undefined' || !Array.isArray(transactionDetails)) return '';
+      if (txIndex < 1 || txIndex > transactionDetails.length) return '';
+      const tx = transactionDetails[txIndex - 1];
+      if (!tx || !tx.hash) return '';
+      return window.balTxLinkBase + '0x' + bytesToHex(tx.hash);
+    }
+
+    // renderTxIndexLabel renders a "Tx N" badge as a link to the transaction page
+    // when one exists, otherwise as the plain badge that opens the details callout.
+    function renderTxIndexLabel(txIndex, label) {
+      const href = balTxHref(txIndex);
+      if (href) {
+        return '<a class="bal-tx-index" href="' + href + '">' + label + '</a>';
+      }
+      return '<span class="bal-tx-index">' + label + '</span>';
+    }
+
+    function escapeBalHtml(text) {
+      return String(text).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
   </script>
 
   <script>
@@ -824,37 +1051,55 @@
         return new bootstrap.Tooltip(tooltipTriggerEl)
       });
       
-      // Handle chevron rotation and on-demand rendering
-      document.querySelectorAll('.bal-address-header').forEach(function(header) {
-        const target = header.getAttribute('data-bs-target');
-        const collapse = document.querySelector(target);
-        
-        if (collapse) {
-          const addressIndex = parseInt(collapse.dataset.addressIndex);
-          
-          collapse.addEventListener('show.bs.collapse', function() {
-            header.classList.remove('collapsed');
-            // Render content on demand when expanding
-            accessListRenderer.renderAddressContent(addressIndex);
-          });
-          
-          collapse.addEventListener('hide.bs.collapse', function() {
-            header.classList.add('collapsed');
-          });
-          
-          collapse.addEventListener('hidden.bs.collapse', function() {
-            // Clear content after collapse animation completes to free memory
-            // Only clear if we have many addresses open to maintain good UX
-            if (accessListRenderer.openAddresses.size > 10) {
-              accessListRenderer.clearAddressContent(addressIndex);
-            }
-          });
-          
-          // Set initial state
-          if (!collapse.classList.contains('show')) {
-            header.classList.add('collapsed');
+      // Load the entries when the access list tab is opened. The tab may already
+      // be active on page load (anchor link), which fires no shown.bs.tab event.
+      const accessListTab = document.getElementById('accessList-tab');
+      if (accessListTab) {
+        accessListTab.addEventListener('shown.bs.tab', function() {
+          balLoader.load().catch(function() {});
+        });
+      }
+      if ((window.location.hash || window.__doraInitialHash || '') === '#accessList') {
+        balLoader.load().catch(function() {});
+      }
+
+      // List controls: filter, ghost toggle, page size and pager
+      const addressFilter = document.getElementById('balAddressFilter');
+      if (addressFilter) {
+        let filterTimer = null;
+        addressFilter.addEventListener('input', function() {
+          clearTimeout(filterTimer);
+          filterTimer = setTimeout(function() {
+            balList.filter = addressFilter.value.trim();
+            balList.applyFilter();
+          }, 150);
+        });
+      }
+      const hideUnchanged = document.getElementById('balHideUnchanged');
+      if (hideUnchanged) {
+        hideUnchanged.addEventListener('change', function() {
+          balList.hideUnchanged = hideUnchanged.checked;
+          balList.applyFilter();
+        });
+      }
+      const pageSize = document.getElementById('balPageSize');
+      if (pageSize) {
+        pageSize.addEventListener('change', function() {
+          balList.pageSize = parseInt(pageSize.value) || 100;
+          balList.applyFilter();
+        });
+      }
+      document.querySelectorAll('#balPager [data-bal-page]').forEach(function(item) {
+        item.addEventListener('click', function(e) {
+          e.preventDefault();
+          if (item.classList.contains('disabled')) return;
+          switch (item.dataset.balPage) {
+            case 'first': balList.goToPage(0); break;
+            case 'prev': balList.goToPage(balList.page - 1); break;
+            case 'next': balList.goToPage(balList.page + 1); break;
+            case 'last': balList.goToPage(balList.pageCount() - 1); break;
           }
-        }
+        });
       });
       
       // Access list comparison functionality
@@ -926,8 +1171,9 @@
             providedAccessList = await response.json();
           }
           
-          // Compare the access lists
-          compareAccessLists(window.currentBlockAccessList, providedAccessList);
+          // Compare the access lists (make sure the block's list is loaded)
+          const blockAccessList = await balLoader.load();
+          compareAccessLists(blockAccessList, providedAccessList);
           
         } catch (error) {
           showError('Error processing access list: ' + error.message);
@@ -1964,9 +2210,9 @@
       setTimeout(() => tooltip.remove(), 1000);
     }
     
-    // Add click handlers to all TX badges
+    // Add click handlers to all TX badges (linked badges navigate instead)
     document.addEventListener('DOMContentLoaded', function() {
-      document.querySelectorAll('.bal-tx-index').forEach(badge => {
+      document.querySelectorAll('.bal-tx-index:not(a)').forEach(badge => {
         badge.addEventListener('click', function(event) {
           event.stopPropagation();
           const match = this.textContent.match(/Tx (\d+)/);

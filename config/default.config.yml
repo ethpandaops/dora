@@ -149,6 +149,11 @@ database:
 blockDb:
   engine: "none" # pebble / s3 / tiered / none (disable block db)
 
+  # blocks that are not in the indexer cache are fetched from the beacon nodes first;
+  # after this delay the block db is asked in parallel and the first answer wins.
+  # 0s = start both loads at once, null = sequential (nodes first, block db as fallback)
+  parallelLoadDelay: 5s
+
   # pebble settings (used when engine is "pebble", or as the cache tier for "tiered")
   pebble:
     path: "./tmp-blockdb.peb"

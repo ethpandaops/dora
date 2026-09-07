@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"math"
 	"slices"
@@ -66,20 +67,53 @@ func (bs *ChainService) GetValidatorInclusionDistance(validatorIndex phase0.Vali
 }
 
 func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) uint64 {
-	chainState := bs.consensusPool.GetChainState()
-	latestEpoch := chainState.CurrentEpoch()
-	if latestEpoch > lookbackEpochs {
-		latestEpoch -= lookbackEpochs
-	} else {
-		latestEpoch = 0
-	}
-
-	validatorActivity, _ := bs.beaconIndexer.GetValidatorActivityCount(validatorIndex, latestEpoch)
+	validatorActivity, _ := bs.beaconIndexer.GetValidatorActivityCount(validatorIndex, bs.livenessStartEpoch(lookbackEpochs))
 	if validatorActivity > uint64(lookbackEpochs) {
 		validatorActivity = uint64(lookbackEpochs)
 	}
 
 	return validatorActivity
+}
+
+// GetValidatorLivenessCounts returns the liveness of every validator (attested epochs
+// within the last lookbackEpochs epochs, capped at lookbackEpochs) indexed by validator
+// index. It walks the activity cache once and is meant for callers that iterate the
+// whole validator set; read it with ValidatorLivenessAt.
+func (bs *ChainService) GetValidatorLivenessCounts(lookbackEpochs phase0.Epoch) []uint8 {
+	counts := bs.beaconIndexer.GetValidatorActivityCounts(bs.livenessStartEpoch(lookbackEpochs))
+	for i, count := range counts {
+		if uint64(count) > uint64(lookbackEpochs) {
+			counts[i] = uint8(lookbackEpochs)
+		}
+	}
+
+	return counts
+}
+
+// ValidatorLivenessAt reads a validator's liveness from a GetValidatorLivenessCounts
+// result; indexes beyond the slice have no activity.
+func ValidatorLivenessAt(counts []uint8, validatorIndex phase0.ValidatorIndex) uint64 {
+	if uint64(validatorIndex) >= uint64(len(counts)) {
+		return 0
+	}
+
+	return uint64(counts[validatorIndex])
+}
+
+// GetValidatorInclusionDistances returns the attestation count and total inclusion delay
+// of every validator over the last lookbackEpochs epochs, indexed by validator index.
+func (bs *ChainService) GetValidatorInclusionDistances(lookbackEpochs phase0.Epoch) []beacon.ValidatorInclusionStats {
+	return bs.beaconIndexer.GetValidatorInclusionDistances(lookbackEpochs)
+}
+
+// livenessStartEpoch returns the first epoch of a liveness lookback window.
+func (bs *ChainService) livenessStartEpoch(lookbackEpochs phase0.Epoch) phase0.Epoch {
+	latestEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
+	if latestEpoch > lookbackEpochs {
+		return latestEpoch - lookbackEpochs
+	}
+
+	return 0
 }
 
 // ValidatorDutyStat tracks the block production performance of a single validator: expected
@@ -345,7 +379,17 @@ func balanceAt(balances []phase0.Gwei, index phase0.ValidatorIndex) phase0.Gwei 
 	return 0
 }
 
-// getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
+// sortsByCurrentBalance reports whether a filtered validator set is ordered by the
+// current balances from the beacon cache rather than by a column the db can order by.
+func sortsByCurrentBalance(orderBy dbtypes.ValidatorOrder, balances []phase0.Gwei) bool {
+	if balances == nil {
+		return false
+	}
+	return orderBy == dbtypes.ValidatorOrderBalanceAsc || orderBy == dbtypes.ValidatorOrderBalanceDesc
+}
+
+// GetFilteredValidatorSet returns the validators matching the filter in the requested
+// order, merged from the beacon cache and the db, together with the total match count.
 func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
 	var overrideForkId *beacon.ForkKey
 
@@ -360,14 +404,35 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 	}
 	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
 
+	// The cache only carries full validator objects for validators whose state changed
+	// since startup (and for projected validators); every other validator is read from
+	// the db. A cached state is newer than its db row, so cached indexes supersede their
+	// db rows in the merge below. Validators are persisted contiguously from index 0, so
+	// persistedCount tells which cached entries have a db row at all.
+	persistedCount := uint64(0)
+	if filter.Limit > 0 {
+		var err error
+		persistedCount, err = db.GetValidatorCountByFilter(ctx, dbtypes.ValidatorFilter{}, uint64(currentEpoch))
+		if err != nil {
+			bs.logger.Warnf("error counting persisted validators: %v", err)
+			return nil, 0
+		}
+	}
+
 	cachedResults := make([]ValidatorWithIndex, 0, 1000)
-	cachedIndexes := map[uint64]bool{}
+	cachedIndexes := newValidatorIndexSet(bs.beaconIndexer.GetValidatorSetSize())
+	supersededRows := make([]phase0.ValidatorIndex, 0, 1000) // cached entries that supersede a db row
 
 	// get matching entries from cached validators
 	bs.beaconIndexer.StreamActiveValidatorDataForRoot(canonicalHead.Root, false, &currentEpoch, func(index phase0.ValidatorIndex, flags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
 		if validator == nil {
 			return nil
 		}
+		cachedIndexes.add(index)
+		if uint64(index) < persistedCount {
+			supersededRows = append(supersededRows, index)
+		}
+
 		if filter.MinIndex != nil && index < phase0.ValidatorIndex(*filter.MinIndex) {
 			return nil
 		}
@@ -424,87 +489,112 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			Index:     index,
 			Validator: validator,
 		})
-		cachedIndexes[uint64(index)] = true
 
 		return nil
 	})
 
-	// get matching entries from DB
-	dbIndexes, err := db.GetValidatorIndexesByFilter(ctx, *filter, uint64(currentEpoch))
+	// get matching entries from DB. With a limit, only the rows the requested window can
+	// reach are fetched and the total count is computed separately instead of by walking
+	// all matches. The window needs at most offset+limit db rows that are not superseded
+	// by a cached state (cached matches only take positions away from db rows), and only
+	// cached entries with a db row can supersede one, so fetching that many extra rows
+	// covers the window whenever the db orders by the same key the merge sorts by. The
+	// balance orders merge by the current balance from the beacon cache while the db can
+	// only order by effective balance (a whole-ETH quantity most validators tie on), so a
+	// bounded fetch would pick an arbitrary slice of that tie group; they keep the full
+	// fetch.
+	// Right after a restart against a stale db, or while a large finalization update is
+	// still being persisted, most rows can be superseded; the bounded fetch and the
+	// chunked superseded-rows count would then cost more than the plain full walk, so
+	// the full fetch (whose merge counts exactly) is used until the backlog drains.
+	dbLimit := uint64(0)
+	boundedFetch := filter.Limit > 0 && !sortsByCurrentBalance(filter.OrderBy, balances) &&
+		len(supersededRows) <= maxBoundedSupersededRows
+	if boundedFetch {
+		dbLimit = filter.Offset + filter.Limit + uint64(len(supersededRows))
+	}
+	dbIndexes, err := db.GetValidatorIndexesByFilter(ctx, *filter, uint64(currentEpoch), dbLimit)
 	if err != nil {
 		bs.logger.Warnf("error getting validator indexes by filter: %v", err)
 		return nil, 0
 	}
 
-	// sort results
+	// sort results. Every order breaks ties by validator index, matching the db query, so
+	// the cached entries and the db rows are merged along one total order.
 	var sortFn func(valA, valB ValidatorWithIndex) bool
+	byKey := func(desc bool, compareKey func(valA, valB ValidatorWithIndex) int) func(valA, valB ValidatorWithIndex) bool {
+		return func(valA, valB ValidatorWithIndex) bool {
+			order := compareKey(valA, valB)
+			if order == 0 {
+				order = cmp.Compare(valA.Index, valB.Index)
+			}
+			if desc {
+				return order > 0
+			}
+			return order < 0
+		}
+	}
+	byIndex := func(valA, valB ValidatorWithIndex) int { return 0 }
+	byPubKey := func(valA, valB ValidatorWithIndex) int {
+		return bytes.Compare(valA.Validator.PublicKey[:], valB.Validator.PublicKey[:])
+	}
+	byBalance := func(valA, valB ValidatorWithIndex) int {
+		if balances == nil {
+			return cmp.Compare(valA.Validator.EffectiveBalance, valB.Validator.EffectiveBalance)
+		}
+		return cmp.Compare(balanceAt(balances, valA.Index), balanceAt(balances, valB.Index))
+	}
+	byActivationEpoch := func(valA, valB ValidatorWithIndex) int {
+		return cmp.Compare(valA.Validator.ActivationEpoch, valB.Validator.ActivationEpoch)
+	}
+	byExitEpoch := func(valA, valB ValidatorWithIndex) int {
+		return cmp.Compare(valA.Validator.ExitEpoch, valB.Validator.ExitEpoch)
+	}
+	byWithdrawableEpoch := func(valA, valB ValidatorWithIndex) int {
+		return cmp.Compare(valA.Validator.WithdrawableEpoch, valB.Validator.WithdrawableEpoch)
+	}
+
 	switch filter.OrderBy {
 	case dbtypes.ValidatorOrderIndexAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Index < valB.Index
-		}
+		sortFn = byKey(false, byIndex)
 	case dbtypes.ValidatorOrderIndexDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Index > valB.Index
-		}
+		sortFn = byKey(true, byIndex)
 	case dbtypes.ValidatorOrderPubKeyAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return bytes.Compare(valA.Validator.PublicKey[:], valB.Validator.PublicKey[:]) < 0
-		}
+		sortFn = byKey(false, byPubKey)
 	case dbtypes.ValidatorOrderPubKeyDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return bytes.Compare(valA.Validator.PublicKey[:], valB.Validator.PublicKey[:]) > 0
-		}
+		sortFn = byKey(true, byPubKey)
 	case dbtypes.ValidatorOrderBalanceAsc:
-		if balances == nil {
-			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return valA.Validator.EffectiveBalance < valB.Validator.EffectiveBalance
-			}
-		} else {
-			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return balanceAt(balances, valA.Index) < balanceAt(balances, valB.Index)
-			}
-			sort.Slice(dbIndexes, func(i, j int) bool {
-				return balanceAt(balances, phase0.ValidatorIndex(dbIndexes[i])) < balanceAt(balances, phase0.ValidatorIndex(dbIndexes[j]))
-			})
-		}
+		sortFn = byKey(false, byBalance)
 	case dbtypes.ValidatorOrderBalanceDesc:
-		if balances == nil {
-			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return valA.Validator.EffectiveBalance > valB.Validator.EffectiveBalance
-			}
-		} else {
-			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return balanceAt(balances, valA.Index) > balanceAt(balances, valB.Index)
-			}
-			sort.Slice(dbIndexes, func(i, j int) bool {
-				return balanceAt(balances, phase0.ValidatorIndex(dbIndexes[i])) > balanceAt(balances, phase0.ValidatorIndex(dbIndexes[j]))
-			})
-		}
+		sortFn = byKey(true, byBalance)
 	case dbtypes.ValidatorOrderActivationEpochAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.ActivationEpoch < valB.Validator.ActivationEpoch
-		}
+		sortFn = byKey(false, byActivationEpoch)
 	case dbtypes.ValidatorOrderActivationEpochDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.ActivationEpoch > valB.Validator.ActivationEpoch
-		}
+		sortFn = byKey(true, byActivationEpoch)
 	case dbtypes.ValidatorOrderExitEpochAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.ExitEpoch < valB.Validator.ExitEpoch
-		}
+		sortFn = byKey(false, byExitEpoch)
 	case dbtypes.ValidatorOrderExitEpochDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.ExitEpoch > valB.Validator.ExitEpoch
-		}
+		sortFn = byKey(true, byExitEpoch)
 	case dbtypes.ValidatorOrderWithdrawableEpochAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.WithdrawableEpoch < valB.Validator.WithdrawableEpoch
-		}
+		sortFn = byKey(false, byWithdrawableEpoch)
 	case dbtypes.ValidatorOrderWithdrawableEpochDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.WithdrawableEpoch > valB.Validator.WithdrawableEpoch
-		}
+		sortFn = byKey(true, byWithdrawableEpoch)
+	}
+
+	// The db orders the balance sorts by effective balance; with current balances at hand
+	// the fetched rows are re-sorted by those, tie-broken by index like everything else.
+	if sortsByCurrentBalance(filter.OrderBy, balances) {
+		desc := filter.OrderBy == dbtypes.ValidatorOrderBalanceDesc
+		sort.Slice(dbIndexes, func(i, j int) bool {
+			order := cmp.Compare(balanceAt(balances, phase0.ValidatorIndex(dbIndexes[i])), balanceAt(balances, phase0.ValidatorIndex(dbIndexes[j])))
+			if order == 0 {
+				order = cmp.Compare(dbIndexes[i], dbIndexes[j])
+			}
+			if desc {
+				return order > 0
+			}
+			return order < 0
+		})
 	}
 
 	sort.Slice(cachedResults, func(i, j int) bool {
@@ -553,7 +643,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 			}
 		}
 
-		if cachedIndexes[validator.ValidatorIndex] {
+		if cachedIndexes.has(phase0.ValidatorIndex(validator.ValidatorIndex)) {
 			return true // skip this index, cache entry is newer
 		}
 
@@ -603,13 +693,22 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 		cachedIndex++
 	}
 
+	if boundedFetch {
+		totalCount, err := bs.countFilteredValidators(ctx, filter, currentEpoch, cachedResults, supersededRows)
+		if err != nil {
+			bs.logger.Warnf("error counting validators by filter: %v", err)
+			return nil, 0
+		}
+		return result, totalCount
+	}
+
 	// add remaining cached results
 	matchingCount += uint64(len(cachedResults) - cachedIndex)
 
 	// add remaining db results
 	remainingDbCount := uint64(0)
 	for i := dbEntryCount; i < uint64(len(dbIndexes)); i++ {
-		if cachedIndexes[dbIndexes[i]] {
+		if cachedIndexes.has(phase0.ValidatorIndex(dbIndexes[i])) {
 			continue
 		}
 		remainingDbCount++
@@ -617,4 +716,85 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 	matchingCount += remainingDbCount
 
 	return result, matchingCount
+}
+
+// countFilteredValidators returns the number of validators matching the filter across
+// db and cache, so that it equals what a full merge would list: every db row that
+// matches the filter, minus the matching rows the merge skips because a cached state
+// supersedes them, plus every cached match (whether or not it has a db row). The
+// superseded rows are counted with the same filter predicate so both counts agree on
+// what matches; their index list is chunked to stay within the query parameter limit.
+func (bs *ChainService) countFilteredValidators(ctx context.Context, filter *dbtypes.ValidatorFilter, currentEpoch phase0.Epoch, cachedResults []ValidatorWithIndex, supersededRows []phase0.ValidatorIndex) (uint64, error) {
+	dbCount, err := db.GetValidatorCountByFilter(ctx, *filter, uint64(currentEpoch))
+	if err != nil {
+		return 0, err
+	}
+
+	supersededMatches, err := bs.countSupersededValidatorRows(ctx, filter, currentEpoch, supersededRows)
+	if err != nil {
+		return 0, err
+	}
+
+	return dbCount - supersededMatches + uint64(len(cachedResults)), nil
+}
+
+// supersededRowsChunkSize bounds the index list of one superseded-rows count query.
+// maxBoundedSupersededRows is the number of superseded rows above which the bounded
+// fetch is not worth it and the full fetch is used instead.
+const (
+	supersededRowsChunkSize  = 5000
+	maxBoundedSupersededRows = 50000
+)
+
+// countSupersededValidatorRows counts the db rows among supersededRows that match the
+// filter. A filter that already selects explicit indices is narrowed to those first,
+// since only rows it can match at all are counted in dbCount.
+func (bs *ChainService) countSupersededValidatorRows(ctx context.Context, filter *dbtypes.ValidatorFilter, currentEpoch phase0.Epoch, supersededRows []phase0.ValidatorIndex) (uint64, error) {
+	if len(filter.Indices) > 0 {
+		narrowed := make([]phase0.ValidatorIndex, 0, len(supersededRows))
+		for _, index := range supersededRows {
+			if slices.Contains(filter.Indices, index) {
+				narrowed = append(narrowed, index)
+			}
+		}
+		supersededRows = narrowed
+	}
+
+	total := uint64(0)
+	for start := 0; start < len(supersededRows); start += supersededRowsChunkSize {
+		end := min(start+supersededRowsChunkSize, len(supersededRows))
+
+		chunkFilter := *filter
+		chunkFilter.Indices = supersededRows[start:end]
+
+		count, err := db.GetValidatorCountByFilter(ctx, chunkFilter, uint64(currentEpoch))
+		if err != nil {
+			return 0, err
+		}
+		total += count
+	}
+
+	return total, nil
+}
+
+// validatorIndexSet is a bitset over validator indexes. It replaces a map for the
+// cached-index membership test in the validator set merge, which would otherwise be
+// filled once per cached validator on every page build.
+type validatorIndexSet []uint64
+
+func newValidatorIndexSet(size uint64) validatorIndexSet {
+	return make(validatorIndexSet, (size+63)/64)
+}
+
+func (set *validatorIndexSet) add(index phase0.ValidatorIndex) {
+	word := uint64(index) / 64
+	if word >= uint64(len(*set)) {
+		*set = append(*set, make(validatorIndexSet, word-uint64(len(*set))+1)...)
+	}
+	(*set)[word] |= 1 << (uint64(index) % 64)
+}
+
+func (set validatorIndexSet) has(index phase0.ValidatorIndex) bool {
+	word := uint64(index) / 64
+	return word < uint64(len(set)) && set[word]&(1<<(uint64(index)%64)) != 0
 }

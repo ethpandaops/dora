@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
@@ -17,6 +18,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -55,44 +57,27 @@ func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root,
 	return blobs[blobIndex], nil
 }
 
+// clientBlockLoad is what the beacon nodes returned for a block: the block itself
+// when a node served it, plus the header, root and orphaned flag even when only the
+// header could be loaded (the body/payload requests failed on every node).
+type clientBlockLoad struct {
+	result   *CombinedBlockResponse
+	header   *phase0.SignedBeaconBlockHeader
+	root     phase0.Root
+	orphaned bool
+}
+
 // GetSlotDetailsByBlockroot retrieves the combined block details for a given block root.
 // It first checks if the block root is present in the beacon indexer's block cache.
 // If found, it constructs a CombinedBlockResponse using the block information from the cache.
 // If not found, it checks if the block root is present in the orphaned block database.
 // If found, it constructs a CombinedBlockResponse with the orphaned block information.
-// If not found and blockDb is configured, it retrieves the block body from the block database.
-// If not found in either cache or db, it retrieves the block header and block body from a random
-// ready client and constructs a CombinedBlockResponse with the retrieved information.
+// Otherwise the block is loaded from the connected beacon nodes, racing the block db
+// after blockDb.parallelLoadDelay (see raceBlockLoad), and any component the nodes
+// could not serve is filled from the block db.
 func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot phase0.Root) (*CombinedBlockResponse, error) {
 	var result *CombinedBlockResponse
-	var clients []*beacon.Client
 	var header *phase0.SignedBeaconBlockHeader
-
-	loadBlockHeader := func() error {
-		if clients == nil {
-			clients = bs.beaconIndexer.GetReadyClientsByBlockRoot(blockroot, false)
-			if len(clients) == 0 {
-				clients = bs.beaconIndexer.GetReadyClients(true)
-			}
-			if len(clients) == 0 {
-				return fmt.Errorf("no clients available")
-			}
-		}
-
-		headRetry := 0
-		var err error
-		for ; headRetry < 3; headRetry++ {
-			client := clients[headRetry%len(clients)]
-			header, err = beacon.LoadBeaconHeader(ctx, client, blockroot)
-			if header != nil {
-				break
-			}
-		}
-		if err != nil && header == nil {
-			return err
-		}
-		return nil
-	}
 
 	// try loading from cache
 	if blockInfo := bs.beaconIndexer.GetBlockByRoot(blockroot); blockInfo != nil {
@@ -122,49 +107,37 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		}
 	}
 
-	// try loading from connected clients
-	// A header-load failure here is not fatal: no connected client has the block
-	// (e.g. after a checkpoint sync). We fall through to the block db below.
+	// try loading from connected clients, racing the block db after the configured
+	// delay. A header-load failure here is not fatal: no connected client has the
+	// block (e.g. after a checkpoint sync). We fall through to the block db below.
+	// The slot needed to build the block db key is taken from our own db.
+	blockSlot, haveSlot := phase0.Slot(0), false
 	if result == nil {
-		if err := loadBlockHeader(); err != nil {
-			logrus.WithError(err).Debugf("could not load block header for root 0x%x from clients", blockroot)
-		}
-
-		if header != nil {
-			var err error
-			var block *all.SignedBeaconBlock
-			var payload *all.SignedExecutionPayloadEnvelope
-			bodyRetry := 0
-			for ; bodyRetry < 3; bodyRetry++ {
-				client := clients[bodyRetry%len(clients)]
-				if block == nil {
-					block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
-					if err != nil {
-						logrus.WithError(err).Debugf("could not load block body for root 0x%x from client %s", blockroot, client.GetClient().GetName())
-					}
-				}
-
-				if block != nil && block.Version >= spec.DataVersionGloas {
-					payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
-					if payload != nil {
-						break
-					} else if err != nil {
-						logrus.WithError(err).Debugf("could not load block payload for root 0x%x from client %s", blockroot, client.GetClient().GetName())
-					}
-				} else if block != nil {
-					break
-				}
-			}
-			if err == nil && block != nil {
-				result = &CombinedBlockResponse{
-					Root:     blockroot,
-					Header:   header,
-					Block:    block,
-					Payload:  payload,
-					Orphaned: false,
-				}
+		if blockdb.GlobalBlockDb != nil {
+			if dbBlock := db.GetBlockHeadByRoot(ctx, blockroot[:]); dbBlock != nil {
+				blockSlot, haveSlot = phase0.Slot(dbBlock.Slot), true
 			}
 		}
+
+		var loadFromBlockDb func(ctx context.Context) (*CombinedBlockResponse, error)
+		if blockdb.GlobalBlockDb != nil && haveSlot {
+			loadFromBlockDb = func(ctx context.Context) (*CombinedBlockResponse, error) {
+				return bs.completeBlockFromBlockDb(ctx, blockSlot, blockroot, nil, nil)
+			}
+		}
+
+		var clientLoad clientBlockLoad
+		var blockDbDone bool
+		var err error
+		result, clientLoad, blockDbDone, err = raceBlockLoad(ctx, blockroot,
+			func(ctx context.Context) clientBlockLoad {
+				return bs.loadBlockFromClientsByRoot(ctx, blockroot)
+			}, loadFromBlockDb)
+		if result == nil && blockDbDone {
+			// neither the nodes nor the block db have the block
+			return nil, err
+		}
+		header = clientLoad.header
 	}
 
 	// fill any missing components (the whole block, or just the payload/BAL) from the
@@ -173,14 +146,12 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 	// needed to build the block db key is taken from the header when available,
 	// otherwise from our own db.
 	if blockdb.GlobalBlockDb != nil {
-		blockSlot := phase0.Slot(0)
-		haveSlot := false
 		switch {
 		case header != nil:
 			blockSlot, haveSlot = header.Message.Slot, true
 		case result != nil && result.Header != nil:
 			blockSlot, haveSlot = result.Header.Message.Slot, true
-		default:
+		case !haveSlot:
 			if dbBlock := db.GetBlockHeadByRoot(ctx, blockroot[:]); dbBlock != nil {
 				blockSlot, haveSlot = phase0.Slot(dbBlock.Slot), true
 			}
@@ -209,40 +180,169 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 	return result, nil
 }
 
+// loadBlockFromClientsByRoot loads the header, body and (Gloas+) execution payload of
+// a block from the connected beacon nodes, preferring nodes known to have the block
+// and retrying each request on up to three nodes. The returned load carries the
+// block only when a body was served; the header is returned whenever one was.
+func (bs *ChainService) loadBlockFromClientsByRoot(ctx context.Context, blockroot phase0.Root) clientBlockLoad {
+	load := clientBlockLoad{root: blockroot}
+
+	clients := bs.beaconIndexer.GetReadyClientsByBlockRoot(blockroot, false)
+	if len(clients) == 0 {
+		clients = bs.beaconIndexer.GetReadyClients(true)
+	}
+	if len(clients) == 0 {
+		logrus.Debugf("could not load block header for root 0x%x from clients: no clients available", blockroot)
+		return load
+	}
+
+	var err error
+	for headRetry := 0; headRetry < 3; headRetry++ {
+		client := clients[headRetry%len(clients)]
+		load.header, err = beacon.LoadBeaconHeader(ctx, client, blockroot)
+		if load.header != nil {
+			break
+		}
+	}
+	if load.header == nil {
+		logrus.WithError(err).Debugf("could not load block header for root 0x%x from clients", blockroot)
+		return load
+	}
+
+	var block *all.SignedBeaconBlock
+	var payload *all.SignedExecutionPayloadEnvelope
+	for bodyRetry := 0; bodyRetry < 3; bodyRetry++ {
+		client := clients[bodyRetry%len(clients)]
+		if block == nil {
+			block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
+			if err != nil {
+				logrus.WithError(err).Debugf("could not load block body for root 0x%x from client %s", blockroot, client.GetClient().GetName())
+			}
+		}
+
+		if block != nil && block.Version >= spec.DataVersionGloas {
+			payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
+			if payload != nil {
+				break
+			} else if err != nil {
+				logrus.WithError(err).Debugf("could not load block payload for root 0x%x from client %s", blockroot, client.GetClient().GetName())
+			}
+		} else if block != nil {
+			break
+		}
+	}
+	if err == nil && block != nil {
+		load.result = &CombinedBlockResponse{
+			Root:     blockroot,
+			Header:   load.header,
+			Block:    block,
+			Payload:  payload,
+			Orphaned: false,
+		}
+	}
+
+	return load
+}
+
+// raceBlockLoad fetches a block that is not in the indexer cache. loadFromClients
+// asks the beacon nodes, which is normally the fastest source. When loadFromBlockDb
+// is given (block db configured and the block's db key known) and
+// blockDb.parallelLoadDelay is set, the block db is asked for the same block in
+// parallel once the delay has passed (or as soon as the nodes gave up, if that is
+// earlier) and whichever source delivers a block first wins; the other request is
+// cancelled. Otherwise the nodes are the only source consulted here and the caller
+// falls back to the block db.
+//
+// It returns the winning block (nil when no source had it), what the nodes returned,
+// whether the block db already gave its final answer (so the caller must not ask it
+// again) and the block db error in that case.
+func raceBlockLoad(
+	ctx context.Context,
+	blockroot phase0.Root,
+	loadFromClients func(ctx context.Context) clientBlockLoad,
+	loadFromBlockDb func(ctx context.Context) (*CombinedBlockResponse, error),
+) (*CombinedBlockResponse, clientBlockLoad, bool, error) {
+	delay := utils.Config.BlockDb.ParallelLoadDelay
+	if loadFromBlockDb == nil || delay == nil || *delay < 0 {
+		load := loadFromClients(ctx)
+		return load.result, load, false, nil
+	}
+
+	type loadResult struct {
+		clientLoad  clientBlockLoad
+		blockDbRes  *CombinedBlockResponse
+		blockDbErr  error
+		fromBlockDb bool
+	}
+
+	raceCtx, cancelRace := context.WithCancel(ctx)
+	defer cancelRace()
+
+	// buffered so the losing goroutine can always deliver and exit
+	results := make(chan loadResult, 2)
+	// closed when the nodes gave up without a block, so the block db is asked
+	// right away instead of waiting out the delay
+	clientsFailed := make(chan struct{})
+
+	go func() {
+		load := loadFromClients(raceCtx)
+		if load.result == nil {
+			close(clientsFailed)
+		}
+		results <- loadResult{clientLoad: load}
+	}()
+
+	go func() {
+		if *delay > 0 {
+			timer := time.NewTimer(*delay)
+			defer timer.Stop()
+
+			select {
+			case <-timer.C:
+			case <-clientsFailed:
+			case <-raceCtx.Done():
+				results <- loadResult{blockDbErr: raceCtx.Err(), fromBlockDb: true}
+				return
+			}
+		}
+
+		res, err := loadFromBlockDb(raceCtx)
+		results <- loadResult{blockDbRes: res, blockDbErr: err, fromBlockDb: true}
+	}()
+
+	var clientLoad clientBlockLoad
+	var blockDbErr error
+	for range 2 {
+		res := <-results
+		if res.fromBlockDb {
+			if res.blockDbRes != nil {
+				logrus.Debugf("block 0x%x served by block db before the beacon nodes answered", blockroot)
+				return res.blockDbRes, clientLoad, true, nil
+			}
+			blockDbErr = res.blockDbErr
+			continue
+		}
+
+		clientLoad = res.clientLoad
+		if clientLoad.result != nil {
+			return clientLoad.result, clientLoad, false, nil
+		}
+	}
+
+	return nil, clientLoad, true, blockDbErr
+}
+
 // GetSlotDetailsBySlot retrieves the combined block details for a given slot.
 // It first checks if there are any blocks in the beacon indexer's block cache for the given slot.
 // If found, it constructs a CombinedBlockResponse using the block information from the cache.
-// If not found, it retrieves the block header and block body from a random ready client
-// using the slot and constructs a CombinedBlockResponse with the retrieved information.
+// Otherwise the block is loaded from the connected beacon nodes, racing the block db
+// after blockDb.parallelLoadDelay (see raceBlockLoad), and any component the nodes
+// could not serve is filled from the block db.
 func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Slot) (*CombinedBlockResponse, error) {
 	var result *CombinedBlockResponse
-	var clients []*beacon.Client
 	var header *phase0.SignedBeaconBlockHeader
 	var blockRoot phase0.Root
 	var orphaned bool
-
-	loadBlockHeader := func() error {
-		if clients == nil {
-			clients = bs.beaconIndexer.GetReadyClients(true)
-			if len(clients) == 0 {
-				return fmt.Errorf("no clients available")
-			}
-		}
-
-		headRetry := 0
-		var err error
-		for ; headRetry < 3; headRetry++ {
-			client := clients[headRetry%len(clients)]
-			header, blockRoot, orphaned, err = beacon.LoadBeaconHeaderBySlot(ctx, client, slot)
-			if header != nil {
-				break
-			}
-		}
-		if err != nil && header == nil {
-			return err
-		}
-		return nil
-	}
 
 	// try loading from cache
 	if cachedBlocks := bs.beaconIndexer.GetBlocksBySlot(slot); len(cachedBlocks) > 0 {
@@ -272,48 +372,39 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		}
 	}
 
-	// try loading from connected clients
-	// A header-load failure here is not fatal: no connected client has the block
-	// (e.g. after a checkpoint sync). We fall through to the block db below.
+	// try loading from connected clients, racing the block db after the configured
+	// delay. A header-load failure here is not fatal: no connected client has the
+	// block (e.g. after a checkpoint sync). We fall through to the block db below.
+	// The block db key needs a root, so the canonical root for the slot is resolved
+	// from our own db up front.
 	if result == nil {
-		if header == nil {
-			if err := loadBlockHeader(); err != nil {
-				logrus.WithError(err).Debugf("could not load block header for slot %v from clients", slot)
+		if blockdb.GlobalBlockDb != nil {
+			blockRoot = bs.getCanonicalDbBlockRoot(ctx, slot)
+		}
+
+		var loadFromBlockDb func(ctx context.Context) (*CombinedBlockResponse, error)
+		if blockdb.GlobalBlockDb != nil && (blockRoot != phase0.Root{}) {
+			dbRoot := blockRoot
+			loadFromBlockDb = func(ctx context.Context) (*CombinedBlockResponse, error) {
+				return bs.completeBlockFromBlockDb(ctx, slot, dbRoot, nil, nil)
 			}
 		}
 
-		if header != nil {
-			var err error
-			var block *all.SignedBeaconBlock
-			var payload *all.SignedExecutionPayloadEnvelope
-			bodyRetry := 0
-			for ; bodyRetry < 3; bodyRetry++ {
-				client := clients[bodyRetry%len(clients)]
-				block, err = beacon.LoadBeaconBlock(ctx, client, blockRoot)
-				if err != nil {
-					logrus.WithError(err).Debugf("could not load block body for slot %v from client %s", slot, client.GetClient().GetName())
-				}
-
-				if block != nil && block.Version >= spec.DataVersionGloas {
-					payload, err = beacon.LoadExecutionPayload(ctx, client, blockRoot)
-					if payload != nil {
-						break
-					} else if err != nil {
-						logrus.WithError(err).Debugf("could not load block payload for slot %v from client %s", slot, client.GetClient().GetName())
-					}
-				} else if block != nil {
-					break
-				}
-			}
-			if err == nil && block != nil {
-				result = &CombinedBlockResponse{
-					Root:     blockRoot,
-					Header:   header,
-					Block:    block,
-					Payload:  payload,
-					Orphaned: orphaned,
-				}
-			}
+		var clientLoad clientBlockLoad
+		var blockDbDone bool
+		var err error
+		result, clientLoad, blockDbDone, err = raceBlockLoad(ctx, blockRoot,
+			func(ctx context.Context) clientBlockLoad {
+				return bs.loadBlockFromClientsBySlot(ctx, slot)
+			}, loadFromBlockDb)
+		if result == nil && blockDbDone {
+			// neither the nodes nor the block db have the block
+			return nil, err
+		}
+		header = clientLoad.header
+		if clientLoad.header != nil {
+			blockRoot = clientLoad.root
+			orphaned = clientLoad.orphaned
 		}
 	}
 
@@ -327,13 +418,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		(result.Block != nil && result.Block.Version >= spec.DataVersionGloas && result.Payload == nil)
 	if blockdb.GlobalBlockDb != nil && needsBlockDb {
 		if (blockRoot == phase0.Root{}) {
-			slotNum := uint64(slot)
-			for _, dbBlock := range bs.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{Slot: &slotNum, WithOrphaned: 1}, 0, 10, 0) {
-				if dbBlock.Block != nil && dbBlock.Block.Status == dbtypes.Canonical && len(dbBlock.Block.Root) == 32 {
-					blockRoot = phase0.Root(dbBlock.Block.Root)
-					break
-				}
-			}
+			blockRoot = bs.getCanonicalDbBlockRoot(ctx, slot)
 		}
 
 		if (blockRoot != phase0.Root{}) {
@@ -361,6 +446,77 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 	bs.populateBlockAccessList(ctx, result)
 
 	return result, nil
+}
+
+// getCanonicalDbBlockRoot returns the root of the canonical block our db holds for
+// the slot, or the zero root when the slot is unknown or has no canonical block.
+func (bs *ChainService) getCanonicalDbBlockRoot(ctx context.Context, slot phase0.Slot) phase0.Root {
+	slotNum := uint64(slot)
+	for _, dbBlock := range bs.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{Slot: &slotNum, WithOrphaned: 1}, 0, 10, 0) {
+		if dbBlock.Block != nil && dbBlock.Block.Status == dbtypes.Canonical && len(dbBlock.Block.Root) == 32 {
+			return phase0.Root(dbBlock.Block.Root)
+		}
+	}
+	return phase0.Root{}
+}
+
+// loadBlockFromClientsBySlot loads the header, body and (Gloas+) execution payload of
+// the block at a slot from the connected beacon nodes, retrying each request on up to
+// three nodes. The header lookup also yields the block root and whether the node
+// considers the block orphaned; both are returned even when no body could be served.
+func (bs *ChainService) loadBlockFromClientsBySlot(ctx context.Context, slot phase0.Slot) clientBlockLoad {
+	load := clientBlockLoad{}
+
+	clients := bs.beaconIndexer.GetReadyClients(true)
+	if len(clients) == 0 {
+		logrus.Debugf("could not load block header for slot %v from clients: no clients available", slot)
+		return load
+	}
+
+	var err error
+	for headRetry := 0; headRetry < 3; headRetry++ {
+		client := clients[headRetry%len(clients)]
+		load.header, load.root, load.orphaned, err = beacon.LoadBeaconHeaderBySlot(ctx, client, slot)
+		if load.header != nil {
+			break
+		}
+	}
+	if load.header == nil {
+		logrus.WithError(err).Debugf("could not load block header for slot %v from clients", slot)
+		return load
+	}
+
+	var block *all.SignedBeaconBlock
+	var payload *all.SignedExecutionPayloadEnvelope
+	for bodyRetry := 0; bodyRetry < 3; bodyRetry++ {
+		client := clients[bodyRetry%len(clients)]
+		block, err = beacon.LoadBeaconBlock(ctx, client, load.root)
+		if err != nil {
+			logrus.WithError(err).Debugf("could not load block body for slot %v from client %s", slot, client.GetClient().GetName())
+		}
+
+		if block != nil && block.Version >= spec.DataVersionGloas {
+			payload, err = beacon.LoadExecutionPayload(ctx, client, load.root)
+			if payload != nil {
+				break
+			} else if err != nil {
+				logrus.WithError(err).Debugf("could not load block payload for slot %v from client %s", slot, client.GetClient().GetName())
+			}
+		} else if block != nil {
+			break
+		}
+	}
+	if err == nil && block != nil {
+		load.result = &CombinedBlockResponse{
+			Root:     load.root,
+			Header:   load.header,
+			Block:    block,
+			Payload:  payload,
+			Orphaned: load.orphaned,
+		}
+	}
+
+	return load
 }
 
 // completeBlockFromBlockDb fills any block components still missing in result from
