@@ -62,11 +62,10 @@ type ClientCLDataMapPeerMapEdge struct {
 
 // ## PeerDAS data
 
-// ClientCLPagePeerDAS represents the DAS information from all clients and peers.
-// Used to construct the PeerDAS column custody view.
+// ClientCLPagePeerDAS represents the DAS spec configuration and the warnings collected
+// while deriving custody columns for all known nodes. The per-column distribution itself
+// is derived client-side from each node's custody columns.
 type ClientCLPagePeerDAS struct {
-	ColumnDistribution           [][]string                      `json:"column_distribution"`              // Indexed by column: list of peer IDs custodying that column
-	TotalRows                    int32                           `json:"total_rows"`                       // Amount of rows to show on the webpage. Each row has 32 columns
 	NumberOfColumns              uint64                          `json:"number_of_columns"`                // Should match NUMBER_OF_COLUMNS from spec
 	CustodyRequirement           uint64                          `json:"custody_requirement"`              // Should match CUSTODY_REQUIREMENT from spec
 	DataColumnSidecarSubnetCount uint64                          `json:"data_column_sidecar_subnet_count"` // Should match DATA_COLUMN_SIDECAR_SUBNET_COUNT from spec
@@ -112,6 +111,8 @@ type ClientsCLPageDataClient struct {
 
 // ClientCLPageDataNode represents a generic node on the CL network. Can be a client or a peer of a client
 // This is useful to generate a generic view of all nodes we know about in the network.
+// Inbound/outbound relations between nodes are not stored here; they are derived from the
+// peer map edges.
 type ClientCLPageDataNode struct {
 	PeerID            string                          `json:"peer_id"`
 	NodeID            string                          `json:"node_id"`
@@ -120,10 +121,8 @@ type ClientCLPageDataNode struct {
 	ENR               string                          `json:"enr"`
 	ENRKeyValues      []*ClientCLPageDataNodeENRValue `json:"enr_kv"`
 	MetadataKeyValues []*ClientCLPageDataNodeENRValue `json:"metadata_kv"`
-	Peers             []*ClientCLPageDataNodePeers    `json:"peers"` // only relevant for internal peers
+	Peers             []*ClientCLPageDataNodePeers    `json:"peers,omitempty"` // only relevant for internal peers; omitted from the nodes list response
 	PeerDAS           *ClientCLPageDataNodePeerDAS    `json:"peer_das"`
-	PeersIn           []string                        `json:"peers_in"`
-	PeersOut          []string                        `json:"peers_out"`
 	Metadata          *ClientCLPageDataNodeMetadata   `json:"metadata,omitempty"`
 	ClientSpecs       []*ClientCLPageDataSpecValue    `json:"client_specs"`
 }
@@ -136,14 +135,31 @@ type ClientCLPageDataNodeMetadata struct {
 	CustodyGroupCount string `json:"custody_group_count,omitempty"` // MetadataV3 field for Fulu
 }
 
-// ClientCLPageDataNodePeers represents the peers of a client
+// ClientCLPageDataNodePeers represents a peer connection of a client. The peer's identity
+// (ENR, custody columns, ...) lives on the referenced ClientCLPageDataNode; ENR and
+// ENRKeyValues are only populated when the client reported an ENR that is older than
+// the best known ENR for that peer (ENRStale), so the outdated record can be shown.
 type ClientCLPageDataNodePeers struct {
 	PeerID             string                          `json:"peer_id"`
 	State              string                          `json:"state"`
 	Direction          string                          `json:"direction"`
+	ENRStale           bool                            `json:"enr_stale"`
 	ENR                string                          `json:"enr"`
 	ENRKeyValues       []*ClientCLPageDataNodeENRValue `json:"enr_kv"`
 	LastSeenP2PAddress string                          `json:"last_seen_p2p_address"`
+}
+
+// ClientsCLNodesData is the response of the consensus clients nodes endpoint: every node
+// known to the explorer (clients and their peers) without the per-client peer lists.
+type ClientsCLNodesData struct {
+	Nodes []*ClientCLPageDataNode `json:"nodes"`
+}
+
+// ClientsCLNodePeersData is the response of the consensus clients node peers endpoint:
+// the peer connections reported by a single client.
+type ClientsCLNodePeersData struct {
+	PeerID string                       `json:"peer_id"`
+	Peers  []*ClientCLPageDataNodePeers `json:"peers"`
 }
 
 type ClientCLPageDataNodeENRValue struct {

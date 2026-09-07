@@ -1,7 +1,13 @@
 {{ define "internaltxs" }}
 <div class="card mt-0 border-top-0 rounded-top-0">
   <div class="card-body p-0">
-    {{ if .InternalTxsNotAvailable }}
+    {{ if .FrameCallsNotTraced }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-layer-group fa-2x mb-2"></i>
+      <p class="mb-1">This client does not break a frame transaction's trace into its frames, so there is nothing here that says which frame made which call.</p>
+      <p class="mb-0"><small>The transaction's own calls are its frames — see the <a href="?v=frames" onclick="document.getElementById('frames-tab').click(); return false;">Frames</a> tab.</small></p>
+    </div>
+    {{ else if .InternalTxsNotAvailable }}
     <div class="p-4 text-center text-muted">
       <i class="fas fa-archive fa-2x mb-2"></i>
       <p>Detailed internal transaction data is not available for this block (data may have been pruned).</p>
@@ -82,6 +88,17 @@
       .itx-decoded-table td, .itx-decoded-table th { padding: 2px 8px; vertical-align: top; }
       .itx-decoded-table th { font-weight: 600; white-space: nowrap; }
       .itx-decoded-table td.itx-decoded-val { word-break: break-all; font-family: monospace; }
+      .itx-frame-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        background: var(--bs-tertiary-bg);
+        border-bottom: 1px solid var(--bs-border-color);
+        font-size: 0.78rem;
+        color: var(--bs-secondary);
+      }
+      .itx-frame-note { font-size: 0.8rem; }
       .itx-addrs { display: inline-flex; align-items: center; gap: 5px; }
       .itx-method { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
       @media (min-width: 1400px) {
@@ -100,6 +117,13 @@
     </style>
     <div class="itx-wrap">
       {{ range $idx, $itx := .InternalTxs }}
+      {{ if and $itx.HasFrame (eq $itx.Depth 0) }}
+      <div class="itx-frame-head">
+        <i class="fas fa-layer-group"></i>
+        <span>Frame #{{ $itx.FrameIndex }}</span>
+        <span class="itx-frame-note">— the calls below were made from this frame</span>
+      </div>
+      {{ end }}
       {{ $hasData := (and $itx.HasTraceData (or (gt (len $itx.Input) 0) (gt (len $itx.Output) 0))) }}
       <div class="itx-entry">
         {{/* --- single row --- */}}

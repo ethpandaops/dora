@@ -1,0 +1,158 @@
+{{ define "signatures" }}
+<div class="card mt-0 border-top-0 rounded-top-0">
+  <div class="card-body p-0">
+    {{ if eq (len .Signatures) 0 }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-archive fa-2x mb-2"></i>
+      <p>The transaction itself is not retained for this block, so what signed it cannot be read.</p>
+    </div>
+    {{ else }}
+    <style>
+      .sig-note { padding: 10px; font-size: 0.86rem; color: var(--bs-secondary); border-bottom: 1px solid var(--bs-border-color); }
+      .sig-table { margin: 0; font-size: 0.88rem; }
+      .sig-table > :not(caption) > * > * { padding: 7px 10px; background: none; }
+      .sig-table thead th {
+        font-weight: 600;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--bs-secondary);
+        border-bottom: 1px solid var(--bs-border-color);
+      }
+      .sig-table tbody tr { border-bottom: 1px solid var(--bs-border-color); }
+      .sig-table tbody tr:last-child { border-bottom: none; }
+      .sig-row { cursor: pointer; }
+      .sig-row:hover { background: var(--bs-tertiary-bg); }
+      /* The panel row carries no border of its own: the entry above it owns the line. */
+      .sig-panel-row, .sig-panel-row:hover { border-bottom: none; background: none; }
+      .sig-expand-icon { color: var(--bs-primary); font-size: 0.72rem; transition: transform 0.15s ease; }
+      .sig-expand-icon.open { transform: rotate(90deg); }
+      .sig-panel { display: none; padding: 4px 10px 10px 3.1rem; background: var(--bs-tertiary-bg); }
+      .sig-panel.open { display: block; }
+      /* Entries stay on one line each, but an expanded panel holds values far wider than
+         the page - a P256 signature is 128 bytes - and those have to wrap. Left to widen
+         the table instead, one open panel scrolls the whole list sideways and takes the
+         columns of every collapsed entry with it. */
+      .table.table-nobr tbody td.sig-panel-cell,
+      .table.table-nobr tbody td.sig-panel-cell td {
+        white-space: normal;
+      }
+      .sig-meta-table { font-size: 0.82rem; margin: 0; }
+      .sig-meta-table th { font-weight: 600; white-space: nowrap; width: 6rem; color: var(--bs-secondary); }
+      .sig-meta-table td, .sig-meta-table th { padding: 2px 8px; vertical-align: top; border: none; }
+      .sig-data-box {
+        border: 1px solid var(--bs-border-color);
+        border-radius: 4px;
+        padding: 6px 8px;
+        background: var(--bs-body-bg);
+        font-family: monospace;
+        font-size: 0.82rem;
+        word-break: break-all;
+      }
+    </style>
+
+    <div class="sig-note">
+      {{ if .SignaturesRecoverSender }}
+      This transaction is signed once, and its sender is not stated anywhere in it - the address is
+      recovered from the signature. A signature that does not verify does not name the wrong sender;
+      it makes the transaction invalid.
+      {{ else }}
+      A frame transaction names its sender outright rather than recovering it, so these are not what
+      the sender is derived from. They are authorisations the protocol checks before any frame runs,
+      which is how an account other than the sender can agree to be charged.
+      {{ end }}
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-nobr sig-table">
+        <thead>
+          <tr>
+            <th style="width: 3rem;">#</th>
+            <th style="width: 7rem;">Scheme</th>
+            <th>Signer</th>
+            <th>Authorises</th>
+            <th class="text-end" style="width: 8rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="What the protocol charges to verify this signature">Verify gas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range $idx, $sig := .Signatures }}
+          <tr class="sig-row" onclick="toggleSignaturePanel({{ $idx }}, event)">
+            <td class="text-muted">{{ $sig.Index }}</td>
+            <td><span class="badge text-bg-secondary">{{ $sig.SchemeName }}</span></td>
+            <td class="text-monospace">
+              {{ if $sig.HasSigner }}
+              {{ formatEthAddressShortLink $sig.SignerAddr false 5 }}
+              {{ else }}
+              <span class="text-muted">none</span>
+              {{ end }}
+            </td>
+            <td class="text-muted">
+              {{ $sig.Role }}
+              {{ if gt (len $sig.Msg) 0 }}
+              <span class="badge text-bg-light text-dark border ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="This entry signs an explicit digest rather than the transaction's canonical signature hash">explicit digest</span>
+              {{ end }}
+            </td>
+            <td class="text-end text-monospace text-muted">
+              {{ formatAddCommas $sig.VerificationGas }}
+              <span class="sig-expand-icon ms-2" id="sig-chevron-{{ $idx }}"><i class="fas fa-chevron-right"></i></span>
+            </td>
+          </tr>
+          <tr class="sig-panel-row">
+            <td colspan="5" class="p-0 sig-panel-cell">
+              <div class="sig-panel" id="sig-panel-{{ $idx }}">
+                <table class="table table-sm sig-meta-table mb-2">
+                  <tbody>
+                    {{ range $part := $sig.Parts }}
+                    <tr>
+                      <th>{{ $part.Name }}</th>
+                      <td class="text-monospace text-break">
+                        {{ formatHexBytes $part.Value }}
+                        {{ if $part.Note }}<span class="text-muted">— {{ $part.Note }}</span>{{ end }}
+                        <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy" data-clipboard-text="{{ formatHexBytes $part.Value }}" style="font-size:0.75rem"></i>
+                      </td>
+                    </tr>
+                    {{ end }}
+                    <tr>
+                      <th>Signs</th>
+                      <td class="text-monospace text-break">
+                        {{ if gt (len $sig.Msg) 0 }}
+                        {{ formatHexBytes $sig.Msg }} <span class="text-muted">— an explicit digest</span>
+                        {{ else if $.SignaturesRecoverSender }}
+                        <span class="text-muted">the transaction's signing hash</span>
+                        {{ else }}
+                        <span class="text-muted">the transaction's canonical signature hash</span>
+                        {{ end }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {{ if gt (len $sig.Signature) 0 }}
+                <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
+                  <span class="text-muted small me-1">Raw ({{ len $sig.Signature }} bytes{{ if not $sig.Parts }}, no shape this scheme defines{{ end }}):</span>
+                  <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy signature" data-clipboard-text="{{ formatHexBytes $sig.Signature }}" style="font-size: 0.75rem;"></i>
+                </div>
+                <div class="sig-data-box">{{ formatHexBytes $sig.Signature }}</div>
+                {{ end }}
+              </div>
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+
+    <script type="text/javascript">
+      function toggleSignaturePanel(idx, event) {
+        if (event && (event.target.closest('a') || event.target.closest('button') || event.target.closest('[data-clipboard-text]'))) return;
+        var panel = document.getElementById('sig-panel-' + idx);
+        var chevron = document.getElementById('sig-chevron-' + idx);
+        if (!panel) return;
+        panel.classList.toggle('open');
+        if (chevron) chevron.classList.toggle('open');
+      }
+    </script>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

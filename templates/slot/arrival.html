@@ -369,9 +369,10 @@
       // newPayload captures, which are keyed by block number rather than slot.
       var arrivalExecHash = "{{ if .Block.ExecutionData }}0x{{ printf "%x" .Block.ExecutionData.BlockHash }}{{ end }}";
       var arrivalExecNumber = "{{ if .Block.ExecutionData }}{{ .Block.ExecutionData.BlockNumber }}{{ end }}";
-      // On networks where validators carry node names (devnets), the observing
-      // node run by this slot's proposer gets marked in the table.
+      // On networks where validators and builders carry node names (devnets),
+      // mark the observing nodes responsible for this slot in the table.
       var arrivalProposer = "{{ .ProposerName }}".toLowerCase();
+      var arrivalBuilder = "{{ if .Block.PayloadHeader }}{{ .Block.PayloadHeader.BuilderName }}{{ end }}".toLowerCase();
       var arrivalLoaded = false;
       var arrivalData = null;
       var sortState = { key: 'min', dir: 1 };
@@ -654,14 +655,18 @@
               (laneOverflows(n, ax) ? '<span class="overflow" title="continues past the axis">&raquo;</span>' : '') + '</div></td>';
 
           var isProposer = arrivalProposer && (n.name || '').toLowerCase() === arrivalProposer;
+          var isBuilder = arrivalBuilder && (n.name || '').toLowerCase() === arrivalBuilder;
           var proposerBadge = isProposer
             ? ' <span class="badge rounded-pill text-bg-info" style="font-size: 10px;" title="This node&#39;s validator proposed this block">proposer</span>'
+            : '';
+          var builderBadge = isBuilder
+            ? ' <span class="badge rounded-pill text-bg-warning" style="font-size: 10px;" title="This node built this block&#39;s execution payload">builder</span>'
             : '';
 
           return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
             '<td class="text-nowrap">' + groupBadge(n.group) +
-            '<span class="arrival-node-name"' + (isProposer ? ' style="font-weight: 600"' : '') +
-            ' title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' + proposerBadge + '</td>' +
+            '<span class="arrival-node-name"' + (isProposer || isBuilder ? ' style="font-weight: 600"' : '') +
+            ' title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' + proposerBadge + builderBadge + '</td>' +
             '<td>' + (n.implementation ? esc(n.implementation) : '<span class="text-muted" title="Not a beacon node — a gossip listener observing the p2p wire">&mdash;</span>') + '</td>' +
             '<td title="' + esc(n.country || '') + '">' + flag(cc) + ' <span class="text-muted small">' + esc(cc || n.continent || '') + '</span></td>' +
             '<td class="text-end grp-start">' + fmtMsColored(n.p2p_ms) + '</td>' +

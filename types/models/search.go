@@ -76,4 +76,7 @@ type SearchAheadTransactionResult struct {
 	TxHash      string `json:"tx_hash,omitempty"`
 	BlockNumber uint64 `json:"block_number,omitempty"`
 	Reverted    bool   `json:"reverted,omitempty"`
+	// FrameIncomplete marks a frame transaction not every frame of which succeeded; the
+	// transaction itself ran and paid, so it is not reverted.
+	FrameIncomplete bool `json:"frame_incomplete,omitempty"`
 }

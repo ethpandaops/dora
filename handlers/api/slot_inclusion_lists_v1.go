@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
@@ -93,8 +93,7 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 
 		if executionPayload != nil {
 			for _, txBytes := range executionPayload.Transactions {
-				var tx ethtypes.Transaction
-				if err := tx.UnmarshalBinary(txBytes); err == nil {
+				if tx, err := txtypes.DecodeTx(txBytes); err == nil {
 					blockTxHashes[string(tx.Hash().Bytes())] = true
 				}
 			}
@@ -122,8 +121,8 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 				DataLen: uint64(len(txBytes)),
 			}
 
-			var tx ethtypes.Transaction
-			if err := tx.UnmarshalBinary(txBytes); err != nil {
+			tx, err := txtypes.DecodeTx(txBytes)
+			if err != nil {
 				txEntry.DecodeErr = err.Error()
 			} else {
 				txEntry.Hash = fmt.Sprintf("0x%x", tx.Hash().Bytes())
@@ -136,7 +135,7 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 				if v := tx.Value(); v != nil {
 					txEntry.Value = v.String()
 				}
-				if from, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(tx.ChainId()), &tx); err == nil {
+				if from, err := tx.From(tx.ChainId()); err == nil {
 					txEntry.From = fmt.Sprintf("0x%x", from.Bytes())
 				}
 				txEntry.IsIncluded = blockTxHashes[string(tx.Hash().Bytes())]

@@ -792,7 +792,7 @@ func (t *TxIndexer) checkAndRunCleanup() {
 	durationMs := time.Since(start).Milliseconds()
 
 	// Build per-object stats for this cleanup cycle.
-	objects := make([]ElPruningObjectStat, 0, 7)
+	objects := make([]ElPruningObjectStat, 0, 8)
 	addObj := func(typ string, deleted, sizeBytes int64) {
 		if deleted > 0 || sizeBytes > 0 {
 			objects = append(objects, ElPruningObjectStat{Type: typ, Deleted: deleted, SizeBytes: sizeBytes})
