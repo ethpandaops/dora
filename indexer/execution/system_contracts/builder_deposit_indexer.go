@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
@@ -118,7 +119,7 @@ func (bi *BuilderDepositIndexer) runBuilderDepositIndexerLoop() {
 }
 
 // processFinalTx parses a finalized builder deposit log into a request tx.
-func (bi *BuilderDepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, _ []*dbtypes.BuilderDepositTx) (*dbtypes.BuilderDepositTx, error) {
+func (bi *BuilderDepositIndexer) processFinalTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, _ []*dbtypes.BuilderDepositTx) (*dbtypes.BuilderDepositTx, error) {
 	requestTx := bi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid builder deposit log")
@@ -135,7 +136,7 @@ func (bi *BuilderDepositIndexer) processFinalTx(log *types.Log, tx *types.Transa
 }
 
 // processRecentTx parses a recent (unfinalized) builder deposit log into a request tx.
-func (bi *BuilderDepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.BuilderDepositTx) (*dbtypes.BuilderDepositTx, error) {
+func (bi *BuilderDepositIndexer) processRecentTx(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.BuilderDepositTx) (*dbtypes.BuilderDepositTx, error) {
 	requestTx := bi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid builder deposit log")

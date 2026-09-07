@@ -22,6 +22,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// A payload-available event can arrive a moment before the node serves the envelope it
+// announces, so the load is retried across a window wide enough to cover that.
+const (
+	executionPayloadAnnounceRetries    = 5
+	executionPayloadAnnounceRetryDelay = 150 * time.Millisecond
+)
+
 // Client represents a consensus pool client that should be used for indexing beacon blocks.
 type Client struct {
 	indexer  *Indexer
@@ -635,7 +642,7 @@ func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1
 	}
 
 	newPayload, err := block.EnsureExecutionPayload(func() (*all.SignedExecutionPayloadEnvelope, error) {
-		return LoadExecutionPayload(c.getContext(), c, executionPayloadEvent.BlockRoot)
+		return c.loadAnnouncedExecutionPayload(executionPayloadEvent.BlockRoot)
 	})
 	if err != nil {
 		return err
@@ -649,7 +656,88 @@ func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1
 		}
 	}
 
+	c.backfillParentExecutionPayload(block)
+
 	return nil
+}
+
+// loadAnnouncedExecutionPayload loads the payload envelope a payload-available event
+// announced.
+//
+// The event asserts that the node has the payload, so a 404 immediately after it
+// contradicts the event rather than answering it: some clients fire the event a moment
+// before they serve the envelope. Taking that 404 at face value costs more than it looks
+// like it should, because the announcement does not come a second time - the payload
+// stays missing for the whole unfinalized range, and the block's transactions with it.
+func (c *Client) loadAnnouncedExecutionPayload(root phase0.Root) (*all.SignedExecutionPayloadEnvelope, error) {
+	var lastErr error
+
+	for retry := 0; retry < executionPayloadAnnounceRetries; retry++ {
+		if retry > 0 {
+			select {
+			case <-time.After(executionPayloadAnnounceRetryDelay):
+			case <-c.getContext().Done():
+				return nil, c.getContext().Err()
+			}
+		}
+
+		payload, err := LoadExecutionPayload(c.getContext(), c, root)
+		if payload != nil {
+			if retry > 0 {
+				c.logger.Debugf("execution payload for [0x%x] was announced %v before it was served", root, time.Duration(retry)*executionPayloadAnnounceRetryDelay)
+			}
+
+			return payload, nil
+		}
+
+		lastErr = err
+	}
+
+	return nil, lastErr
+}
+
+// backfillParentExecutionPayload loads the payload of the block that this block's payload
+// builds on, when that one is still missing.
+//
+// A payload naming a parent hash is proof that the payload behind that hash was revealed
+// and can be served. A block on top of it proves no such thing: post-EIP-7732 a block may
+// extend a parent whose payload was never revealed. So this is where a payload that was
+// announced before it could be served, and is therefore never announced again, is
+// recovered with certainty rather than guessed at.
+func (c *Client) backfillParentExecutionPayload(block *Block) {
+	payload := block.GetExecutionPayload(c.getContext())
+	if payload == nil || payload.Message == nil || payload.Message.Payload == nil {
+		return
+	}
+
+	parentHash := payload.Message.Payload.ParentHash
+	if bytes.Equal(parentHash[:], zeroHash[:]) {
+		return
+	}
+
+	for _, parent := range c.indexer.blockCache.getBlocksByExecutionBlockHash(parentHash) {
+		if parent.HasExecutionPayload() {
+			continue
+		}
+
+		newPayload, err := parent.EnsureExecutionPayload(func() (*all.SignedExecutionPayloadEnvelope, error) {
+			return LoadExecutionPayload(c.getContext(), c, parent.Root)
+		})
+		if err != nil {
+			c.logger.Warnf("failed loading execution payload for %v [0x%x] named by its successor: %v", parent.Slot, parent.Root, err)
+			continue
+		}
+
+		if !newPayload {
+			continue
+		}
+
+		c.logger.Infof("recovered execution payload for %v [0x%x] named by its successor", parent.Slot, parent.Root)
+
+		if err := c.persistExecutionPayload(parent); err != nil {
+			c.logger.Warnf("failed persisting recovered execution payload for %v [0x%x]: %v", parent.Slot, parent.Root, err)
+		}
+	}
 }
 
 func (c *Client) persistExecutionPayload(block *Block) error {
