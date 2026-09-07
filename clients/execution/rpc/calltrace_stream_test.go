@@ -11,6 +11,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// firstRoot returns a transaction's single top-level call frame, or nil when it has none.
+func firstRoot(result CallTraceResult) *CallTraceCall {
+	if len(result.Roots) == 0 {
+		return nil
+	}
+
+	return result.Roots[0]
+}
+
 // decodeTraceArray runs the streaming call trace decoder over a raw result array.
 func decodeTraceArray(t *testing.T, body string, payloadLimit int) ([]CallTraceResult, error) {
 	t.Helper()
@@ -69,7 +78,7 @@ func TestDecodeCallTraceResults(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 
-	root := results[0].Result
+	root := firstRoot(results[0])
 	require.NotNil(t, root)
 	assert.Equal(t, "CALL", root.Type)
 	assert.Equal(t, "0x722d316672c8be206c3d228d087d1dc948a61345", strings.ToLower(root.To.Hex()))
@@ -88,7 +97,7 @@ func TestDecodeCallTraceResults(t *testing.T) {
 	assert.Empty(t, root.Calls[1].Input)
 	assert.Nil(t, root.Calls[1].Calls)
 
-	assert.Nil(t, results[1].Result)
+	assert.Nil(t, firstRoot(results[1]))
 }
 
 func TestDecodeCallTraceResultsPrunesPayloads(t *testing.T) {
@@ -108,7 +117,7 @@ func TestDecodeCallTraceResultsPrunesPayloads(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 
-	root := results[0].Result
+	root := firstRoot(results[0])
 	require.NotNil(t, root)
 
 	// One byte past the limit is what marks the payload as truncated.
@@ -128,7 +137,7 @@ func TestDecodeCallTraceResultsKeepsPayloadsWithinLimit(t *testing.T) {
 	require.Len(t, results, 1)
 
 	// Exactly at the limit, so nothing is truncated and no marker byte is added.
-	assert.Equal(t, []byte{1, 2, 3, 4, 5}, []byte(results[0].Result.Input))
+	assert.Equal(t, []byte{1, 2, 3, 4, 5}, []byte(firstRoot(results[0]).Input))
 }
 
 func TestDecodeCallTraceResultsNullAndEmpty(t *testing.T) {
@@ -169,7 +178,7 @@ func TestDecodeCallTraceResultsLenientRevertReason(t *testing.T) {
 			results, err := decodeTraceArray(t, body, 1024)
 			require.NoError(t, err)
 			require.Len(t, results, 1)
-			assert.Equal(t, test.expected, []byte(results[0].Result.RevertReason))
+			assert.Equal(t, test.expected, []byte(firstRoot(results[0]).RevertReason))
 		})
 	}
 }
@@ -230,4 +239,101 @@ func TestSkipJSONValue(t *testing.T) {
 	key, err = dec.Token()
 	require.NoError(t, err)
 	assert.Equal(t, "c", key)
+}
+
+// A client that decomposes an EIP-8141 frame transaction has one top-level call per
+// frame, and reports them as a list rather than the single object an ordinary
+// transaction produces. No client does this yet, so the shape is accepted in advance.
+func TestDecodeCallTraceResultsAcceptsMultipleRoots(t *testing.T) {
+	const body = `[
+		{
+			"txHash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+			"result": [
+				{
+					"type": "CALL",
+					"from": "0x6df35438a4dfcdbd25c7a364ab77e3cfdce87fc5",
+					"to": "0x0000000000000000000000000000000000008141",
+					"gas": "0x1388",
+					"gasUsed": "0x33",
+					"input": "0x"
+				},
+				{
+					"type": "CALL",
+					"from": "0x6df35438a4dfcdbd25c7a364ab77e3cfdce87fc5",
+					"to": "0x30592ef78d262bc79f0fe46355e07a51d685e382",
+					"gas": "0x7530",
+					"gasUsed": "0x5208",
+					"input": "0xdeadbeef",
+					"calls": [
+						{
+							"type": "STATICCALL",
+							"from": "0x30592ef78d262bc79f0fe46355e07a51d685e382",
+							"to": "0x0000000000000000000000000000000000000004",
+							"gas": "0x100",
+							"gasUsed": "0x12",
+							"input": "0x"
+						}
+					]
+				}
+			]
+		}
+	]`
+
+	results, err := decodeTraceArray(t, body, 1024)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Len(t, results[0].Roots, 2)
+
+	assert.Equal(t, "0x0000000000000000000000000000000000008141", strings.ToLower(results[0].Roots[0].To.Hex()))
+	assert.Equal(t, uint64(0x33), uint64(results[0].Roots[0].GasUsed))
+
+	assert.Equal(t, "0x30592ef78d262bc79f0fe46355e07a51d685e382", strings.ToLower(results[0].Roots[1].To.Hex()))
+	require.Len(t, results[0].Roots[1].Calls, 1)
+	assert.Equal(t, "STATICCALL", results[0].Roots[1].Calls[0].Type)
+}
+
+// Verbatim callTracer output from ethrex (eip8141-v2-lenient) for a four-frame
+// transaction: one self-addressed childless placeholder that says nothing about the
+// frames, with the EIP-8037 gas dimensions reported and gasUsed left at zero.
+func TestDecodeCallTraceResultsReadsEip8037GasDimensions(t *testing.T) {
+	const body = `[
+		{
+			"result": {
+				"from": "0x6bcb3483cd582d6011e80805e0c6a90d42b98710",
+				"gas": "0x1b888",
+				"gasRefund": "0x1664c",
+				"gasUsed": "0x0",
+				"input": "0x",
+				"regularGasUsed": "0x523c",
+				"stateGasUsed": "0x0",
+				"to": "0x6bcb3483cd582d6011e80805e0c6a90d42b98710",
+				"type": "CALL",
+				"value": "0x0"
+			},
+			"txHash": "0x01a68783c4c3fa7af37526d9c34b25e66dea81c44840c28c905faf532c99eff1"
+		}
+	]`
+
+	results, err := decodeTraceArray(t, body, 1024)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	root := firstRoot(results[0])
+	require.NotNil(t, root)
+	assert.Empty(t, root.Calls, "the placeholder carries no frames")
+	assert.Equal(t, root.From, root.To, "the placeholder addresses the sender itself")
+
+	assert.Equal(t, uint64(0x523c), uint64(root.RegularGasUsed))
+	assert.Equal(t, uint64(0x1664c), uint64(root.GasRefund))
+
+	// gasUsed is zero here, so the cost has to come from the two dimensions.
+	assert.Zero(t, uint64(root.GasUsed))
+	assert.Equal(t, uint64(0x523c), root.TotalGasUsed())
+}
+
+// Where a client fills gasUsed in, it is authoritative and the dimensions are not summed
+// on top of it.
+func TestTotalGasUsedPrefersReportedGasUsed(t *testing.T) {
+	call := &CallTraceCall{GasUsed: 0x64e86, RegularGasUsed: 0xb426, StateGasUsed: 0x59a60}
+	assert.Equal(t, uint64(0x64e86), call.TotalGasUsed())
 }

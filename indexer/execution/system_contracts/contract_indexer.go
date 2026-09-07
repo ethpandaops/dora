@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
@@ -52,10 +53,10 @@ type contractIndexerOptions[TxType any] struct {
 	persistRebaseRows func(tx *sqlx.Tx, rows []*dequeueRebaseRow) error
 
 	// processFinalTx processes a finalized transaction log
-	processFinalTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*TxType) (*TxType, error)
+	processFinalTx func(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*TxType) (*TxType, error)
 
 	// processRecentTx processes a recent (non-finalized) transaction log
-	processRecentTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *exectx.ForkWithClients, parentTxs []*TxType) (*TxType, error)
+	processRecentTx func(log *types.Log, tx *txtypes.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *exectx.ForkWithClients, parentTxs []*TxType) (*TxType, error)
 
 	// persistTxs persists processed transactions to the database
 	persistTxs func(tx *sqlx.Tx, txs []*TxType) error
@@ -361,21 +362,25 @@ func (ci *contractIndexer[_]) loadFilteredLogs(ctx context.Context, client *exec
 }
 
 // loadTransactionByHash fetches a transaction by its hash from the execution client
-func (ci *contractIndexer[_]) loadTransactionByHash(ctx context.Context, client *execution.Client, hash common.Hash) (*types.Transaction, error) {
+func (ci *contractIndexer[_]) loadTransactionByHash(ctx context.Context, client *execution.Client, hash common.Hash) (*txtypes.Transaction, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	tx, _, err := client.GetRPCClient().GetEthClient().TransactionByHash(ctx, hash)
+	tx, _, err := client.GetRPCClient().GetTransactionByHash(ctx, hash)
+
 	return tx, err
 }
 
-// txRecipient returns the transaction recipient. Contract-creation transactions
-// have no recipient (To is nil); for those the request reached the system contract
-// via an internal call, so the emitting contract address is the effective target.
-func txRecipient(tx *types.Transaction, log *types.Log) common.Address {
-	if to := tx.To(); to != nil {
+// txRecipient returns the transaction recipient. Contract-creation transactions have no
+// recipient (To is nil), and a frame transaction has no recipient of its own - what it
+// reports is one of several frame targets. In both cases the request reached the system
+// contract through a call made from within the transaction, so the emitting contract
+// address is the effective target.
+func txRecipient(tx *txtypes.Transaction, log *types.Log) common.Address {
+	if to := tx.To(); to != nil && tx.Type() != txtypes.FrameTxType {
 		return *to
 	}
+
 	return log.Address
 }
 
@@ -449,7 +454,7 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 
 		// parse logs and load tx/block details
 		var txHash, txHeaderHash []byte
-		var txDetails *types.Transaction
+		var txDetails *txtypes.Transaction
 		var txBlockHeader *types.Header
 
 		requestTxs := []*TxType{}
@@ -480,11 +485,7 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 			}
 
 			// get transaction sender
-			chainId := txDetails.ChainId()
-			if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
-				chainId = nil
-			}
-			txFrom, err := types.Sender(types.LatestSignerForChainID(chainId), txDetails)
+			txFrom, err := txDetails.From(txDetails.ChainId())
 			if err != nil {
 				return fmt.Errorf("could not decode tx sender (%v): %v", log.TxHash, err)
 			}
@@ -614,7 +615,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 		var logs []types.Log
 		var reqError error
 		var txHash, txHeaderHash []byte
-		var txDetails *types.Transaction
+		var txDetails *txtypes.Transaction
 		var txBlockHeader *types.Header
 
 		requestTxs := []*TxType{}
@@ -687,11 +688,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 				}
 
 				// get transaction sender
-				chainId := txDetails.ChainId()
-				if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
-					chainId = nil
-				}
-				txFrom, err := types.Sender(types.LatestSignerForChainID(chainId), txDetails)
+				txFrom, err := txDetails.From(txDetails.ChainId())
 				if err != nil {
 					return fmt.Errorf("could not decode tx sender (%v): %v", log.TxHash, err)
 				}

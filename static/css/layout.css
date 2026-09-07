@@ -418,9 +418,9 @@ span.validator-label {
   margin-left: auto;
 }
 
-/* Highlight equal address links across rows on hover (set by explorer.js). */
-.el-data-table .addr-cell a,
-.itx-wrap .itx-addr a {
+/* Highlight every link to the hovered address (set by explorer.js), so the same account
+   can be followed through a page that mentions it more than once. */
+a[href^="/address/0x"] {
   border-radius: 3px;
   transition: background-color 0.1s;
 }
