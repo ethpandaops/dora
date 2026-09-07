@@ -420,7 +420,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 
 	cachedResults := make([]ValidatorWithIndex, 0, 1000)
 	cachedIndexes := newValidatorIndexSet(bs.beaconIndexer.GetValidatorSetSize())
-	cachedWithinPersisted := uint64(0) // cached entries that supersede a db row
+	supersededRows := make([]phase0.ValidatorIndex, 0, 1000) // cached entries that supersede a db row
 
 	// get matching entries from cached validators
 	bs.beaconIndexer.StreamActiveValidatorDataForRoot(canonicalHead.Root, false, &currentEpoch, func(index phase0.ValidatorIndex, flags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
@@ -429,7 +429,7 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 		}
 		cachedIndexes.add(index)
 		if uint64(index) < persistedCount {
-			cachedWithinPersisted++
+			supersededRows = append(supersededRows, index)
 		}
 
 		if filter.MinIndex != nil && index < phase0.ValidatorIndex(*filter.MinIndex) {
@@ -502,9 +502,15 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 	// only order by effective balance (a whole-ETH quantity most validators tie on), so a
 	// bounded fetch would pick an arbitrary slice of that tie group; they keep the full
 	// fetch.
+	// Right after a restart against a stale db, or while a large finalization update is
+	// still being persisted, most rows can be superseded; the bounded fetch and the
+	// chunked superseded-rows count would then cost more than the plain full walk, so
+	// the full fetch (whose merge counts exactly) is used until the backlog drains.
 	dbLimit := uint64(0)
-	if filter.Limit > 0 && !sortsByCurrentBalance(filter.OrderBy, balances) {
-		dbLimit = filter.Offset + filter.Limit + cachedWithinPersisted
+	boundedFetch := filter.Limit > 0 && !sortsByCurrentBalance(filter.OrderBy, balances) &&
+		len(supersededRows) <= maxBoundedSupersededRows
+	if boundedFetch {
+		dbLimit = filter.Offset + filter.Limit + uint64(len(supersededRows))
 	}
 	dbIndexes, err := db.GetValidatorIndexesByFilter(ctx, *filter, uint64(currentEpoch), dbLimit)
 	if err != nil {
@@ -679,8 +685,8 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 		cachedIndex++
 	}
 
-	if filter.Limit > 0 {
-		totalCount, err := bs.countFilteredValidators(ctx, filter, currentEpoch, cachedResults, persistedCount)
+	if boundedFetch {
+		totalCount, err := bs.countFilteredValidators(ctx, filter, currentEpoch, cachedResults, supersededRows)
 		if err != nil {
 			bs.logger.Warnf("error counting validators by filter: %v", err)
 			return nil, 0
@@ -705,24 +711,62 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 }
 
 // countFilteredValidators returns the number of validators matching the filter across
-// db and cache. Validators are persisted contiguously from index 0, so the db count covers
-// every cached match with a persisted row and only cached matches beyond the persisted
-// rows are added. Cached state changes that are not persisted yet can make status
-// dependent counts differ by the affected validators, which is fine for paging.
-func (bs *ChainService) countFilteredValidators(ctx context.Context, filter *dbtypes.ValidatorFilter, currentEpoch phase0.Epoch, cachedResults []ValidatorWithIndex, persistedCount uint64) (uint64, error) {
+// db and cache, so that it equals what a full merge would list: every db row that
+// matches the filter, minus the matching rows the merge skips because a cached state
+// supersedes them, plus every cached match (whether or not it has a db row). The
+// superseded rows are counted with the same filter predicate so both counts agree on
+// what matches; their index list is chunked to stay within the query parameter limit.
+func (bs *ChainService) countFilteredValidators(ctx context.Context, filter *dbtypes.ValidatorFilter, currentEpoch phase0.Epoch, cachedResults []ValidatorWithIndex, supersededRows []phase0.ValidatorIndex) (uint64, error) {
 	dbCount, err := db.GetValidatorCountByFilter(ctx, *filter, uint64(currentEpoch))
 	if err != nil {
 		return 0, err
 	}
 
-	unpersistedMatches := uint64(0)
-	for _, cached := range cachedResults {
-		if uint64(cached.Index) >= persistedCount {
-			unpersistedMatches++
-		}
+	supersededMatches, err := bs.countSupersededValidatorRows(ctx, filter, currentEpoch, supersededRows)
+	if err != nil {
+		return 0, err
 	}
 
-	return dbCount + unpersistedMatches, nil
+	return dbCount - supersededMatches + uint64(len(cachedResults)), nil
+}
+
+// supersededRowsChunkSize bounds the index list of one superseded-rows count query.
+// maxBoundedSupersededRows is the number of superseded rows above which the bounded
+// fetch is not worth it and the full fetch is used instead.
+const (
+	supersededRowsChunkSize  = 5000
+	maxBoundedSupersededRows = 50000
+)
+
+// countSupersededValidatorRows counts the db rows among supersededRows that match the
+// filter. A filter that already selects explicit indices is narrowed to those first,
+// since only rows it can match at all are counted in dbCount.
+func (bs *ChainService) countSupersededValidatorRows(ctx context.Context, filter *dbtypes.ValidatorFilter, currentEpoch phase0.Epoch, supersededRows []phase0.ValidatorIndex) (uint64, error) {
+	if len(filter.Indices) > 0 {
+		narrowed := make([]phase0.ValidatorIndex, 0, len(supersededRows))
+		for _, index := range supersededRows {
+			if slices.Contains(filter.Indices, index) {
+				narrowed = append(narrowed, index)
+			}
+		}
+		supersededRows = narrowed
+	}
+
+	total := uint64(0)
+	for start := 0; start < len(supersededRows); start += supersededRowsChunkSize {
+		end := min(start+supersededRowsChunkSize, len(supersededRows))
+
+		chunkFilter := *filter
+		chunkFilter.Indices = supersededRows[start:end]
+
+		count, err := db.GetValidatorCountByFilter(ctx, chunkFilter, uint64(currentEpoch))
+		if err != nil {
+			return 0, err
+		}
+		total += count
+	}
+
+	return total, nil
 }
 
 // validatorIndexSet is a bitset over validator indexes. It replaces a map for the
