@@ -194,8 +194,11 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	// The active set is streamed straight from the validator cache: the summary only needs
 	// index, effective balance and the active/slashed state, which the cache carries for
 	// every validator without loading the full validator objects.
-	services.GlobalBeaconService.StreamActiveValidatorData(false, func(validatorIndex phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, _ *phase0.Validator) error {
-		if activeData == nil || activeData.ActivationEpoch > currentEpoch || activeData.ExitEpoch <= currentEpoch {
+	streamErr := services.GlobalBeaconService.StreamActiveValidatorData(false, func(validatorIndex phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, _ *phase0.Validator) error {
+		// Projected pending-deposit placeholders carry an estimated activation epoch but
+		// a far-future eligibility epoch; they are not active validators.
+		if activeData == nil || activeData.ActivationEligibilityEpoch == beacon.FarFutureEpoch ||
+			activeData.ActivationEpoch > currentEpoch || activeData.ExitEpoch <= currentEpoch {
 			return nil
 		}
 		isSlashed := validatorFlags&beacon.ValidatorStatusSlashed != 0
@@ -358,6 +361,9 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 		activeValidators++
 		return nil
 	})
+	if streamErr != nil {
+		logrus.WithError(streamErr).Warn("error streaming validator set for the validators summary")
+	}
 
 	if activeValidators == 0 {
 		return pageData, cacheTime
