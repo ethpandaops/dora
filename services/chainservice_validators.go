@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"math"
 	"slices"
@@ -518,75 +519,82 @@ func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbt
 		return nil, 0
 	}
 
-	// sort results
+	// sort results. Every order breaks ties by validator index, matching the db query, so
+	// the cached entries and the db rows are merged along one total order.
 	var sortFn func(valA, valB ValidatorWithIndex) bool
+	byKey := func(desc bool, compareKey func(valA, valB ValidatorWithIndex) int) func(valA, valB ValidatorWithIndex) bool {
+		return func(valA, valB ValidatorWithIndex) bool {
+			order := compareKey(valA, valB)
+			if order == 0 {
+				order = cmp.Compare(valA.Index, valB.Index)
+			}
+			if desc {
+				return order > 0
+			}
+			return order < 0
+		}
+	}
+	byIndex := func(valA, valB ValidatorWithIndex) int { return 0 }
+	byPubKey := func(valA, valB ValidatorWithIndex) int {
+		return bytes.Compare(valA.Validator.PublicKey[:], valB.Validator.PublicKey[:])
+	}
+	byBalance := func(valA, valB ValidatorWithIndex) int {
+		if balances == nil {
+			return cmp.Compare(valA.Validator.EffectiveBalance, valB.Validator.EffectiveBalance)
+		}
+		return cmp.Compare(balanceAt(balances, valA.Index), balanceAt(balances, valB.Index))
+	}
+	byActivationEpoch := func(valA, valB ValidatorWithIndex) int {
+		return cmp.Compare(valA.Validator.ActivationEpoch, valB.Validator.ActivationEpoch)
+	}
+	byExitEpoch := func(valA, valB ValidatorWithIndex) int {
+		return cmp.Compare(valA.Validator.ExitEpoch, valB.Validator.ExitEpoch)
+	}
+	byWithdrawableEpoch := func(valA, valB ValidatorWithIndex) int {
+		return cmp.Compare(valA.Validator.WithdrawableEpoch, valB.Validator.WithdrawableEpoch)
+	}
+
 	switch filter.OrderBy {
 	case dbtypes.ValidatorOrderIndexAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Index < valB.Index
-		}
+		sortFn = byKey(false, byIndex)
 	case dbtypes.ValidatorOrderIndexDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Index > valB.Index
-		}
+		sortFn = byKey(true, byIndex)
 	case dbtypes.ValidatorOrderPubKeyAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return bytes.Compare(valA.Validator.PublicKey[:], valB.Validator.PublicKey[:]) < 0
-		}
+		sortFn = byKey(false, byPubKey)
 	case dbtypes.ValidatorOrderPubKeyDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return bytes.Compare(valA.Validator.PublicKey[:], valB.Validator.PublicKey[:]) > 0
-		}
+		sortFn = byKey(true, byPubKey)
 	case dbtypes.ValidatorOrderBalanceAsc:
-		if balances == nil {
-			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return valA.Validator.EffectiveBalance < valB.Validator.EffectiveBalance
-			}
-		} else {
-			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return balanceAt(balances, valA.Index) < balanceAt(balances, valB.Index)
-			}
-			sort.Slice(dbIndexes, func(i, j int) bool {
-				return balanceAt(balances, phase0.ValidatorIndex(dbIndexes[i])) < balanceAt(balances, phase0.ValidatorIndex(dbIndexes[j]))
-			})
-		}
+		sortFn = byKey(false, byBalance)
 	case dbtypes.ValidatorOrderBalanceDesc:
-		if balances == nil {
-			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return valA.Validator.EffectiveBalance > valB.Validator.EffectiveBalance
-			}
-		} else {
-			sortFn = func(valA, valB ValidatorWithIndex) bool {
-				return balanceAt(balances, valA.Index) > balanceAt(balances, valB.Index)
-			}
-			sort.Slice(dbIndexes, func(i, j int) bool {
-				return balanceAt(balances, phase0.ValidatorIndex(dbIndexes[i])) > balanceAt(balances, phase0.ValidatorIndex(dbIndexes[j]))
-			})
-		}
+		sortFn = byKey(true, byBalance)
 	case dbtypes.ValidatorOrderActivationEpochAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.ActivationEpoch < valB.Validator.ActivationEpoch
-		}
+		sortFn = byKey(false, byActivationEpoch)
 	case dbtypes.ValidatorOrderActivationEpochDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.ActivationEpoch > valB.Validator.ActivationEpoch
-		}
+		sortFn = byKey(true, byActivationEpoch)
 	case dbtypes.ValidatorOrderExitEpochAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.ExitEpoch < valB.Validator.ExitEpoch
-		}
+		sortFn = byKey(false, byExitEpoch)
 	case dbtypes.ValidatorOrderExitEpochDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.ExitEpoch > valB.Validator.ExitEpoch
-		}
+		sortFn = byKey(true, byExitEpoch)
 	case dbtypes.ValidatorOrderWithdrawableEpochAsc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.WithdrawableEpoch < valB.Validator.WithdrawableEpoch
-		}
+		sortFn = byKey(false, byWithdrawableEpoch)
 	case dbtypes.ValidatorOrderWithdrawableEpochDesc:
-		sortFn = func(valA, valB ValidatorWithIndex) bool {
-			return valA.Validator.WithdrawableEpoch > valB.Validator.WithdrawableEpoch
-		}
+		sortFn = byKey(true, byWithdrawableEpoch)
+	}
+
+	// The db orders the balance sorts by effective balance; with current balances at hand
+	// the fetched rows are re-sorted by those, tie-broken by index like everything else.
+	if sortsByCurrentBalance(filter.OrderBy, balances) {
+		desc := filter.OrderBy == dbtypes.ValidatorOrderBalanceDesc
+		sort.Slice(dbIndexes, func(i, j int) bool {
+			order := cmp.Compare(balanceAt(balances, phase0.ValidatorIndex(dbIndexes[i])), balanceAt(balances, phase0.ValidatorIndex(dbIndexes[j])))
+			if order == 0 {
+				order = cmp.Compare(dbIndexes[i], dbIndexes[j])
+			}
+			if desc {
+				return order > 0
+			}
+			return order < 0
+		})
 	}
 
 	sort.Slice(cachedResults, func(i, j int) bool {

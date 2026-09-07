@@ -185,7 +185,9 @@ func GetValidatorCountByFilter(ctx context.Context, filter dbtypes.ValidatorFilt
 }
 
 // GetValidatorIndexesByFilter returns the indexes of the validators matching the filter in
-// the requested order. A limit greater than zero caps the number of returned indexes.
+// the requested order. A limit greater than zero caps the number of returned indexes. Every
+// order breaks ties by validator index, since a bounded top-N sort would otherwise return
+// tied rows in an order that changes with the limit, so pages would overlap or skip rows.
 func GetValidatorIndexesByFilter(ctx context.Context, filter dbtypes.ValidatorFilter, currentEpoch uint64, limit uint64) ([]uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
@@ -203,25 +205,25 @@ func GetValidatorIndexesByFilter(ctx context.Context, filter dbtypes.ValidatorFi
 	case dbtypes.ValidatorOrderIndexDesc:
 		fmt.Fprintf(&sql, " ORDER BY validator_index DESC")
 	case dbtypes.ValidatorOrderPubKeyAsc:
-		fmt.Fprintf(&sql, " ORDER BY pubkey ASC")
+		fmt.Fprintf(&sql, " ORDER BY pubkey ASC, validator_index ASC")
 	case dbtypes.ValidatorOrderPubKeyDesc:
-		fmt.Fprintf(&sql, " ORDER BY pubkey DESC")
+		fmt.Fprintf(&sql, " ORDER BY pubkey DESC, validator_index DESC")
 	case dbtypes.ValidatorOrderBalanceAsc:
-		fmt.Fprintf(&sql, " ORDER BY effective_balance ASC")
+		fmt.Fprintf(&sql, " ORDER BY effective_balance ASC, validator_index ASC")
 	case dbtypes.ValidatorOrderBalanceDesc:
-		fmt.Fprintf(&sql, " ORDER BY effective_balance DESC")
+		fmt.Fprintf(&sql, " ORDER BY effective_balance DESC, validator_index DESC")
 	case dbtypes.ValidatorOrderActivationEpochAsc:
-		fmt.Fprintf(&sql, " ORDER BY activation_epoch ASC")
+		fmt.Fprintf(&sql, " ORDER BY activation_epoch ASC, validator_index ASC")
 	case dbtypes.ValidatorOrderActivationEpochDesc:
-		fmt.Fprintf(&sql, " ORDER BY activation_epoch DESC")
+		fmt.Fprintf(&sql, " ORDER BY activation_epoch DESC, validator_index DESC")
 	case dbtypes.ValidatorOrderExitEpochAsc:
-		fmt.Fprintf(&sql, " ORDER BY exit_epoch ASC")
+		fmt.Fprintf(&sql, " ORDER BY exit_epoch ASC, validator_index ASC")
 	case dbtypes.ValidatorOrderExitEpochDesc:
-		fmt.Fprintf(&sql, " ORDER BY exit_epoch DESC")
+		fmt.Fprintf(&sql, " ORDER BY exit_epoch DESC, validator_index DESC")
 	case dbtypes.ValidatorOrderWithdrawableEpochAsc:
-		fmt.Fprintf(&sql, " ORDER BY withdrawable_epoch ASC")
+		fmt.Fprintf(&sql, " ORDER BY withdrawable_epoch ASC, validator_index ASC")
 	case dbtypes.ValidatorOrderWithdrawableEpochDesc:
-		fmt.Fprintf(&sql, " ORDER BY withdrawable_epoch DESC")
+		fmt.Fprintf(&sql, " ORDER BY withdrawable_epoch DESC, validator_index DESC")
 	}
 
 	if limit > 0 {
