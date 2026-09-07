@@ -332,7 +332,7 @@ func TestFrameTransactionWithAFailedFrameIsCompleteNotReverted(t *testing.T) {
 		t.Errorf("revert reason = %q, want none: the transaction did not revert", pageData.RevertReason)
 	}
 
-	for _, want := range []string{"frame #2 failed", "1 succeeded but was undone", "1 never ran"} {
+	for _, want := range []string{"1 of 4 frames failed (frame #2)", "1 succeeded but was undone", "1 never ran"} {
 		if !strings.Contains(pageData.FrameStatusDetail, want) {
 			t.Errorf("status detail %q does not mention %q", pageData.FrameStatusDetail, want)
 		}
@@ -658,8 +658,65 @@ func TestFailedAssertionFrameRevertsTheWholeBody(t *testing.T) {
 		}
 	}
 
-	if pageData.StatusText != "Reverted" {
-		t.Errorf("status = %q, want Reverted - this is not a partial completion", pageData.StatusText)
+	// The transaction still ran and paid, so it completed; what the tooltip has to say is
+	// that the one failed frame took the body with it.
+	if pageData.StatusText != "Complete" {
+		t.Errorf("status = %q, want Complete", pageData.StatusText)
+	}
+
+	for _, want := range []string{"1 of 4 frames failed (frame #3)", "POST_TX frame among them (execution body reverted)"} {
+		if !strings.Contains(pageData.FrameStatusDetail, want) {
+			t.Errorf("status detail %q does not mention %q", pageData.FrameStatusDetail, want)
+		}
+	}
+}
+
+// Without the receipt the frames' own results are unknown, but the row still says whether
+// any failed and - through the summary the indexer stores as its reason - how many. That
+// is stated as a completion, as it would be with the results, never as a revert.
+func TestFrameTransactionWithoutResultsIsStatedFromItsRow(t *testing.T) {
+	pageData := &models.TransactionPageData{
+		IsFrameTx:    true,
+		Status:       false,
+		StatusText:   "Failed",
+		RevertReason: "2 of 5 frames failed",
+		Frames: []*models.TransactionPageDataFrame{
+			{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4},
+		},
+		FrameResultsMissing: true,
+	}
+
+	applyFrameTxStatus(pageData)
+
+	if !pageData.Status || pageData.StatusText != "Complete" || !pageData.FrameIncomplete {
+		t.Errorf("status = %v/%q/incomplete=%v, want Complete", pageData.Status, pageData.StatusText, pageData.FrameIncomplete)
+	}
+
+	if pageData.RevertReason != "" {
+		t.Errorf("revert reason = %q, want none: the transaction did not revert", pageData.RevertReason)
+	}
+
+	if !strings.HasPrefix(pageData.FrameStatusDetail, "2 of 5 frames failed") {
+		t.Errorf("status detail %q does not lead with the stored summary", pageData.FrameStatusDetail)
+	}
+
+	// A row indexed before the summary was stored says only that some frame failed.
+	pageData.Status = false
+	pageData.RevertReason = ""
+
+	applyFrameTxStatus(pageData)
+
+	if pageData.StatusText != "Complete" || !strings.HasPrefix(pageData.FrameStatusDetail, "Not every frame") {
+		t.Errorf("status = %q, detail %q: want Complete with the unqualified summary", pageData.StatusText, pageData.FrameStatusDetail)
+	}
+
+	// A row that reports success had no frame fail.
+	pageData.Status = true
+
+	applyFrameTxStatus(pageData)
+
+	if pageData.StatusText != "Success" || pageData.FrameIncomplete {
+		t.Errorf("status = %q/incomplete=%v, want Success", pageData.StatusText, pageData.FrameIncomplete)
 	}
 }
 

@@ -184,7 +184,7 @@
                   <td class="text-nowrap">
                     {{ if .BlockOrphaned }}
                       {{ if and .Reverted .IsMultiTarget }}
-                        <span class="badge status-split" data-bs-toggle="tooltip" title="Orphaned block · not every frame succeeded">Orphaned</span>
+                        <span class="badge status-split" data-bs-toggle="tooltip" title="Orphaned block · {{ if .RevertReason }}{{ .RevertReason }}{{ else }}not every frame succeeded{{ end }}">Orphaned</span>
                       {{ else if .Reverted }}
                         <span class="badge status-split" data-bs-toggle="tooltip" title="Orphaned block · execution reverted">Orphaned</span>
                       {{ else }}
@@ -192,7 +192,7 @@
                       {{ end }}
                     {{ else }}
                       {{ if and .Reverted .IsMultiTarget }}
-                        <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" title="Included · the transaction ran and paid, but not every frame of it succeeded">Complete</span>
+                        <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" title="Included · the transaction ran and paid, but {{ if .RevertReason }}{{ .RevertReason }}{{ else }}not every frame of it succeeded{{ end }}">Complete</span>
                       {{ else if .Reverted }}
                         <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="{{ if .RevertReason }}Reverted: {{ .RevertReason }}{{ else }}Included · execution reverted{{ end }}">Reverted</span>
                       {{ else }}

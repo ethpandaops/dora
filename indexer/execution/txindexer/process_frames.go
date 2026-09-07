@@ -1,6 +1,7 @@
 package txindexer
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -94,6 +95,39 @@ func (f *pendingFrame) executed() bool {
 // and its atomic batch was not rolled back afterwards.
 func (f *pendingFrame) succeeded() bool {
 	return f.hasResult && f.status == txtypes.FrameStatusSuccess && !f.rolledBack
+}
+
+// frameFailureSummary states how many of a transaction's frames failed, as "k of n frames
+// failed", or nothing when none did. A failed POST_TX frame is called out, since it
+// reverts the whole execution body rather than one atomic batch. The summary is stored as
+// the transaction's revert reason: the frames' own results live only in blockdb, and this
+// is what every listing of the transaction has to say about them.
+func frameFailureSummary(frames []*pendingFrame) string {
+	failed := 0
+	postTxFailed := false
+
+	for _, frame := range frames {
+		if !frame.hasResult || frame.status != txtypes.FrameStatusFailed {
+			continue
+		}
+
+		failed++
+
+		if frame.mode == uint8(txtypes.FrameModePostTx) {
+			postTxFailed = true
+		}
+	}
+
+	if failed == 0 {
+		return ""
+	}
+
+	summary := fmt.Sprintf("%d of %d frames failed", failed, len(frames))
+	if postTxFailed {
+		summary += ", the POST_TX frame among them (execution body reverted)"
+	}
+
+	return summary
 }
 
 // resolveFrames builds the per-frame view of a frame transaction, pairing each frame with

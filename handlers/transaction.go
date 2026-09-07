@@ -540,6 +540,10 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 		if displayBlock != nil {
 			loadFrameReceiptFromBlockdb(ctx, pageData, displayBlock.Slot, displayBlock.Root, tx.TxHash)
 		}
+
+		// With the per-frame results, the status comes from them; without, from what the
+		// row says about them. Either way it is not the revert the row's status reads as.
+		applyFrameTxStatus(pageData)
 	}
 
 	// Event count comes straight off the tx row (logs emitted); full event
@@ -2147,11 +2151,11 @@ func applyFrameResults(pageData *models.TransactionPageData, results []bdbtypes.
 		frame.StatusText = frameStatusText(bdbtypes.FrameStatusUnknown, false)
 	}
 
+	pageData.FrameResultsMissing = false
+
 	markRolledBackFrames(pageData.Frames)
 	applyFrameBodyReverted(pageData)
 	summarizeFrames(pageData)
-
-	pageData.FrameResultsMissing = false
 }
 
 // applyFrameReceiptExtra overlays the frame content a client's receipt reports.
@@ -2561,26 +2565,59 @@ func applyFrameBodyReverted(pageData *models.TransactionPageData) {
 //
 // A frame transaction that reached the chain ran and paid: its validation prefix
 // succeeded, or the transaction would be invalid and never included. Frames within it can
-// still fail, and that is not the transaction reverting - nothing the other frames did
-// was undone, and the fee was still owed. Reporting it as a revert would say that the
-// whole thing came to nothing, which is the opposite of what happened.
+// still fail, and that is not the transaction reverting - the fee was still owed, and what
+// the frames outside the failure did stands. So a frame transaction is never "Failed" or
+// "Reverted": it completed, and how completely is what the tooltip is for. It leads with
+// how many frames failed, which is the one thing every view of the transaction says.
 //
-// So it completed, and how completely is what the tooltip is for.
+// The per-frame results live on the receipt, which may not have been kept. Without them
+// the row's status still says whether any frame failed, and its revert reason - the frame
+// failure summary the indexer stores - how many.
 func applyFrameTxStatus(pageData *models.TransactionPageData) {
 	if !pageData.IsFrameTx {
+		return
+	}
+
+	if pageData.FrameResultsMissing || len(pageData.Frames) == 0 {
+		applyFrameTxStatusFromRow(pageData)
+
 		return
 	}
 
 	pageData.Status = true
 	pageData.RevertReason = ""
 
-	parts := make([]string, 0, 3)
+	if pageData.FrameFailedCount == 0 {
+		pageData.StatusText = "Success"
+		pageData.FrameIncomplete = false
+		pageData.FrameStatusDetail = "Every frame of this transaction succeeded."
 
-	if pageData.FrameFailedCount == 1 {
-		parts = append(parts, fmt.Sprintf("frame #%d failed", pageData.FrameFailedIndex))
-	} else if pageData.FrameFailedCount > 1 {
-		parts = append(parts, fmt.Sprintf("%d frames failed, the first being #%d", pageData.FrameFailedCount, pageData.FrameFailedIndex))
+		return
 	}
+
+	pageData.StatusText = "Complete"
+	pageData.FrameIncomplete = true
+
+	failed := fmt.Sprintf("%d of %d frames failed", pageData.FrameFailedCount, len(pageData.Frames))
+	if pageData.FrameFailedCount == 1 {
+		failed += fmt.Sprintf(" (frame #%d)", pageData.FrameFailedIndex)
+	} else {
+		failed += fmt.Sprintf(", the first being #%d", pageData.FrameFailedIndex)
+	}
+
+	if pageData.FrameBodyReverted {
+		pageData.FrameStatusDetail = fmt.Sprintf(
+			"%s, the POST_TX frame among them (execution body reverted). A failed POST_TX frame reverts "+
+				"everything the transaction did after its validation frames - not just its own atomic batch. "+
+				"The transaction still reached the chain and its fee was still owed: only the validation "+
+				"frames left anything behind.",
+			failed,
+		)
+
+		return
+	}
+
+	parts := make([]string, 0, 2)
 
 	if pageData.FrameRolledBackCnt == 1 {
 		parts = append(parts, "1 succeeded but was undone with its atomic batch")
@@ -2592,20 +2629,28 @@ func applyFrameTxStatus(pageData *models.TransactionPageData) {
 		parts = append(parts, fmt.Sprintf("%d never ran", pageData.FrameSkippedCount))
 	}
 
-	if pageData.FrameBodyReverted {
-		pageData.StatusText = "Reverted"
-		pageData.FrameIncomplete = true
-		pageData.FrameStatusDetail = fmt.Sprintf(
-			"An assertion frame failed, which reverts everything the transaction did after its validation "+
-				"frames - not just its own atomic batch. The transaction still reached the chain and its fee "+
-				"was still owed: of its %d frames, only the validation ones left anything behind.",
-			len(pageData.Frames),
-		)
-
-		return
+	detail := failed
+	if len(parts) > 0 {
+		detail += ", " + strings.Join(parts, ", ")
 	}
 
-	if len(parts) == 0 {
+	pageData.FrameStatusDetail = fmt.Sprintf(
+		"%s. The transaction ran and paid its fee - a frame transaction only reaches the chain once its validation frames succeed. What the rest did stands.",
+		detail,
+	)
+}
+
+// applyFrameTxStatusFromRow states a frame transaction's outcome from its row alone, for
+// when the per-frame results are not retained. The row's status says whether any frame
+// failed; its revert reason, when the indexer stored one, says how many.
+func applyFrameTxStatusFromRow(pageData *models.TransactionPageData) {
+	reverted := !pageData.Status
+	summary := pageData.RevertReason
+
+	pageData.Status = true
+	pageData.RevertReason = ""
+
+	if !reverted {
 		pageData.StatusText = "Success"
 		pageData.FrameIncomplete = false
 		pageData.FrameStatusDetail = "Every frame of this transaction succeeded."
@@ -2613,11 +2658,15 @@ func applyFrameTxStatus(pageData *models.TransactionPageData) {
 		return
 	}
 
+	if summary == "" {
+		summary = "Not every frame of this transaction succeeded"
+	}
+
 	pageData.StatusText = "Complete"
 	pageData.FrameIncomplete = true
 	pageData.FrameStatusDetail = fmt.Sprintf(
-		"The transaction ran and paid its fee - a frame transaction only reaches the chain once its validation frames succeed. Of its %d frames, %s. What the rest did stands.",
-		len(pageData.Frames), strings.Join(parts, ", "),
+		"%s. The transaction ran and paid its fee - a frame transaction only reaches the chain once its validation frames succeed. Which frames failed is not known: their results are not retained for this block.",
+		summary,
 	)
 }
 

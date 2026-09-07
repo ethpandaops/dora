@@ -653,3 +653,30 @@ func TestResolveFramesRegistersOnlyTheTargetsThatWereCalled(t *testing.T) {
 		t.Error("the executed frame's target should be tracked")
 	}
 }
+
+// The row's revert reason for a frame transaction is how many of its frames failed, which
+// is all a listing of it can say about the frames, and nothing when none did.
+func TestFrameFailureSummaryCountsFailedFrames(t *testing.T) {
+	frames := []*pendingFrame{
+		{hasResult: true, status: txtypes.FrameStatusSuccess},
+		{hasResult: true, status: txtypes.FrameStatusFailed},
+		{hasResult: true, status: txtypes.FrameStatusSkipped},
+		{hasResult: true, status: txtypes.FrameStatusFailed},
+		{},
+	}
+
+	if got, want := frameFailureSummary(frames), "2 of 5 frames failed"; got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+
+	if got := frameFailureSummary(frames[:1]); got != "" {
+		t.Errorf("summary = %q, want none when no frame failed", got)
+	}
+
+	// A failed POST_TX frame reverts the body, which the summary has to say.
+	frames = append(frames, &pendingFrame{hasResult: true, mode: uint8(txtypes.FrameModePostTx), status: txtypes.FrameStatusFailed})
+
+	if got, want := frameFailureSummary(frames), "3 of 6 frames failed, the POST_TX frame among them (execution body reverted)"; got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+}

@@ -703,7 +703,9 @@
           header: '<h3 class="h5">Transactions:</h3>',
           suggestion: function (data) {
             var status = "";
-            if (data.reverted) {
+            if (data.frame_incomplete) {
+              status = `<span class="search-cell"><span class="badge rounded-pill text-bg-warning text-dark">Complete</span></span>`;
+            } else if (data.reverted) {
               status = `<span class="search-cell"><span class="badge rounded-pill text-bg-danger">Failed</span></span>`;
             }
             var blockInfo = data.block_number ? `<span class="search-cell text-muted">Block ${data.block_number}</span>` : "";

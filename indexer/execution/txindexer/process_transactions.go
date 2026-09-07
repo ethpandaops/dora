@@ -424,6 +424,14 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 	result.reverted = receipt.Status == 0
 
+	// A frame transaction has no revert of its own: it reaches the chain only once its
+	// validation frames succeed, so a receipt status of failure means that frames within it
+	// failed. The row keeps how many, which is the only part of the per-frame results the
+	// list pages have.
+	if isFrameTx {
+		result.revertReason = frameFailureSummary(result.frames)
+	}
+
 	// Store pending accounts for resolving IDs at commit time
 	result.fromAccount = fromAccount
 	result.toAccount = toAccount
@@ -549,8 +557,9 @@ func (ctx *txProcessingContext) processTransaction(
 
 	// Decode the revert reason from the root call frame (index 0 = depth 0).
 	// Only available when traces were collected; otherwise the reason stays empty
-	// and the tx maps to the "unknown" sentinel at commit time.
-	if result.reverted && len(result.callTraceData) > 0 {
+	// and the tx maps to the "unknown" sentinel at commit time. A frame transaction's
+	// reason is its frame failure summary, set above.
+	if result.reverted && !isFrameTx && len(result.callTraceData) > 0 {
 		result.revertReason, result.revertReservedID = decodeRevertReason(result.callTraceData[0])
 	}
 
