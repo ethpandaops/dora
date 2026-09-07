@@ -651,7 +651,20 @@ type ElTxHash struct {
 const (
 	ElTxTypeMask   uint8 = 0x7F // bits 0-6: EVM tx type
 	ElTxFlagCreate uint8 = 0x80 // bit 7: contract-creation tx (raw recipient was null)
+
+	// ElTxTypeFrame is the EIP-8141 frame transaction type.
+	ElTxTypeFrame uint8 = 0x06
 )
+
+// IsMultiTarget reports whether a transaction addresses more than one recipient.
+//
+// Such a transaction has no recipient of its own, so its el_transactions row carries
+// to_id 0 - the id no account has - and its targets are read from the transaction
+// itself. Callers must not read that as a contract creation, which is the other reason
+// a row has no recipient.
+func IsMultiTarget(txType uint8) bool {
+	return txType&ElTxTypeMask == ElTxTypeFrame
+}
 
 // ElTransactionInternal is a per-account aggregate of internal calls within a
 // transaction. One row per (tx_uid, account_id) regardless of how many sub-

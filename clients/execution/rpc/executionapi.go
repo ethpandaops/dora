@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 
@@ -259,8 +261,60 @@ func (ec *ExecutionClient) GetBalanceAt(ctx context.Context, wallet common.Addre
 	return ec.ethClient.BalanceAt(ctx, wallet, blockNumber)
 }
 
-func (ec *ExecutionClient) GetTransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
-	return ec.ethClient.TransactionReceipt(ctx, txHash)
+// GetTransactionByHash looks up a single transaction and reports whether it is still
+// pending.
+//
+// The response is decoded from raw JSON rather than through the typed ethclient: a
+// transaction of a type go-ethereum cannot represent - an EIP-8141 frame transaction,
+// or whatever the next fork adds - still yields the fields the node reported instead of
+// failing the lookup outright.
+func (ec *ExecutionClient) GetTransactionByHash(ctx context.Context, txHash common.Hash) (*txtypes.Transaction, bool, error) {
+	var raw json.RawMessage
+	if err := ec.rpcClient.CallContext(ctx, &raw, "eth_getTransactionByHash", txHash); err != nil {
+		return nil, false, fmt.Errorf("eth_getTransactionByHash failed: %w", err)
+	}
+
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, false, fmt.Errorf("transaction %s not found", txHash.Hex())
+	}
+
+	tx, err := txtypes.UnmarshalJSONTx(raw)
+	if err != nil {
+		return nil, false, fmt.Errorf("unmarshal transaction %s: %w", txHash.Hex(), err)
+	}
+
+	// A transaction that names no block has not been included yet.
+	var inclusion struct {
+		BlockHash *common.Hash `json:"blockHash"`
+	}
+	if err := json.Unmarshal(raw, &inclusion); err != nil {
+		return nil, false, fmt.Errorf("unmarshal transaction %s inclusion: %w", txHash.Hex(), err)
+	}
+
+	return tx, inclusion.BlockHash == nil, nil
+}
+
+// GetTransactionReceipt looks up a single transaction receipt.
+//
+// Like GetTransactionByHash it decodes raw JSON, which additionally preserves
+// type-specific receipt content such as an EIP-8141 transaction's per-frame results and
+// the payer that settled it.
+func (ec *ExecutionClient) GetTransactionReceipt(ctx context.Context, txHash common.Hash) (*txtypes.Receipt, error) {
+	var raw json.RawMessage
+	if err := ec.rpcClient.CallContext(ctx, &raw, "eth_getTransactionReceipt", txHash); err != nil {
+		return nil, fmt.Errorf("eth_getTransactionReceipt failed: %w", err)
+	}
+
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, fmt.Errorf("receipt for transaction %s not found", txHash.Hex())
+	}
+
+	receipt := &txtypes.Receipt{}
+	if err := json.Unmarshal(raw, receipt); err != nil {
+		return nil, fmt.Errorf("unmarshal receipt for transaction %s: %w", txHash.Hex(), err)
+	}
+
+	return receipt, nil
 }
 
 func (ec *ExecutionClient) SendTransaction(ctx context.Context, tx *types.Transaction) error {

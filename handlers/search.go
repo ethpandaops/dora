@@ -657,9 +657,10 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 					tx := txs[0]
 					result = &[]models.SearchAheadTransactionResult{
 						{
-							TxHash:      fmt.Sprintf("0x%x", txHashBytes),
-							BlockNumber: tx.BlockNumber,
-							Reverted:    tx.RevertID > 0,
+							TxHash:          fmt.Sprintf("0x%x", txHashBytes),
+							BlockNumber:     tx.BlockNumber,
+							Reverted:        txSearchReverted(tx),
+							FrameIncomplete: txSearchFrameIncomplete(tx),
 						},
 					}
 				}
@@ -741,7 +742,8 @@ func buildTxSearchAheadResults(txs []*dbtypes.ElTransaction) []models.SearchAhea
 		if idx, exists := seen[key]; exists {
 			if tx.BlockNumber > results[idx].BlockNumber {
 				results[idx].BlockNumber = tx.BlockNumber
-				results[idx].Reverted = tx.RevertID > 0
+				results[idx].Reverted = txSearchReverted(tx)
+				results[idx].FrameIncomplete = txSearchFrameIncomplete(tx)
 			}
 			continue
 		}
@@ -750,10 +752,23 @@ func buildTxSearchAheadResults(txs []*dbtypes.ElTransaction) []models.SearchAhea
 		}
 		seen[key] = len(results)
 		results = append(results, models.SearchAheadTransactionResult{
-			TxHash:      fmt.Sprintf("0x%x", tx.TxHash),
-			BlockNumber: tx.BlockNumber,
-			Reverted:    tx.RevertID > 0,
+			TxHash:          fmt.Sprintf("0x%x", tx.TxHash),
+			BlockNumber:     tx.BlockNumber,
+			Reverted:        txSearchReverted(tx),
+			FrameIncomplete: txSearchFrameIncomplete(tx),
 		})
 	}
 	return results
+}
+
+// txSearchReverted reports whether a transaction reverted. A frame transaction never
+// does: it reaches the chain only once its validation frames succeed, so a failure
+// status on its row means frames within it failed, which txSearchFrameIncomplete reports.
+func txSearchReverted(tx *dbtypes.ElTransaction) bool {
+	return tx.RevertID > 0 && !dbtypes.IsMultiTarget(tx.TxType)
+}
+
+// txSearchFrameIncomplete reports whether a frame transaction had frames fail.
+func txSearchFrameIncomplete(tx *dbtypes.ElTransaction) bool {
+	return tx.RevertID > 0 && dbtypes.IsMultiTarget(tx.TxType)
 }

@@ -80,8 +80,10 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction status">Status:</span></div>
           <div class="col-md-9">
-            {{ if .Status }}
-            <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
+            {{ if .FrameIncomplete }}
+            <span class="badge rounded-pill text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ .FrameStatusDetail }}"><i class="fas fa-circle-half-stroke me-1"></i>{{ .StatusText }}</span>
+            {{ else if .Status }}
+            <span class="badge rounded-pill text-bg-success"{{ if .IsFrameTx }} data-bs-toggle="tooltip" data-bs-placement="top" title="{{ .FrameStatusDetail }}"{{ end }}><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
             {{ else }}
             <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
             {{ if .RevertReason }}<span class="text-monospace text-break ms-2">{{ .RevertReason }}</span>{{ end }}
@@ -101,20 +103,41 @@
             {{ if gt (len .FromAddr) 0 }}
             {{ $fromAddr := formatEthAddressFull .FromAddr }}
             {{ if .FromIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
-            <a href="/address/{{ $fromAddr }}">{{ $fromAddr }}</a>
+            {{ formatEthAddressFullLink .FromAddr }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $fromAddr }}"></i>
             {{ else }}
             <span class="text-muted">Unknown</span>
             {{ end }}
           </div>
         </div>
+        {{ if and .IsFrameTx (gt (len .PayerAddr) 0) (not .PayerIsSender) }}
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Receiving address">{{ if .IsCreate }}Created Contract:{{ else }}To:{{ end }}</span></div>
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The account that settled the fee, which for a sponsored transaction is not the sender">Payer:</span></div>
           <div class="col-md-9 text-monospace text-break">
-            {{ if .HasTo }}
+            {{ $payerAddr := formatEthAddressFull .PayerAddr }}
+            {{ formatEthAddressFullLink .PayerAddr }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $payerAddr }}"></i>
+          </div>
+        </div>
+        {{ end }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Receiving address">{{ if .IsCreate }}Created Contract:{{ else if .IsFrameTx }}Targets:{{ else }}To:{{ end }}</span></div>
+          <div class="col-md-9 text-monospace text-break">
+            {{ if .IsFrameTx }}
+            {{ if gt .FrameCount 0 }}
+            <a href="?v=frames{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" onclick="document.getElementById('frames-tab').click(); return false;" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction addresses each of its frames separately and has no recipient of its own. Open the Frames tab to see them.">
+              {{ .FrameCount }} frame{{ if ne .FrameCount 1 }}s{{ end }}
+            </a>
+            {{ if .FrameShape }}<span class="badge rounded-pill bg-secondary ms-1">{{ .FrameShape }}</span>{{ end }}
+            {{ else }}
+            <span class="text-muted" data-bs-toggle="tooltip" data-bs-placement="top" title="A frame transaction addresses each of its frames separately and has no recipient of its own. Neither the transaction nor its receipt is retained for this block, so its frames cannot be read.">
+              multiple targets, no longer retained
+            </span>
+            {{ end }}
+            {{ else if .HasTo }}
             {{ $toAddr := formatEthAddressFull .ToAddr }}
             {{ if .ToIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
-            <a href="/address/{{ $toAddr }}">{{ $toAddr }}</a>
+            {{ formatEthAddressFullLink .ToAddr }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $toAddr }}"></i>
             {{ else if .IsCreate }}
             {{ formatContractCreationLink .FromAddr .Nonce }}
@@ -144,6 +167,13 @@
           <i class="fa fa-cog me-2"></i> Details
         </a>
       </li>
+      {{ if .IsFrameTx }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "frames" }} active{{ end }}" id="frames-tab" data-lazy-tab="frames" data-bs-toggle="tab" data-bs-target="#frames" href="?v=frames{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="frames" aria-selected="{{ if eq .TabView "frames" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-layer-group me-2"></i> Frames{{ if gt .FrameCount 0 }} ({{ .FrameCount }}){{ end }}
+        </a>
+      </li>
+      {{ end }}
       {{ if .HasTrace }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
@@ -165,7 +195,7 @@
         </a>
       </li>
       {{ end }}
-      {{ if ne (bitwiseAnd (int .DataStatus) 4) 0 }}
+      {{ if .HasStateChanges }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "statechanges" }} active{{ end }}" id="statechanges-tab" data-lazy-tab="statechanges" data-bs-toggle="tab" data-bs-target="#statechanges" href="?v=statechanges{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="statechanges" aria-selected="{{ if eq .TabView "statechanges" }}true{{ else }}false{{ end }}">
           <i class="fa fa-exchange-alt me-2"></i> State Changes
@@ -183,6 +213,13 @@
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "blobs" }} active{{ end }}" id="blobs-tab" data-lazy-tab="blobs" data-bs-toggle="tab" data-bs-target="#blobs" href="?v=blobs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="blobs" aria-selected="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
           <i class="fa fa-database me-2"></i> Blobs ({{ .BlobCount }})
+        </a>
+      </li>
+      {{ end }}
+      {{ if gt (len .Signatures) 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "signatures" }} active{{ end }}" id="signatures-tab" data-lazy-tab="signatures" data-bs-toggle="tab" data-bs-target="#signatures" href="?v=signatures{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="signatures" aria-selected="{{ if eq .TabView "signatures" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-signature me-2"></i> Signatures{{ if gt (len .Signatures) 1 }} ({{ len .Signatures }}){{ end }}
         </a>
       </li>
       {{ end }}
@@ -246,7 +283,14 @@
             </div>
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction nonce">Nonce:</span></div>
-              <div class="col-md-9">{{ formatAddCommas .Nonce }}</div>
+              <div class="col-md-9">
+                {{ formatAddCommas .Nonce }}
+                {{ if and .IsFrameTx (not .NonceIsAccount) }}
+                <span class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="This transaction is sequenced in its own nonce domain rather than against the sender's account nonce">
+                  in nonce key{{ if ne (len .NonceKeys) 1 }}s{{ end }} {{ range $i, $key := .NonceKeys }}{{ if lt $i 4 }}{{ if $i }}, {{ end }}<span class="text-monospace">{{ $key.Short }}</span>{{ end }}{{ end }}{{ if gt (len .NonceKeys) 4 }} and {{ sub (len .NonceKeys) 4 }} more{{ end }}
+                </span>
+                {{ end }}
+              </div>
             </div>
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Position in block">Position in Block:</span></div>
@@ -267,7 +311,7 @@
                 <div class="mt-2" style="font-size:0.85rem; font-family:monospace;">
                   {{ range $i, $entry := .AccessListEntries }}
                   <div class="py-1{{ if not (eq $i (add (len $.AccessListEntries) -1)) }} border-bottom{{ end }}">
-                    <a href="/address/{{ formatEthAddressFull $entry.Address }}" class="text-monospace">{{ formatEthAddressFull $entry.Address }}</a>
+                    <span class="text-monospace">{{ formatEthAddressFullLink $entry.Address }}</span>
                     {{ if $entry.StorageKeys }}
                     <ul class="mb-0 mt-1" style="list-style:none; padding-left:1.5em;">
                       {{ range $entry.StorageKeys }}
@@ -352,54 +396,58 @@
           </div>
         </div>
       </div>
-      {{ if gt .InternalTxCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "frames" }} show active{{ end }}" id="frames" role="tabpanel" aria-labelledby="frames-tab" data-loaded="{{ if eq .TabView "frames" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "frames" }}
+        {{ template "frames" . }}
+        {{ end }}
+      </div>
+
       <div class="tab-pane fade{{ if eq .TabView "internaltxs" }} show active{{ end }}" id="internaltxs" role="tabpanel" aria-labelledby="internaltxs-tab" data-loaded="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "internaltxs" }}
           {{ template "internaltxs" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if gt .EventCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "events" }} show active{{ end }}" id="events" role="tabpanel" aria-labelledby="events-tab" data-loaded="{{ if eq .TabView "events" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "events" }}
           {{ template "events" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if gt .TokenTransferCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "transfers" }} show active{{ end }}" id="transfers" role="tabpanel" aria-labelledby="transfers-tab" data-loaded="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "transfers" }}
           {{ template "transfers" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if ne (bitwiseAnd (int .DataStatus) 4) 0 }}
       <div class="tab-pane fade{{ if eq .TabView "statechanges" }} show active{{ end }}" id="statechanges" role="tabpanel" aria-labelledby="statechanges-tab" data-loaded="{{ if eq .TabView "statechanges" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "statechanges" }}
           {{ template "statechanges" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if gt (len .Authorizations) 0 }}
       <div class="tab-pane fade{{ if eq .TabView "authorizations" }} show active{{ end }}" id="authorizations" role="tabpanel" aria-labelledby="authorizations-tab" data-loaded="{{ if eq .TabView "authorizations" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "authorizations" }}
           {{ template "authorizations" . }}
         {{ end }}
       </div>
-      {{ end }}
-      {{ if gt .BlobCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "blobs" }} show active{{ end }}" id="blobs" role="tabpanel" aria-labelledby="blobs-tab" data-loaded="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "blobs" }}
           {{ template "blobs" . }}
         {{ end }}
       </div>
-      {{ end }}
+
+      <div class="tab-pane fade{{ if eq .TabView "signatures" }} show active{{ end }}" id="signatures" role="tabpanel" aria-labelledby="signatures-tab" data-loaded="{{ if eq .TabView "signatures" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "signatures" }}
+        {{ template "signatures" . }}
+        {{ end }}
+      </div>
     </div>
   </div>
 {{ end }}
 {{ define "lazyPage" }}
   <script type="application/json" class="ens-names">{{ ensNamesJson . }}</script>
-  {{ if eq .TabView "events" }}
+  {{ if eq .TabView "frames" }}
+    {{ template "frames" . }}
+  {{ else if eq .TabView "signatures" }}
+    {{ template "signatures" . }}
+  {{ else if eq .TabView "events" }}
     {{ template "events" . }}
   {{ else if eq .TabView "statechanges" }}
     {{ template "statechanges" . }}
@@ -512,6 +560,8 @@
     // Map tab IDs to view parameter values
     var tabToView = {
       'details': 'overview',
+      'frames': 'frames',
+      'signatures': 'signatures',
       'events': 'events',
       'statechanges': 'statechanges',
       'transfers': 'transfers',

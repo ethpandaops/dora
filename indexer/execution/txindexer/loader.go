@@ -11,18 +11,19 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/crypto"
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/execution"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/sirupsen/logrus"
 )
 
 // fetchBlockData fetches transactions and receipts for a block with retry logic.
 func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockData, *execution.Client, error) {
-	var transactions []*types.Transaction
+	var transactions []*txtypes.Transaction
 	var blockNumber uint64
 	var blockHash common.Hash
 
@@ -65,6 +66,7 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 					"client": client.GetName(),
 					"retry":  retry + 1,
 				}).Debug("failed to fetch transactions, retrying")
+
 				continue
 			}
 
@@ -149,8 +151,10 @@ func (t *TxIndexer) getClientsForBlock(ref *BlockRef) []*execution.Client {
 }
 
 // extractTransactionsFromBeaconBlock extracts transactions from a beacon block's execution payload.
-// Returns nil if the block has no execution payload (pre-merge) or transactions cannot be extracted.
-func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*types.Transaction, uint64, common.Hash) {
+// Returns nil if the block has no execution payload (pre-merge) or if any transaction in the
+// payload could not be decoded, in which case the caller fetches the block from an EL client
+// instead.
+func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*txtypes.Transaction, uint64, common.Hash) {
 	beaconBlock := block.GetBlock(t.ctx)
 	if beaconBlock == nil || beaconBlock.Message == nil || beaconBlock.Message.Body == nil {
 		return nil, 0, common.Hash{}
@@ -161,13 +165,22 @@ func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*
 		return nil, 0, common.Hash{}
 	}
 
-	transactions := make([]*types.Transaction, 0, len(payload.Transactions))
-	for _, txBytes := range payload.Transactions {
-		tx := &types.Transaction{}
-		if err := tx.UnmarshalBinary(txBytes); err != nil {
-			t.logger.WithError(err).Debug("failed to unmarshal transaction from beacon block")
-			continue
+	transactions := make([]*txtypes.Transaction, 0, len(payload.Transactions))
+	for idx, txBytes := range payload.Transactions {
+		tx, err := txtypes.DecodeTx(txBytes)
+		if err != nil {
+			// The payload carries a transaction this build cannot parse from its wire
+			// bytes. Keeping the rest would index the block short of transactions, so
+			// the payload is discarded in favour of asking an EL client, where a type
+			// with no decoder still yields the generic fields the node reports.
+			t.logger.WithError(err).WithFields(logrus.Fields{
+				"blockNumber": payload.BlockNumber,
+				"txIndex":     idx,
+			}).Debug("cannot decode transaction from beacon block, falling back to EL client")
+
+			return nil, 0, common.Hash{}
 		}
+
 		transactions = append(transactions, tx)
 	}
 
@@ -180,7 +193,7 @@ func (t *TxIndexer) fetchBlockTransactions(
 	ctx context.Context,
 	rpcClient *exerpc.ExecutionClient,
 	blockHash []byte,
-) ([]*types.Transaction, uint64, common.Hash, common.Address, []WithdrawalData, error) {
+) ([]*txtypes.Transaction, uint64, common.Hash, common.Address, []WithdrawalData, error) {
 	ethClient := rpcClient.GetEthClient()
 	if ethClient == nil {
 		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("ethclient not available")
@@ -221,37 +234,28 @@ func (t *TxIndexer) fetchBlockTransactions(
 		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block number is nil")
 	}
 
-	transactions := make([]*types.Transaction, 0, len(block.Transactions))
+	transactions := make([]*txtypes.Transaction, 0, len(block.Transactions))
 	for idx, rawTx := range block.Transactions {
-		// Check transaction type for compatibility
-		var txHeader struct {
-			Type hexutil.Uint64 `json:"type"`
+		tx, derived, err := decodeBlockTransaction(rawTx)
+		if err != nil {
+			t.logger.WithError(err).WithFields(logrus.Fields{
+				"blockHash": hash.Hex(),
+				"txIndex":   idx,
+			}).Debug("skipping transaction")
+
+			continue
 		}
 
-		isValid := false
-		if err := json.Unmarshal(rawTx, &txHeader); err == nil {
-			switch txHeader.Type {
-			case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType,
-				types.BlobTxType, types.SetCodeTxType:
-				isValid = true
-			}
-		}
-
-		if !isValid {
+		if derived != (common.Hash{}) {
 			t.logger.WithFields(logrus.Fields{
-				"txIndex": idx,
-				"txType":  txHeader.Type,
-			}).Debug("skipping unsupported transaction type")
-			continue
+				"blockHash": hash.Hex(),
+				"txIndex":   idx,
+				"reported":  tx.Hash().Hex(),
+				"derived":   derived.Hex(),
+			}).Warn("transaction does not re-encode to the hash reported for it, indexing it as reported")
 		}
 
-		var tx types.Transaction
-		if err := json.Unmarshal(rawTx, &tx); err != nil {
-			t.logger.WithError(err).WithField("txIndex", idx).Debug("failed to unmarshal transaction")
-			continue
-		}
-
-		transactions = append(transactions, &tx)
+		transactions = append(transactions, tx)
 	}
 
 	withdrawals := make([]WithdrawalData, 0, len(block.Withdrawals))
@@ -267,22 +271,66 @@ func (t *TxIndexer) fetchBlockTransactions(
 	return transactions, block.Number.ToInt().Uint64(), block.Hash, block.Coinbase, withdrawals, nil
 }
 
+// decodeBlockTransaction rebuilds a transaction from one entry of an eth_getBlockBy*
+// response. It returns the transaction, and the hash the decoded fields re-encode to when
+// that disagrees with the hash the client reported.
+//
+// The transaction keeps the reported hash either way: it is the chain's identity for the
+// transaction, and everything else - receipts, traces, the transaction the user follows a
+// link to - is keyed by it. A disagreement means this build encodes the transaction
+// differently from the client that produced it, which says nothing about which of the two
+// is right, so it is reported and the transaction is indexed as reported rather than
+// dropped. Fields the decoder derives rather than reads - the sender recovered from the
+// signature, whether the transaction creates a contract - may be wrong in that case.
+//
+// A transaction of a type this build has no decoder for carries only the generic fields
+// the node reported and cannot be re-encoded, so there is nothing to compare.
+func decodeBlockTransaction(rawTx json.RawMessage) (*txtypes.Transaction, common.Hash, error) {
+	tx, err := txtypes.UnmarshalJSONTx(rawTx)
+	if err != nil {
+		return nil, common.Hash{}, fmt.Errorf("unmarshal transaction: %w", err)
+	}
+
+	encoded, err := tx.MarshalBinary()
+	if err != nil {
+		return tx, common.Hash{}, nil
+	}
+
+	if derived := crypto.Keccak256Hash(encoded); derived != tx.Hash() {
+		return tx, derived, nil
+	}
+
+	return tx, common.Hash{}, nil
+}
+
 // fetchBlockReceipts fetches receipts for a block from an EL client.
+//
+// The response is decoded from raw JSON rather than through the typed ethclient so that
+// type-specific receipt content survives: an EIP-8141 frame transaction reports its result
+// per frame, and names the payer that actually settled it, neither of which a
+// go-ethereum receipt can hold.
 func (t *TxIndexer) fetchBlockReceipts(
 	ctx context.Context,
 	rpcClient *exerpc.ExecutionClient,
 	blockHash common.Hash,
-) ([]*types.Receipt, error) {
+) ([]*txtypes.Receipt, error) {
 	ethClient := rpcClient.GetEthClient()
 	if ethClient == nil {
 		return nil, fmt.Errorf("ethclient not available")
 	}
 
-	receipts, err := ethClient.BlockReceipts(ctx, rpc.BlockNumberOrHash{
-		BlockHash: &blockHash,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("BlockReceipts failed: %w", err)
+	var raw json.RawMessage
+	if err := ethClient.Client().CallContext(ctx, &raw, "eth_getBlockReceipts", blockHash); err != nil {
+		return nil, fmt.Errorf("eth_getBlockReceipts failed: %w", err)
+	}
+
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, fmt.Errorf("block receipts not found")
+	}
+
+	receipts := []*txtypes.Receipt{}
+	if err := json.Unmarshal(raw, &receipts); err != nil {
+		return nil, fmt.Errorf("unmarshal block receipts: %w", err)
 	}
 
 	return receipts, nil
@@ -323,7 +371,7 @@ func (t *TxIndexer) extractBeaconBlockData(block *beacon.Block) (common.Address,
 }
 
 // calculateTotalPriorityFees calculates the total priority fees paid in the block.
-func (t *TxIndexer) calculateTotalPriorityFees(transactions []*types.Transaction, receipts []*types.Receipt) *big.Int {
+func (t *TxIndexer) calculateTotalPriorityFees(transactions []*txtypes.Transaction, receipts []*txtypes.Receipt) *big.Int {
 	if len(transactions) != len(receipts) {
 		return big.NewInt(0)
 	}

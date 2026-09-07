@@ -324,7 +324,7 @@
         });
       }
 
-      var tab = new bootstrap.Tab(tabEl);
+      var tab = new bootstrap.Tab(link);
       tab.show();
 
       window.history.replaceState(null, document.title, "/validator/{{ .Index }}" + link.getAttribute('href'));
