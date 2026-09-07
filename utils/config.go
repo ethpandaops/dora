@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 	"gopkg.in/yaml.v3"
@@ -20,6 +21,13 @@ var Config *types.Config
 
 // ReadConfig will process a configuration
 func ReadConfig(cfg *types.Config, path string) error {
+	// Pointer options keep their pre-set default when the key is absent, while an
+	// explicit null in the config file clears them.
+	if cfg.BlockDb.ParallelLoadDelay == nil {
+		parallelLoadDelay := 5 * time.Second
+		cfg.BlockDb.ParallelLoadDelay = &parallelLoadDelay
+	}
+
 	err := readConfigFile(cfg, path)
 	if err != nil {
 		return err
