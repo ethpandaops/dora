@@ -267,15 +267,14 @@ func decodeString(data []byte) string {
 
 	// Try standard ABI decoding first
 	if len(data) >= 64 {
-		// Read offset (should be 32 for a single string)
-		offset := new(big.Int).SetBytes(data[:32]).Uint64()
-
-		if offset == 32 && len(data) >= 64 {
-			// Read length
-			length := new(big.Int).SetBytes(data[32:64]).Uint64()
-
-			// Validate length
-			if length > 0 && len(data) >= int(64+length) {
+		// Read offset: the head must point at the length word that directly
+		// follows it, which is the only layout a single returned string has.
+		if offset, ok := abiWordToUint64(data[:32]); ok && offset == 32 {
+			// Read length and validate it against the bytes that actually
+			// follow it. The contract chooses this word freely, so comparing
+			// "len(data) >= int(64+length)" would wrap or go negative for a
+			// crafted length and let the slice below run off the end.
+			if length, ok := abiWordToUint64(data[32:64]); ok && length > 0 && length <= uint64(len(data)-64) { //nolint:gosec // len(data) >= 64 is checked above
 				str := string(data[64 : 64+length])
 				return sanitizeString(str)
 			}
