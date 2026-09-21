@@ -518,6 +518,20 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 		}
 	}
 
+	// Gossip observation counters per bid, used to color the proposer build-source icon.
+	var bidSeenMap map[bidSeenKey][]*bidSeenEntry
+	if pageData.DisplayProposer && len(dbBlocks) > 0 {
+		slotSet := make([]uint64, 0, len(dbBlocks))
+		slotSeen := make(map[uint64]bool)
+		for _, dbBlock := range dbBlocks {
+			if dbBlock.Block != nil && !slotSeen[dbBlock.Block.Slot] {
+				slotSeen[dbBlock.Block.Slot] = true
+				slotSet = append(slotSet, dbBlock.Block.Slot)
+			}
+		}
+		bidSeenMap = getBidSeenInfoForSlots(ctx, slotSet)
+	}
+
 	safeSlot, _, lastFastConfirmation := chainState.GetFastConfirmedBlock()
 	fcrEnabled := !lastFastConfirmation.IsZero()
 
@@ -598,6 +612,9 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 					slotData.BuilderIndex = uint64(dbBlock.Block.BuilderIndex)
 					slotData.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(dbBlock.Block.BuilderIndex) | services.BuilderIndexFlag)
 					slotData.BuilderURL = services.GlobalBeaconService.GetBuilderURL(uint64(dbBlock.Block.BuilderIndex))
+					if pageData.DisplayProposer {
+						slotData.BidSeenCount, slotData.BidSeenTotal = matchBidSeen(bidSeenMap, dbBlock.Block.Slot, dbBlock.Block.ParentRoot, dbBlock.Block.BuilderIndex, dbBlock.Block.EthBlockHash)
+					}
 				}
 			}
 

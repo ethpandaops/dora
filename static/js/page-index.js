@@ -88,7 +88,7 @@
     formatEth: function(x) { return formatFloat(x / 1000000000, 4); },
     formatFloat: function(x) { return formatFloat(x, 2); },
     formatValidator: function(idx, name) { return formatValidator(idx, name); },
-    formatProposerWithBuildSource: function(status, idx, name, hasBuilder, builderIdx, builderUrl) { return formatProposerWithBuildSource(status, idx, name, hasBuilder, builderIdx, builderUrl); },
+    formatProposerWithBuildSource: function(status, idx, name, hasBuilder, builderIdx, builderUrl, bidSeenCount, bidSeenTotal) { return formatProposerWithBuildSource(status, idx, name, hasBuilder, builderIdx, builderUrl, bidSeenCount, bidSeenTotal); },
     hexstr: function(x) { return "0x" + base64ToHex(x); },
     slotStatusTooltip: function(status, payloadStatus) {
       var bs = ["Missed", "Canonical", "Orphaned"][status] || "Unknown";
@@ -224,8 +224,9 @@
   }
 
   // mirrors utils.FormatProposerWithBuildSource: house = self-built payload,
-  // hard-hat (linking to the builder) = builder-built payload
-  function formatProposerWithBuildSource(status, idx, name, hasBuilder, builderIdx, builderName) {
+  // hard-hat (linking to the builder) = builder-built payload. The winning bid's
+  // gossip counters color the helmet for out-of-protocol (unobserved) bids.
+  function formatProposerWithBuildSource(status, idx, name, hasBuilder, builderIdx, builderName, bidSeenCount, bidSeenTotal) {
     if(status == 0 || idx >= 9223372036854775807n) {
       if(idx >= 9223372036854775807n) {
         return `<span class="validator-label validator-index">unknown</span>`;
@@ -248,7 +249,17 @@
     } else {
       // the icon links to the builder details page; the tooltip names the builder when known
       var builderLabel = builderName ? escapeHtml(builderName) + " (" + builderIdx + ")" : "builder " + builderIdx;
-      iconHtml = `<a href="/builder/` + builderIdx + `" class="builder-source-link" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload by ` + builderLabel + `"><i class="fas fa-hard-hat mr-2"></i></a>`;
+      var iconClass = "";
+      var bidHint = "";
+      if(bidSeenTotal > 0) {
+        if(bidSeenCount > 0) {
+          bidHint = ", in-protocol bid (" + bidSeenCount + "/" + bidSeenTotal + " gossip)";
+        } else {
+          iconClass = " build-source-oop";
+          bidHint = ", out-of-protocol bid (no gossip observation)";
+        }
+      }
+      iconHtml = `<a href="/builder/` + builderIdx + `" class="builder-source-link` + iconClass + `" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload by ` + builderLabel + bidHint + `"><i class="fas fa-hard-hat mr-2"></i></a>`;
     }
 
     if(name != "") {

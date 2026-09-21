@@ -250,6 +250,12 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 		}
 	}
 
+	// Gossip observation counters per bid, used to color the proposer build-source icon.
+	var bidSeenMap map[bidSeenKey][]*bidSeenEntry
+	if pageData.DisplayProposer {
+		bidSeenMap = getBidSeenInfo(ctx, firstSlot, pageSize)
+	}
+
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
 		finalized := finalizedEpoch > 0 && finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot))
@@ -328,6 +334,9 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 					slotData.BuilderIndex = uint64(dbSlot.BuilderIndex)
 					slotData.BuilderName = services.GlobalBeaconService.GetValidatorName(uint64(dbSlot.BuilderIndex) | services.BuilderIndexFlag)
 					slotData.BuilderURL = services.GlobalBeaconService.GetBuilderURL(uint64(dbSlot.BuilderIndex))
+					if pageData.DisplayProposer {
+						slotData.BidSeenCount, slotData.BidSeenTotal = matchBidSeen(bidSeenMap, dbSlot.Slot, dbSlot.ParentRoot, dbSlot.BuilderIndex, dbSlot.EthBlockHash)
+					}
 				}
 			}
 

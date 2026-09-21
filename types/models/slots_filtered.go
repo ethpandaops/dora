@@ -124,6 +124,8 @@ type SlotsFilteredPageDataSlot struct {
 	BuilderIndex            uint64                `json:"builder_index"`
 	BuilderName             string                `json:"builder_name"`
 	BuilderURL              string                `json:"builder_url"`
+	BidSeenCount            uint32                `json:"bid_seen_count"`
+	BidSeenTotal            uint32                `json:"bid_seen_total"`
 	HasBuilderPayment       bool                  `json:"has_builder_payment"`
 	BuilderPaymentWeight    uint64                `json:"builder_payment_weight"`
 	BuilderPaymentBase      uint64                `json:"builder_payment_base"`

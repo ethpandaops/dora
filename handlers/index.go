@@ -427,6 +427,15 @@ func buildIndexPageRecentBlocksData(ctx context.Context, pageData *models.IndexP
 		limit = recentBlockCount
 	}
 
+	// Gossip observation counters per bid, used to color the proposer build-source icon.
+	slotSet := make([]uint64, 0, limit)
+	for i := 0; i < limit; i++ {
+		if blocksData[i].Block != nil {
+			slotSet = append(slotSet, blocksData[i].Block.Slot)
+		}
+	}
+	bidSeenMap := getBidSeenInfoForSlots(ctx, slotSet)
+
 	for i := 0; i < limit; i++ {
 		blockData := blocksData[i].Block
 		if blockData == nil {
@@ -451,6 +460,7 @@ func buildIndexPageRecentBlocksData(ctx context.Context, pageData *models.IndexP
 			BlockRoot:     blockData.Root,
 		}
 		blockModel.HasBuilder, blockModel.BuilderIndex, blockModel.BuilderName, blockModel.BuilderURL = resolveBuildSource(blockData.BuilderIndex)
+		blockModel.BidSeenCount, blockModel.BidSeenTotal = matchBidSeen(bidSeenMap, blockData.Slot, blockData.ParentRoot, blockData.BuilderIndex, blockData.EthBlockHash)
 		if blockData.EthBlockNumber != nil {
 			blockModel.WithEthBlock = true
 			blockModel.EthBlock = *blockData.EthBlockNumber
@@ -470,6 +480,9 @@ func buildIndexPageRecentSlotsData(ctx context.Context, pageData *models.IndexPa
 	} else {
 		lastSlot = 0
 	}
+
+	// Gossip observation counters per bid, used to color the proposer build-source icon.
+	bidSeenMap := getBidSeenInfo(ctx, uint64(firstSlot), uint64(slotLimit+1))
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	safeSlot, _, lastFastConfirmation := chainState.GetFastConfirmedBlock()
@@ -511,6 +524,7 @@ func buildIndexPageRecentSlotsData(ctx context.Context, pageData *models.IndexPa
 			}
 			if dbSlot.Status > 0 {
 				slotData.HasBuilder, slotData.BuilderIndex, slotData.BuilderName, slotData.BuilderURL = resolveBuildSource(dbSlot.BuilderIndex)
+				slotData.BidSeenCount, slotData.BidSeenTotal = matchBidSeen(bidSeenMap, dbSlot.Slot, dbSlot.ParentRoot, dbSlot.BuilderIndex, dbSlot.EthBlockHash)
 			}
 			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
 			blockCount++

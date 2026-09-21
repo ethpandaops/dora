@@ -145,7 +145,7 @@ func (cache *blockBidCache) loadFromDB(currentSlot phase0.Slot) {
 	}
 
 	slots := map[uint64]bool{}
-	dbBids := db.GetBidsForSlotRange(cache.indexer.ctx, uint64(minSlot))
+	dbBids := db.GetBidsForSlotRange(cache.indexer.ctx, uint64(minSlot), 0)
 	for _, bid := range dbBids {
 		cache.bids[makeBidCacheKey(bid)] = &cachedBid{
 			bid:  bid,
@@ -246,6 +246,23 @@ func (cache *blockBidCache) GetBidsForSlot(slot phase0.Slot) []*dbtypes.BlockBid
 	result := make([]*dbtypes.BlockBid, 0)
 	for _, cached := range cache.bids {
 		if phase0.Slot(cached.bid.Slot) == slot {
+			result = append(result, cache.annotateBidLocked(cached))
+		}
+	}
+
+	return result
+}
+
+// GetBidsForSlotRange returns all cached bids within the [minSlot, maxSlot] slot window,
+// annotated with up-to-date seen counters.
+func (cache *blockBidCache) GetBidsForSlotRange(minSlot phase0.Slot, maxSlot phase0.Slot) []*dbtypes.BlockBid {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	result := make([]*dbtypes.BlockBid, 0)
+	for _, cached := range cache.bids {
+		slot := phase0.Slot(cached.bid.Slot)
+		if slot >= minSlot && slot <= maxSlot {
 			result = append(result, cache.annotateBidLocked(cached))
 		}
 	}

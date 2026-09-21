@@ -87,6 +87,8 @@ type IndexPageDataBlocks struct {
 	BuilderIndex  uint64    `json:"builder_index"`
 	BuilderName   string    `json:"builder_name"`
 	BuilderURL    string    `json:"builder_url"`
+	BidSeenCount  uint32    `json:"bid_seen_count"`
+	BidSeenTotal  uint32    `json:"bid_seen_total"`
 	BlockRoot     []byte    `json:"block_root" ssz-size:"32"`
 }
 
@@ -103,6 +105,8 @@ type IndexPageDataSlots struct {
 	BuilderIndex  uint64                    `json:"builder_index"`
 	BuilderName   string                    `json:"builder_name"`
 	BuilderURL    string                    `json:"builder_url"`
+	BidSeenCount  uint32                    `json:"bid_seen_count"`
+	BidSeenTotal  uint32                    `json:"bid_seen_total"`
 	Safe          bool                      `json:"safe"`
 	BlockRoot     []byte                    `json:"block_root" ssz-size:"32"`
 	ParentRoot    []byte                    `json:"parent_root" ssz-size:"32"`

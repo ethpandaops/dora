@@ -602,6 +602,12 @@ func mergeBidSeenCounters(dst *dbtypes.BlockBid, src *dbtypes.BlockBid) {
 	}
 }
 
+// GetCachedBidsForSlotRange returns the not-yet-flushed (cached) bids within the [minSlot, maxSlot]
+// slot window, annotated with up-to-date seen counters.
+func (indexer *Indexer) GetCachedBidsForSlotRange(minSlot phase0.Slot, maxSlot phase0.Slot) []*dbtypes.BlockBid {
+	return indexer.blockBidCache.GetBidsForSlotRange(minSlot, maxSlot)
+}
+
 // GetCachedBidsByBuilderIndex returns the not-yet-flushed (recent) bids for a builder index within
 // the given slot window. Callers merge these with the DB results (see ChainService.GetBuilderBids).
 func (indexer *Indexer) GetCachedBidsByBuilderIndex(builderIndex int64, minSlot uint64, maxSlot *uint64) []*dbtypes.BlockBid {

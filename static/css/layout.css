@@ -251,6 +251,11 @@ span.validator-label {
   white-space: nowrap;
 }
 
+/* out-of-protocol builder bid: the winning bid was never observed on gossip */
+.builder-source-link.build-source-oop {
+  color: var(--bs-warning);
+}
+
 .table-paging {
   text-align: right;
 }

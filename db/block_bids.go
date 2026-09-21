@@ -99,7 +99,7 @@ func GetBidsForSlot(ctx context.Context, slot uint64) []*dbtypes.BlockBid {
 	return bids
 }
 
-func GetBidsForSlotRange(ctx context.Context, minSlot uint64) []*dbtypes.BlockBid {
+func GetBidsForSlotRange(ctx context.Context, minSlot uint64, maxSlot uint64) []*dbtypes.BlockBid {
 	var sql strings.Builder
 	args := []any{
 		minSlot,
@@ -109,13 +109,42 @@ func GetBidsForSlotRange(ctx context.Context, minSlot uint64) []*dbtypes.BlockBi
 		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
 	FROM block_bids
 	WHERE slot >= $1
-	ORDER BY slot DESC, value DESC
 	`)
+	if maxSlot > 0 {
+		fmt.Fprintf(&sql, " AND slot <= $2 ")
+		args = append(args, maxSlot)
+	}
+	fmt.Fprint(&sql, `ORDER BY slot DESC, value DESC`)
 
 	bids := []*dbtypes.BlockBid{}
 	err := ReaderDb.SelectContext(ctx, &bids, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching bids for slot range: %v", err)
+		return nil
+	}
+	return bids
+}
+
+// GetBidsForSlots returns all persisted bids for the given set of slots.
+func GetBidsForSlots(ctx context.Context, slots []uint64) []*dbtypes.BlockBid {
+	if len(slots) == 0 {
+		return nil
+	}
+	query, args, err := sqlx.In(`
+	SELECT
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment, seen_count, seen_total
+	FROM block_bids
+	WHERE slot IN (?)
+	ORDER BY slot DESC, value DESC`, slots)
+	if err != nil {
+		logger.Errorf("Error while building bids slot set query: %v", err)
+		return nil
+	}
+
+	bids := []*dbtypes.BlockBid{}
+	err = ReaderDb.SelectContext(ctx, &bids, ReaderDb.Rebind(query), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching bids for slot set: %v", err)
 		return nil
 	}
 	return bids

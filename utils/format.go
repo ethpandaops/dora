@@ -930,7 +930,7 @@ func formatValidator(index uint64, name string, icon string, withIndex bool) tem
 //
 // Scheduled/missing slots (status == 0) and unknown proposers have no
 // determinable build source and are rendered without any leading icon.
-func FormatProposerWithBuildSource(status uint8, index uint64, name string, hasBuilder bool, builderIndex uint64, builderName string) template.HTML {
+func FormatProposerWithBuildSource(status uint8, index uint64, name string, hasBuilder bool, builderIndex uint64, builderName string, bidSeenCount uint32, bidSeenTotal uint32) template.HTML {
 	if status == 0 || index == math.MaxInt64 {
 		if index == math.MaxInt64 {
 			return template.HTML(`<span class="validator-label validator-index">unknown</span>`)
@@ -951,8 +951,20 @@ func FormatProposerWithBuildSource(status uint8, index uint64, name string, hasB
 		iconHTML = `<i class="fas fa-house mr-2" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Self-built payload"></i>`
 	} else {
 		// builder-built payload - the icon links to the builder details page and
-		// names the builder in the tooltip when the buildoor inventory knows it
-		iconHTML = fmt.Sprintf(`<a href="/builder/%v" class="builder-source-link" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload by %v"><i class="fas fa-hard-hat mr-2"></i></a>`, builderIndex, html.EscapeString(builderTooltipLabel(builderIndex, builderName)))
+		// names the builder in the tooltip when the buildoor inventory knows it.
+		// Gossip observation of the winning bid colors the helmet: an unobserved
+		// bid reached the proposer out-of-protocol (builder API/relay).
+		iconClass := ""
+		bidHint := ""
+		if bidSeenTotal > 0 {
+			if bidSeenCount > 0 {
+				bidHint = fmt.Sprintf(", in-protocol bid (%v/%v gossip)", bidSeenCount, bidSeenTotal)
+			} else {
+				iconClass = " build-source-oop"
+				bidHint = ", out-of-protocol bid (no gossip observation)"
+			}
+		}
+		iconHTML = fmt.Sprintf(`<a href="/builder/%v" class="builder-source-link%v" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Builder-built payload by %v%v"><i class="fas fa-hard-hat mr-2"></i></a>`, builderIndex, iconClass, html.EscapeString(builderTooltipLabel(builderIndex, builderName)), bidHint)
 	}
 
 	nameLabel := fmt.Sprintf("%v", index)
