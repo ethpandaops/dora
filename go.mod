@@ -10,7 +10,7 @@ require (
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260807103219-0fb0622e156b
 	github.com/ethpandaops/ethwallclock v0.4.0
-	github.com/ethpandaops/go-eth2-client v0.1.7
+	github.com/ethpandaops/go-eth2-client v0.1.8-0.20260921152723-ca5a8d69aba5
 	github.com/ethpandaops/spamoor v1.2.4-0.20260828234109-9ac9b69d9050
 	github.com/ethpandaops/xatu v1.22.1-0.20260824050538-619c572d19c3
 	github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8
@@ -27,7 +27,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.50
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.3.3-0.20260812091520-ef568569f9c1
+	github.com/pk910/dynamic-ssz v1.3.3-0.20260921152246-990798fa9718
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
@@ -152,7 +152,7 @@ require (
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v4 v4.1.1 // indirect
 	github.com/pion/webrtc/v4 v4.1.4 // indirect
-	github.com/pk910/hashtree-bindings v0.2.5 // indirect
+	github.com/pk910/hashtree-bindings v0.2.6 // indirect
 	github.com/prysmaticlabs/fastssz v0.0.0-20251103153600-259302269bfc // indirect
 	github.com/prysmaticlabs/gohashtree v0.0.5-beta // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
