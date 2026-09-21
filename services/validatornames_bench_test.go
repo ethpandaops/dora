@@ -3,7 +3,6 @@ package services
 import (
 	"fmt"
 	"math"
-	"sync"
 	"testing"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -12,10 +11,10 @@ import (
 // benchVN mimics a mature devnet: 100k named validators, 10 reassignment
 // snapshots of 100 node ranges each.
 func benchVN() *ValidatorNames {
-	names := make(map[uint64]*validatorNameEntry, 100000)
-	entry := &validatorNameEntry{name: "current-node"}
-	for i := uint64(0); i < 100000; i++ {
-		names[i] = entry
+	// 100 named node ranges of 1000 validators each
+	names := make([]validatorNameRange, 0, 100)
+	for r := uint64(0); r < 100; r++ {
+		names = append(names, validatorNameRange{startIndex: r * 1000, endIndex: r*1000 + 999, name: fmt.Sprintf("current-node-%d", r)})
 	}
 
 	history := make([]validatorNameSnapshot, 0, 10)
@@ -40,9 +39,9 @@ func benchVN() *ValidatorNames {
 	}
 
 	vn := &ValidatorNames{
-		namesMutex:   sync.RWMutex{},
-		namesByIndex: names,
+		nameRanges: normalizeNameRanges(names),
 	}
+	vn.publishNameIndex()
 	vn.nameHistory.Store(&history)
 	return vn
 }

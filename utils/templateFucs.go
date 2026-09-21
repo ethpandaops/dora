@@ -139,6 +139,8 @@ func GetTemplateFuncs() template.FuncMap {
 		"ethBlockLink":                  FormatEthBlockLink,
 		"ethBlockHashLink":              FormatEthBlockHashLink,
 		"ethAddressLink":                FormatEthAddressLink,
+		"ethAddressLinkBase":            FormatEthAddressLinkBase,
+		"ethTransactionLinkBase":        FormatEthTransactionLinkBase,
 		"ethTransactionLink":            FormatEthTransactionLink,
 		"formatEthAddress":              FormatEthAddress,
 		"formatEthAddressShort":         FormatEthAddressShort,

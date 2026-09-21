@@ -420,10 +420,23 @@ func (indexer *Indexer) GetValidatorActivityCount(validatorIndex phase0.Validato
 	return indexer.validatorActivity.getValidatorActivityCount(validatorIndex, startEpoch), indexer.validatorActivity.oldestActivityEpoch
 }
 
+// GetValidatorActivityCounts returns the activity count of every validator since
+// startEpoch, indexed by validator index. Use it instead of GetValidatorActivityCount
+// when iterating the whole validator set.
+func (indexer *Indexer) GetValidatorActivityCounts(startEpoch phase0.Epoch) []uint8 {
+	return indexer.validatorActivity.getValidatorActivityCounts(startEpoch)
+}
+
 // GetValidatorInclusionDistance returns the attestation count and total inclusion delay
 // for a validator over the last lookbackEpochs epochs, using only cached blocks.
 func (indexer *Indexer) GetValidatorInclusionDistance(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) (count uint64, totalDelay uint64) {
 	return indexer.validatorActivity.getValidatorInclusionDistance(validatorIndex, lookbackEpochs)
+}
+
+// GetValidatorInclusionDistances returns the inclusion stats of every validator over the
+// last lookbackEpochs epochs, indexed by validator index, using only cached blocks.
+func (indexer *Indexer) GetValidatorInclusionDistances(lookbackEpochs phase0.Epoch) []ValidatorInclusionStats {
+	return indexer.validatorActivity.getValidatorInclusionDistances(lookbackEpochs)
 }
 
 // GetRecentValidatorBalances returns the most recent validator balances for the given fork.

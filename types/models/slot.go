@@ -144,10 +144,11 @@ type SlotPageExecutionData struct {
 	IsEIP7918Active    bool      `json:"is_eip7918_active"`
 	HasExecData        bool      `json:"has_exec_data"`
 
-	// EIP-7928
-	BlockAccessListHash []byte                          `json:"block_access_list_hash,omitempty"`
-	BlockAccessList     []*SlotPageBlockAccessListEntry `json:"block_access_list,omitempty"`
-	BALSummary          *SlotPageBALSummary             `json:"bal_summary,omitempty"`
+	// EIP-7928. The entries themselves are not part of the page model: they are
+	// served by /slot/{slotOrHash}/bal and rendered client-side, since a block can touch
+	// tens of thousands of addresses.
+	BlockAccessListHash []byte              `json:"block_access_list_hash,omitempty"`
+	BALSummary          *SlotPageBALSummary `json:"bal_summary,omitempty"`
 
 	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
 	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).
@@ -496,6 +497,12 @@ type SlotPageExecutionProof struct {
 	BlockHash []byte `json:"block_hash"`
 	BlockRoot []byte `json:"block_root"`
 	ProofData []byte `json:"proof_data"`
+}
+
+// SlotBlockAccessListResponse is the JSON body of the lazy block access list
+// endpoint (/slot/{slotOrHash}/bal) that the slot page's access list tab renders.
+type SlotBlockAccessListResponse struct {
+	Entries []*SlotPageBlockAccessListEntry `json:"entries"`
 }
 
 type SlotPageBlockAccessListEntry struct {

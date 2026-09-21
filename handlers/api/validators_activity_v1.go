@@ -244,6 +244,7 @@ func buildValidatorsActivityAPIData(pageIdx uint64, pageSize uint64, sortOrder s
 	// Group validators
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
 	currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
+	livenessCounts := services.GlobalBeaconService.GetValidatorLivenessCounts(3)
 	var withdrawalAddressFilter []byte
 	var withdrawalCredsFilter []byte
 	exactWithdrawalSearch := false
@@ -301,7 +302,7 @@ func buildValidatorsActivityAPIData(pageIdx uint64, pageSize uint64, sortOrder s
 		isExited := false
 		if activeData != nil && activeData.ActivationEpoch <= currentEpoch {
 			if activeData.ExitEpoch > currentEpoch {
-				votingActivity := services.GlobalBeaconService.GetValidatorLiveness(index, 3)
+				votingActivity := services.ValidatorLivenessAt(livenessCounts, index)
 
 				validatorGroup.Activated++
 				if votingActivity > 0 {

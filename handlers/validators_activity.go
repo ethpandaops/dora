@@ -133,6 +133,11 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 	// group validators
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
 	currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
+	livenessCounts := services.GlobalBeaconService.GetValidatorLivenessCounts(3)
+
+	// group labels repeat for every validator of a group, so they are formatted once
+	indexGroupLabels := map[uint64][2]string{}
+	lowerNames := map[string]string{}
 	var withdrawalAddressFilter []byte
 	var withdrawalCredsFilter []byte
 	exactWithdrawalSearch := false
@@ -146,17 +151,29 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		var groupName string
 
 		switch groupBy {
-		case 1:
-			groupIdx := index / 100000
-			groupKey = fmt.Sprintf("%06d", groupIdx)
-			groupName = fmt.Sprintf("%v - %v", groupIdx*100000, (groupIdx+1)*100000)
-		case 2:
-			groupIdx := index / 10000
-			groupKey = fmt.Sprintf("%06d", groupIdx)
-			groupName = fmt.Sprintf("%v - %v", groupIdx*10000, (groupIdx+1)*10000)
+		case 1, 2:
+			groupSize := phase0.ValidatorIndex(100000)
+			if groupBy == 2 {
+				groupSize = 10000
+			}
+			groupIdx := uint64(index / groupSize)
+			labels, ok := indexGroupLabels[groupIdx]
+			if !ok {
+				labels = [2]string{
+					fmt.Sprintf("%06d", groupIdx),
+					fmt.Sprintf("%v - %v", groupIdx*uint64(groupSize), (groupIdx+1)*uint64(groupSize)),
+				}
+				indexGroupLabels[groupIdx] = labels
+			}
+			groupKey, groupName = labels[0], labels[1]
 		case 3:
 			groupName = services.GlobalBeaconService.GetValidatorName(uint64(index))
-			groupKey = strings.ToLower(groupName)
+			lower, ok := lowerNames[groupName]
+			if !ok {
+				lower = strings.ToLower(groupName)
+				lowerNames[groupName] = lower
+			}
+			groupKey = lower
 		case 4:
 			if validator != nil {
 				groupKey, groupName = utils.WithdrawalCredentialsGroup(validator.WithdrawalCredentials)
@@ -190,7 +207,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		isExited := false
 		if activeData != nil && activeData.ActivationEpoch <= currentEpoch {
 			if activeData.ExitEpoch > currentEpoch {
-				votingActivity := services.GlobalBeaconService.GetValidatorLiveness(index, 3)
+				votingActivity := services.ValidatorLivenessAt(livenessCounts, index)
 
 				validatorGroup.Activated++
 				if votingActivity > 0 {

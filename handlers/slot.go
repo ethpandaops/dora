@@ -976,14 +976,14 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		// EIP-7928 Block Access List — the chainservice sources the bytes
 		// either from the envelope (fresh from the node) or from blockdb
-		// (preserved after the node pruned it).
+		// (preserved after the node pruned it). Only the summary is part of the
+		// page; the entries are loaded lazily via /slot/{slotOrHash}/bal.
 		if len(blockData.BlockAccessList) > 0 {
 			accesses, err := utils.DecodeBlockAccessList(blockData.BlockAccessList)
 			if err != nil {
 				logrus.Errorf("error decoding block access list for slot %v: %v", blockData.Header.Message.Slot, err)
 			} else {
-				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
-				pageData.ExecutionData.BALSummary = computeBALSummary(pageData.ExecutionData.BlockAccessList)
+				pageData.ExecutionData.BALSummary = computeBALSummary(accesses)
 			}
 		}
 
@@ -1959,17 +1959,18 @@ func convertBALToModel(accesses []utils.BALAccountAccess) []*models.SlotPageBloc
 }
 
 // computeBALSummary aggregates block-level BAL statistics for EIP-8038 visibility.
-func computeBALSummary(entries []*models.SlotPageBlockAccessListEntry) *models.SlotPageBALSummary {
-	if len(entries) == 0 {
+func computeBALSummary(accesses []utils.BALAccountAccess) *models.SlotPageBALSummary {
+	if len(accesses) == 0 {
 		return nil
 	}
 	s := &models.SlotPageBALSummary{
-		UniqueAddresses: uint64(len(entries)),
+		UniqueAddresses: uint64(len(accesses)),
 	}
-	for _, e := range entries {
-		s.StorageSlotWrites += uint64(len(e.StorageChanges))
-		for _, sc := range e.StorageChanges {
-			s.StorageWriteOps += uint64(len(sc.Changes))
+	for i := range accesses {
+		e := &accesses[i]
+		s.StorageSlotWrites += uint64(len(e.StorageWrites))
+		for _, sw := range e.StorageWrites {
+			s.StorageWriteOps += uint64(len(sw.Accesses))
 		}
 		s.ColdStorageReads += uint64(len(e.StorageReads))
 		s.BalanceChanges += uint64(len(e.BalanceChanges))

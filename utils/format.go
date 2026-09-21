@@ -517,6 +517,42 @@ func ensAddrHook(fullAddr string) string {
 	return fmt.Sprintf(`class="ens-addr" data-address="%s"`, strings.ToLower(fullAddr))
 }
 
+// FormatEthAddressLinkBase returns the href prefix that client-side rendered
+// address links put in front of the 0x-address so they point where
+// FormatEthAddressLink links to. Empty when addresses are not linked at all.
+func FormatEthAddressLinkBase() string {
+	if Config.ExecutionIndexer.Enabled {
+		return "/address/"
+	}
+
+	if Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address")
+		if err == nil {
+			return link + "/"
+		}
+	}
+
+	return ""
+}
+
+// FormatEthTransactionLinkBase returns the href prefix that client-side rendered
+// transaction links put in front of the 0x-hash so they point where
+// FormatEthTransactionLink links to. Empty when transactions are not linked at all.
+func FormatEthTransactionLinkBase() string {
+	if Config.ExecutionIndexer.Enabled {
+		return "/tx/"
+	}
+
+	if Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "tx")
+		if err == nil {
+			return link + "/"
+		}
+	}
+
+	return ""
+}
+
 func FormatEthAddressLink(address []byte) template.HTML {
 	if len(address) == 0 {
 		return template.HTML("")
