@@ -10,7 +10,7 @@ require (
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260807103219-0fb0622e156b
 	github.com/ethpandaops/ethwallclock v0.4.0
-	github.com/ethpandaops/go-eth2-client v0.1.7
+	github.com/ethpandaops/go-eth2-client v0.1.8-0.20260921152723-ca5a8d69aba5
 	github.com/ethpandaops/spamoor v1.2.4
 	github.com/ethpandaops/xatu v1.22.1
 	github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8
@@ -27,7 +27,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.3.3
+	github.com/pk910/dynamic-ssz v1.3.3-0.20260921152246-990798fa9718
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
@@ -60,7 +60,6 @@ require (
 	github.com/VictoriaMetrics/fastcache v1.13.0 // indirect
 	github.com/andybalholm/brotli v1.2.3 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
-	github.com/casbin/govaluate v1.10.0 // indirect
 	github.com/chuckpreslar/emission v0.0.0-20170206194824-a7ddd980baf9 // indirect
 	github.com/cockroachdb/errors v1.12.0 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240816210425-c5d0cb0b6fc0 // indirect
@@ -153,7 +152,7 @@ require (
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v4 v4.1.1 // indirect
 	github.com/pion/webrtc/v4 v4.1.4 // indirect
-	github.com/pk910/hashtree-bindings v0.2.5 // indirect
+	github.com/pk910/hashtree-bindings v0.2.6 // indirect
 	github.com/prysmaticlabs/fastssz v0.0.0-20251103153600-259302269bfc // indirect
 	github.com/prysmaticlabs/gohashtree v0.0.5-beta // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
