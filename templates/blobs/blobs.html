@@ -1,4 +1,5 @@
 {{ define "page" }}
+{{ $calculatorAvailable := and .StorageCalculator .StorageCalculator.TotalColumns }}
 <div class="container mt-2">
   <div class="d-md-flex py-2 justify-content-md-between">
     <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-database mx-2"></i>Blobs</h1>
@@ -59,6 +60,7 @@
     </div>
   </div>
 
+  {{ if $calculatorAvailable }}
   <div class="card mt-4">
     <div class="card-header bg-primary text-white">
       <h5 class="mb-0"><i class="fas fa-calculator"></i> Blob Storage Calculator (PeerDAS)</h5>
@@ -144,6 +146,11 @@
       </div>
     </div>
   </div>
+  {{ else }}
+  <div class="alert alert-info mt-4" role="status">
+    Storage calculator unavailable: this network has not provided the required PeerDAS specifications.
+  </div>
+  {{ end }}
 
   {{ if .LatestBlobBlocks }}
   <div class="card mt-4">
@@ -198,7 +205,9 @@
 {{ end }}
 
 {{ define "js" }}
+{{ $calculatorAvailable := and .StorageCalculator .StorageCalculator.TotalColumns }}
 <script type="text/javascript">
+{{ if $calculatorAvailable }}
 const RETENTION_EPOCHS = {{ .StorageCalculator.MinEpochsForBlobSidecarsRequests }};
 const SLOTS_PER_EPOCH = {{ .StorageCalculator.SlotsPerEpoch }};
 const RETENTION_SLOTS = RETENTION_EPOCHS * SLOTS_PER_EPOCH;
@@ -209,6 +218,7 @@ const CUSTODY_REQUIREMENT = {{ .StorageCalculator.CustodyRequirement }};
 const VALIDATOR_CUSTODY_REQUIREMENT = {{ .StorageCalculator.ValidatorCustodyRequirement }};
 const FREE_THRESHOLD_ETH = VALIDATOR_CUSTODY_REQUIREMENT * MAX_EFFECTIVE_BALANCE_ETH;
 const MAX_ETH = {{ .StorageCalculator.MaxEth }};
+{{ end }}
 
 const blobsInRetentionWindow = {{ .BlobsLast18d }};
 const blobsLast24h = {{ .BlobsLast24h }};
@@ -244,7 +254,9 @@ const timeStats = {
 
 let currentPeriod = '1d';
 let currentBlobCount = {{ .BlobsLast24h }};
+{{ if $calculatorAvailable }}
 const calculatorBlobCount = {{ .BlobsLast18d }};
+{{ end }}
 
 function updateTimeStats(period) {
   const stats = timeStats[period];
@@ -265,6 +277,7 @@ function updateTimeStats(period) {
   document.getElementById('timeAvgGas').textContent = avgGas;
 }
 
+{{ if $calculatorAvailable }}
 function calculateCustodyColumns(eth) {
   if (eth === 0) {
     return CUSTODY_REQUIREMENT;
@@ -338,8 +351,10 @@ function updateCalculator(ethValue, fromSlider) {
   const descText = 'Based on ' + calculatorBlobCount.toLocaleString() + ' blobs in last 18d';
   document.getElementById('storageDescription').textContent = descText;
 }
+{{ end }}
 
 document.addEventListener('DOMContentLoaded', function() {
+  {{ if $calculatorAvailable }}
   const ethSlider = document.getElementById('ethSlider');
   const ethInput = document.getElementById('ethInput');
 
@@ -364,6 +379,7 @@ document.addEventListener('DOMContentLoaded', function() {
     this.value = value;
     updateCalculator(value, false);
   });
+  {{ end }}
 
   const timePeriodRadios = document.querySelectorAll('input[name="timePeriod"]');
   timePeriodRadios.forEach(function(radio) {
@@ -372,7 +388,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
+  {{ if $calculatorAvailable }}
   updateCalculator(undefined, true);
+  {{ end }}
   updateTimeStats('1d');
 });
 </script>
