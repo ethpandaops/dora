@@ -1510,6 +1510,11 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 
 	pageData.ExecutionProofs = make([]*models.SlotPageExecutionProof, 0, len(proofsResponse.Data))
 	for _, proof := range proofsResponse.Data {
+		proofType, err := strconv.ParseUint(proof.Message.ProofType, 10, 8)
+		if err != nil {
+			logrus.WithError(err).WithField("proofType", proof.Message.ProofType).Warn("Error decoding proof type")
+			continue
+		}
 		proofData, err := hex.DecodeString(strings.TrimPrefix(proof.Message.ProofData, "0x"))
 		if err != nil {
 			logrus.WithError(err).WithField("proofType", proof.Message.ProofType).Warn("Error decoding proof data")
@@ -1517,7 +1522,7 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 		}
 
 		pageData.ExecutionProofs = append(pageData.ExecutionProofs, &models.SlotPageExecutionProof{
-			ProofId:   proof.Message.ProofType,
+			ProofId:   uint8(proofType),
 			Slot:      slot,
 			BlockHash: blockHash,
 			BlockRoot: blockRoot[:],

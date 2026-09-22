@@ -11,19 +11,14 @@ type ExecutionProof struct {
 
 // ExecutionProofMessage is the inner message of an ExecutionProof.
 type ExecutionProofMessage struct {
-	// Which proof type (zkVM+EL combination) this proof belongs to.
-	ProofType uint8 `json:"proof_type"`
+	// Which proof type (zkVM+EL combination) this proof belongs to, as a decimal string.
+	ProofType string `json:"proof_type"`
 
 	// Hex-encoded proof bytes (e.g. "0x...").
 	ProofData string `json:"proof_data"`
 
-	// Public input the proof commits to.
-	PublicInput ExecutionProofPublicInput `json:"public_input"`
-}
-
-// ExecutionProofPublicInput is the public input committed to by an execution proof.
-type ExecutionProofPublicInput struct {
-	NewPayloadRequestRoot string `json:"new_payload_request_root"`
+	// Root of the beacon block whose payload the proof attests.
+	BeaconBlockRoot string `json:"beacon_block_root"`
 }
 
 // ExecutionProofsResponse represents the API response for execution proofs
