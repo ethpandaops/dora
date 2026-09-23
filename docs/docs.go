@@ -4170,7 +4170,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "type": {
-                    "description": "\"consensus\" or \"bpo\"",
+                    "description": "\"consensus\", \"bpo\" or \"execution\" (EL-only)",
                     "type": "string"
                 },
                 "version": {
