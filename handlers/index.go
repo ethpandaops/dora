@@ -330,6 +330,19 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		})
 	}
 
+	// Add EL-only forks (EL fork scheduled while its CL counterpart is not)
+	for _, elFork := range services.GlobalBeaconService.GetElOnlyForks() {
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:       elFork.Name,
+			Epoch:      uint64(elFork.Epoch),
+			Version:    nil, // the CL fork version does not change
+			Time:       uint64(elFork.Time.Unix()),
+			Active:     currentEpoch >= elFork.Epoch,
+			Type:       "execution",
+			ForkDigest: elFork.ForkDigest[:],
+		})
+	}
+
 	// Sort all forks by epoch
 	sort.Slice(pageData.NetworkForks, func(i, j int) bool {
 		return pageData.NetworkForks[i].Epoch < pageData.NetworkForks[j].Epoch
