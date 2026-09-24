@@ -2480,6 +2480,14 @@ func resolveFrameCalldata(ctx context.Context, pageData *models.TransactionPageD
 			continue
 		}
 
+		// The recent root verifier takes packed reference tuples rather than a selector,
+		// and the page lists the references themselves below the frames.
+		if target == txtypes.RecentRootAddress {
+			frame.MethodName = "recent root check"
+
+			continue
+		}
+
 		if precompile := utils.GetPrecompileInfo(frame.TargetAddr); precompile != nil {
 			frame.MethodName = precompile.Name
 			frame.DecodedCalldata = utils.DecodePrecompileInput(precompile.Index, frame.Data)
@@ -2997,26 +3005,38 @@ func applySignatureRoles(pageData *models.TransactionPageData) {
 	}
 }
 
-// buildFrameRecentRoots lists the EIP-8272 roots the transaction declared, which is what
-// lets a frame read them while it runs.
+// buildFrameRecentRoots lists the EIP-8272 roots the transaction checks, which is what
+// lets a later frame read them while it runs.
+//
+// The references are calldata of the verifier frames calling RECENT_ROOT_ADDRESS, so they
+// are only available while the block carrying the transaction is retained. A transaction
+// may carry more than one such frame; the roots are numbered across all of them, in the
+// order the frames run.
 func buildFrameRecentRoots(pageData *models.TransactionPageData, frameTx *txtypes.FrameTx) {
-	if len(frameTx.RecentRoots) == 0 {
-		return
-	}
+	var roots []*models.TransactionPageDataFrameRecentRoot
 
-	roots := make([]*models.TransactionPageDataFrameRecentRoot, 0, len(frameTx.RecentRoots))
-
-	for i, ref := range frameTx.RecentRoots {
-		if ref == nil {
+	for _, frame := range frameTx.Frames {
+		if frame == nil || !frame.IsRecentRootVerifier() {
 			continue
 		}
 
-		roots = append(roots, &models.TransactionPageDataFrameRecentRoot{
-			Index:    uint32(i),
-			SourceID: ref.SourceID.Bytes(),
-			Slot:     ref.Slot,
-			Root:     ref.Root.Bytes(),
-		})
+		references, err := txtypes.ParseRecentRootVerifyData(frame.Data)
+		if err != nil {
+			continue
+		}
+
+		for _, ref := range references {
+			if ref == nil {
+				continue
+			}
+
+			roots = append(roots, &models.TransactionPageDataFrameRecentRoot{
+				Index:    uint32(len(roots)),
+				SourceID: ref.SourceID.Bytes(),
+				Slot:     ref.Slot,
+				Root:     ref.Root.Bytes(),
+			})
+		}
 	}
 
 	pageData.FrameRecentRoots = roots
