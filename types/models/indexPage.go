@@ -52,7 +52,7 @@ type IndexPageDataForks struct {
 	Version          []byte  `json:"version" ssz-size:"4"`
 	Active           bool    `json:"active"`
 	Time             uint64  `json:"time"`
-	Type             string  `json:"type"`                                              // "consensus" or "bpo"
+	Type             string  `json:"type"`                                              // "consensus", "bpo" or "execution" (EL-only)
 	MaxBlobsPerBlock *uint64 `json:"max_blobs_per_block,omitempty" ssz-type:"optional"` // Only for BPO forks
 	ForkDigest       []byte  `json:"fork_digest" ssz-size:"4"`                          // Fork digest for this fork
 }
