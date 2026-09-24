@@ -214,7 +214,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 	t1 = time.Now()
 
 	// persist data in db
-	db.RunDBTransaction(func(tx *sqlx.Tx) error {
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		persistedBlocks := map[phase0.Root]bool{}
 
 		for _, epochData := range epochData {
@@ -272,6 +272,13 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 
 		return nil
 	})
+	if err != nil {
+		// The persist transaction (which durably records the prune checkpoint via
+		// updatePruningState) never committed. Return without advancing lastPrunedEpoch
+		// or evicting anything from cache, so this epoch is retried on the next pruning
+		// cycle instead of silently losing its data.
+		return 0, 0, fmt.Errorf("error persisting pruned epoch %d: %v", pruneEpoch, err)
+	}
 
 	indexer.lastPrunedEpoch = pruneEpoch + 1
 	t2dur := time.Since(t1)
