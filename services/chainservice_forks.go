@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -79,6 +80,50 @@ func (bs *ChainService) GetBpoForks() []*BpoForkInfo {
 				ForkDigest:       chainState.GetForkDigest(forkVersion, blobParams),
 			})
 		}
+	}
+
+	return forks
+}
+
+// ElOnlyForkInfo describes a fork scheduled on the EL only, while its CL counterpart is
+// not scheduled (e.g. frames devnets activate EL bogota at the Heze epoch with the CL
+// HEZE_FORK_EPOCH pinned to max). Without it the network overview hides the fork.
+type ElOnlyForkInfo struct {
+	Name       string
+	ElForkName string
+	Epoch      phase0.Epoch
+	Time       time.Time
+	ForkDigest phase0.ForkDigest
+}
+
+// GetElOnlyForks returns forks that the EL genesis config schedules but the CL config
+// does not. Currently only Heze (EL bogota) is covered.
+func (bs *ChainService) GetElOnlyForks() []*ElOnlyForkInfo {
+	chainState := bs.GetChainState()
+	specs := chainState.GetSpecs()
+	genesis := chainState.GetGenesis()
+	elGenesis := bs.GetExecutionChainState().GetGenesisConfig()
+	if specs == nil || genesis == nil || elGenesis == nil || elGenesis.Config == nil {
+		return nil
+	}
+
+	forks := []*ElOnlyForkInfo{}
+	if (specs.HezeForkEpoch == nil || *specs.HezeForkEpoch == math.MaxUint64) && elGenesis.Config.BogotaTime != nil {
+		forkTime := time.Unix(int64(*elGenesis.Config.BogotaTime), 0)
+		epoch := phase0.Epoch(0)
+		if forkTime.After(genesis.GenesisTime) {
+			epoch = chainState.EpochOfSlot(chainState.TimeToSlot(forkTime))
+		} else {
+			forkTime = genesis.GenesisTime
+		}
+
+		forks = append(forks, &ElOnlyForkInfo{
+			Name:       "Heze",
+			ElForkName: "Bogota",
+			Epoch:      epoch,
+			Time:       forkTime,
+			ForkDigest: chainState.GetForkDigest(chainState.GetForkVersionAtEpoch(epoch), chainState.GetBlobScheduleForEpoch(epoch)),
+		})
 	}
 
 	return forks
