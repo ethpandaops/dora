@@ -28,6 +28,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/blockdb"
+	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -1478,27 +1479,21 @@ func getSlotPageBuilderExits(ctx context.Context, pageData *models.SlotPageBlock
 }
 
 func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot phase0.Root, slot uint64) {
-	// Get a ready beacon client to fetch execution proofs
-	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
-	client := beaconIndexer.GetReadyClient(false)
-	if client == nil {
-		// No client available, return empty proofs
-		pageData.ExecutionProofsCount = 0
-		pageData.ExecutionProofs = []*models.SlotPageExecutionProof{}
-		return
-	}
-
-	// Fetch execution proofs from the beacon node
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	proofsResponse, err := client.GetClient().GetRPCClient().GetExecutionProofsByBlockroot(ctx, blockRoot[:])
-	if err != nil {
-		// Error fetching proofs, return empty list
-		logrus.WithError(err).WithField("blockRoot", fmt.Sprintf("0x%x", blockRoot)).Info("Error fetching execution proofs")
-		pageData.ExecutionProofsCount = 0
-		pageData.ExecutionProofs = []*models.SlotPageExecutionProof{}
-		return
+	// Use the first ready beacon client that returns proofs. A client without a proof engine returns an empty list.
+	proofsResponse := &rpc.ExecutionProofsResponse{}
+	for _, client := range services.GlobalBeaconService.GetBeaconIndexer().GetReadyClients(false) {
+		response, err := client.GetClient().GetRPCClient().GetExecutionProofsByBlockroot(ctx, blockRoot[:])
+		if err != nil {
+			logrus.WithError(err).WithField("blockRoot", fmt.Sprintf("0x%x", blockRoot)).WithField("client", client.GetClient().GetName()).Info("Error fetching execution proofs")
+			continue
+		}
+		if len(response.Data) > 0 {
+			proofsResponse = response
+			break
+		}
 	}
 
 	// Block hash is sourced from the execution payload on the page itself,
