@@ -479,3 +479,37 @@ func TestMissingFrameResultsIgnoresOrdinaryTransactions(t *testing.T) {
 		t.Error("an ordinary transaction's receipt should be accepted as it is")
 	}
 }
+
+// A transaction the client reports in a shape that cannot be decoded is left out of the
+// transaction list, while the block's receipts still hold one entry per transaction. The
+// lists are then no longer index-aligned, and a frame transaction paired with the receipt
+// standing at its position would be read as having frame results that belong to another
+// transaction.
+func TestMissingFrameResultsPairsByHashNotPosition(t *testing.T) {
+	tx := txtypes.NewTx(sampleFrameTx())
+
+	// The receipt of the transaction that dropped out, which happens to carry frames, in
+	// front of the frame transaction's own receipt, which does not.
+	receipts := []*txtypes.Receipt{
+		decodeReceipt(t, frameReceiptWithFramesJSON, common.HexToHash("0xabc1")),
+		decodeReceipt(t, frameReceiptWithoutFramesJSON, tx.Hash()),
+	}
+
+	if !missingFrameResults([]*txtypes.Transaction{tx}, receipts) {
+		t.Error("the frame transaction's own receipt carries no frames, so another client should be asked")
+	}
+}
+
+// A client that answers with no receipt for the frame transaction at all reports no frame
+// results for it either, which is the same reason to ask another client.
+func TestMissingFrameResultsSpotsAnAbsentReceipt(t *testing.T) {
+	tx := txtypes.NewTx(sampleFrameTx())
+
+	receipts := []*txtypes.Receipt{
+		decodeReceipt(t, frameReceiptWithFramesJSON, common.HexToHash("0xabc1")),
+	}
+
+	if !missingFrameResults([]*txtypes.Transaction{tx}, receipts) {
+		t.Error("a frame transaction with no receipt of its own should send the indexer to another client")
+	}
+}
