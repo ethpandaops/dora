@@ -154,11 +154,10 @@ type TransactionPageData struct {
 	// receipt being stored, leaves the frames without results.
 	FrameResultsMissing bool `json:"frame_results_missing"`
 
-	// FrameExtensions names which of EIP-8141's extensions the payload used - EIP-8250's
-	// keyed nonces and EIP-8272's recent roots are independent, so four shapes exist and
-	// the transaction says which one it is. FrameHasKeyedNonces is the structural
-	// question, as against NonceIsAccount, which asks whether the sequence is the
-	// sender's account nonce.
+	// FrameExtensions names which of EIP-8141's envelope extensions the payload used -
+	// EIP-8250's keyed nonces change the envelope's shape, so the transaction itself says
+	// which shape it is. FrameHasKeyedNonces is the structural question, as against
+	// NonceIsAccount, which asks whether the sequence is the sender's account nonce.
 	FrameExtensions     string `json:"frame_extensions"`
 	FrameHasKeyedNonces bool   `json:"frame_has_keyed_nonces"`
 
@@ -319,8 +318,8 @@ type TransactionPageDataNonceKey struct {
 	Short string `json:"short"`
 }
 
-// TransactionPageDataFrameRecentRoot is an EIP-8272 recent root the transaction declared,
-// so that a frame can read it while the transaction executes.
+// TransactionPageDataFrameRecentRoot is an EIP-8272 recent root a verifier frame checks,
+// so that a later frame can read it while the transaction executes.
 type TransactionPageDataFrameRecentRoot struct {
 	Index    uint32 `json:"index"`
 	SourceID []byte `json:"source_id"`
