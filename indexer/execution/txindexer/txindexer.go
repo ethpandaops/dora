@@ -2,6 +2,8 @@ package txindexer
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -633,7 +635,7 @@ func (t *TxIndexer) runProcessingLoop() {
 // processAndFinalize runs processElBlock for a single ref, logs the result,
 // persists the sync epoch when applicable, and triggers cleanup checks.
 func (t *TxIndexer) processAndFinalize(ref *BlockRef) {
-	stats, err := t.processElBlock(ref)
+	stats, err := t.processElBlockGuarded(ref)
 
 	logger := t.logger.WithFields(logrus.Fields{
 		"slot":     ref.Slot,
@@ -665,6 +667,32 @@ func (t *TxIndexer) processAndFinalize(ref *BlockRef) {
 	if ref.onCompletion != nil {
 		ref.onCompletion()
 	}
+}
+
+// processElBlockGuarded runs processElBlock behind a panic barrier and reports a
+// recovered panic as a normal block error.
+//
+// Block processing decodes call data, receipts and event logs, all of which are
+// contract-controlled, and it runs on a worker goroutine that no recover()
+// covers. An unhandled panic there would kill the whole process, and because a
+// block is only marked done after this returns, the same block would be picked
+// up and crash again on every restart. Degrading to a single failed block keeps
+// that blast radius to the one block, matching how other processing errors are
+// already handled. Open db transactions roll back on unwind, so no partial
+// state survives the recovery.
+func (t *TxIndexer) processElBlockGuarded(ref *BlockRef) (stats *blockStats, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic while processing el block: %v", r)
+
+			t.logger.WithFields(logrus.Fields{
+				"slot":     ref.Slot,
+				"blockUid": ref.BlockUID,
+			}).Errorf("recovered panic while processing el block: %v, stack: %v", r, string(debug.Stack()))
+		}
+	}()
+
+	return t.processElBlock(ref)
 }
 
 // dequeueBlockRef retrieves the next block reference from the queue, prioritizing high priority entries.
