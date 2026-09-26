@@ -1,7 +1,7 @@
 
 name: Build master
 
-on:
+on: nzcommander
   push:
     branches:
       - 'master'
