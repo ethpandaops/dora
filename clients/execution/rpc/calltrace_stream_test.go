@@ -337,3 +337,38 @@ func TestTotalGasUsedPrefersReportedGasUsed(t *testing.T) {
 	call := &CallTraceCall{GasUsed: 0x64e86, RegularGasUsed: 0xb426, StateGasUsed: 0x59a60}
 	assert.Equal(t, uint64(0x64e86), call.TotalGasUsed())
 }
+
+// Verbatim callTracer output from reth (frames-devnet-0) for a frame transaction. It
+// names the regular gas dimension executionGasUsed where nethermind and ethrex call it
+// regularGasUsed, so a decoder that knows only the one name reads the dimension as zero
+// and has nothing to fall back on where gasUsed is missing.
+func TestDecodeCallTraceResultsReadsExecutionGasUsedSpelling(t *testing.T) {
+	const body = `[
+		{
+			"result": {
+				"executionGasUsed": "0x2ee0",
+				"from": "0xeedd4d5d54b0205efc2e14aef9c97ae6668f2770",
+				"gas": "0x14335",
+				"gasRefund": "0x0",
+				"gasUsed": "0x0",
+				"input": "0x",
+				"stateGasUsed": "0x11",
+				"to": "0xeedd4d5d54b0205efc2e14aef9c97ae6668f2770",
+				"type": "CALL",
+				"value": "0x0"
+			},
+			"txHash": "0x19913e328c64448454a530c1bd77921e0af678f768e8222b520c9c7b65a993a7"
+		}
+	]`
+
+	results, err := decodeTraceArray(t, body, 1024)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	root := firstRoot(results[0])
+	require.NotNil(t, root)
+
+	assert.Equal(t, uint64(0x2ee0), uint64(root.RegularGasUsed), "executionGasUsed is the regular dimension")
+	assert.Equal(t, uint64(0x11), uint64(root.StateGasUsed))
+	assert.Equal(t, uint64(0x2ee0+0x11), root.TotalGasUsed())
+}

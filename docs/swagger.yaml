@@ -915,7 +915,7 @@ definitions:
       time:
         type: integer
       type:
-        description: '"consensus" or "bpo"'
+        description: '"consensus", "bpo" or "execution" (EL-only)'
         type: string
       version:
         description: nil for BPO forks

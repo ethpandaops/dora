@@ -95,6 +95,10 @@ type CallTraceCall struct {
 
 	// EIP-8037 splits gas into a regular and a state dimension. Clients on such a chain
 	// report both alongside gasUsed, which they do not always fill in.
+	//
+	// The regular dimension goes by two names: nethermind and ethrex call it
+	// regularGasUsed, reth calls it executionGasUsed. Both are read into this field, so
+	// the dimension is available whichever name the client used.
 	RegularGasUsed hexutil.Uint64 `json:"regularGasUsed"`
 	StateGasUsed   hexutil.Uint64 `json:"stateGasUsed"`
 	GasRefund      hexutil.Uint64 `json:"gasRefund"`

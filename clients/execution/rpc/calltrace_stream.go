@@ -171,7 +171,7 @@ func callFrameField(dec *json.Decoder, call *CallTraceCall, payloadLimit int) fu
 			return decodeScalar(dec, key, &call.Gas)
 		case "gasUsed":
 			return decodeScalar(dec, key, &call.GasUsed)
-		case "regularGasUsed":
+		case "regularGasUsed", "executionGasUsed":
 			return decodeScalar(dec, key, &call.RegularGasUsed)
 		case "stateGasUsed":
 			return decodeScalar(dec, key, &call.StateGasUsed)

@@ -397,3 +397,119 @@ func TestBlockReceiptsDecodeFrameLogsWithoutPosition(t *testing.T) {
 		t.Errorf("nested log block number = %d, want 361", got)
 	}
 }
+
+// Receipts for the same frame transaction as two of the EIP-8141 devnet clients report
+// them. EIP-8141 specifies no JSON-RPC encoding for the per-frame results: ethrex reports
+// them under "frameReceipts" along with the payer, while geth answers with an ordinary
+// receipt that carries nothing but the transaction-level status.
+const (
+	frameReceiptWithFramesJSON = `{
+		"type": "0x6",
+		"transactionHash": "%s",
+		"transactionIndex": "0x0",
+		"blockNumber": "0x80",
+		"cumulativeGasUsed": "0xee740",
+		"gasUsed": "0xb7e1e",
+		"status": "0x1",
+		"logs": [],
+		"payer": "0x61d29555a62acbfca40f55163bafb53a7bebb07d",
+		"frameReceipts": [
+			{"gasUsed": "0x64", "stateGasUsed": "0x0", "status": "0x1", "logs": []},
+			{"gasUsed": "0xbb8", "stateGasUsed": "0x0", "status": "0x1", "logs": []}
+		]
+	}`
+
+	frameReceiptWithoutFramesJSON = `{
+		"type": "0x6",
+		"transactionHash": "%s",
+		"transactionIndex": "0x0",
+		"blockNumber": "0x80",
+		"cumulativeGasUsed": "0xee740",
+		"gasUsed": "0xb7e1e",
+		"status": "0x1",
+		"logs": []
+	}`
+)
+
+// decodeReceipt renders one of the sample receipts for the given transaction and decodes
+// it the way the indexer decodes a block's receipts.
+func decodeReceipt(t *testing.T, template string, txHash common.Hash) *txtypes.Receipt {
+	t.Helper()
+
+	receipt := &txtypes.Receipt{}
+	if err := json.Unmarshal([]byte(fmt.Sprintf(template, txHash.Hex())), receipt); err != nil {
+		t.Fatalf("decode receipt: %v", err)
+	}
+
+	return receipt
+}
+
+// What a frame transaction did is only on its receipt, so a client that reports no
+// per-frame results leaves the transaction indexed as frames that never ran. Such an
+// answer is a well-formed receipt rather than an error, so it has to be recognised from
+// the decoded content.
+func TestMissingFrameResultsSpotsAReceiptWithoutFrames(t *testing.T) {
+	tx := txtypes.NewTx(sampleFrameTx())
+	transactions := []*txtypes.Transaction{tx}
+
+	if missingFrameResults(transactions, []*txtypes.Receipt{
+		decodeReceipt(t, frameReceiptWithFramesJSON, tx.Hash()),
+	}) {
+		t.Error("a receipt carrying the frames should be accepted")
+	}
+
+	if !missingFrameResults(transactions, []*txtypes.Receipt{
+		decodeReceipt(t, frameReceiptWithoutFramesJSON, tx.Hash()),
+	}) {
+		t.Error("a receipt without the frames should send the indexer to another client")
+	}
+}
+
+// An ordinary transaction has no frames to report, so no client's receipt for it is ever
+// reason to ask another one.
+func TestMissingFrameResultsIgnoresOrdinaryTransactions(t *testing.T) {
+	tx, _, err := decodeBlockTransaction(creationTx("null"))
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if missingFrameResults([]*txtypes.Transaction{tx}, []*txtypes.Receipt{
+		decodeReceipt(t, frameReceiptWithoutFramesJSON, tx.Hash()),
+	}) {
+		t.Error("an ordinary transaction's receipt should be accepted as it is")
+	}
+}
+
+// A transaction the client reports in a shape that cannot be decoded is left out of the
+// transaction list, while the block's receipts still hold one entry per transaction. The
+// lists are then no longer index-aligned, and a frame transaction paired with the receipt
+// standing at its position would be read as having frame results that belong to another
+// transaction.
+func TestMissingFrameResultsPairsByHashNotPosition(t *testing.T) {
+	tx := txtypes.NewTx(sampleFrameTx())
+
+	// The receipt of the transaction that dropped out, which happens to carry frames, in
+	// front of the frame transaction's own receipt, which does not.
+	receipts := []*txtypes.Receipt{
+		decodeReceipt(t, frameReceiptWithFramesJSON, common.HexToHash("0xabc1")),
+		decodeReceipt(t, frameReceiptWithoutFramesJSON, tx.Hash()),
+	}
+
+	if !missingFrameResults([]*txtypes.Transaction{tx}, receipts) {
+		t.Error("the frame transaction's own receipt carries no frames, so another client should be asked")
+	}
+}
+
+// A client that answers with no receipt for the frame transaction at all reports no frame
+// results for it either, which is the same reason to ask another client.
+func TestMissingFrameResultsSpotsAnAbsentReceipt(t *testing.T) {
+	tx := txtypes.NewTx(sampleFrameTx())
+
+	receipts := []*txtypes.Receipt{
+		decodeReceipt(t, frameReceiptWithFramesJSON, common.HexToHash("0xabc1")),
+	}
+
+	if !missingFrameResults([]*txtypes.Transaction{tx}, receipts) {
+		t.Error("a frame transaction with no receipt of its own should send the indexer to another client")
+	}
+}

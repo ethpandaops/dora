@@ -137,10 +137,9 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot, execHa
 		}
 
 		if ptc != nil {
-			// votes are due within PAYLOAD_ATTESTATION_DUE_BPS of the slot,
-			// from a committee of PTC_SIZE
+			// votes are due within PAYLOAD_ATTESTATION_DUE_BPS of the slot
 			ptc.DeadlineMs = bpsOfSlot(chainState, chainState.GetSpecs().PayloadAttestationDueBps, 7500)
-			ptc.ExpectedCount = int(chainState.GetSpecs().PtcSize) //nolint:gosec // committee sizes are small
+			ptc.ExpectedCount = expectedPtcVoters(queryCtx, chainState, slot)
 		}
 
 		payload, err = loadSeenWave(queryCtx, xatu.GlobalClient, "beacon_api_eth_v1_events_execution_payload_gossip", "block_root", slot, slotTime, settled, blockRoot, slotMs)
@@ -297,6 +296,25 @@ func loadExecutedWave(ctx context.Context, client *xatu.Client, execHash string,
 	}
 
 	return wave, nil
+}
+
+// expectedPtcVoters returns the number of distinct validators in the slot's
+// PTC. The wave counts one vote per validator, while PTC_SIZE counts seats and
+// a validator can hold several seats when the committee is sampled by
+// effective balance, so the seat count overstates the denominator. Falls back
+// to PTC_SIZE when the committee cannot be resolved.
+func expectedPtcVoters(ctx context.Context, chainState *consensus.ChainState, slot phase0.Slot) int {
+	members := services.GlobalBeaconService.GetSlotPtc(ctx, slot)
+	if len(members) == 0 {
+		return int(chainState.GetSpecs().PtcSize) //nolint:gosec // committee sizes are small
+	}
+
+	unique := make(map[phase0.ValidatorIndex]struct{}, len(members))
+	for _, v := range members {
+		unique[v] = struct{}{}
+	}
+
+	return len(unique)
 }
 
 // expectedAttesters is how many validators were due to attest in the slot:

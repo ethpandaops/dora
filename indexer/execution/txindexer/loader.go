@@ -50,6 +50,12 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 
 	var lastErr error
 
+	// A client whose receipts omit the per-frame results still answers the call, so its
+	// answer is kept as a fallback while a client that reports them is looked for.
+	var fallback *blockData
+
+	var fallbackClient *execution.Client
+
 	// Retry loop for fetching data
 	for retry := 0; retry < maxRetries; retry++ {
 		// Select client (cycle through clients on retries)
@@ -97,8 +103,7 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 		// Extract additional data from beacon block if available
 		totalPriorityFees := t.calculateTotalPriorityFees(transactions, receipts)
 
-		// Success
-		return &blockData{
+		data := &blockData{
 			BlockNumber:       blockNumber,
 			BlockHash:         blockHash,
 			Transactions:      transactions,
@@ -106,10 +111,75 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 			FeeRecipient:      feeRecipient,
 			Withdrawals:       withdrawals,
 			TotalPriorityFees: totalPriorityFees,
-		}, client, nil
+		}
+
+		// What a frame transaction did is only on its receipt, and a client that does not
+		// report the frames answers with a receipt that carries none of it. Indexing that
+		// answer records the transaction as frames without results for good, so another
+		// client is asked first and the poorer answer only taken once none is left.
+		if retry+1 < len(clients) && missingFrameResults(transactions, receipts) {
+			if fallback == nil {
+				fallback = data
+				fallbackClient = client
+			}
+
+			t.logger.WithFields(logrus.Fields{
+				"client": client.GetName(),
+				"retry":  retry + 1,
+			}).Debug("client reports no per-frame receipts, trying another client")
+
+			continue
+		}
+
+		// Success
+		return data, client, nil
+	}
+
+	if fallback != nil {
+		return fallback, fallbackClient, nil
 	}
 
 	return nil, nil, fmt.Errorf("all retries failed: %w", lastErr)
+}
+
+// missingFrameResults reports whether the block holds a frame transaction with no
+// per-frame results to index.
+//
+// EIP-8141 specifies no JSON-RPC encoding for those results, and clients differ on
+// whether they report them at all: an answer without them is a well-formed receipt rather
+// than an error, so the difference only shows once the receipt is decoded.
+//
+// Receipts are paired with transactions by hash, as they are when the block is processed:
+// a transaction the client reports in a shape that cannot be decoded is left out of the
+// transaction list while its receipt stays in the receipt list, so the two are not
+// index-aligned. A frame transaction with no receipt of its own has no frame results
+// either, which is the same answer as a receipt that carries none.
+func missingFrameResults(transactions []*txtypes.Transaction, receipts []*txtypes.Receipt) bool {
+	var byHash map[common.Hash]*txtypes.Receipt
+
+	for _, tx := range transactions {
+		if tx.Type() != txtypes.FrameTxType {
+			continue
+		}
+
+		if byHash == nil {
+			byHash = make(map[common.Hash]*txtypes.Receipt, len(receipts))
+			for _, receipt := range receipts {
+				byHash[receipt.TxHash] = receipt
+			}
+		}
+
+		receipt := byHash[tx.Hash()]
+		if receipt == nil {
+			return true
+		}
+
+		if extra := receipt.FrameExtra(); extra == nil || len(extra.Frames) == 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // getClientsForBlock returns appropriate EL clients for fetching block data.

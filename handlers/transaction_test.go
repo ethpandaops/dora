@@ -779,8 +779,8 @@ func envelopeTx(extensions txtypes.FrameExtensions) *txtypes.FrameTx {
 	}
 }
 
-// A chain can run EIP-8250 and EIP-8272 independently, so which extensions a payload used
-// is a property of the transaction. The badge naming them is read off the envelope.
+// A chain can run EIP-8250 or not, so which envelope extensions a payload used is a
+// property of the transaction. The badge naming them is read off the envelope.
 func TestEnvelopeShapeIsNamedFromTheTransaction(t *testing.T) {
 	for _, tc := range []struct {
 		extensions txtypes.FrameExtensions
@@ -788,8 +788,7 @@ func TestEnvelopeShapeIsNamedFromTheTransaction(t *testing.T) {
 	}{
 		{0, "8141"},
 		{txtypes.FrameExtKeyedNonces, "8141+8250"},
-		{txtypes.FrameExtRecentRoots, "8141+8272"},
-		{txtypes.FrameExtAll, "8141+8250+8272"},
+		{txtypes.FrameExtAll, "8141+8250"},
 	} {
 		pageData := &models.TransactionPageData{}
 		applyFrameTxEnvelope(pageData, envelopeTx(tc.extensions))
@@ -880,14 +879,18 @@ func TestKeyZeroAloneIsTheAccountNonce(t *testing.T) {
 	}
 }
 
-// A frame can only read a root the transaction declared up front, so the declarations are
-// listed whether or not any frame went on to use them.
-func TestRecentRootsAreListedAsDeclared(t *testing.T) {
-	frameTx := envelopeTx(txtypes.FrameExtRecentRoots)
-	frameTx.RecentRoots = []*txtypes.RecentRootReference{
+// A frame can only read a root a verifier frame checked up front, so the references those
+// frames carry are listed whether or not a later frame went on to use them.
+func TestRecentRootsAreListedAsChecked(t *testing.T) {
+	references := []*txtypes.RecentRootReference{
 		{SourceID: common.HexToHash("0xaa"), Slot: 1234, Root: common.HexToHash("0xbb")},
 		{SourceID: common.HexToHash("0xcc"), Slot: 1235, Root: common.HexToHash("0xdd")},
 	}
+
+	frameTx := envelopeTx(0)
+	frameTx.Frames = append([]*txtypes.Frame{
+		txtypes.RecentRootVerifyFrame(references, txtypes.RecentRootVerifyGas(len(references))),
+	}, frameTx.Frames...)
 
 	pageData := &models.TransactionPageData{}
 	applyFrameTxEnvelope(pageData, frameTx)
@@ -910,10 +913,10 @@ func TestRecentRootsAreListedAsDeclared(t *testing.T) {
 	}
 }
 
-// An envelope that declares no roots has no section to show.
-func TestNoRecentRootsWithoutDeclarations(t *testing.T) {
+// A transaction with no recent root verifier frame has no section to show.
+func TestNoRecentRootsWithoutVerifierFrame(t *testing.T) {
 	pageData := &models.TransactionPageData{}
-	applyFrameTxEnvelope(pageData, envelopeTx(txtypes.FrameExtRecentRoots))
+	applyFrameTxEnvelope(pageData, envelopeTx(0))
 
 	if pageData.FrameRecentRoots != nil {
 		t.Errorf("roots = %v, want none", pageData.FrameRecentRoots)

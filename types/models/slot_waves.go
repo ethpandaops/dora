@@ -38,7 +38,8 @@ type SlotSeenWave struct {
 type SlotPtcWave struct {
 	TotalCount   int `json:"total_count"`
 	PresentCount int `json:"present_count"`
-	// ExpectedCount is the committee size, PTC_SIZE from the chain spec.
+	// ExpectedCount is the number of distinct validators in the PTC, or
+	// PTC_SIZE when the committee cannot be resolved.
 	ExpectedCount int `json:"expected_count,omitempty"`
 	// DeadlineMs is when PTC votes are due: 75% of the slot.
 	DeadlineMs uint32           `json:"deadline_ms"`

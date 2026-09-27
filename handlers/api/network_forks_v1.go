@@ -35,7 +35,7 @@ type APINetworkForkInfo struct {
 	Active           bool    `json:"active"`
 	Scheduled        bool    `json:"scheduled"`
 	Time             int64   `json:"time,omitempty"`
-	Type             string  `json:"type"` // "consensus" or "bpo"
+	Type             string  `json:"type"` // "consensus", "bpo" or "execution" (EL-only)
 	ForkDigest       string  `json:"fork_digest"`
 	MaxBlobsPerBlock *uint64 `json:"max_blobs_per_block,omitempty"` // only for BPO forks
 }
@@ -151,6 +151,20 @@ func buildNetworkForks(chainState *consensus.ChainState) []*APINetworkForkInfo {
 			Type:             "bpo",
 			ForkDigest:       fmt.Sprintf("0x%x", bpoFork.ForkDigest),
 			MaxBlobsPerBlock: &bpoFork.MaxBlobsPerBlock,
+		})
+	}
+
+	// Add EL-only forks (EL fork scheduled while its CL counterpart is not)
+	for _, elFork := range services.GlobalBeaconService.GetElOnlyForks() {
+		forks = append(forks, &APINetworkForkInfo{
+			Name:       elFork.Name,
+			Version:    nil,
+			Epoch:      uint64(elFork.Epoch),
+			Active:     currentEpoch >= elFork.Epoch,
+			Scheduled:  true,
+			Time:       elFork.Time.Unix(),
+			Type:       "execution",
+			ForkDigest: fmt.Sprintf("0x%x", elFork.ForkDigest),
 		})
 	}
 
