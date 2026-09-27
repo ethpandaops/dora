@@ -978,28 +978,46 @@ func (ctx *txProcessingContext) parseERC1155TransferBatch(
 
 	// Parse dynamic arrays from data
 	// Data layout: offset_ids (32) | offset_values (32) | ids_length | ids... | values_length | values...
-	if len(log.Data) < 64 {
+	//
+	// Every word below is contract-controlled. Each bound is therefore checked by
+	// subtracting from the payload length instead of adding to an offset or
+	// length: the additions wrap for crafted words, which would let the slice
+	// expressions below run off the end of the buffer.
+	dataLen := uint64(len(log.Data)) // >= 128, checked above
+
+	idsOffset, ok := abiWordToUint64(log.Data[:32])
+	if !ok {
 		return nil
 	}
 
-	idsOffset := new(big.Int).SetBytes(log.Data[:32]).Uint64()
-	valuesOffset := new(big.Int).SetBytes(log.Data[32:64]).Uint64()
-
-	if uint64(len(log.Data)) < idsOffset+32 || uint64(len(log.Data)) < valuesOffset+32 {
+	valuesOffset, ok := abiWordToUint64(log.Data[32:64])
+	if !ok {
 		return nil
 	}
 
-	idsLength := new(big.Int).SetBytes(log.Data[idsOffset : idsOffset+32]).Uint64()
-	valuesLength := new(big.Int).SetBytes(log.Data[valuesOffset : valuesOffset+32]).Uint64()
+	// each array head must leave room for its own length word
+	if idsOffset > dataLen-32 || valuesOffset > dataLen-32 {
+		return nil
+	}
+
+	idsLength, ok := abiWordToUint64(log.Data[idsOffset : idsOffset+32])
+	if !ok {
+		return nil
+	}
+
+	valuesLength, ok := abiWordToUint64(log.Data[valuesOffset : valuesOffset+32])
+	if !ok {
+		return nil
+	}
 
 	if idsLength != valuesLength || idsLength == 0 {
 		return nil
 	}
 
-	// Verify we have enough data
-	requiredIdsEnd := idsOffset + 32 + (idsLength * 32)
-	requiredValuesEnd := valuesOffset + 32 + (valuesLength * 32)
-	if uint64(len(log.Data)) < requiredIdsEnd || uint64(len(log.Data)) < requiredValuesEnd {
+	// Verify we have enough data: bound the element count by the words actually
+	// present after each length word, so the loop below stays inside log.Data
+	// and the allocation stays proportional to the log we were given.
+	if idsLength > (dataLen-idsOffset-32)/32 || valuesLength > (dataLen-valuesOffset-32)/32 {
 		return nil
 	}
 
@@ -1020,6 +1038,25 @@ func (ctx *txProcessingContext) parseERC1155TransferBatch(
 	}
 
 	return transfers
+}
+
+// abiWordToUint64 reads a 32-byte ABI word as a uint64. Words whose value does
+// not fit are rejected rather than truncated: truncation would turn an
+// out-of-range offset or length into a plausible one and let malformed data
+// through as if it were valid. A value fits exactly when the leading 24 bytes
+// are zero, so no big.Int is needed on this per-log path.
+func abiWordToUint64(word []byte) (uint64, bool) {
+	if len(word) != 32 {
+		return 0, false
+	}
+
+	for _, b := range word[:24] {
+		if b != 0 {
+			return 0, false
+		}
+	}
+
+	return binary.BigEndian.Uint64(word[24:]), true
 }
 
 // createTokenTransfer creates a pending token transfer, ensuring the token exists.
