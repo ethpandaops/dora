@@ -113,22 +113,34 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 			TotalPriorityFees: totalPriorityFees,
 		}
 
-		// What a frame transaction did is only on its receipt, and a client that does not
-		// report the frames answers with a receipt that carries none of it. Indexing that
-		// answer records the transaction as frames without results for good, so another
+		// What a frame transaction is made of is only in the transaction, and what its
+		// frames did is only on its receipt. Clients differ on whether they report either,
+		// and an answer without them is a well-formed response rather than an error.
+		// Indexing it records the transaction without that content for good, so another
 		// client is asked first and the poorer answer only taken once none is left.
-		if retry+1 < len(clients) && missingFrameResults(transactions, receipts) {
-			if fallback == nil {
-				fallback = data
-				fallbackClient = client
+		if retry+1 < len(clients) {
+			incompleteTxs := undecodedTransactions(transactions)
+
+			if incompleteTxs || missingFrameResults(transactions, receipts) {
+				if fallback == nil {
+					fallback = data
+					fallbackClient = client
+				}
+
+				t.logger.WithFields(logrus.Fields{
+					"client":        client.GetName(),
+					"retry":         retry + 1,
+					"incompleteTxs": incompleteTxs,
+				}).Debug("client reports incomplete frame data, trying another client")
+
+				// The frame content is part of the transaction, so another client's answer
+				// only helps if its transactions are read as well.
+				if incompleteTxs {
+					transactions = nil
+				}
+
+				continue
 			}
-
-			t.logger.WithFields(logrus.Fields{
-				"client": client.GetName(),
-				"retry":  retry + 1,
-			}).Debug("client reports no per-frame receipts, trying another client")
-
-			continue
 		}
 
 		// Success
@@ -140,6 +152,24 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 	}
 
 	return nil, nil, fmt.Errorf("all retries failed: %w", lastErr)
+}
+
+// undecodedTransactions reports whether the list holds a transaction of a type this build
+// can decode that nonetheless arrived without the fields that type is made of.
+//
+// A type the client renders incompletely - EIP-8141 specifies no JSON-RPC encoding for a
+// frame transaction, and a client may report one without its frames - yields a
+// well-formed transaction object rather than an error. What is left decodes as a
+// transaction of an unknown type: the generic fields the node reported, and none of the
+// type's own content. Another client may report the same transaction in full.
+func undecodedTransactions(transactions []*txtypes.Transaction) bool {
+	for _, tx := range transactions {
+		if _, unknown := tx.Inner().(*txtypes.UnknownTx); unknown && txtypes.IsTxTypeSupported(tx.Type()) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // missingFrameResults reports whether the block holds a frame transaction with no
@@ -221,17 +251,35 @@ func (t *TxIndexer) getClientsForBlock(ref *BlockRef) []*execution.Client {
 }
 
 // extractTransactionsFromBeaconBlock extracts transactions from a beacon block's execution payload.
-// Returns nil if the block has no execution payload (pre-merge) or if any transaction in the
-// payload could not be decoded, in which case the caller fetches the block from an EL client
-// instead.
+// Returns nil if the block has no execution payload (pre-merge, or a payload that was never
+// revealed) or if any transaction in the payload could not be decoded, in which case the caller
+// fetches the block from an EL client instead.
+//
+// This is the path a block is expected to take: the payload carries the transactions as the
+// chain itself encodes them, while an EL client describes them in a JSON shape it chooses,
+// which for a type the client renders incompletely loses what the transaction is made of.
 func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*txtypes.Transaction, uint64, common.Hash) {
 	beaconBlock := block.GetBlock(t.ctx)
 	if beaconBlock == nil || beaconBlock.Message == nil || beaconBlock.Message.Body == nil {
 		return nil, 0, common.Hash{}
 	}
 
+	// Up to Gloas the payload is part of the block body. From Gloas on the body commits to
+	// it with a bid and the payload is revealed in an envelope of its own, which the beacon
+	// indexer resolves while building the block index every block here has gone through.
 	payload := beaconBlock.Message.Body.ExecutionPayload
 	if payload == nil {
+		if envelope := block.GetExecutionPayload(t.ctx); envelope != nil && envelope.Message != nil {
+			payload = envelope.Message.Payload
+		}
+	}
+
+	if payload == nil {
+		t.logger.WithFields(logrus.Fields{
+			"slot": block.Slot,
+			"root": fmt.Sprintf("%x", block.Root[:]),
+		}).Debug("beacon block carries no execution payload, falling back to EL client")
+
 		return nil, 0, common.Hash{}
 	}
 
@@ -323,6 +371,20 @@ func (t *TxIndexer) fetchBlockTransactions(
 				"reported":  tx.Hash().Hex(),
 				"derived":   derived.Hex(),
 			}).Warn("transaction does not re-encode to the hash reported for it, indexing it as reported")
+		}
+
+		// A type this build can decode that did not decode arrived without the fields it
+		// is made of. It cannot be re-encoded either, so the check above says nothing
+		// about it. Whether it ends up indexed that way is decided by the caller, which
+		// asks another client first, so this notes the client's answer rather than the
+		// outcome.
+		if _, unknown := tx.Inner().(*txtypes.UnknownTx); unknown && txtypes.IsTxTypeSupported(tx.Type()) {
+			t.logger.WithFields(logrus.Fields{
+				"blockHash": hash.Hex(),
+				"txIndex":   idx,
+				"txHash":    tx.Hash().Hex(),
+				"txType":    tx.Type(),
+			}).Debug("client reported a transaction without the content its type carries")
 		}
 
 		transactions = append(transactions, tx)
