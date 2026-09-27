@@ -382,3 +382,59 @@ func FuzzTransferBatch(f *testing.F) {
 		_ = newTestCtx().parseERC1155TransferBatch(1, 0, batchLog(data), nil)
 	})
 }
+
+// A blob or set-code transaction cannot create a contract, and a response reporting one
+// without the recipient its type requires is malformed rather than incomplete. It decodes
+// as an unknown type all the same, so the recipient is missing along with everything else
+// and must not be read as the creation the type cannot perform.
+func TestProcessTransactionNeverCreatesAContractForAnUndecodedType(t *testing.T) {
+	for _, txType := range []string{"0x3", "0x4"} {
+		t.Run(txType, func(t *testing.T) {
+			tx, _, err := decodeBlockTransaction(json.RawMessage(`{
+				"type": "` + txType + `",
+				"hash": "0x1b3b4dcee1b05d2a4c1c0d2f8d38a0dcf30e6f1d1e6d1a3c1f0e1d2c3b4a5968",
+				"from": "0x846c1aa48ca796975ebffde156a076c520b356ea",
+				"to": null,
+				"nonce": "0x12ab",
+				"gas": "0xca4e",
+				"maxFeePerGas": "0x4a817c800",
+				"maxPriorityFeePerGas": "0x77359400",
+				"value": "0x0",
+				"input": "0x"
+			}`))
+			if err != nil {
+				t.Fatalf("decode failed: %v", err)
+			}
+
+			if !undecodedTransaction(tx) {
+				t.Fatalf("inner type = %T, want an undecoded transaction for this fixture", tx.Inner())
+			}
+
+			ctx := newTxTestContext()
+
+			receipt := frameTxReceipt(tx.Hash())
+			receipt.Type = tx.Type()
+
+			if _, err := ctx.processTransaction(tx, receipt, nil, nil); err != nil {
+				t.Fatalf("processTransaction failed: %v", err)
+			}
+
+			result := ctx.txResults[0]
+
+			if result.transaction.TxType&dbtypes.ElTxFlagCreate != 0 {
+				t.Errorf("tx type = %d, must not be flagged as a creation", result.transaction.TxType)
+			}
+
+			if result.toAccount != nil {
+				t.Errorf("toAccount = %x, no recipient was reported", result.toAccount.account.Address)
+			}
+
+			sender := common.HexToAddress("0x846c1aa48ca796975ebffde156a076c520b356ea")
+			for address := range ctx.accounts {
+				if address != sender {
+					t.Errorf("account %s was registered from a response that named none", address.Hex())
+				}
+			}
+		})
+	}
+}

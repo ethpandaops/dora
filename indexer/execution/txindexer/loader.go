@@ -154,17 +154,27 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 	return nil, nil, fmt.Errorf("all retries failed: %w", lastErr)
 }
 
-// undecodedTransactions reports whether the list holds a transaction of a type this build
-// can decode that nonetheless arrived without the fields that type is made of.
+// undecodedTransaction reports whether the transaction is of a type this build can decode
+// that nonetheless arrived without the fields that type is made of.
 //
-// A type the client renders incompletely - EIP-8141 specifies no JSON-RPC encoding for a
-// frame transaction, and a client may report one without its frames - yields a
-// well-formed transaction object rather than an error. What is left decodes as a
-// transaction of an unknown type: the generic fields the node reported, and none of the
-// type's own content. Another client may report the same transaction in full.
+// A client may report such a transaction without an error of its own: EIP-8141 specifies
+// no JSON-RPC encoding for a frame transaction, so one reported without its frames is a
+// well-formed object, and a blob or set-code transaction reported without the recipient
+// its type requires is a malformed one. Either way what is left decodes as a transaction
+// of an unknown type - the generic fields the node reported, and none of the type's own
+// content - so nothing the transaction does can be read off it, and nothing absent from it
+// can be taken to mean anything.
+func undecodedTransaction(tx *txtypes.Transaction) bool {
+	_, unknown := tx.Inner().(*txtypes.UnknownTx)
+
+	return unknown && txtypes.IsTxTypeSupported(tx.Type())
+}
+
+// undecodedTransactions reports whether the list holds a transaction that arrived without
+// the fields its type is made of. Another client may report the same transaction in full.
 func undecodedTransactions(transactions []*txtypes.Transaction) bool {
 	for _, tx := range transactions {
-		if _, unknown := tx.Inner().(*txtypes.UnknownTx); unknown && txtypes.IsTxTypeSupported(tx.Type()) {
+		if undecodedTransaction(tx) {
 			return true
 		}
 	}
@@ -378,7 +388,7 @@ func (t *TxIndexer) fetchBlockTransactions(
 		// about it. Whether it ends up indexed that way is decided by the caller, which
 		// asks another client first, so this notes the client's answer rather than the
 		// outcome.
-		if _, unknown := tx.Inner().(*txtypes.UnknownTx); unknown && txtypes.IsTxTypeSupported(tx.Type()) {
+		if undecodedTransaction(tx) {
 			t.logger.WithFields(logrus.Fields{
 				"blockHash": hash.Hex(),
 				"txIndex":   idx,

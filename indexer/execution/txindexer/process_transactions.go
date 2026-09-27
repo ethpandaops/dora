@@ -347,7 +347,14 @@ func (ctx *txProcessingContext) processTransaction(
 	// 2. Process "to" account (funder is the "from" account)
 	var toAddr common.Address
 	var toAccount *pendingAccount
-	isContractCreation := !isFrameTx && tx.To() == nil
+
+	// A creation is claimed only for a transaction this build read in full. One that
+	// arrived without the fields its type is made of is missing its recipient along with
+	// the rest - a blob or set-code transaction reports one that the type requires - so
+	// its absence is no evidence of a creation, and deriving an address from it would
+	// invent a contract that was never deployed.
+	undecoded := undecodedTransaction(tx)
+	isContractCreation := !isFrameTx && !undecoded && tx.To() == nil
 
 	switch {
 	case isFrameTx:
@@ -365,6 +372,9 @@ func (ctx *txProcessingContext) processTransaction(
 		// Calculate contract address for contract creation
 		toAddr = crypto.CreateAddress(from, tx.Nonce())
 		toAccount = ctx.ensureAccount(toAddr, fromAccount, true)
+	case tx.To() == nil:
+		// A transaction that arrived without the fields its type is made of, its recipient
+		// among them. None is recorded: the transaction is indexed with what survived.
 	default:
 		toAddr = *tx.To()
 		toAccount = ctx.ensureAccount(toAddr, fromAccount, false)
