@@ -23,7 +23,7 @@ import (
 func getDefaultChainForksPageSize() uint64 {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
-	msPerEpoch := specs.SlotsPerEpoch * specs.SlotDurationMs
+	msPerEpoch := specs.SlotsPerEpoch * uint64(chainState.GetCurrentSlotDuration().Milliseconds())
 	return uint64(24*3600*1000) / msPerEpoch // 1 day worth of epochs
 }
 
@@ -51,7 +51,7 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 			// Calculate max allowed epochs (14 days)
 			chainState := services.GlobalBeaconService.GetChainState()
 			specs := chainState.GetSpecs()
-			msPerEpoch := specs.SlotsPerEpoch * specs.SlotDurationMs
+			msPerEpoch := specs.SlotsPerEpoch * uint64(chainState.GetCurrentSlotDuration().Milliseconds())
 			maxEpochs := uint64(14*24*3600*1000) / msPerEpoch
 
 			if parsed <= maxEpochs {
@@ -123,12 +123,12 @@ func getChainForksPageData() (*models.ChainForksPageData, error) {
 	genesis := chainState.GetGenesis()
 
 	// Calculate epoch counts for time selectors
-	msPerEpoch := specs.SlotsPerEpoch * specs.SlotDurationMs
+	msPerEpoch := specs.SlotsPerEpoch * uint64(chainState.GetCurrentSlotDuration().Milliseconds())
 
 	pageData := &models.ChainForksPageData{
 		ChainSpecs: &models.ChainSpecs{
 			SlotsPerEpoch:  uint64(specs.SlotsPerEpoch),
-			SlotDurationMs: specs.SlotDurationMs,
+			SlotDurationMs: uint64(chainState.GetCurrentSlotDuration().Milliseconds()),
 			GenesisTime:    uint64(genesis.GenesisTime.Unix()),
 			CurrentSlot:    uint64(chainState.CurrentSlot()),
 			EpochsFor12h:   uint64(12*3600*1000) / msPerEpoch,
@@ -184,7 +184,7 @@ func buildChainForksDiagramData(ctx context.Context, startSlot uint64, pageSizeE
 
 	var cacheTime time.Duration
 	if startSlot > finalizedSlot {
-		cacheTime = time.Duration(specs.SlotDurationMs) * 12 * time.Millisecond
+		cacheTime = chainState.GetCurrentSlotDuration() * 12
 	} else {
 		cacheTime = 30 * time.Minute
 	}

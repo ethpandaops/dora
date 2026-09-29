@@ -19,6 +19,13 @@ type ForkVersion struct {
 	PreviousVersion []byte
 }
 
+// SlotDurationScheduleEntry is one entry of the EIP-8198 SLOT_DURATION_SCHEDULE:
+// slots from Epoch on last SlotDurationMs milliseconds.
+type SlotDurationScheduleEntry struct {
+	Epoch          uint64 `yaml:"EPOCH"`
+	SlotDurationMs uint64 `yaml:"SLOT_DURATION_MS"`
+}
+
 type BlobScheduleEntry struct {
 	Epoch            uint64 `yaml:"EPOCH"`
 	MaxBlobsPerBlock uint64 `yaml:"MAX_BLOBS_PER_BLOCK"`
@@ -57,6 +64,8 @@ type ChainSpecConfig struct {
 	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"     check-if-fork:"GloasForkEpoch"`
 	HezeForkVersion      phase0.Version `yaml:"HEZE_FORK_VERSION"    check-if-fork:"HezeForkEpoch"`
 	HezeForkEpoch        *uint64        `yaml:"HEZE_FORK_EPOCH"      check-if-fork:"HezeForkEpoch"`
+	Eip8198ForkVersion   phase0.Version `yaml:"EIP8198_FORK_VERSION" check-if-fork:"Eip8198ForkEpoch"`
+	Eip8198ForkEpoch     *uint64        `yaml:"EIP8198_FORK_EPOCH"   check-if-fork:"Eip8198ForkEpoch"`
 
 	// Time parameters
 	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`
@@ -64,6 +73,10 @@ type ChainSpecConfig struct {
 	MinValidatorWithdrawbilityDelay uint64 `yaml:"MIN_VALIDATOR_WITHDRAWABILITY_DELAY"`
 	ShardCommitteePeriod            uint64 `yaml:"SHARD_COMMITTEE_PERIOD"`
 	Eth1FollowDistance              uint64 `yaml:"ETH1_FOLLOW_DISTANCE"`
+
+	// EIP-8198: piecewise slot durations, first entry at epoch 0. Normalized
+	// by ParseAdditive so it is never empty (genesis entry = SLOT_DURATION_MS).
+	SlotDurationSchedule []SlotDurationScheduleEntry `yaml:"SLOT_DURATION_SCHEDULE" check-if:"false"`
 
 	// Validator cycle
 	InactivityScoreBias             uint64 `yaml:"INACTIVITY_SCORE_BIAS"`
@@ -306,7 +319,97 @@ func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 		}
 	}
 
+	chain.normalizeSlotDurationSchedule()
+
 	return nil
+}
+
+// normalizeSlotDurationSchedule sorts SLOT_DURATION_SCHEDULE and makes sure it
+// starts at epoch 0. Pre-EIP-8198 networks have no schedule: it becomes a
+// single genesis entry derived from SLOT_DURATION_MS. When a schedule is
+// given, its genesis entry is authoritative for SLOT_DURATION_MS.
+func (chain *ChainSpec) normalizeSlotDurationSchedule() {
+	schedule := make([]SlotDurationScheduleEntry, 0, len(chain.SlotDurationSchedule)+1)
+	for _, entry := range chain.SlotDurationSchedule {
+		if entry.SlotDurationMs > 0 {
+			schedule = append(schedule, entry)
+		}
+	}
+
+	sort.Slice(schedule, func(i, j int) bool {
+		return schedule[i].Epoch < schedule[j].Epoch
+	})
+
+	if len(schedule) == 0 || schedule[0].Epoch != 0 {
+		if chain.SlotDurationMs == 0 {
+			chain.SlotDurationSchedule = schedule
+			return
+		}
+
+		schedule = append([]SlotDurationScheduleEntry{{Epoch: 0, SlotDurationMs: chain.SlotDurationMs}}, schedule...)
+	}
+
+	chain.SlotDurationSchedule = schedule
+	chain.SlotDurationMs = schedule[0].SlotDurationMs
+}
+
+// GetSlotDurationMs returns the slot duration in effect at epoch (EIP-8198
+// get_slot_duration_ms).
+func (chain *ChainSpec) GetSlotDurationMs(epoch uint64) uint64 {
+	for i := len(chain.SlotDurationSchedule) - 1; i >= 0; i-- {
+		if epoch >= chain.SlotDurationSchedule[i].Epoch {
+			return chain.SlotDurationSchedule[i].SlotDurationMs
+		}
+	}
+
+	return chain.SlotDurationMs
+}
+
+// SlotOffsetMs returns the time of the start of slot, in milliseconds since
+// genesis, walking the slot duration schedule (EIP-8198 compute_time_at_slot_ms).
+func (chain *ChainSpec) SlotOffsetMs(slot uint64) uint64 {
+	if len(chain.SlotDurationSchedule) == 0 {
+		return slot * chain.SlotDurationMs
+	}
+
+	endSlot := slot
+	offset := uint64(0)
+
+	for i := len(chain.SlotDurationSchedule) - 1; i >= 0; i-- {
+		entry := chain.SlotDurationSchedule[i]
+		entrySlot := entry.Epoch * chain.SlotsPerEpoch
+
+		if entrySlot < endSlot {
+			offset += (endSlot - entrySlot) * entry.SlotDurationMs
+			endSlot = entrySlot
+		}
+	}
+
+	return offset
+}
+
+// SlotAtOffsetMs returns the slot at offsetMs milliseconds after genesis
+// (EIP-8198 compute_slot_at_time_ms).
+func (chain *ChainSpec) SlotAtOffsetMs(offsetMs uint64) uint64 {
+	if len(chain.SlotDurationSchedule) == 0 {
+		if chain.SlotDurationMs == 0 {
+			return 0
+		}
+
+		return offsetMs / chain.SlotDurationMs
+	}
+
+	for i := len(chain.SlotDurationSchedule) - 1; i >= 0; i-- {
+		entry := chain.SlotDurationSchedule[i]
+		entrySlot := entry.Epoch * chain.SlotsPerEpoch
+		entryOffset := chain.SlotOffsetMs(entrySlot)
+
+		if offsetMs >= entryOffset || i == 0 {
+			return entrySlot + (offsetMs-entryOffset)/entry.SlotDurationMs
+		}
+	}
+
+	return 0
 }
 
 type SpecMismatch struct {

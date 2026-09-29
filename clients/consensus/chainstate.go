@@ -22,8 +22,8 @@ type ChainState struct {
 	genesisMutex sync.Mutex
 	genesis      *v1.Genesis
 
-	wallclockMutex sync.Mutex
-	wallclock      *ethwallclock.EthereumBeaconChain
+	wallclockMutex   sync.Mutex
+	wallclockStarted bool
 
 	finalityMutex sync.RWMutex
 	finality      *v1.Finality
@@ -198,7 +198,7 @@ func (cs *ChainState) initWallclock() {
 	cs.wallclockMutex.Lock()
 	defer cs.wallclockMutex.Unlock()
 
-	if cs.wallclock != nil {
+	if cs.wallclockStarted {
 		return
 	}
 
@@ -206,13 +206,52 @@ func (cs *ChainState) initWallclock() {
 		return
 	}
 
-	cs.wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, time.Duration(cs.specs.SlotDurationMs)*time.Millisecond, cs.specs.SlotsPerEpoch)
-	cs.wallclock.OnEpochChanged(func(current ethwallclock.Epoch) {
-		cs.wallclockEpochDispatcher.Fire(&current)
-	})
-	cs.wallclock.OnSlotChanged(func(current ethwallclock.Slot) {
-		cs.wallclockSlotDispatcher.Fire(&current)
-	})
+	cs.wallclockStarted = true
+
+	go cs.runWallclock()
+}
+
+// runWallclock fires the wallclock slot/epoch events. Slot boundaries follow
+// the EIP-8198 slot duration schedule, so a single fixed-duration ticker
+// (ethwallclock.EthereumBeaconChain) can't be used.
+func (cs *ChainState) runWallclock() {
+	// Like ethwallclock, events fire on boundaries only (not for the slot
+	// the clock starts in).
+	lastSlot := int64(-1)
+	if !time.Now().Before(cs.genesis.GenesisTime) {
+		lastSlot = int64(cs.TimeToSlot(time.Now()))
+	}
+
+	for {
+		var next time.Time
+		if lastSlot < 0 {
+			next = cs.genesis.GenesisTime
+		} else {
+			next = cs.SlotToTime(phase0.Slot(lastSlot + 1))
+		}
+
+		if wait := time.Until(next); wait > 0 {
+			time.Sleep(wait)
+		}
+
+		slot := cs.TimeToSlot(time.Now())
+		if int64(slot) <= lastSlot {
+			// woke up marginally early; retry
+			time.Sleep(5 * time.Millisecond)
+			continue
+		}
+
+		epoch := cs.EpochOfSlot(slot)
+		if lastSlot < 0 || cs.EpochOfSlot(phase0.Slot(lastSlot)) != epoch {
+			epochEvent := ethwallclock.NewEpoch(uint64(epoch), cs.EpochToTime(epoch), cs.EpochToTime(epoch+1))
+			cs.wallclockEpochDispatcher.Fire(&epochEvent)
+		}
+
+		slotEvent := ethwallclock.NewSlot(uint64(slot), cs.SlotToTime(slot), cs.SlotToTime(slot+1))
+		cs.wallclockSlotDispatcher.Fire(&slotEvent)
+
+		lastSlot = int64(slot)
+	}
 }
 
 func (cs *ChainState) setFinalizedCheckpoint(finality *v1.Finality) {
@@ -328,7 +367,7 @@ func (cs *ChainState) SlotToTime(slot phase0.Slot) time.Time {
 		return time.Time{}
 	}
 
-	return cs.genesis.GenesisTime.Add(time.Duration(uint64(slot)*cs.specs.SlotDurationMs) * time.Millisecond)
+	return cs.genesis.GenesisTime.Add(time.Duration(cs.specs.SlotOffsetMs(uint64(slot))) * time.Millisecond)
 }
 
 func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
@@ -336,7 +375,7 @@ func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
 		return time.Time{}
 	}
 
-	return cs.genesis.GenesisTime.Add(time.Duration(uint64(cs.EpochToSlot(epoch))*cs.specs.SlotDurationMs) * time.Millisecond)
+	return cs.genesis.GenesisTime.Add(time.Duration(cs.specs.SlotOffsetMs(uint64(cs.EpochToSlot(epoch)))) * time.Millisecond)
 }
 
 func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
@@ -348,7 +387,22 @@ func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
 		return 0
 	}
 
-	return phase0.Slot(uint64(timestamp.Sub(cs.genesis.GenesisTime).Milliseconds()) / cs.specs.SlotDurationMs)
+	return phase0.Slot(cs.specs.SlotAtOffsetMs(uint64(timestamp.Sub(cs.genesis.GenesisTime).Milliseconds())))
+}
+
+// GetSlotDuration returns the duration of slot (EIP-8198: varies with the
+// slot duration schedule).
+func (cs *ChainState) GetSlotDuration(slot phase0.Slot) time.Duration {
+	if cs.specs == nil {
+		return 0
+	}
+
+	return time.Duration(cs.specs.GetSlotDurationMs(uint64(cs.EpochOfSlot(slot)))) * time.Millisecond
+}
+
+// GetCurrentSlotDuration returns the duration of the current wallclock slot.
+func (cs *ChainState) GetCurrentSlotDuration() time.Duration {
+	return cs.GetSlotDuration(cs.CurrentSlot())
 }
 
 func (cs *ChainState) SlotToSlotIndex(slot phase0.Slot) phase0.Slot {
@@ -470,6 +524,8 @@ func (cs *ChainState) GetForkVersionAtEpoch(epoch phase0.Epoch) phase0.Version {
 	}
 
 	switch {
+	case cs.specs.Eip8198ForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.Eip8198ForkEpoch):
+		return cs.specs.Eip8198ForkVersion
 	case cs.specs.HezeForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.HezeForkEpoch):
 		return cs.specs.HezeForkVersion
 	case cs.specs.GloasForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.GloasForkEpoch):
@@ -522,7 +578,9 @@ func (cs *ChainState) IsEip7805Enabled(epoch phase0.Epoch) bool {
 		return false
 	}
 
-	return cs.specs.HezeForkEpoch != nil && phase0.Epoch(*cs.specs.HezeForkEpoch) <= epoch
+	// EIP-8198 is built on Heze, so FOCIL stays active after it.
+	return (cs.specs.HezeForkEpoch != nil && phase0.Epoch(*cs.specs.HezeForkEpoch) <= epoch) ||
+		(cs.specs.Eip8198ForkEpoch != nil && phase0.Epoch(*cs.specs.Eip8198ForkEpoch) <= epoch)
 }
 
 func (cs *ChainState) IsFuluEnabled(epoch phase0.Epoch) bool {

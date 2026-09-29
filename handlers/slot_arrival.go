@@ -388,7 +388,7 @@ func loadHeadArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot
 // nothing about propagation. Derived from the chain's slot length, so it stays
 // one slot on chains that do not use twelve second slots.
 func lateThreshold(chainState *consensus.ChainState) uint32 {
-	slotMs := chainState.GetSpecs().SlotDurationMs
+	slotMs := uint64(chainState.GetCurrentSlotDuration().Milliseconds())
 	if slotMs == 0 {
 		slotMs = 12000
 	}
@@ -806,7 +806,7 @@ func buildArrivalAggregates(response *models.SlotArrivalResponse, nodes map[stri
 // slot, which decouples ClickHouse load from request volume without hiding
 // events that are still arriving for longer than the slot they belong to.
 func unsettledCacheTimeout(chainState *consensus.ChainState) time.Duration {
-	slotDuration := time.Duration(chainState.GetSpecs().SlotDurationMs) * time.Millisecond
+	slotDuration := chainState.GetCurrentSlotDuration()
 	if slotDuration <= 0 {
 		return 12 * time.Second
 	}
