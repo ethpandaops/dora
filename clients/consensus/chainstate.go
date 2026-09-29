@@ -22,8 +22,8 @@ type ChainState struct {
 	genesisMutex sync.Mutex
 	genesis      *v1.Genesis
 
-	wallclockMutex   sync.Mutex
-	wallclockStarted bool
+	wallclockMutex sync.Mutex
+	wallclock      *ethwallclock.EthereumBeaconChain
 
 	finalityMutex sync.RWMutex
 	finality      *v1.Finality
@@ -198,7 +198,7 @@ func (cs *ChainState) initWallclock() {
 	cs.wallclockMutex.Lock()
 	defer cs.wallclockMutex.Unlock()
 
-	if cs.wallclockStarted {
+	if cs.wallclock != nil {
 		return
 	}
 
@@ -206,52 +206,27 @@ func (cs *ChainState) initWallclock() {
 		return
 	}
 
-	cs.wallclockStarted = true
-
-	go cs.runWallclock()
-}
-
-// runWallclock fires the wallclock slot/epoch events. Slot boundaries follow
-// the EIP-8198 slot duration schedule, so a single fixed-duration ticker
-// (ethwallclock.EthereumBeaconChain) can't be used.
-func (cs *ChainState) runWallclock() {
-	// Like ethwallclock, events fire on boundaries only (not for the slot
-	// the clock starts in).
-	lastSlot := int64(-1)
-	if !time.Now().Before(cs.genesis.GenesisTime) {
-		lastSlot = int64(cs.TimeToSlot(time.Now()))
+	// EIP-8198: slot boundaries follow the slot duration schedule.
+	schedule := make([]ethwallclock.SlotDuration, 0, len(cs.specs.SlotDurationSchedule))
+	for _, entry := range cs.specs.SlotDurationSchedule {
+		schedule = append(schedule, ethwallclock.SlotDuration{
+			Epoch:    entry.Epoch,
+			Duration: time.Duration(entry.SlotDurationMs) * time.Millisecond,
+		})
 	}
 
-	for {
-		var next time.Time
-		if lastSlot < 0 {
-			next = cs.genesis.GenesisTime
-		} else {
-			next = cs.SlotToTime(phase0.Slot(lastSlot + 1))
-		}
-
-		if wait := time.Until(next); wait > 0 {
-			time.Sleep(wait)
-		}
-
-		slot := cs.TimeToSlot(time.Now())
-		if int64(slot) <= lastSlot {
-			// woke up marginally early; retry
-			time.Sleep(5 * time.Millisecond)
-			continue
-		}
-
-		epoch := cs.EpochOfSlot(slot)
-		if lastSlot < 0 || cs.EpochOfSlot(phase0.Slot(lastSlot)) != epoch {
-			epochEvent := ethwallclock.NewEpoch(uint64(epoch), cs.EpochToTime(epoch), cs.EpochToTime(epoch+1))
-			cs.wallclockEpochDispatcher.Fire(&epochEvent)
-		}
-
-		slotEvent := ethwallclock.NewSlot(uint64(slot), cs.SlotToTime(slot), cs.SlotToTime(slot+1))
-		cs.wallclockSlotDispatcher.Fire(&slotEvent)
-
-		lastSlot = int64(slot)
+	wallclock, err := ethwallclock.NewEthereumBeaconChainWithSchedule(cs.genesis.GenesisTime, schedule, cs.specs.SlotsPerEpoch)
+	if err != nil {
+		wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, time.Duration(cs.specs.SlotDurationMs)*time.Millisecond, cs.specs.SlotsPerEpoch)
 	}
+
+	cs.wallclock = wallclock
+	cs.wallclock.OnEpochChanged(func(current ethwallclock.Epoch) {
+		cs.wallclockEpochDispatcher.Fire(&current)
+	})
+	cs.wallclock.OnSlotChanged(func(current ethwallclock.Slot) {
+		cs.wallclockSlotDispatcher.Fire(&current)
+	})
 }
 
 func (cs *ChainState) setFinalizedCheckpoint(finality *v1.Finality) {
