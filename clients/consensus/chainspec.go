@@ -433,9 +433,14 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]SpecMismatch, error)
 					return slotScheduleB[i].Epoch < slotScheduleB[j].Epoch
 				})
 
-				// compare each entry
-				for i := range slotScheduleA {
-					if len(slotScheduleB) > i && slotScheduleA[i] != slotScheduleB[i] {
+				if len(slotScheduleA) == 0 {
+					// empty schedule on chain side is allowed
+					continue
+				}
+
+				// compare each entry, a missing or extra entry is a mismatch too
+				for i := range max(len(slotScheduleA), len(slotScheduleB)) {
+					if i >= len(slotScheduleA) || i >= len(slotScheduleB) || slotScheduleA[i] != slotScheduleB[i] {
 						mismatches = append(mismatches, SpecMismatch{
 							Name:     fmt.Sprintf("%s[%d]", fieldT.Name, i),
 							Severity: checkSeverity,

@@ -425,32 +425,68 @@ func TestSlotDurationScheduleMismatch(t *testing.T) {
 		return specs
 	}
 
-	majority := newSpecs(
-		SlotDurationScheduleEntry{Epoch: 2, SlotDurationMs: 8000},
-		SlotDurationScheduleEntry{Epoch: 5, SlotDurationMs: 6000},
-	)
+	entry2 := SlotDurationScheduleEntry{Epoch: 2, SlotDurationMs: 8000}
+	entry5 := SlotDurationScheduleEntry{Epoch: 5, SlotDurationMs: 6000}
+	entry9 := SlotDurationScheduleEntry{Epoch: 9, SlotDurationMs: 4000}
 
-	mismatches, err := majority.CheckMismatch(newSpecs(
-		SlotDurationScheduleEntry{Epoch: 5, SlotDurationMs: 6000},
-		SlotDurationScheduleEntry{Epoch: 2, SlotDurationMs: 8000},
-	))
-	if err != nil {
-		t.Fatalf("check failed: %v", err)
+	tests := []struct {
+		name     string
+		chain    []SlotDurationScheduleEntry
+		other    []SlotDurationScheduleEntry
+		mismatch string
+	}{
+		{
+			name:  "reordered",
+			chain: []SlotDurationScheduleEntry{entry2, entry5},
+			other: []SlotDurationScheduleEntry{entry5, entry2},
+		},
+		{
+			name:     "different entry",
+			chain:    []SlotDurationScheduleEntry{entry2, entry5},
+			other:    []SlotDurationScheduleEntry{entry2, {Epoch: 5, SlotDurationMs: 4000}},
+			mismatch: "SlotDurationSchedule[1]",
+		},
+		{
+			name:     "fewer entries",
+			chain:    []SlotDurationScheduleEntry{entry2, entry5},
+			other:    []SlotDurationScheduleEntry{entry2},
+			mismatch: "SlotDurationSchedule[1]",
+		},
+		{
+			name:     "extra entry",
+			chain:    []SlotDurationScheduleEntry{entry2, entry5},
+			other:    []SlotDurationScheduleEntry{entry2, entry5, entry9},
+			mismatch: "SlotDurationSchedule[2]",
+		},
+		{
+			name:     "no schedule",
+			chain:    []SlotDurationScheduleEntry{entry2, entry5},
+			mismatch: "SlotDurationSchedule[0]",
+		},
+		{
+			name:  "empty schedule on chain side",
+			other: []SlotDurationScheduleEntry{entry2, entry5},
+		},
 	}
 
-	if len(mismatches) != 0 {
-		t.Fatalf("unexpected mismatches for reordered schedule: %+v", mismatches)
-	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mismatches, err := newSpecs(test.chain...).CheckMismatch(newSpecs(test.other...))
+			if err != nil {
+				t.Fatalf("check failed: %v", err)
+			}
 
-	mismatches, err = majority.CheckMismatch(newSpecs(
-		SlotDurationScheduleEntry{Epoch: 2, SlotDurationMs: 8000},
-		SlotDurationScheduleEntry{Epoch: 5, SlotDurationMs: 4000},
-	))
-	if err != nil {
-		t.Fatalf("check failed: %v", err)
-	}
+			if test.mismatch == "" {
+				if len(mismatches) != 0 {
+					t.Fatalf("unexpected mismatches: %+v", mismatches)
+				}
 
-	if len(mismatches) != 1 || mismatches[0].Name != "SlotDurationSchedule[1]" {
-		t.Fatalf("mismatches = %+v, want SlotDurationSchedule[1]", mismatches)
+				return
+			}
+
+			if len(mismatches) != 1 || mismatches[0].Name != test.mismatch {
+				t.Fatalf("mismatches = %+v, want %v", mismatches, test.mismatch)
+			}
+		})
 	}
 }
