@@ -9,8 +9,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.5
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260807103219-0fb0622e156b
-	github.com/ethpandaops/ethwallclock v0.4.1-0.20260929140616-8d9b2958f41b
-	github.com/ethpandaops/go-eth2-client v0.1.8-0.20260929141251-9b728577037c
+	github.com/ethpandaops/go-eth2-client v0.1.8-0.20261001145638-8c60ebd568f0
 	github.com/ethpandaops/spamoor v1.2.4-0.20260925130528-570d240766f6
 	github.com/ethpandaops/xatu v1.22.1-0.20260824050538-619c572d19c3
 	github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8

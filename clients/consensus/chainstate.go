@@ -9,21 +9,19 @@ import (
 	"time"
 
 	"github.com/ethpandaops/dora/utils"
-	"github.com/ethpandaops/ethwallclock"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
 type ChainState struct {
+	Wallclock
+
 	specMutex   sync.RWMutex
 	specs       *ChainSpec
 	clientSpecs map[*Client]map[string]interface{}
 
 	genesisMutex sync.Mutex
 	genesis      *v1.Genesis
-
-	wallclockMutex sync.Mutex
-	wallclock      *ethwallclock.EthereumBeaconChain
 
 	finalityMutex sync.RWMutex
 	finality      *v1.Finality
@@ -33,15 +31,17 @@ type ChainState struct {
 	fastConfirmedRoot     phase0.Root
 	lastFastConfirmation  time.Time
 
-	checkpointDispatcher     utils.Dispatcher[*v1.Finality]
-	wallclockEpochDispatcher utils.Dispatcher[*ethwallclock.Epoch]
-	wallclockSlotDispatcher  utils.Dispatcher[*ethwallclock.Slot]
+	checkpointDispatcher utils.Dispatcher[*v1.Finality]
 }
 
 func newChainState() *ChainState {
-	return &ChainState{
+	cs := &ChainState{
 		clientSpecs: make(map[*Client]map[string]interface{}),
 	}
+
+	cs.initWallclock()
+
+	return cs
 }
 
 func (cs *ChainState) setGenesis(genesis *v1.Genesis) error {
@@ -77,6 +77,10 @@ func (cs *ChainState) updateClientSpecs(client *Client, specValues map[string]in
 	}
 
 	cs.specs = majoritySpecs
+
+	if err := cs.updateWallclock(); err != nil {
+		client.logger.Warnf("wallclock update failed: %v", err)
+	}
 
 	// Update warnings for all clients against the new majority spec
 	if majoritySpecs != nil {
@@ -194,39 +198,13 @@ func (cs *ChainState) computeMajoritySpecs() (*ChainSpec, error) {
 	return majoritySpec, nil
 }
 
-func (cs *ChainState) initWallclock() {
-	cs.wallclockMutex.Lock()
-	defer cs.wallclockMutex.Unlock()
-
-	if cs.wallclock != nil {
-		return
+// updateWallclock applies the slot timings of the current specs to the wallclock.
+func (cs *ChainState) updateWallclock() error {
+	if cs.genesis == nil || cs.specs == nil {
+		return nil
 	}
 
-	if cs.specs == nil || cs.genesis == nil {
-		return
-	}
-
-	// EIP-8198: slot boundaries follow the slot duration schedule.
-	schedule := make([]ethwallclock.SlotDuration, 0, len(cs.specs.SlotDurationSchedule))
-	for _, entry := range cs.specs.SlotDurationSchedule {
-		schedule = append(schedule, ethwallclock.SlotDuration{
-			Epoch:    entry.Epoch,
-			Duration: time.Duration(entry.SlotDurationMs) * time.Millisecond,
-		})
-	}
-
-	wallclock, err := ethwallclock.NewEthereumBeaconChainWithSchedule(cs.genesis.GenesisTime, schedule, cs.specs.SlotsPerEpoch)
-	if err != nil {
-		wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, time.Duration(cs.specs.SlotDurationMs)*time.Millisecond, cs.specs.SlotsPerEpoch)
-	}
-
-	cs.wallclock = wallclock
-	cs.wallclock.OnEpochChanged(func(current ethwallclock.Epoch) {
-		cs.wallclockEpochDispatcher.Fire(&current)
-	})
-	cs.wallclock.OnSlotChanged(func(current ethwallclock.Slot) {
-		cs.wallclockSlotDispatcher.Fire(&current)
-	})
+	return cs.SetupClock(cs.genesis.GenesisTime, cs.specs)
 }
 
 func (cs *ChainState) setFinalizedCheckpoint(finality *v1.Finality) {
@@ -335,49 +313,6 @@ func (cs *ChainState) EpochToSlot(epoch phase0.Epoch) phase0.Slot {
 	}
 
 	return phase0.Slot(epoch) * phase0.Slot(cs.specs.SlotsPerEpoch)
-}
-
-func (cs *ChainState) SlotToTime(slot phase0.Slot) time.Time {
-	if cs.specs == nil || cs.genesis == nil {
-		return time.Time{}
-	}
-
-	return cs.genesis.GenesisTime.Add(time.Duration(cs.specs.SlotOffsetMs(uint64(slot))) * time.Millisecond)
-}
-
-func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
-	if cs.specs == nil || cs.genesis == nil {
-		return time.Time{}
-	}
-
-	return cs.genesis.GenesisTime.Add(time.Duration(cs.specs.SlotOffsetMs(uint64(cs.EpochToSlot(epoch)))) * time.Millisecond)
-}
-
-func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
-	if cs.specs == nil || cs.genesis == nil {
-		return 0
-	}
-
-	if cs.genesis.GenesisTime.Compare(timestamp) > 0 {
-		return 0
-	}
-
-	return phase0.Slot(cs.specs.SlotAtOffsetMs(uint64(timestamp.Sub(cs.genesis.GenesisTime).Milliseconds())))
-}
-
-// GetSlotDuration returns the duration of slot (EIP-8198: varies with the
-// slot duration schedule).
-func (cs *ChainState) GetSlotDuration(slot phase0.Slot) time.Duration {
-	if cs.specs == nil {
-		return 0
-	}
-
-	return time.Duration(cs.specs.GetSlotDurationMs(uint64(cs.EpochOfSlot(slot)))) * time.Millisecond
-}
-
-// GetCurrentSlotDuration returns the duration of the current wallclock slot.
-func (cs *ChainState) GetCurrentSlotDuration() time.Duration {
-	return cs.GetSlotDuration(cs.CurrentSlot())
 }
 
 func (cs *ChainState) SlotToSlotIndex(slot phase0.Slot) phase0.Slot {
@@ -553,9 +488,7 @@ func (cs *ChainState) IsEip7805Enabled(epoch phase0.Epoch) bool {
 		return false
 	}
 
-	// EIP-8198 is built on Heze, so FOCIL stays active after it.
-	return (cs.specs.HezeForkEpoch != nil && phase0.Epoch(*cs.specs.HezeForkEpoch) <= epoch) ||
-		(cs.specs.Eip8198ForkEpoch != nil && phase0.Epoch(*cs.specs.Eip8198ForkEpoch) <= epoch)
+	return cs.specs.HezeForkEpoch != nil && phase0.Epoch(*cs.specs.HezeForkEpoch) <= epoch
 }
 
 func (cs *ChainState) IsFuluEnabled(epoch phase0.Epoch) bool {
