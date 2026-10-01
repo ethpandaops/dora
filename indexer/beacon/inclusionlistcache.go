@@ -9,18 +9,24 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
+// InclusionListEntry is a cached inclusion list with the time it was first seen.
+type InclusionListEntry struct {
+	InclusionList *v1.SignedInclusionList
+	SeenAt        time.Time
+}
+
 // inclusionListCache is a cache for storing inclusion lists.
 type inclusionListCache struct {
 	indexer          *Indexer
 	cacheMutex       sync.RWMutex
-	inclusionListMap map[phase0.Slot][]*v1.SignedInclusionList
+	inclusionListMap map[phase0.Slot][]*InclusionListEntry
 }
 
 // newInclusionListCache creates a new instance of inclusionListCache.
 func newInclusionListCache(indexer *Indexer) *inclusionListCache {
 	cache := &inclusionListCache{
 		indexer:          indexer,
-		inclusionListMap: make(map[phase0.Slot][]*v1.SignedInclusionList),
+		inclusionListMap: make(map[phase0.Slot][]*InclusionListEntry),
 	}
 
 	go cache.cleanupLoop()
@@ -33,13 +39,14 @@ func (cache *inclusionListCache) addInclusionList(inclusionList *v1.SignedInclus
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	for _, cached := range cache.inclusionListMap[inclusionList.Message.Slot] {
+	for _, entry := range cache.inclusionListMap[inclusionList.Message.Slot] {
+		cached := entry.InclusionList
 		if cached.Message.ValidatorIndex != inclusionList.Message.ValidatorIndex {
 			continue
 		}
 
 		if cached.Signature == inclusionList.Signature {
-			// Duplicated event possibly from different clients.
+			// Duplicated event possibly from different clients, keep the first seen time.
 			return
 		}
 
@@ -47,16 +54,19 @@ func (cache *inclusionListCache) addInclusionList(inclusionList *v1.SignedInclus
 		break
 	}
 
-	cache.inclusionListMap[inclusionList.Message.Slot] = append(cache.inclusionListMap[inclusionList.Message.Slot], inclusionList)
+	cache.inclusionListMap[inclusionList.Message.Slot] = append(cache.inclusionListMap[inclusionList.Message.Slot], &InclusionListEntry{
+		InclusionList: inclusionList,
+		SeenAt:        time.Now(),
+	})
 }
 
 // getInclusionListsBySlot returns the cached inclusion lists for the given slot.
-func (cache *inclusionListCache) getInclusionListsBySlot(slot phase0.Slot) []*v1.SignedInclusionList {
+func (cache *inclusionListCache) getInclusionListsBySlot(slot phase0.Slot) []*InclusionListEntry {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
 	lists := cache.inclusionListMap[slot]
-	result := make([]*v1.SignedInclusionList, len(lists))
+	result := make([]*InclusionListEntry, len(lists))
 	copy(result, lists)
 
 	return result

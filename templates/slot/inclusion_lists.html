@@ -12,6 +12,19 @@
           </div>
         </div>
         <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When dora first saw this inclusion list on its beacon node event streams, relative to the slot start. Lists seen after the inclusion list due time, or from members publishing conflicting lists, are not enforced.">Seen:</span></div>
+          <div class="col-md-10">
+            +{{ printf "%.2f" (div (float64 $inclusionList.SeenDelayMs) 1000.0) }}s
+            {{ if $inclusionList.Equivocation }}
+              <span class="badge rounded-pill text-bg-warning">Equivocation</span>
+            {{ else if $inclusionList.Timely }}
+              <span class="badge rounded-pill text-bg-success">Timely</span>
+            {{ else }}
+              <span class="badge rounded-pill text-bg-warning">Late</span>
+            {{ end }}
+          </div>
+        </div>
+        <div class="row border-bottom p-1 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The shuffling dependent root of the block the inclusion list committee was computed from">Dependent Root:</span></div>
           <div class="col-md-10 text-monospace text-break">
             0x{{ printf "%x" $inclusionList.DependentRoot }}
@@ -37,7 +50,7 @@
                   <th>From</th>
                   <th>To</th>
                   <th>Value</th>
-                  <th>Included</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -61,10 +74,9 @@
                     </td>
                     <td>{{ $transaction.Value }} ETH</td>
                     <td>
-                      {{ if index $inclusionList.TransactionsIncluded $j }}
-                        <span class="badge rounded-pill text-bg-success">Yes</span>
-                      {{ else }}
-                        <span class="badge rounded-pill text-bg-danger">No</span>
+                      {{ with index $inclusionList.TransactionsStatus $j }}
+                        <span class="badge rounded-pill {{ .Class }}" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ .Reason }}">{{ .Label }}</span>
+                        {{ if and .Reason (ne .Status 3) }}<div class="small text-muted text-wrap" style="max-width: 280px;">{{ .Reason }}</div>{{ end }}
                       {{ end }}
                     </td>
                   </tr>

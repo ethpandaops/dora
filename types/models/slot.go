@@ -118,6 +118,7 @@ type SlotPageBlockData struct {
 	BuilderPayment         *SlotPageBuilderPayment          `json:"builder_payment"`          // Gloas builder-payment vote quorum for this slot
 	InclusionLists         []*SlotPageInclusionList         `json:"inclusion_lists"`          // Inclusion lists for this slot (EIP-7805)
 	InclusionListsCount    uint64                           `json:"inclusion_lists_count"`
+	InclusionListsTarget   *SlotPageInclusionListTarget     `json:"inclusion_lists_target"` // Block at slot+1 whose payload must satisfy the inclusion lists
 }
 
 type SlotPageExecutionData struct {
@@ -483,12 +484,33 @@ type SlotPagePtcAggregate struct {
 
 // SlotPageInclusionList holds data for an inclusion list entry on the slot page.
 type SlotPageInclusionList struct {
-	Validator            types.NamedValidator   `json:"validator"`
-	DependentRoot        []byte                 `json:"dependent_root"`
-	Transactions         []*SlotPageTransaction `json:"transactions"`
-	TransactionsCount    uint64                 `json:"transactions_count"`
-	TransactionsIncluded []bool                 `json:"transactions_included"`
-	Signature            []byte                 `json:"signature"`
+	Validator          types.NamedValidator             `json:"validator"`
+	DependentRoot      []byte                           `json:"dependent_root"`
+	Transactions       []*SlotPageTransaction           `json:"transactions"`
+	TransactionsCount  uint64                           `json:"transactions_count"`
+	TransactionsStatus []*SlotPageInclusionListTxStatus `json:"transactions_status"`
+	SeenDelayMs        int64                            `json:"seen_delay_ms"` // first seen by dora, relative to slot start
+	Timely             bool                             `json:"timely"`
+	Equivocation       bool                             `json:"equivocation"`
+	Signature          []byte                           `json:"signature"`
+}
+
+// SlotPageInclusionListTarget describes the block whose payload is checked against the inclusion lists.
+type SlotPageInclusionListTarget struct {
+	Slot        uint64 `json:"slot"`
+	BlockRoot   []byte `json:"block_root"`
+	BlockNumber uint64 `json:"block_number"`
+	GasLeft     uint64 `json:"gas_left"`
+	Status      uint8  `json:"status"`
+	StatusText  string `json:"status_text"`
+}
+
+// SlotPageInclusionListTxStatus holds the satisfaction check outcome of one inclusion list transaction.
+type SlotPageInclusionListTxStatus struct {
+	Status uint8  `json:"status"` // services.InclusionListTxStatus
+	Label  string `json:"label"`
+	Class  string `json:"class"` // bootstrap badge class
+	Reason string `json:"reason"`
 }
 
 type SlotPageExecutionProof struct {
