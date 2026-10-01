@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/version"
 	"gopkg.in/Knetic/govaluate.v3"
 	"gopkg.in/yaml.v2"
 )
@@ -286,6 +287,10 @@ type ChainSpec struct {
 var byteType = reflect.TypeOf(byte(0))
 var specExpressionCache = map[string]*govaluate.EvaluableExpression{}
 var specExpressionCacheMutex sync.Mutex
+
+func init() {
+	version.AddDataVersionAlias("eip8198", version.DataVersionHeze)
+}
 
 func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 	valuesYaml, err := yaml.Marshal(values)
