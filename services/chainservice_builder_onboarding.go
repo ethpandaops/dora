@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"math"
 	"sort"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
 )
 
 // builderWithdrawalCredType is BUILDER_WITHDRAWAL_PREFIX (Gloas/EIP-8282): the 0xB0 withdrawal
@@ -234,7 +236,7 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 
 		// Determine the processing fate: still pending at the fork, already applied, or processed
 		// before the fork by the churn queue.
-		var remains bool
+		var remains, afterSnapshot bool
 		switch {
 		case queueEntry != nil:
 			pd.EstimateEpoch = queueEntry.EpochEstimate
@@ -243,13 +245,14 @@ func (bs *ChainService) GetBuilderOnboardingProjection(ctx context.Context) *Bui
 			// included after the queue snapshot (recent) — still pending; estimate via the tail.
 			pd.EstimateEpoch = tailEstimate
 			remains = remainsAtFork(tailEstimate)
+			afterSnapshot = true
 		default:
 			// included by the snapshot but absent from the queue — already applied as a validator.
 			pd.AlreadyProcessed = true
 			remains = false
 		}
 
-		validSig := depositSignatureIsValid(dep.ValidSignature)
+		validSig := bs.builderDepositSignatureIsValid(ctx, dep, queueEntry, afterSnapshot, specs.GenesisForkVersion)
 
 		if !remains {
 			pd.TooEarly = true
@@ -374,8 +377,95 @@ func (v *validatorDepositsInQueue) add(entry *IndexedDepositQueueEntry, remains,
 // signature and 2 a top-up of a pubkey that already had one. Anything else — including an
 // unknown verdict, for a deposit whose contract transaction has not been indexed yet — is
 // treated as not registering anything, matching what onboarding does with a bad signature.
+// Builder deposits settle an unknown verdict themselves (see builderDepositSignatureIsValid).
 func depositSignatureIsValid(validSignature *uint8) bool {
 	return validSignature != nil && (*validSignature == 1 || *validSignature == 2)
+}
+
+// builderDepositSignatureIsValid resolves the proof-of-possession verdict of a builder-credential
+// deposit. The indexer's verdict is used when the deposit contract transaction is indexed. The
+// deposit indexer can lag far behind the chain though (it crawls the contract history first), so
+// an unknown verdict is settled by verifying the signature directly, the same way onboarding
+// does (is_valid_deposit_signature). A deposit whose signature cannot be found stays invalid.
+func (bs *ChainService) builderDepositSignatureIsValid(
+	ctx context.Context,
+	dep *dbtypes.DepositWithTx,
+	queueEntry *IndexedDepositQueueEntry,
+	afterSnapshot bool,
+	genesisForkVersion phase0.Version,
+) bool {
+	if dep.ValidSignature != nil {
+		return depositSignatureIsValid(dep.ValidSignature)
+	}
+
+	// The pending deposit queue carries the signature of every deposit that is still queued,
+	// however long ago it was made.
+	if queueEntry != nil && queueEntry.PendingDeposit != nil {
+		return verifyDepositSignature(dep, queueEntry.PendingDeposit.Signature, genesisForkVersion)
+	}
+
+	// A deposit included after the queue snapshot is not in the queue yet; it sits in a block of
+	// the current epoch, which the block cache still holds.
+	if afterSnapshot {
+		if signature, found := bs.getRecentDepositSignature(ctx, dep); found {
+			return verifyDepositSignature(dep, signature, genesisForkVersion)
+		}
+	}
+
+	return false
+}
+
+// verifyDepositSignature checks the deposit's proof-of-possession under DOMAIN_DEPOSIT.
+func verifyDepositSignature(
+	dep *dbtypes.DepositWithTx,
+	signature phase0.BLSSignature,
+	genesisForkVersion phase0.Version,
+) bool {
+	if len(dep.PublicKey) != len(phase0.BLSPubKey{}) || len(dep.WithdrawalCredentials) != 32 {
+		return false
+	}
+
+	return depositsig.Valid(
+		phase0.BLSPubKey(dep.PublicKey),
+		dep.WithdrawalCredentials,
+		phase0.Gwei(dep.Amount),
+		signature,
+		depositsig.Domain(genesisForkVersion),
+	)
+}
+
+// getRecentDepositSignature reads the signature of a deposit that is not in the pending queue
+// snapshot yet from the deposit request in the cached block that included it. It only consults
+// the in-memory block cache, so it finds nothing for blocks that have left it.
+func (bs *ChainService) getRecentDepositSignature(
+	ctx context.Context,
+	dep *dbtypes.DepositWithTx,
+) (phase0.BLSSignature, bool) {
+	if len(dep.SlotRoot) != len(phase0.Root{}) {
+		return phase0.BLSSignature{}, false
+	}
+
+	block := bs.beaconIndexer.GetBlockByRoot(phase0.Root(dep.SlotRoot))
+	if block == nil {
+		return phase0.BLSSignature{}, false
+	}
+
+	blockBody := block.GetBlock(ctx)
+	if blockBody == nil || blockBody.Message == nil || blockBody.Message.Body == nil {
+		return phase0.BLSSignature{}, false
+	}
+
+	requests := blockBody.Message.Body.ExecutionRequests
+	if requests == nil || dep.SlotIndex >= uint64(len(requests.Deposits)) {
+		return phase0.BLSSignature{}, false
+	}
+
+	request := requests.Deposits[dep.SlotIndex]
+	if request == nil || !bytes.Equal(request.Pubkey[:], dep.PublicKey) {
+		return phase0.BLSSignature{}, false
+	}
+
+	return request.Signature, true
 }
 
 // collectValidatorDepositsInQueue builds the tracker for a projection run. Deciding whether a
