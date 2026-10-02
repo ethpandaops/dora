@@ -337,17 +337,33 @@ func (ctx *txProcessingContext) processTransaction(
 	// of its own. What To() reports for one is the first SENDER frame's target, which is
 	// neither the transaction's recipient nor - when the transaction has no SENDER frame
 	// and To() is therefore nil - a contract creation.
-	frameTx, isFrameTx := tx.Inner().(*txtypes.FrameTx)
+	//
+	// The type alone settles that. A client that reports a frame transaction without its
+	// frames leaves nothing to decode the frame content from, and reading the absent
+	// recipient of one as a creation would invent a contract that was never deployed.
+	isFrameTx := tx.Type() == txtypes.FrameTxType
+	frameTx, _ := tx.Inner().(*txtypes.FrameTx)
 
 	// 2. Process "to" account (funder is the "from" account)
 	var toAddr common.Address
 	var toAccount *pendingAccount
-	isContractCreation := !isFrameTx && tx.To() == nil
+
+	// A creation is claimed only for a transaction this build read in full. One that
+	// arrived without the fields its type is made of is missing its recipient along with
+	// the rest - a blob or set-code transaction reports one that the type requires - so
+	// its absence is no evidence of a creation, and deriving an address from it would
+	// invent a contract that was never deployed.
+	undecoded := undecodedTransaction(tx)
+	isContractCreation := !isFrameTx && !undecoded && tx.To() == nil
 
 	switch {
 	case isFrameTx:
-		// The recipient stays unset; the targets are resolved per frame below.
-		result.frames = ctx.resolveFrames(frameTx, receipt, fromAccount)
+		// The recipient stays unset; the targets are resolved per frame below. A
+		// transaction that reached here without its frames keeps none of them, which is
+		// what the client reported, rather than a recipient it never had.
+		if frameTx != nil {
+			result.frames = ctx.resolveFrames(frameTx, receipt, fromAccount)
+		}
 
 		if extra := receipt.FrameExtra(); extra != nil {
 			result.framePayer = extra.Payer
@@ -356,6 +372,9 @@ func (ctx *txProcessingContext) processTransaction(
 		// Calculate contract address for contract creation
 		toAddr = crypto.CreateAddress(from, tx.Nonce())
 		toAccount = ctx.ensureAccount(toAddr, fromAccount, true)
+	case tx.To() == nil:
+		// A transaction that arrived without the fields its type is made of, its recipient
+		// among them. None is recorded: the transaction is indexed with what survived.
 	default:
 		toAddr = *tx.To()
 		toAccount = ctx.ensureAccount(toAddr, fromAccount, false)
@@ -370,8 +389,9 @@ func (ctx *txProcessingContext) processTransaction(
 	// EIP-8250 gives a frame transaction one nonce sequence per key it names. Only the
 	// zero key aliases the sender's ordinary account nonce; any other key sequences the
 	// transaction in a domain of its own, and recording that sequence as an account
-	// nonce would corrupt the account index.
-	if !isFrameTx || frameTx.UsesLegacyNonce() {
+	// nonce would corrupt the account index. A frame transaction that arrived without
+	// its frames does not say which of the two it is, so it is left out either way.
+	if !isFrameTx || (frameTx != nil && frameTx.UsesLegacyNonce()) {
 		if existingNonce, exists := ctx.senderNonces[from]; !exists || txNonce > existingNonce {
 			ctx.senderNonces[from] = txNonce
 		}
