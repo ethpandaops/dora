@@ -105,7 +105,7 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	// Epoch duration = slots per epoch * slot duration
-	epochDuration := time.Duration(specs.SlotsPerEpoch*specs.SlotDurationMs) * time.Millisecond
+	epochDuration := time.Duration(specs.SlotsPerEpoch) * chainState.GetCurrentSlotDuration()
 	cacheTime := epochDuration
 
 	currentEpoch := chainState.CurrentEpoch()

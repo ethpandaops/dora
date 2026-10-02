@@ -14,9 +14,7 @@ import (
 	"github.com/pk910/dynamic-ssz/sszutils"
 )
 
-var _ = sszutils.ErrListTooBig
-
-var _ = sszutils.Annotate[EpochStatsPacked](`ssz-static:"false"`)
+var _ = sszutils.Annotate[EpochStatsPacked](`ssz-static:"false" ssz-minsize:"168"`)
 
 // MarshalSSZ marshals the *EpochStatsPacked to SSZ-encoded bytes.
 func (t *EpochStatsPacked) MarshalSSZ() ([]byte, error) {

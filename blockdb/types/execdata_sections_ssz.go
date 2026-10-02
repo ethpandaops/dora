@@ -13,14 +13,12 @@ import (
 	"github.com/pk910/dynamic-ssz/sszutils"
 )
 
-var _ = sszutils.ErrListTooBig
-
-var _ = sszutils.Annotate[ReceiptMetaData](`ssz-static:"true"`)
-var _ = sszutils.Annotate[BlockReceiptMeta](`ssz-static:"true"`)
-var _ = sszutils.Annotate[StateChangeAccount](`ssz-static:"false"`)
-var _ = sszutils.Annotate[FlatCallFrame](`ssz-static:"false"`)
-var _ = sszutils.Annotate[EventData](`ssz-static:"false"`)
-var _ = sszutils.Annotate[FrameReceiptData](`ssz-static:"false"`)
+var _ = sszutils.Annotate[ReceiptMetaData](`ssz-static:"true" ssz-minsize:"377"`)
+var _ = sszutils.Annotate[BlockReceiptMeta](`ssz-static:"true" ssz-minsize:"10"`)
+var _ = sszutils.Annotate[StateChangeAccount](`ssz-static:"false" ssz-minsize:"113"`)
+var _ = sszutils.Annotate[FlatCallFrame](`ssz-static:"false" ssz-minsize:"104"`)
+var _ = sszutils.Annotate[EventData](`ssz-static:"false" ssz-minsize:"32"`)
+var _ = sszutils.Annotate[FrameReceiptData](`ssz-static:"false" ssz-minsize:"24"`)
 
 // MarshalSSZ marshals the *ReceiptMetaData to SSZ-encoded bytes.
 func (t *ReceiptMetaData) MarshalSSZ() ([]byte, error) {
