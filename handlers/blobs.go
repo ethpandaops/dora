@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -63,28 +64,8 @@ func buildBlobsPageData(ctx context.Context) (*models.BlobsPageData, time.Durati
 	currentSlot := chainState.CurrentSlot()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
-	// Calculate thresholds based on MAX_EFFECTIVE_BALANCE
-	// MinEth = 0 (allow non-validators)
-	// MaxEth = full custody at TotalColumns validators
-	// Each validator (32 ETH) = 1 column after the free threshold
-	minEth := uint64(0)
-	maxEffectiveBalanceEth := specs.MaxEffectiveBalance / 1e9
-	maxEth := *specs.NumberOfColumns * specs.MaxEffectiveBalance / 1e9
-	defaultEth := maxEffectiveBalanceEth
-
 	pageData := &models.BlobsPageData{
-		StorageCalculator: &models.StorageCalculatorData{
-			MinEth:                           minEth,
-			MaxEth:                           maxEth,
-			DefaultEth:                       defaultEth,
-			MaxEffectiveBalanceEth:           float64(maxEffectiveBalanceEth),
-			ColumnSizeBytes:                  float64(specs.FieldElementsPerCell * 32),
-			TotalColumns:                     *specs.NumberOfColumns,
-			CustodyRequirement:               float64(*specs.CustodyRequirement),
-			ValidatorCustodyRequirement:      float64(*specs.ValidatorCustodyRequirement),
-			SlotsPerEpoch:                    specs.SlotsPerEpoch,
-			MinEpochsForBlobSidecarsRequests: specs.MinEpochsForBlobSidecarsRequests,
-		},
+		StorageCalculator: blobStorageCalculator(specs),
 	}
 
 	stats, err := db.GetBlobStatistics(ctx, uint64(currentSlot))
@@ -138,4 +119,25 @@ func buildBlobsPageData(ctx context.Context) (*models.BlobsPageData, time.Durati
 	cacheTimeout := 12 * time.Second
 
 	return pageData, cacheTimeout
+}
+
+func blobStorageCalculator(specs *consensus.ChainSpec) *models.StorageCalculatorData {
+	if specs == nil || specs.NumberOfColumns == nil || specs.CustodyRequirement == nil || specs.ValidatorCustodyRequirement == nil || *specs.NumberOfColumns == 0 || specs.MaxEffectiveBalance == 0 {
+		// The page cache does not preserve nil nested pointers through SSZ; zero columns is the unavailable state.
+		return &models.StorageCalculatorData{}
+	}
+
+	maxEffectiveBalanceEth := specs.MaxEffectiveBalance / 1e9
+	return &models.StorageCalculatorData{
+		MinEth:                           0,
+		MaxEth:                           *specs.NumberOfColumns * specs.MaxEffectiveBalance / 1e9,
+		DefaultEth:                       maxEffectiveBalanceEth,
+		MaxEffectiveBalanceEth:           float64(maxEffectiveBalanceEth),
+		ColumnSizeBytes:                  float64(specs.FieldElementsPerCell * 32),
+		TotalColumns:                     *specs.NumberOfColumns,
+		CustodyRequirement:               float64(*specs.CustodyRequirement),
+		ValidatorCustodyRequirement:      float64(*specs.ValidatorCustodyRequirement),
+		SlotsPerEpoch:                    specs.SlotsPerEpoch,
+		MinEpochsForBlobSidecarsRequests: specs.MinEpochsForBlobSidecarsRequests,
+	}
 }
