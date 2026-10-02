@@ -487,8 +487,8 @@ func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, block
 	defer resp.Body.Close()
 
 	if resp.StatusCode != nethttp.StatusOK {
-		// If endpoint doesn't exist or block has no proofs, return empty response
-		if resp.StatusCode == nethttp.StatusNotFound {
+		// If endpoint doesn't exist, the block is unknown, or the node runs no proof engine, return empty response
+		if resp.StatusCode == nethttp.StatusNotFound || resp.StatusCode == nethttp.StatusNotImplemented {
 			return &ExecutionProofsResponse{
 				Data:                []ExecutionProof{},
 				ExecutionOptimistic: false,
