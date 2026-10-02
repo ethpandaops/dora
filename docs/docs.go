@@ -6080,6 +6080,10 @@ const docTemplate = `{
                 "nonce": {
                     "type": "integer"
                 },
+                "raw": {
+                    "description": "Raw is the encoded transaction as carried by the lists.",
+                    "type": "string"
+                },
                 "to": {
                     "type": "string"
                 },

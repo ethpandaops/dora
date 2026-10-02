@@ -18,6 +18,57 @@
     .il-reason {
       font-size: .8125rem;
     }
+    /* Fixed column widths keep the transaction tables of all lists aligned. */
+    .il-tx-table {
+      table-layout: fixed;
+      min-width: 76rem;
+    }
+    .il-tx-table th.il-sort {
+      user-select: none;
+    }
+    .il-tx-table th,
+    .il-tx-table td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .il-seen-popover {
+      max-width: 470px;
+    }
+    .il-seen-popover .popover-body {
+      padding: 8px;
+    }
+    .il-seen-popover .il-seen-scroll {
+      max-height: 16rem;
+      overflow-y: auto;
+    }
+    .il-seen-popover .table {
+      --bs-table-bg: transparent;
+      margin-bottom: 0;
+    }
+    .il-seen-popover .table th,
+    .il-seen-popover .table td {
+      white-space: nowrap;
+    }
+    .il-seen-popover .table td:nth-child(2) {
+      max-width: 18rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .il-seen-popover .il-seen-scroll thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background-color: var(--bs-popover-bg);
+    }
+    .il-seen-popover .table tr.il-seen-author td {
+      background-color: rgba(var(--bs-primary-rgb), 0.15);
+    }
+    .il-seen-popover .il-seen-stats {
+      border-bottom: 1px solid var(--bs-border-color);
+      padding-bottom: 4px;
+    }
   </style>
   <script type="text/javascript">
     (function() {
@@ -28,7 +79,25 @@
       var view = null;
       var targetIdx = 0;
 
-      var typeNames = {0: 'Legacy', 1: '2930', 2: '1559', 3: 'Blob', 4: '7702', 6: 'Frame'};
+      var lastPopover = null;
+      // viewMode is 'lists' (one table per inclusion list) or 'transactions'
+      // (one table of all unique transactions).
+      var viewMode = 'lists';
+      // Sort order of the transaction view: a column key of sortColumns and
+      // the direction.
+      var sortKey = 'lists';
+      var sortDesc = true;
+
+      // Transaction type badges, as on the block's transaction list: label,
+      // background color and the description shown on hover.
+      var txTypes = {
+        0: ['Legacy', '#6c757d', 'Legacy Transaction'],
+        1: ['2930', '#5a6268', 'Access List (EIP-2930)'],
+        2: ['1559', '#495057', 'Dynamic Fee (EIP-1559)'],
+        3: ['Blob', '#343a40', 'Blob (EIP-4844)'],
+        4: ['7702', '#212529', 'Set Code (EIP-7702)'],
+        6: ['Frame', '#868e96', 'Frame Transaction (EIP-8141)']
+      };
       var groupClasses = {
         included: 'text-bg-success',
         not_enforced: 'text-bg-secondary',
@@ -43,9 +112,9 @@
         missing: ['fa-times text-danger', 'No list seen']
       };
       var notEnforcedLabels = {
-        late: 'Late, not enforced',
-        equivocation: 'Equivocation, not enforced',
-        wrong_branch: 'Other branch, not enforced'
+        late: ['Late, not enforced', 'No connected client saw this list before the due time. Fork choice only enforces lists a node received in time.'],
+        equivocation: ['Equivocation, not enforced', 'The member published more than one list for this slot. Lists of equivocating members are ignored.'],
+        wrong_branch: ['Other branch, not enforced', 'The dependent root of this list belongs to another committee shuffling than the one of the block, so it does not apply to it.']
       };
 
       function escapeHtml(s) {
@@ -74,16 +143,23 @@
           return wei;
         }
       }
+      function tooltipAttrs(text) {
+        return ' data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="' + escapeHtml(text) + '"';
+      }
+      function typeBadge(type) {
+        var info = txTypes[type] || ['Type ' + type, '#868e96', 'Transaction type ' + type];
+        return '<span class="badge" style="font-size: 11px; background-color: ' + info[1] + '; color: white;"' + tooltipAttrs(info[2]) + '>' + escapeHtml(info[0]) + '</span>';
+      }
       function validatorLabel(index, name) {
         var label = name ? escapeHtml(name) + ' (' + index + ')' : index;
         return '<a href="/validator/' + index + '">' + label + '</a>';
       }
       function addressLink(address) {
         if (!address) return '<span class="text-muted">-</span>';
-        return '<a href="/address/' + escapeHtml(address) + '" title="' + escapeHtml(address) + '">' + escapeHtml(shortHex(address, 8)) + '</a>';
+        return '<a href="/address/' + escapeHtml(address) + '" title="' + escapeHtml(address) + '">' + escapeHtml(shortHex(address, 6)) + '</a>';
       }
       function txLink(hash) {
-        var label = '<span title="' + escapeHtml(hash) + '">' + escapeHtml(shortHex(hash, 12)) + '</span>';
+        var label = '<span title="' + escapeHtml(hash) + '">' + escapeHtml(shortHex(hash, 8)) + '</span>';
         if (!txLinkBase) return label;
         return '<a href="' + escapeHtml(txLinkBase + hash) + '">' + label + '</a>';
       }
@@ -102,13 +178,13 @@
         members.forEach(function(member, idx) {
           var icon = memberIcons[member.status] || memberIcons.missing;
           var title = icon[1];
-          html += '<div class="il-member" title="' + escapeHtml(title) + '">';
+          html += '<div class="il-member"' + tooltipAttrs(title) + '>';
           html += '<i class="fas ' + icon[0] + ' me-1"></i>' + validatorLabel(member.validator_index, member.validator_name);
           if (member.first_seen !== undefined && member.first_seen !== null) {
             html += ' <span class="text-muted small">' + formatOffset(member.first_seen) + '</span>';
           }
           if (target && target.bid_acknowledged && member.status !== 'missing' && !target.bid_acknowledged[idx]) {
-            html += ' <i class="fas fa-gavel text-warning" title="The execution payload bid of the block does not acknowledge a list of this member"></i>';
+            html += ' <i class="fas fa-gavel text-warning"' + tooltipAttrs('The execution payload bid of the block does not acknowledge a list of this member (inclusion_list_bits).') + '></i>';
           }
           html += '</div>';
         });
@@ -138,21 +214,21 @@
           html += '</select>';
         }
         if (target.status === 'orphaned') {
-          html += '<span class="badge text-bg-warning">Orphaned block</span>';
+          html += '<span class="badge text-bg-warning"' + tooltipAttrs('This block of slot ' + view.target_slot + ' is not part of the canonical chain.') + '>Orphaned block</span>';
         }
         if (target.payload_status === 'canonical') {
-          html += '<span class="badge text-bg-success" title="The chain built on this execution payload">Payload extended</span>';
+          html += '<span class="badge text-bg-success"' + tooltipAttrs('The next block built on this execution payload. Fork choice does not extend a payload that leaves the inclusion lists unsatisfied, so the network accepted it.') + '>Payload extended</span>';
         } else if (target.payload_status === 'orphaned') {
-          html += '<span class="badge text-bg-warning" title="The chain did not build on this execution payload">Payload not extended</span>';
+          html += '<span class="badge text-bg-warning"' + tooltipAttrs('The next block did not build on this execution payload. That is what fork choice does with a payload that leaves the inclusion lists unsatisfied, but a late or unavailable payload ends up the same way.') + '>Payload not extended</span>';
         } else {
-          html += '<span class="badge text-bg-secondary" title="The execution payload was never revealed">Payload missing</span>';
+          html += '<span class="badge text-bg-secondary"' + tooltipAttrs('The execution payload of this block was never revealed, so there is nothing the lists could be checked against.') + '>Payload missing</span>';
         }
         if (!target.evaluated) {
-          html += '<span class="badge text-bg-secondary">Not evaluated</span>';
+          html += '<span class="badge text-bg-secondary"' + tooltipAttrs('The lists have not been checked against this execution payload, either because it is not known yet or because it arrived after the lists were persisted.') + '>Not evaluated</span>';
         } else if (target.unsatisfied > 0) {
-          html += '<span class="badge text-bg-danger">' + target.unsatisfied + ' unsatisfied</span>';
+          html += '<span class="badge text-bg-danger"' + tooltipAttrs('Transactions of enforced lists that are missing from the payload although they fit into its remaining gas and are valid against its post-state. This is the verdict of this explorer, from the lists it saw in time.') + '>' + target.unsatisfied + ' unsatisfied</span>';
         } else {
-          html += '<span class="badge text-bg-success">Lists satisfied</span>';
+          html += '<span class="badge text-bg-success"' + tooltipAttrs('Every transaction of the enforced lists is either in the payload or could not have been appended to it (no gas left, invalid nonce, insufficient balance, ...). This is the verdict of this explorer, from the lists it saw in time.') + '>Lists satisfied</span>';
         }
         if (target.evaluated) {
           html += '<span class="text-muted small">' + Number(target.gas_left).toLocaleString() + ' gas left, base fee ' + Number(target.base_fee).toLocaleString() + ' wei</span>';
@@ -170,10 +246,133 @@
         return html + '</div>';
       }
 
+      // The columns of a transaction table: key, label and whether a first
+      // click sorts descending. Only the transaction view has the lists column
+      // and is sortable.
+      var sortColumns = [
+        ['index', '#', false], ['hash', 'Hash', false], ['type', 'Type', false], ['from', 'From', false],
+        ['to', 'To', false], ['value', 'Value', true], ['lists', 'Lists', true], ['status', 'Status', false],
+        ['reason', 'Reason', false]
+      ];
+
+      // tableHead opens a transaction table. Both view modes use the same fixed
+      // column widths, so the tables of all lists line up.
+      function tableHead(sortable) {
+        var html = '<div class="table-responsive px-0"><table class="table table-sm mb-0 il-tx-table">' +
+          '<colgroup><col style="width: 2.5rem;"><col style="width: 15.5rem;"><col style="width: 4rem;"><col style="width: 10rem;">' +
+          '<col style="width: 10rem;"><col style="width: 7.5rem;">' + (sortable ? '<col style="width: 4.5rem;">' : '') +
+          '<col style="width: 9.5rem;"><col></colgroup>' +
+          '<thead><tr>';
+        sortColumns.forEach(function(column) {
+          if (column[0] === 'lists' && !sortable) return;
+          if (!sortable) {
+            html += '<th>' + column[1] + '</th>';
+            return;
+          }
+          var icon = 'fa-sort text-muted';
+          if (sortKey === column[0]) {
+            icon = sortDesc ? 'fa-sort-down' : 'fa-sort-up';
+          }
+          html += '<th class="il-sort" role="button" data-sort-key="' + column[0] + '">' + column[1] + ' <i class="fas ' + icon + ' small"></i></th>';
+        });
+        return html + '</tr></thead><tbody>';
+      }
+
+      // sortValue returns the value the transaction view is ordered by for the
+      // current sort column.
+      function sortValue(row, target) {
+        var tx = (view.transactions || [])[row.txIdx] || {};
+        var outcome = target && target.transactions ? target.transactions[row.txIdx] : null;
+        switch (sortKey) {
+          case 'hash': return tx.hash || '';
+          case 'type': return tx.decoded ? tx.type : -1;
+          case 'from': return (tx.from || '').toLowerCase();
+          case 'to': return (tx.to || '').toLowerCase();
+          case 'value':
+            try { return BigInt(tx.value || '0'); } catch (e) { return 0n; }
+          case 'lists': return row.lists.length;
+          case 'status': return outcome ? outcome.label : '';
+          case 'reason': return outcome ? (outcome.reason || '') : '';
+          default: return row.txIdx;
+        }
+      }
+
+      // txRow renders one transaction. listsCell is the content of the lists
+      // column, or null for a table without it.
+      function txRow(position, txIdx, target, listsCell) {
+        var tx = (view.transactions || [])[txIdx] || {};
+        var outcome = target && target.transactions ? target.transactions[txIdx] : null;
+
+        var html = '<tr><td>' + position + '</td>';
+        html += '<td class="text-monospace">' + txLink(tx.hash || '') + ' <i class="fa fa-copy text-muted p-1" role="button" data-clipboard-text="' + escapeHtml(tx.hash || '') + '"></i></td>';
+        if (tx.decoded) {
+          html += '<td>' + typeBadge(tx.type) + '</td>';
+          html += '<td class="text-monospace">' + addressLink(tx.from) + '</td>';
+          html += '<td class="text-monospace">' + (tx.to ? addressLink(tx.to) : '<span class="text-muted">-</span>') + '</td>';
+          html += '<td' + tooltipAttrs(formatEth(tx.value) + ' ETH') + '>' + escapeHtml(formatEth(tx.value)) + ' ETH</td>';
+        } else {
+          html += '<td colspan="4" class="text-muted">not decodable</td>';
+        }
+        if (listsCell !== null) {
+          html += '<td>' + listsCell + '</td>';
+        }
+        if (outcome) {
+          html += '<td><span class="badge rounded-pill ' + (groupClasses[outcome.group] || 'text-bg-secondary') + '">' + escapeHtml(outcome.label) + '</span></td>';
+          html += '<td class="il-reason text-muted"' + (outcome.reason ? tooltipAttrs(outcome.reason) : '') + '>' + escapeHtml(outcome.reason || '') + '</td>';
+        } else {
+          html += '<td><span class="badge rounded-pill text-bg-secondary">' + (view.target_state === 'pending' ? 'Pending' : 'Not enforced') + '</span></td><td></td>';
+        }
+        return html + '</tr>';
+      }
+
+      // renderTransactions lists every unique transaction of the slot's lists
+      // once, with the number of lists that carry it.
+      function renderTransactions(target) {
+        var lists = view.lists || [];
+        var carriers = (view.transactions || []).map(function() { return []; });
+        lists.forEach(function(list, listIdx) {
+          var seen = {};
+          (list.transactions || []).forEach(function(txIdx) {
+            if (seen[txIdx] || !carriers[txIdx]) return;
+            seen[txIdx] = true;
+            carriers[txIdx].push(listIdx);
+          });
+        });
+
+        // Order by the selected column; transactions that compare equal keep
+        // their order of first appearance.
+        var rows = carriers.map(function(listIdxs, txIdx) {
+          var row = { txIdx: txIdx, lists: listIdxs };
+          row.sortValue = sortValue(row, target);
+          return row;
+        });
+        rows.sort(function(a, b) {
+          if (a.sortValue !== b.sortValue) {
+            return (a.sortValue < b.sortValue ? -1 : 1) * (sortDesc ? -1 : 1);
+          }
+          return a.txIdx - b.txIdx;
+        });
+
+        var html = '<div class="card my-2"><div class="card-body px-0 py-1">';
+        html += '<div class="border-bottom px-2 pb-1"><b>' + carriers.length + ' unique transactions</b> <span class="text-muted">in ' + lists.length + ' lists</span></div>';
+        html += tableHead(true);
+        rows.forEach(function(row) {
+          var listIdxs = row.lists;
+          var txIdx = row.txIdx;
+          var names = listIdxs.map(function(listIdx) {
+            var list = lists[listIdx];
+            return 'List ' + listIdx + ': ' + (list.validator_name || list.validator_index);
+          }).join('<br>');
+          var cell = '<span class="badge bg-secondary" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="top" data-bs-title="' + escapeHtml(names) + '">' +
+            listIdxs.length + '/' + lists.length + '</span>';
+          html += txRow(txIdx, txIdx, target, cell);
+        });
+        return html + '</tbody></table></div></div></div>';
+      }
+
       function renderList(list, listIdx, target) {
         var clients = view.clients || [];
         var seen = (list.seen || []).slice().sort(function(a, b) { return a.time - b.time; });
-        var seenTitle = seen.map(function(o) { return (clients[o.client] || ('client ' + o.client)) + ' ' + formatOffset(o.time); }).join('\n');
 
         var html = '<div class="card my-2"><div class="card-body px-0 py-1">';
         html += '<div class="d-flex flex-wrap align-items-center gap-2 border-bottom px-2 pb-1">';
@@ -182,49 +381,210 @@
           html += '<span class="text-muted small">first seen ' + formatOffset(list.first_seen) + '</span>';
         }
         if (clients.length > 0) {
-          html += '<span class="badge bg-secondary" title="' + escapeHtml(seenTitle) + '">seen by ' + seen.length + '/' + clients.length + '</span>';
+          html += '<a class="badge bg-secondary text-decoration-none il-seen-btn" role="button" data-list-idx="' + listIdx + '">seen by ' + seen.length + '/' + clients.length + ' <i class="fas fa-caret-down"></i></a>';
         }
         if (target && target.lists && target.lists[listIdx]) {
-          html += '<span class="badge text-bg-warning">' + escapeHtml(notEnforcedLabels[target.lists[listIdx]] || target.lists[listIdx]) + '</span>';
+          var notEnforced = notEnforcedLabels[target.lists[listIdx]] || [target.lists[listIdx], ''];
+          html += '<span class="badge text-bg-warning"' + tooltipAttrs(notEnforced[1]) + '>' + escapeHtml(notEnforced[0]) + '</span>';
         }
-        html += '<span class="text-muted small ms-auto" title="' + escapeHtml(list.dependent_root) + '">dependent root ' + escapeHtml(shortHex(list.dependent_root, 8)) +
+        var txs = list.transactions || [];
+        html += '<span class="text-muted small">' + txs.length + ' transaction' + (txs.length === 1 ? '' : 's') + '</span>';
+        html += '<span class="text-muted small ms-auto"' + tooltipAttrs('The shuffling dependent root of the block the inclusion list committee was computed from: ' + list.dependent_root) + '>dependent root ' +
+          '<span class="text-monospace">' + escapeHtml(shortHex(list.dependent_root, 8)) + '</span>' +
           ' <i class="fa fa-copy p-1" role="button" data-clipboard-text="' + escapeHtml(list.dependent_root) + '"></i></span>';
+        html += '<span class="text-muted small"' + tooltipAttrs('The signature of the committee member over this list: ' + list.signature) + '>signature ' +
+          '<span class="text-monospace">' + escapeHtml(shortHex(list.signature, 8)) + '</span>' +
+          ' <i class="fa fa-copy p-1" role="button" data-clipboard-text="' + escapeHtml(list.signature) + '"></i></span>';
+        html += '<a class="badge bg-secondary text-decoration-none il-copy-json" role="button" data-list-idx="' + listIdx + '"' +
+          tooltipAttrs('Copy the signed inclusion list as JSON') + '><i class="fa fa-copy me-1"></i>JSON</a>';
         html += '</div>';
 
-        var txs = list.transactions || [];
         if (txs.length === 0) {
           return html + '<div class="text-muted px-2 py-1">No transactions</div></div></div>';
         }
 
-        html += '<div class="table-responsive px-0"><table class="table table-sm mb-0"><thead><tr>' +
-          '<th>#</th><th>Hash</th><th>Type</th><th>From</th><th>To</th><th>Value</th><th>Status</th><th>Reason</th>' +
-          '</tr></thead><tbody>';
+        html += tableHead(false);
         txs.forEach(function(txIdx, i) {
-          var tx = (view.transactions || [])[txIdx] || {};
-          var outcome = target && target.transactions ? target.transactions[txIdx] : null;
-          html += '<tr><td>' + i + '</td>';
-          html += '<td class="text-monospace">' + txLink(tx.hash || '') + ' <i class="fa fa-copy text-muted p-1" role="button" data-clipboard-text="' + escapeHtml(tx.hash || '') + '"></i></td>';
-          if (tx.decoded) {
-            html += '<td><span class="badge rounded-pill text-bg-light">' + escapeHtml(typeNames[tx.type] || ('Type ' + tx.type)) + '</span></td>';
-            html += '<td class="text-monospace">' + addressLink(tx.from) + '</td>';
-            html += '<td class="text-monospace">' + (tx.to ? addressLink(tx.to) : '<span class="text-muted">-</span>') + '</td>';
-            html += '<td>' + escapeHtml(formatEth(tx.value)) + ' ETH</td>';
-          } else {
-            html += '<td colspan="4" class="text-muted">not decodable</td>';
-          }
-          if (outcome) {
-            html += '<td><span class="badge rounded-pill ' + (groupClasses[outcome.group] || 'text-bg-secondary') + '">' + escapeHtml(outcome.label) + '</span></td>';
-            html += '<td class="il-reason text-muted">' + escapeHtml(outcome.reason || '') + '</td>';
-          } else {
-            html += '<td><span class="badge rounded-pill text-bg-secondary">' + (view.target_state === 'pending' ? 'Pending' : 'Not enforced') + '</span></td><td></td>';
-          }
-          html += '</tr>';
+          html += txRow(i, txIdx, target, null);
         });
         html += '</tbody></table></div></div></div>';
         return html;
       }
 
+      // listJson returns a signed inclusion list in its beacon API JSON form.
+      function listJson(list) {
+        return JSON.stringify({
+          message: {
+            slot: String(view.slot),
+            validator_index: String(list.validator_index),
+            dependent_root: list.dependent_root,
+            transactions: (list.transactions || []).map(function(txIdx) {
+              return ((view.transactions || [])[txIdx] || {}).raw || '';
+            })
+          },
+          signature: list.signature
+        }, null, 2);
+      }
+
+      // copyText copies text to the clipboard. The async clipboard API is only
+      // available in secure contexts, so a hidden text area is the fallback.
+      function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function(resolve, reject) {
+          var area = document.createElement('textarea');
+          area.value = text;
+          area.style.position = 'fixed';
+          area.style.opacity = '0';
+          document.body.appendChild(area);
+          area.select();
+          var copied = document.execCommand('copy');
+          document.body.removeChild(area);
+          if (copied) { resolve(); } else { reject(new Error('copy failed')); }
+        });
+      }
+
+      // renderSeen builds the popover title and body for one list's observations.
+      function renderSeen(list) {
+        var clients = view.clients || [];
+        var obs = (list.seen || []).slice().sort(function(a, b) { return a.time - b.time; });
+
+        var seenClients = {};
+        var rows = [];
+        obs.forEach(function(o) {
+          seenClients[o.client] = true;
+          var name = clients[o.client] !== undefined ? clients[o.client] : ('client-' + o.client);
+          rows.push({ name: name, time: o.time, seen: true });
+        });
+        var notSeen = [];
+        clients.forEach(function(name, idx) {
+          if (!seenClients[idx]) notSeen.push({ name: name, seen: false });
+        });
+        notSeen.sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+        rows = rows.concat(notSeen);
+
+        var html = '';
+        if (!obs.length) {
+          html += '<div class="text-muted mb-1">No gossip observation is known for this list.</div>';
+        } else {
+          // obs is sorted by time, so min/max/median come straight from the ends/middle
+          var times = obs.map(function(o) { return o.time; });
+          var sum = times.reduce(function(a, b) { return a + b; }, 0);
+          var mid = Math.floor(times.length / 2);
+          var median = times.length % 2 ? times[mid] : Math.round((times[mid - 1] + times[mid]) / 2);
+          var stats = [
+            { label: 'min', value: times[0] },
+            { label: 'avg', value: Math.round(sum / times.length) },
+            { label: 'med', value: median },
+            { label: 'max', value: times[times.length - 1] },
+            { label: 'due', value: view.due_ms }
+          ];
+          html += '<div class="d-flex il-seen-stats mb-1">';
+          stats.forEach(function(stat) {
+            html += '<div class="text-center flex-fill">' +
+              '<div class="text-muted small">' + stat.label + '</div>' +
+              '<div class="text-monospace">' + formatOffset(stat.value) + '</div>' +
+              '</div>';
+          });
+          html += '</div>';
+        }
+        if (rows.length) {
+          html += '<div class="il-seen-scroll">' +
+            '<table class="table table-sm"><thead><tr>' +
+            '<th style="width: 1.5rem;"></th><th>Client</th><th class="text-end">First seen</th>' +
+            '</tr></thead><tbody>';
+          rows.forEach(function(row) {
+            // In devnets the validator names usually equal the client names, so
+            // the client of the list's author can be highlighted.
+            var isAuthor = list.validator_name && row.name === list.validator_name;
+            var nameHtml = escapeHtml(row.name) + (isAuthor ? ' <span class="badge bg-primary">author</span>' : '');
+            if (row.seen) {
+              var late = view.due_ms > 0 && row.time >= view.due_ms;
+              html += '<tr' + (isAuthor ? ' class="il-seen-author"' : '') + '><td><i class="fas ' + (late ? 'fa-clock text-warning' : 'fa-check text-success') + '"></i></td>' +
+                '<td>' + nameHtml + '</td>' +
+                '<td class="text-end text-monospace">' + formatOffset(row.time) + '</td></tr>';
+            } else {
+              html += '<tr class="text-muted' + (isAuthor ? ' il-seen-author' : '') + '"><td><i class="fas fa-times text-danger"></i></td>' +
+                '<td>' + nameHtml + '</td>' +
+                '<td class="text-end">not seen</td></tr>';
+            }
+          });
+          html += '</tbody></table></div>';
+        }
+
+        return {
+          title: 'Seen by ' + obs.length + ' of ' + clients.length + ' clients',
+          html: html
+        };
+      }
+
+      document.addEventListener('click', function(evt) {
+        var copyBtn = evt.target.closest ? evt.target.closest('.il-copy-json') : null;
+        if (copyBtn) {
+          evt.preventDefault();
+
+          var copyList = view ? (view.lists || [])[parseInt(copyBtn.dataset.listIdx, 10)] : null;
+          if (!copyList) return;
+
+          var icon = copyBtn.querySelector('i');
+          copyText(listJson(copyList)).then(function() {
+            icon.className = 'fa fa-check me-1';
+          }).catch(function() {
+            icon.className = 'fa fa-times me-1';
+          }).then(function() {
+            setTimeout(function() { icon.className = 'fa fa-copy me-1'; }, 1500);
+          });
+          return;
+        }
+
+        var btn = evt.target.closest ? evt.target.closest('.il-seen-btn') : null;
+        if (btn) {
+          evt.preventDefault();
+
+          var list = view ? (view.lists || [])[parseInt(btn.dataset.listIdx, 10)] : null;
+          if (!list) return;
+
+          var content = renderSeen(list);
+          var popover = bootstrap.Popover.getOrCreateInstance(btn, {
+            html: true,
+            sanitize: false,
+            title: content.title,
+            content: content.html,
+            trigger: 'manual',
+            placement: 'bottom',
+            container: 'body',
+            customClass: 'il-seen-popover'
+          });
+
+          if (lastPopover === popover) {
+            popover.hide();
+            lastPopover = null;
+            return;
+          }
+          if (lastPopover) {
+            lastPopover.hide();
+          }
+          lastPopover = popover;
+          popover.show();
+          return;
+        }
+
+        if (evt.target.closest && evt.target.closest('.il-seen-popover')) {
+          return;
+        }
+        if (lastPopover) {
+          lastPopover.hide();
+          lastPopover = null;
+        }
+      });
+
       function render() {
+        if (lastPopover) {
+          lastPopover.dispose();
+          lastPopover = null;
+        }
+
         var target = (view.targets || [])[targetIdx] || null;
         var lists = view.lists || [];
 
@@ -233,11 +593,38 @@
           html += '<div class="border-top px-1 py-2 text-muted">No inclusion lists seen for this slot.</div>';
         } else {
           html += renderTarget(target);
-          lists.forEach(function(list, idx) {
-            html += renderList(list, idx, target);
-          });
+          html += '<div class="d-flex justify-content-end px-1"><div class="btn-group btn-group-sm" role="group" aria-label="View mode">' +
+            '<button type="button" class="btn btn-outline-secondary il-view-mode' + (viewMode === 'lists' ? ' active' : '') + '" data-view-mode="lists"><i class="fas fa-list me-1"></i>By list</button>' +
+            '<button type="button" class="btn btn-outline-secondary il-view-mode' + (viewMode === 'transactions' ? ' active' : '') + '" data-view-mode="transactions"><i class="fas fa-right-left me-1"></i>By transaction</button>' +
+            '</div></div>';
+          if (viewMode === 'transactions') {
+            html += renderTransactions(target);
+          } else {
+            lists.forEach(function(list, idx) {
+              html += renderList(list, idx, target);
+            });
+          }
         }
         container.innerHTML = html;
+
+        container.querySelectorAll('.il-sort').forEach(function(header) {
+          header.addEventListener('click', function() {
+            var key = header.getAttribute('data-sort-key');
+            if (sortKey === key) {
+              sortDesc = !sortDesc;
+            } else {
+              sortKey = key;
+              sortDesc = sortColumns.some(function(column) { return column[0] === key && column[2]; });
+            }
+            render();
+          });
+        });
+        container.querySelectorAll('.il-view-mode').forEach(function(button) {
+          button.addEventListener('click', function() {
+            viewMode = button.getAttribute('data-view-mode');
+            render();
+          });
+        });
 
         var select = document.getElementById('inclusionListTarget');
         if (select) {
@@ -249,6 +636,11 @@
 
         var badge = document.getElementById('inclusionListsCount');
         if (badge) badge.textContent = lists.length;
+
+        // Activate tooltips, clipboard buttons and ENS names of the new content.
+        if (window.explorer && window.explorer.initControls) {
+          window.explorer.initControls();
+        }
       }
 
       function load() {

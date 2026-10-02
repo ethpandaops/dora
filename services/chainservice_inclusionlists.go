@@ -71,10 +71,12 @@ type SlotInclusionListSeenBy struct {
 }
 
 // SlotInclusionListTransaction is one unique transaction of a slot's inclusion
-// lists. Only Hash is set if the transaction details were not requested or the
-// transaction is not decodable.
+// lists. Only Hash is set if the transaction details were not requested; a
+// transaction that is not decodable has no details besides Raw.
 type SlotInclusionListTransaction struct {
-	Hash         string `json:"hash"`
+	Hash string `json:"hash"`
+	// Raw is the encoded transaction as carried by the lists.
+	Raw          string `json:"raw,omitempty"`
 	Decoded      bool   `json:"decoded"`
 	Type         uint8  `json:"type"`
 	From         string `json:"from,omitempty"`
@@ -311,6 +313,7 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 			Hash: fmt.Sprintf("0x%x", hash[:]),
 		}
 		if idx < len(lists.Transactions) {
+			txView.Raw = fmt.Sprintf("0x%x", lists.Transactions[idx])
 			txView.DataLen = uint64(len(lists.Transactions[idx]))
 			if tx, err := txtypes.DecodeTx(lists.Transactions[idx]); err == nil {
 				decoded[idx] = tx
@@ -320,11 +323,16 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 		view.Transactions = append(view.Transactions, txView)
 	}
 
-	// Targets
+	// Targets. The payloads of this slot's own blocks are remembered to tell
+	// whether a target builds on one of them.
 	targetBlocks := make([]*dbtypes.Slot, 0, 1)
+	slotPayloads := make(map[string]bool, 1)
 	for _, block := range bs.GetDbBlocksForSlots(ctx, view.TargetSlot, 1, false, true) {
-		if block.Slot == view.TargetSlot && len(block.Root) == 32 {
+		switch {
+		case block.Slot == view.TargetSlot && len(block.Root) == 32:
 			targetBlocks = append(targetBlocks, block)
+		case block.Slot == view.Slot && len(block.EthBlockHash) == 32:
+			slotPayloads[string(block.EthBlockHash)] = true
 		}
 	}
 	if len(targetBlocks) == 0 {
@@ -385,6 +393,11 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 			}
 
 			outcome := bs.buildInclusionListOutcome(view, target, eval, &txEval, decoded[idx])
+			if txEval.Status == btypes.ILTxStatusIncludedEarlier && slotPayloads[string(block.EthBlockParentHash)] {
+				// The target builds on this slot's own payload, which the
+				// lists were published alongside.
+				outcome.Reason = fmt.Sprintf("Already included in the slot %d payload", view.Slot)
+			}
 			if outcome.Group == "unsatisfied" {
 				target.Unsatisfied++
 			}
@@ -446,26 +459,26 @@ func (bs *ChainService) buildInclusionListOutcome(view *SlotInclusionListsView, 
 			outcome.Reason = "Sender state was not available"
 		}
 	case btypes.ILTxStatusIncluded:
-		outcome.Reason = fmt.Sprintf("Included in slot %d", view.TargetSlot)
+		outcome.Reason = fmt.Sprintf("Included in slot %d payload", view.TargetSlot)
 	case btypes.ILTxStatusIncludedEarlier:
-		outcome.Reason = fmt.Sprintf("Already included in the payload the slot %d payload builds on", view.TargetSlot)
+		outcome.Reason = "Already included in an earlier payload"
 	case btypes.ILTxStatusListLate:
-		outcome.Reason = fmt.Sprintf("Not enforced: only in lists seen after the %.1fs due time", float64(view.DueMs)/1000)
+		outcome.Reason = fmt.Sprintf("Only in lists seen after the %.1fs due time", float64(view.DueMs)/1000)
 	case btypes.ILTxStatusListEquivocation:
-		outcome.Reason = "Not enforced: only in lists of members that published conflicting lists"
+		outcome.Reason = "Only in lists of equivocating members"
 	case btypes.ILTxStatusListWrongBranch:
-		outcome.Reason = "Not enforced: only in lists for another committee shuffling than the block's"
+		outcome.Reason = "Only in lists for another committee shuffling"
 	case btypes.ILTxStatusFrameTx:
-		outcome.Reason = "Not enforced: frame transactions are exempt from the satisfaction check"
+		outcome.Reason = "Frame transactions are exempt from the check"
 	case btypes.ILTxStatusBlobTx:
 		outcome.Reason = "Blob transactions cannot be appended to a payload"
 	case btypes.ILTxStatusMalformed:
-		outcome.Reason = "Transaction is not decodable or its sender is not recoverable"
+		outcome.Reason = "Not decodable or sender not recoverable"
 	case btypes.ILTxStatusGasLimit:
 		if tx != nil {
-			outcome.Reason = fmt.Sprintf("Tx gas limit %d exceeds the %d gas left in the payload", tx.Gas(), target.GasLeft)
+			outcome.Reason = fmt.Sprintf("Gas limit %d exceeds the %d gas left", tx.Gas(), target.GasLeft)
 		} else {
-			outcome.Reason = fmt.Sprintf("Tx gas limit exceeds the %d gas left in the payload", target.GasLeft)
+			outcome.Reason = fmt.Sprintf("Gas limit exceeds the %d gas left", target.GasLeft)
 		}
 	case btypes.ILTxStatusFeeCapTooLow:
 		if tx != nil && tx.GasFeeCap() != nil {
@@ -490,9 +503,9 @@ func (bs *ChainService) buildInclusionListOutcome(view *SlotInclusionListsView, 
 			outcome.Reason = fmt.Sprintf("Balance %v wei", balance)
 		}
 	case btypes.ILTxStatusSenderHasCode:
-		outcome.Reason = "Sender account has code that is not a delegation (EIP-3607)"
+		outcome.Reason = "Sender has non-delegated code (EIP-3607)"
 	case btypes.ILTxStatusUnsatisfied:
-		outcome.Reason = fmt.Sprintf("Valid against the post-state and fits, but missing from the slot %d payload", view.TargetSlot)
+		outcome.Reason = "Valid and fitting, but missing from the payload"
 	}
 
 	return outcome

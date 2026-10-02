@@ -168,19 +168,22 @@
           <div class="tab-pane fade show active" id="transactions" role="tabpanel" aria-labelledby="transactions-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.TransactionsCount }} Transactions </b></h3>
+                <div class="row p-1 mx-0 align-items-center">
+                  <div class="d-none d-md-block col-md-3"></div>
+                  <h3 class="h5 col-12 col-md-6 text-center mb-0"><b>Showing {{ .Block.TransactionsCount }} Transactions </b></h3>
+                  <div class="col-12 col-md-3 d-flex flex-wrap justify-content-end align-items-center gap-2" id="blockInclusionListMarks">
+                    {{ if $.InclusionListsEnabled }}
+                      {{ if gt .Block.InclusionListsUnsatisfied 0 }}
+                        <a class="badge text-bg-danger text-decoration-none" href="/slot/{{ $.PreviousSlot }}#inclusionLists" data-bs-toggle="tooltip" title="Transactions of the inclusion lists of slot {{ $.PreviousSlot }} that this payload could have included but did not">{{ .Block.InclusionListsUnsatisfied }} IL unsatisfied</a>
+                      {{ end }}
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="resolveInclusionListTxs" data-bs-toggle="tooltip" title="Mark the transactions that were on the inclusion lists of slot {{ $.PreviousSlot }}">
+                        <i class="fas fa-list-check me-1"></i>Resolve IL Included
+                      </button>
+                    {{ end }}
+                  </div>
                 </div>
                 {{ if $.InclusionListsEnabled }}
-                  <div class="d-flex flex-wrap justify-content-center align-items-center gap-2 pb-2" id="blockInclusionListMarks">
-                    {{ if gt .Block.InclusionListsUnsatisfied 0 }}
-                      <a class="badge text-bg-danger text-decoration-none" href="/slot/{{ $.PreviousSlot }}#inclusionLists" data-bs-toggle="tooltip" title="Transactions of the inclusion lists of slot {{ $.PreviousSlot }} that this payload could have included but did not">{{ .Block.InclusionListsUnsatisfied }} inclusion list transaction{{ if ne .Block.InclusionListsUnsatisfied 1 }}s{{ end }} unsatisfied</a>
-                    {{ end }}
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="resolveInclusionListTxs" data-bs-toggle="tooltip" title="Mark the transactions that were on the inclusion lists of slot {{ $.PreviousSlot }}">
-                      <i class="fas fa-list-check me-1"></i>Resolve IL Included
-                    </button>
-                    <span class="small text-muted" id="resolveInclusionListResult"></span>
-                  </div>
+                  <div class="text-end small text-muted px-2 pb-1" id="resolveInclusionListResult"></div>
                 {{ end }}
               </div>
               {{ template "block_transactions" . }}
