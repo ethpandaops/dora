@@ -52,6 +52,20 @@ type targetKey struct {
 type targetAttempts struct {
 	count   int
 	nextTry time.Time
+	// listCount is the number of lists the attempts were made for.
+	listCount int
+}
+
+// blocked reports whether the target must not be evaluated now: its attempts
+// are used up or the next one is not due yet. A list that was first seen
+// after the attempts makes the evaluation incomplete in a way a new attempt
+// can fix, so it lifts the block.
+func (attempts *targetAttempts) blocked(listCount int, now time.Time) bool {
+	if listCount > attempts.listCount {
+		return false
+	}
+
+	return attempts.count >= maxStateAttempts || now.Before(attempts.nextTry)
 }
 
 // Resolver evaluates the inclusion lists of recent slots against the execution
@@ -132,8 +146,13 @@ func (r *Resolver) resolvePending(ctx context.Context) {
 			key := targetKey{slot: slot, root: block.Root}
 			attempts := r.attempts[key]
 			if attempts != nil {
-				if attempts.count >= maxStateAttempts || time.Now().Before(attempts.nextTry) {
+				if attempts.blocked(listCount, time.Now()) {
 					continue
+				}
+				if listCount > attempts.listCount {
+					// A new list gives the target a fresh set of attempts.
+					delete(r.attempts, key)
+					attempts = nil
 				}
 			} else if eval := beaconIndexer.GetInclusionListEvaluation(slot, block.Root); eval != nil && len(eval.ListFlags) >= listCount {
 				// A list that was first seen after the evaluation makes it
@@ -152,7 +171,7 @@ func (r *Resolver) resolvePending(ctx context.Context) {
 			}
 
 			if attempts == nil {
-				attempts = &targetAttempts{}
+				attempts = &targetAttempts{listCount: listCount}
 				r.attempts[key] = attempts
 			}
 			attempts.count++
