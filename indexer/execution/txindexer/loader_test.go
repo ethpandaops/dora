@@ -513,3 +513,47 @@ func TestMissingFrameResultsSpotsAnAbsentReceipt(t *testing.T) {
 		t.Error("a frame transaction with no receipt of its own should send the indexer to another client")
 	}
 }
+
+// A client that reports a transaction without the content its type carries answers with a
+// well-formed object rather than an error, and what is left decodes as an unknown type.
+// Another client may report the same transaction in full, so the answer is worth refusing.
+func TestUndecodedTransactionsSpotsAFrameTxWithoutFrames(t *testing.T) {
+	decode := func(raw string) *txtypes.Transaction {
+		t.Helper()
+
+		tx, _, err := decodeBlockTransaction(json.RawMessage(raw))
+		if err != nil {
+			t.Fatalf("decode failed: %v", err)
+		}
+
+		return tx
+	}
+
+	frameTxJSON, err := txtypes.NewTx(sampleFrameTx()).MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		tx   *txtypes.Transaction
+		want bool
+	}{
+		{"frame transaction without its frames", decode(gethStyleFrameTxJSON), true},
+		{"frame transaction with its frames", decode(string(frameTxJSON)), false},
+		{"ordinary contract creation", decode(string(creationTx("null"))), false},
+		{"type this build has no decoder for", decode(`{
+			"type": "0x7f",
+			"hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+			"nonce": "0x642", "gas": "0x7245c", "to": null, "value": "0x2a", "input": "0x"
+		}`), false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := undecodedTransactions([]*txtypes.Transaction{test.tx}); got != test.want {
+				t.Errorf("undecodedTransactions = %v, want %v", got, test.want)
+			}
+		})
+	}
+}

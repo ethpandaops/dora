@@ -97,6 +97,16 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 
 	data.Stats = stats
 
+	// No client left had the content some transaction's type carries, so it is indexed
+	// with the generic fields the nodes reported and nothing of what it actually does.
+	if undecodedTransactions(data.Transactions) {
+		t.logger.WithFields(logrus.Fields{
+			"slot":        ref.Slot,
+			"blockNumber": data.BlockNumber,
+			"client":      client.GetName(),
+		}).Warn("indexing transactions no client reported in full")
+	}
+
 	t.logger.WithFields(logrus.Fields{
 		"slot":         ref.Slot,
 		"blockUid":     ref.BlockUID,
