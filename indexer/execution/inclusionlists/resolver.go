@@ -122,6 +122,7 @@ func (r *Resolver) resolvePending(ctx context.Context) {
 	cached := make(map[phase0.Slot]bool, len(slots))
 	for _, slot := range slots {
 		cached[slot] = true
+		listCount := len(beaconIndexer.GetInclusionListsBySlot(slot))
 
 		for _, block := range beaconIndexer.GetBlocksBySlot(slot + 1) {
 			if !block.HasExecutionPayload() {
@@ -134,7 +135,9 @@ func (r *Resolver) resolvePending(ctx context.Context) {
 				if attempts.count >= maxStateAttempts || time.Now().Before(attempts.nextTry) {
 					continue
 				}
-			} else if beaconIndexer.GetInclusionListEvaluation(slot, block.Root) != nil {
+			} else if eval := beaconIndexer.GetInclusionListEvaluation(slot, block.Root); eval != nil && len(eval.ListFlags) >= listCount {
+				// A list that was first seen after the evaluation makes it
+				// incomplete; it is redone to cover that list too.
 				continue
 			}
 

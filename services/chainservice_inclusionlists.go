@@ -107,7 +107,8 @@ type SlotInclusionListTarget struct {
 	BaseFee     uint64 `json:"base_fee"`
 	Unsatisfied uint64 `json:"unsatisfied"`
 	// Lists holds, per list, why the list is not enforced against this block:
-	// "late", "equivocation" or "wrong_branch". Empty if it is enforced.
+	// "late", "equivocation" or "wrong_branch", or "not_evaluated" if the
+	// evaluation does not cover the list. Empty if it is enforced.
 	Lists []string `json:"lists"`
 	// Transactions holds the outcome per entry of SlotInclusionListsView.Transactions.
 	Transactions []*SlotInclusionListOutcome `json:"transactions"`
@@ -361,6 +362,11 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 			target.PayloadStatus = "missing"
 		}
 
+		// covered marks the transactions carried by a list the evaluation
+		// covers. A list that was first seen after the payload was checked
+		// is not part of it.
+		covered := make([]bool, len(lists.TxHashes))
+
 		eval := lists.GetEval(phase0.Root(block.Root))
 		if eval != nil {
 			target.Evaluated = true
@@ -371,11 +377,22 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 				target.GasLeft = eval.GasLimit - eval.GasUsed
 			}
 
-			for idx := range lists.Lists {
-				if idx >= len(eval.ListFlags) {
-					break
+			for idx, list := range lists.Lists {
+				var flags uint8
+				if idx < len(eval.ListFlags) {
+					flags = eval.ListFlags[idx]
 				}
-				switch flags := eval.ListFlags[idx]; {
+				if flags&btypes.ILListFlagEvaluated != 0 {
+					for _, ref := range list.TxRefs {
+						if int(ref) < len(covered) {
+							covered[ref] = true
+						}
+					}
+				}
+
+				switch {
+				case flags&btypes.ILListFlagEvaluated == 0:
+					target.Lists[idx] = "not_evaluated"
 				case flags&btypes.ILListFlagEquivocation != 0:
 					target.Lists[idx] = "equivocation"
 				case flags&btypes.ILListFlagWrongBranch != 0:
@@ -393,6 +410,10 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 			}
 
 			outcome := bs.buildInclusionListOutcome(view, target, eval, &txEval, decoded[idx])
+			if txEval.Status == btypes.ILTxStatusUnknown && eval != nil && !covered[idx] {
+				outcome.Label = "Not evaluated"
+				outcome.Reason = "Only in lists seen after the payload was checked"
+			}
 			if txEval.Status == btypes.ILTxStatusIncludedEarlier && slotPayloads[string(block.EthBlockParentHash)] {
 				// The target builds on this slot's own payload, which the
 				// lists were published alongside.

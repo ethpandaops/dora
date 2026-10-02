@@ -114,6 +114,7 @@
       var notEnforcedLabels = {
         late: ['Late, not enforced', 'No connected client saw this list before the due time. Fork choice only enforces lists a node received in time.'],
         equivocation: ['Equivocation, not enforced', 'The member published more than one list for this slot. Lists of equivocating members are ignored.'],
+        not_evaluated: ['Not evaluated', 'This list was first seen after the payload had been checked, so the evaluation does not cover it.'],
         wrong_branch: ['Other branch, not enforced', 'The dependent root of this list belongs to another committee shuffling than the one of the block, so it does not apply to it.']
       };
 

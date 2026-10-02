@@ -6027,7 +6027,7 @@
                     "type": "integer"
                 },
                 "lists": {
-                    "description": "Lists holds, per list, why the list is not enforced against this block:\n\"late\", \"equivocation\" or \"wrong_branch\". Empty if it is enforced.",
+                    "description": "Lists holds, per list, why the list is not enforced against this block:\n\"late\", \"equivocation\" or \"wrong_branch\", or \"not_evaluated\" if the\nevaluation does not cover the list. Empty if it is enforced.",
                     "type": "array",
                     "items": {
                         "type": "string"

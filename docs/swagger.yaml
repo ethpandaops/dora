@@ -2168,7 +2168,8 @@ definitions:
       lists:
         description: |-
           Lists holds, per list, why the list is not enforced against this block:
-          "late", "equivocation" or "wrong_branch". Empty if it is enforced.
+          "late", "equivocation" or "wrong_branch", or "not_evaluated" if the
+          evaluation does not cover the list. Empty if it is enforced.
         items:
           type: string
         type: array
