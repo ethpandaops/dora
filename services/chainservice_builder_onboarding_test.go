@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/hex"
 	"testing"
 
 	"github.com/ethpandaops/dora/dbtypes"
@@ -152,4 +153,65 @@ func TestDepositSignatureVerdicts(t *testing.T) {
 	require.False(t, depositSignatureIsValid(verdict(0)), "an invalid proof-of-possession registers nothing")
 	require.False(t, depositSignatureIsValid(nil),
 		"an unindexed deposit transaction leaves the verdict unknown, which must not be read as valid")
+}
+
+// TestVerifyDepositSignature checks an unindexed builder deposit against a real 0xB0 deposit made
+// through the validator deposit contract (genesis fork version 0x10202374): it must verify under
+// DOMAIN_DEPOSIT, and no longer once any signed field differs.
+func TestVerifyDepositSignature(t *testing.T) {
+	decode := func(value string) []byte {
+		data, err := hex.DecodeString(value)
+		require.NoError(t, err)
+
+		return data
+	}
+
+	genesisForkVersion := phase0.Version{0x10, 0x20, 0x23, 0x74}
+	signature := phase0.BLSSignature(decode("b7cb705fe6a2e3400c1a17a47daa1846b0bc3493d64325eb8e892a917b27bb6a" +
+		"6d08c7e2f9aa05877f1886b018120cb103fa5b9cc3c380c3c6f8344e746714e3" +
+		"74f1619f583b6d76ae81e722ecc7955bdb131f441315b119984eaac5e6fadb47"))
+	newDeposit := func() *dbtypes.DepositWithTx {
+		return &dbtypes.DepositWithTx{Deposit: dbtypes.Deposit{
+			PublicKey: decode("8446fadd191eda7cbd702bfc48151c9dfe66c82bf909e6c8" +
+				"f379259f24f59e9988d2dab1d9dc733dadf9a0a0f65be5f7"),
+			WithdrawalCredentials: decode("b000000000000000000000007d85b5e943a52bb6bc6ee226b0ad4653527b9a09"),
+			Amount:                32000000000,
+		}}
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(dep *dbtypes.DepositWithTx)
+		version phase0.Version
+		valid   bool
+	}{
+		{name: "valid proof-of-possession", version: genesisForkVersion, valid: true},
+		{name: "other genesis fork version", version: phase0.Version{0x90, 0x00, 0x00, 0x69}},
+		{
+			name:    "other amount",
+			mutate:  func(dep *dbtypes.DepositWithTx) { dep.Amount = 50000000000 },
+			version: genesisForkVersion,
+		},
+		{
+			name:    "other withdrawal credentials",
+			mutate:  func(dep *dbtypes.DepositWithTx) { dep.WithdrawalCredentials[31] ^= 0x01 },
+			version: genesisForkVersion,
+		},
+		{
+			name:    "malformed pubkey",
+			mutate:  func(dep *dbtypes.DepositWithTx) { dep.PublicKey = dep.PublicKey[:20] },
+			version: genesisForkVersion,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dep := newDeposit()
+			if test.mutate != nil {
+				test.mutate(dep)
+			}
+
+			require.Equal(t, test.valid, verifyDepositSignature(dep, signature, test.version))
+		})
+	}
 }
