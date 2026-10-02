@@ -40,10 +40,8 @@ type evaluationInput struct {
 type senderState struct {
 	nonce   uint64
 	balance *big.Int
-	// hasCode is set if the sender has non-delegated code. Only valid if
-	// codeKnown is set.
-	hasCode   bool
-	codeKnown bool
+	// hasCode is set if the sender has non-delegated code.
+	hasCode bool
 }
 
 // evaluation is an in-progress satisfaction check. It follows the EIP-7805
@@ -235,24 +233,6 @@ func (eval *evaluation) senders() []common.Address {
 	senders := make([]common.Address, 0, len(eval.pending))
 	for _, sender := range eval.pending {
 		if !seen[sender] {
-			seen[sender] = true
-			senders = append(senders, sender)
-		}
-	}
-	return senders
-}
-
-// codeCheckSenders returns the senders whose transactions pass the nonce and
-// balance checks, so that the outcome depends on whether they have code.
-func (eval *evaluation) codeCheckSenders(states map[common.Address]*senderState) []common.Address {
-	seen := make(map[common.Address]bool, 4)
-	senders := make([]common.Address, 0, 4)
-	for idx, sender := range eval.pending {
-		state := states[sender]
-		if state == nil || state.codeKnown || seen[sender] {
-			continue
-		}
-		if eval.checkSenderState(idx, sender, state) == btypes.ILTxStatusUnsatisfied {
 			seen[sender] = true
 			senders = append(senders, sender)
 		}

@@ -10,6 +10,7 @@ package inclusionlists
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -78,6 +79,11 @@ type Resolver struct {
 	// Only accessed by the resolver loop.
 	attempts map[targetKey]*targetAttempts
 
+	// unreliable holds the clients that answered a state request with the
+	// state of another block. They are asked last. Only accessed by the
+	// resolver loop.
+	unreliable map[*execution.Client]bool
+
 	multicallAddr   common.Address
 	multicallReady  bool
 	multicallProbed time.Time
@@ -89,6 +95,7 @@ func NewResolver(logger logrus.FieldLogger, indexerCtx *execindexer.IndexerCtx) 
 		indexerCtx:    indexerCtx,
 		logger:        logger,
 		attempts:      make(map[targetKey]*targetAttempts, 16),
+		unreliable:    make(map[*execution.Client]bool, 4),
 		multicallAddr: multicallAddress(),
 	}
 }
@@ -222,7 +229,7 @@ func (r *Resolver) resolveTarget(ctx context.Context, slot phase0.Slot, block *b
 	var stateErr error
 	if senders := eval.senders(); len(senders) > 0 {
 		var states map[common.Address]*senderState
-		states, stateErr = r.loadSenderStates(ctx, eval, common.Hash(payload.BlockHash), senders, payloadStateProbe(payload.Transactions))
+		states, stateErr = r.loadSenderStates(ctx, common.Hash(payload.BlockHash), senders, payloadStateProbes(payload))
 		if states != nil {
 			eval.applySenderStates(states)
 		}
@@ -270,9 +277,10 @@ func (r *Resolver) parentTransactions(ctx context.Context, payload *all.Executio
 }
 
 // loadSenderStates loads the sender states at the given execution block,
-// trying the ready clients in priority order. A client that does not report
-// the probe's nonce is skipped, as it does not answer at that block.
-func (r *Resolver) loadSenderStates(ctx context.Context, eval *evaluation, blockHash common.Hash, senders []common.Address, probe *stateProbe) (map[common.Address]*senderState, error) {
+// trying the ready clients in priority order. A client that does not answer
+// at that block is skipped; one that failed a probe is remembered and asked
+// last from then on.
+func (r *Resolver) loadSenderStates(ctx context.Context, blockHash common.Hash, senders []common.Address, probes []*stateProbe) (map[common.Address]*senderState, error) {
 	clients := r.indexerCtx.ExecutionPool.GetReadyEndpoints(execution.AnyClient)
 	if len(clients) == 0 {
 		return nil, fmt.Errorf("no ready execution clients")
@@ -281,6 +289,9 @@ func (r *Resolver) loadSenderStates(ctx context.Context, eval *evaluation, block
 	sort.Slice(clients, func(i, j int) bool {
 		return r.indexerCtx.SortClients(clients[i], clients[j], false)
 	})
+	sort.SliceStable(clients, func(i, j int) bool {
+		return !r.unreliable[clients[i]] && r.unreliable[clients[j]]
+	})
 
 	if len(clients) > maxStateClients {
 		clients = clients[:maxStateClients]
@@ -288,19 +299,18 @@ func (r *Resolver) loadSenderStates(ctx context.Context, eval *evaluation, block
 
 	var lastErr error
 	for _, client := range clients {
-		states, err := r.fetchSenderStates(ctx, client, blockHash, senders, probe)
-		if err != nil {
-			lastErr = fmt.Errorf("sender states from %s: %w", client.GetName(), err)
+		ethClient := client.GetRPCClient().GetEthClient()
+		if ethClient == nil {
 			continue
 		}
 
-		// Only senders whose transactions would otherwise count as
-		// unsatisfied need the code check.
-		if codeSenders := eval.codeCheckSenders(states); len(codeSenders) > 0 {
-			if err := r.fetchSenderCode(ctx, client, blockHash, codeSenders, states); err != nil {
-				lastErr = fmt.Errorf("sender code from %s: %w", client.GetName(), err)
-				continue
+		states, err := r.fetchSenderStates(ctx, ethClient, blockHash, senders, probes)
+		if err != nil {
+			if len(probes) > 0 && errors.Is(err, errStateNotAtBlock) {
+				r.unreliable[client] = true
 			}
+			lastErr = fmt.Errorf("sender states from %s: %w", client.GetName(), err)
+			continue
 		}
 
 		return states, nil

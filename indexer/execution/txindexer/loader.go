@@ -362,6 +362,12 @@ func (t *TxIndexer) fetchBlockTransactions(
 		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block number is nil")
 	}
 
+	// A client may answer a request for a block it does not know with
+	// another block, such as the canonical one at the same height.
+	if block.Hash != hash {
+		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block is %s, not %s", block.Hash.Hex(), hash.Hex())
+	}
+
 	transactions := make([]*txtypes.Transaction, 0, len(block.Transactions))
 	for idx, rawTx := range block.Transactions {
 		tx, derived, err := decodeBlockTransaction(rawTx)

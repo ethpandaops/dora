@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
@@ -19,6 +20,7 @@ import (
 
 	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/utils"
 )
 
 var testChainID = big.NewInt(1337)
@@ -178,9 +180,6 @@ func TestEvaluation(t *testing.T) {
 	states := map[common.Address]*senderState{
 		sender: {nonce: 5, balance: big.NewInt(2_100_000 + 1_000_000_000)},
 	}
-	assert.Equal(t, []common.Address{sender}, eval.codeCheckSenders(states))
-	states[sender].codeKnown = true
-
 	eval.applySenderStates(states)
 
 	stateful := []struct {
@@ -229,57 +228,62 @@ func TestEvaluation(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestPayloadStateProbe(t *testing.T) {
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	sender := crypto.PubkeyToAddress(key.PublicKey)
+func TestPayloadStateProbes(t *testing.T) {
+	encode := func(accesses ...utils.BALAccountAccess) *all.ExecutionPayload {
+		data, err := rlp.EncodeToBytes(accesses)
+		require.NoError(t, err)
+		return &all.ExecutionPayload{BlockAccessList: data}
+	}
+	account := func(id byte, nonces []utils.BALNonceChange, balances []utils.BALBalanceChange) utils.BALAccountAccess {
+		return utils.BALAccountAccess{
+			Address:        [20]byte{id},
+			StorageWrites:  []utils.BALSlotWrites{},
+			StorageReads:   [][]byte{},
+			BalanceChanges: balances,
+			NonceChanges:   nonces,
+			CodeChanges:    []utils.BALCodeChange{},
+		}
+	}
 
-	otherKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
+	assert.Nil(t, payloadStateProbes(&all.ExecutionPayload{}), "no access list")
+	assert.Nil(t, payloadStateProbes(&all.ExecutionPayload{BlockAccessList: []byte{0xff}}), "undecodable access list")
+	assert.Empty(t, payloadStateProbes(encode(account(1, []utils.BALNonceChange{}, []utils.BALBalanceChange{}))), "no nonce or balance change")
 
-	first := testTx(t, otherKey, 3, 21000, 100, 0)
-	last := testTx(t, key, 41, 21000, 100, 0)
+	probes := payloadStateProbes(encode(
+		// Only read: not a probe.
+		account(1, []utils.BALNonceChange{}, []utils.BALBalanceChange{}),
+		// Balance change only, as for a withdrawal recipient.
+		account(2, []utils.BALNonceChange{}, []utils.BALBalanceChange{{TxIdx: 1, Balance: []byte{9}}}),
+		// Nonce change only.
+		account(3, []utils.BALNonceChange{{TxIdx: 1, Nonce: 5}}, []utils.BALBalanceChange{}),
+		// Both: the value after the payload is the entry with the highest
+		// index, wherever it stands in the list.
+		account(4,
+			[]utils.BALNonceChange{{TxIdx: 4, Nonce: 43}, {TxIdx: 2, Nonce: 42}},
+			[]utils.BALBalanceChange{{TxIdx: 2, Balance: []byte{7}}, {TxIdx: 5, Balance: []byte{1, 0}}, {TxIdx: 4, Balance: []byte{8}}},
+		),
+	))
 
-	// The probe is the sender of the last decodable transaction, with the
-	// nonce the account has after it.
-	probe := payloadStateProbe([]bellatrix.Transaction{first, last, {0x02, 0xff}})
-	require.NotNil(t, probe)
-	assert.Equal(t, sender, probe.address)
-	assert.Equal(t, uint64(42), probe.nonce)
+	// Probes that verify both lookups come first.
+	require.Len(t, probes, 3)
+	assert.Equal(t, common.Address{4}, probes[0].address)
+	assert.True(t, probes[0].hasNonce)
+	assert.Equal(t, uint64(43), probes[0].nonce)
+	assert.Equal(t, big.NewInt(256), probes[0].balance)
 
-	assert.Nil(t, payloadStateProbe(nil))
-	assert.Nil(t, payloadStateProbe([]bellatrix.Transaction{{0x02, 0xff}}))
+	assert.Equal(t, common.Address{3}, probes[1].address)
+	assert.True(t, probes[1].hasNonce)
+	assert.Equal(t, uint64(5), probes[1].nonce)
+	assert.Nil(t, probes[1].balance)
 
-	// A set-code transaction is sequenced by the account nonce too, so it is
-	// the sender's last transaction when it follows a plain one.
-	authorization, err := types.SignSetCode(otherKey, types.SetCodeAuthorization{
-		ChainID: *uint256.MustFromBig(testChainID),
-		Address: common.HexToAddress("0x00000000000000000000000000000000000000aa"),
-		Nonce:   4,
-	})
-	require.NoError(t, err)
-	setCodeTx, err := types.SignNewTx(key, types.LatestSignerForChainID(testChainID), &types.SetCodeTx{
-		ChainID:   uint256.MustFromBig(testChainID),
-		Nonce:     42,
-		GasTipCap: uint256.NewInt(1),
-		GasFeeCap: uint256.NewInt(100),
-		Gas:       100000,
-		To:        common.HexToAddress("0x00000000000000000000000000000000000000ff"),
-		AuthList:  []types.SetCodeAuthorization{authorization},
-	})
-	require.NoError(t, err)
-	setCode, err := setCodeTx.MarshalBinary()
-	require.NoError(t, err)
+	assert.Equal(t, common.Address{2}, probes[2].address)
+	assert.False(t, probes[2].hasNonce)
+	assert.Equal(t, big.NewInt(9), probes[2].balance)
 
-	probe = payloadStateProbe([]bellatrix.Transaction{last, setCode})
-	require.NotNil(t, probe)
-	assert.Equal(t, sender, probe.address)
-	assert.Equal(t, uint64(43), probe.nonce)
-
-	// The authorization advances the nonce of the account that signed it, so
-	// that account is not used even though the last transaction is its own.
-	probe = payloadStateProbe([]bellatrix.Transaction{last, setCode, first})
-	require.NotNil(t, probe)
-	assert.Equal(t, sender, probe.address)
-	assert.Equal(t, uint64(43), probe.nonce)
+	// The number of probes is bounded.
+	accesses := make([]utils.BALAccountAccess, 0, maxStateProbes+5)
+	for i := range maxStateProbes + 5 {
+		accesses = append(accesses, account(byte(i+1), []utils.BALNonceChange{{TxIdx: 1, Nonce: uint64(i)}}, []utils.BALBalanceChange{}))
+	}
+	assert.Len(t, payloadStateProbes(encode(accesses...)), maxStateProbes)
 }

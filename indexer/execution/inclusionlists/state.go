@@ -2,19 +2,21 @@ package inclusionlists
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/spamoor/txtypes"
 
-	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -27,6 +29,9 @@ const (
 
 	// stateRequestTimeout bounds one sender state request.
 	stateRequestTimeout = 10 * time.Second
+
+	// maxStateProbes is the number of accounts probed per state request.
+	maxStateProbes = 16
 )
 
 // multicall3ABI is the minimal ABI needed to read balances via
@@ -65,7 +70,7 @@ func multicallAddress() common.Address {
 
 // isMulticallReady reports whether Multicall3 is deployed on the network. A
 // deployment is probed once; a missing one is re-probed periodically.
-func (r *Resolver) isMulticallReady(ctx context.Context, client *execution.Client) bool {
+func (r *Resolver) isMulticallReady(ctx context.Context, ethClient *ethclient.Client) bool {
 	if r.multicallReady {
 		return true
 	}
@@ -73,17 +78,13 @@ func (r *Resolver) isMulticallReady(ctx context.Context, client *execution.Clien
 		return false
 	}
 
-	ethClient := client.GetRPCClient().GetEthClient()
-	if ethClient == nil {
-		return false
-	}
+	r.multicallProbed = time.Now()
 
 	code, err := ethClient.CodeAt(ctx, r.multicallAddr, nil)
 	if err != nil {
 		return false
 	}
 
-	r.multicallProbed = time.Now()
 	r.multicallReady = len(code) > 0
 	if !r.multicallReady {
 		r.logger.Debugf("multicall %s not deployed, reading sender balances individually", r.multicallAddr.Hex())
@@ -92,99 +93,146 @@ func (r *Resolver) isMulticallReady(ctx context.Context, client *execution.Clien
 	return r.multicallReady
 }
 
-// stateProbe is an account whose nonce at the post-state of a payload is known
-// from the payload itself. Not every client answers a state query for a block
-// hash at that block: some ignore the hash and answer at their head. Reading
-// the probe along with the sender states tells whether the client did.
+// errStateNotAtBlock marks a client that answered a state request for a block
+// hash with the state of another block.
+var errStateNotAtBlock = errors.New("state is not served at the requested block")
+
+// stateProbe is an account whose state after a payload is known from the
+// payload itself. Not every client answers a state query for a block hash at
+// that block: some answer at their head, or at the canonical block of the same
+// height, which after a reorg is a sibling of the requested one. Reading the
+// probes with the same calls as the sender states tells whether the client
+// answered at the block.
 type stateProbe struct {
 	address common.Address
-	nonce   uint64
+	// nonce is the account nonce after the payload, if hasNonce is set.
+	nonce    uint64
+	hasNonce bool
+	// balance is the account balance after the payload, or nil if unknown.
+	balance *big.Int
 }
 
-// payloadStateProbe derives a state probe from the transactions of a payload:
-// the sender of its last transaction that is sequenced by the account nonce,
-// whose nonce after the payload is that transaction's nonce plus one. Accounts
-// that signed a set-code authorization in the payload are not used, as an
-// authorization advances the nonce as well. Returns nil if the payload has no
-// suitable transaction.
-func payloadStateProbe(transactions []bellatrix.Transaction) *stateProbe {
-	decoded := make([]*txtypes.Transaction, len(transactions))
-	authorities := make(map[common.Address]bool, 4)
-	for idx, rawTx := range transactions {
-		tx, err := txtypes.DecodeTx(rawTx)
-		if err != nil {
-			continue
-		}
-		decoded[idx] = tx
+// payloadStateProbes derives state probes from the block access list of a
+// payload, which records the nonce and balance of every account the payload
+// changed. Several accounts are probed, because a sibling payload on the same
+// parent can leave a single account in the very same state. Accounts with both
+// a nonce and a balance change come first, as they verify both lookups.
+// Returns nil if the payload changed no nonce and no balance, or carries no
+// decodable access list.
+func payloadStateProbes(payload *all.ExecutionPayload) []*stateProbe {
+	if len(payload.BlockAccessList) == 0 {
+		return nil
+	}
 
-		for _, authorization := range tx.AuthList() {
-			if authority, err := authorization.Authority(); err == nil {
-				authorities[authority] = true
+	accesses, err := utils.DecodeBlockAccessList(payload.BlockAccessList)
+	if err != nil {
+		return nil
+	}
+
+	probes := make([]*stateProbe, 0, len(accesses))
+	for idx := range accesses {
+		access := &accesses[idx]
+		probe := &stateProbe{address: access.Address}
+
+		// The entry with the highest index holds the value after the payload.
+		var nonceIdx, balanceIdx uint16
+		for _, change := range access.NonceChanges {
+			if !probe.hasNonce || change.TxIdx >= nonceIdx {
+				probe.nonce = change.Nonce
+				nonceIdx = change.TxIdx
+			}
+			probe.hasNonce = true
+		}
+		for _, change := range access.BalanceChanges {
+			if probe.balance == nil || change.TxIdx >= balanceIdx {
+				probe.balance = new(big.Int).SetBytes(change.Balance)
+				balanceIdx = change.TxIdx
 			}
 		}
+
+		if probe.hasNonce || probe.balance != nil {
+			probes = append(probes, probe)
+		}
 	}
 
-	for idx := len(decoded) - 1; idx >= 0; idx-- {
-		tx := decoded[idx]
-		if tx == nil || tx.Type() == txtypes.FrameTxType || !tx.UsesAccountNonce() {
-			continue
-		}
-
-		sender, err := tx.From(tx.ChainId())
-		if err != nil || authorities[sender] {
-			continue
-		}
-
-		return &stateProbe{address: sender, nonce: tx.Nonce() + 1}
+	sort.SliceStable(probes, func(i, j int) bool {
+		return probes[i].rank() < probes[j].rank()
+	})
+	if len(probes) > maxStateProbes {
+		probes = probes[:maxStateProbes]
 	}
 
-	return nil
+	return probes
 }
 
-// fetchSenderStates loads nonce and balance of the given accounts at the
+// rank orders probes by how much they verify: nonce and balance first, then
+// nonce only, then balance only.
+func (probe *stateProbe) rank() int {
+	switch {
+	case probe.hasNonce && probe.balance != nil:
+		return 0
+	case probe.hasNonce:
+		return 1
+	default:
+		return 2
+	}
+}
+
+// blockHead is the part of a block header the head check needs.
+type blockHead struct {
+	Hash common.Hash `json:"hash"`
+}
+
+// fetchSenderStates loads nonce, balance and code of the given accounts at the
 // post-state of the execution block with the given hash, in a single JSON-RPC
 // batch request. The account nonce is not readable from within the EVM, so
 // nonces are read with one eth_getTransactionCount call each; the balances are
-// read with a single Multicall3 call where it is deployed. If a probe is
-// given, the client's answer is rejected unless it reports the probe's nonce.
-func (r *Resolver) fetchSenderStates(ctx context.Context, client *execution.Client, blockHash common.Hash, senders []common.Address, probe *stateProbe) (map[common.Address]*senderState, error) {
-	ethClient := client.GetRPCClient().GetEthClient()
-	if ethClient == nil {
-		return nil, fmt.Errorf("client not initialized")
-	}
-
+// read with a single Multicall3 call where it is deployed.
+//
+// The answer is only accepted if the client provably served it at that block:
+// it must report the known state of all probes, or, if the payload offers no
+// probe, have the block as its head before and after the lookups. Otherwise
+// errStateNotAtBlock is returned.
+func (r *Resolver) fetchSenderStates(ctx context.Context, ethClient *ethclient.Client, blockHash common.Hash, senders []common.Address, probes []*stateProbe) (map[common.Address]*senderState, error) {
 	ctx, cancel := context.WithTimeout(ctx, stateRequestTimeout)
 	defer cancel()
 
 	block := rpc.BlockNumberOrHashWithHash(blockHash, false)
-	useMulticall := r.isMulticallReady(ctx, client)
+	useMulticall := r.isMulticallReady(ctx, ethClient)
 
-	nonces := make([]hexutil.Uint64, len(senders))
-	balances := make([]hexutil.Big, len(senders))
+	// The probes are looked up like further accounts.
+	accounts := append(make([]common.Address, 0, len(senders)+len(probes)), senders...)
+	for _, probe := range probes {
+		accounts = append(accounts, probe.address)
+	}
+
+	nonces := make([]hexutil.Uint64, len(accounts))
+	balances := make([]hexutil.Big, len(accounts))
+	codes := make([]hexutil.Bytes, len(senders))
 	var multicallResult hexutil.Bytes
+	var headBefore, headAfter *blockHead
 
-	batch := make([]rpc.BatchElem, 0, 2*len(senders)+1)
-	for i, sender := range senders {
+	batch := make([]rpc.BatchElem, 0, 3*len(accounts)+2)
+	if len(probes) == 0 {
+		batch = append(batch, rpc.BatchElem{
+			Method: "eth_getBlockByNumber",
+			Args:   []any{"latest", false},
+			Result: &headBefore,
+		})
+	}
+
+	for i, account := range accounts {
 		batch = append(batch, rpc.BatchElem{
 			Method: "eth_getTransactionCount",
-			Args:   []any{sender, block},
+			Args:   []any{account, block},
 			Result: &nonces[i],
 		})
 	}
 
-	var probeNonce hexutil.Uint64
-	if probe != nil {
-		batch = append(batch, rpc.BatchElem{
-			Method: "eth_getTransactionCount",
-			Args:   []any{probe.address, block},
-			Result: &probeNonce,
-		})
-	}
-
 	if useMulticall {
-		calls := make([]multicall3Call, 0, len(senders))
-		for _, sender := range senders {
-			callData, err := multicall3ABI.Pack("getEthBalance", sender)
+		calls := make([]multicall3Call, 0, len(accounts))
+		for _, account := range accounts {
+			callData, err := multicall3ABI.Pack("getEthBalance", account)
 			if err != nil {
 				return nil, fmt.Errorf("pack getEthBalance: %w", err)
 			}
@@ -205,13 +253,29 @@ func (r *Resolver) fetchSenderStates(ctx context.Context, client *execution.Clie
 			Result: &multicallResult,
 		})
 	} else {
-		for i, sender := range senders {
+		for i, account := range accounts {
 			batch = append(batch, rpc.BatchElem{
 				Method: "eth_getBalance",
-				Args:   []any{sender, block},
+				Args:   []any{account, block},
 				Result: &balances[i],
 			})
 		}
+	}
+
+	for i, sender := range senders {
+		batch = append(batch, rpc.BatchElem{
+			Method: "eth_getCode",
+			Args:   []any{sender, block},
+			Result: &codes[i],
+		})
+	}
+
+	if len(probes) == 0 {
+		batch = append(batch, rpc.BatchElem{
+			Method: "eth_getBlockByNumber",
+			Args:   []any{"latest", false},
+			Result: &headAfter,
+		})
 	}
 
 	if err := ethClient.Client().BatchCallContext(ctx, batch); err != nil {
@@ -223,19 +287,7 @@ func (r *Resolver) fetchSenderStates(ctx context.Context, client *execution.Clie
 		}
 	}
 
-	if probe != nil && uint64(probeNonce) != probe.nonce {
-		return nil, fmt.Errorf("state is not served at block %s: nonce of %s is %d, expected %d",
-			blockHash.Hex(), probe.address.Hex(), uint64(probeNonce), probe.nonce)
-	}
-
-	states := make(map[common.Address]*senderState, len(senders))
-	for i, sender := range senders {
-		states[sender] = &senderState{
-			nonce:   uint64(nonces[i]),
-			balance: balances[i].ToInt(),
-		}
-	}
-
+	accountBalances := make([]*big.Int, len(accounts))
 	if useMulticall {
 		var decoded struct {
 			ReturnData []struct {
@@ -246,63 +298,52 @@ func (r *Resolver) fetchSenderStates(ctx context.Context, client *execution.Clie
 		if err := multicall3ABI.UnpackIntoInterface(&decoded, "aggregate3", multicallResult); err != nil {
 			return nil, fmt.Errorf("unpack aggregate3: %w", err)
 		}
-		if len(decoded.ReturnData) != len(senders) {
-			return nil, fmt.Errorf("multicall returned %d results for %d calls", len(decoded.ReturnData), len(senders))
+		if len(decoded.ReturnData) != len(accounts) {
+			return nil, fmt.Errorf("multicall returned %d results for %d calls", len(decoded.ReturnData), len(accounts))
 		}
-		for i, sender := range senders {
+		for i, account := range accounts {
 			if !decoded.ReturnData[i].Success || len(decoded.ReturnData[i].ReturnData) != 32 {
-				return nil, fmt.Errorf("multicall balance lookup failed for %s", sender.Hex())
+				return nil, fmt.Errorf("multicall balance lookup failed for %s", account.Hex())
 			}
-			states[sender].balance = new(big.Int).SetBytes(decoded.ReturnData[i].ReturnData)
+			accountBalances[i] = new(big.Int).SetBytes(decoded.ReturnData[i].ReturnData)
+		}
+	} else {
+		for i := range accounts {
+			accountBalances[i] = balances[i].ToInt()
+		}
+	}
+
+	for i, probe := range probes {
+		probeIdx := len(senders) + i
+		if probe.hasNonce && uint64(nonces[probeIdx]) != probe.nonce {
+			return nil, fmt.Errorf("%w %s: nonce of %s is %d, expected %d",
+				errStateNotAtBlock, blockHash.Hex(), probe.address.Hex(), uint64(nonces[probeIdx]), probe.nonce)
+		}
+		if probe.balance != nil && accountBalances[probeIdx].Cmp(probe.balance) != 0 {
+			return nil, fmt.Errorf("%w %s: balance of %s is %v, expected %v",
+				errStateNotAtBlock, blockHash.Hex(), probe.address.Hex(), accountBalances[probeIdx], probe.balance)
+		}
+	}
+
+	if len(probes) == 0 && (headBefore == nil || headAfter == nil || headBefore.Hash != blockHash || headAfter.Hash != blockHash) {
+		// Without a probe the answer can only be trusted from a client whose
+		// head is the block: it is then at that block whether or not the
+		// client honours the block hash of a state request.
+		return nil, fmt.Errorf("%w %s: no state probe and the block is not the client head", errStateNotAtBlock, blockHash.Hex())
+	}
+
+	states := make(map[common.Address]*senderState, len(senders))
+	for i, sender := range senders {
+		// A sender with code cannot send transactions (EIP-3607), unless the
+		// code is a delegation.
+		_, isDelegation := txtypes.ParseDelegation(codes[i])
+
+		states[sender] = &senderState{
+			nonce:   uint64(nonces[i]),
+			balance: accountBalances[i],
+			hasCode: len(codes[i]) > 0 && !isDelegation,
 		}
 	}
 
 	return states, nil
-}
-
-// fetchSenderCode loads the code of the given accounts at the post-state of
-// the execution block with the given hash and marks the states of those with
-// non-delegated code (EIP-3607), in a single JSON-RPC batch request.
-func (r *Resolver) fetchSenderCode(ctx context.Context, client *execution.Client, blockHash common.Hash, senders []common.Address, states map[common.Address]*senderState) error {
-	ethClient := client.GetRPCClient().GetEthClient()
-	if ethClient == nil {
-		return fmt.Errorf("client not initialized")
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, stateRequestTimeout)
-	defer cancel()
-
-	block := rpc.BlockNumberOrHashWithHash(blockHash, false)
-	codes := make([]hexutil.Bytes, len(senders))
-
-	batch := make([]rpc.BatchElem, 0, len(senders))
-	for i, sender := range senders {
-		batch = append(batch, rpc.BatchElem{
-			Method: "eth_getCode",
-			Args:   []any{sender, block},
-			Result: &codes[i],
-		})
-	}
-
-	if err := ethClient.Client().BatchCallContext(ctx, batch); err != nil {
-		return fmt.Errorf("sender code batch: %w", err)
-	}
-	for _, elem := range batch {
-		if elem.Error != nil {
-			return fmt.Errorf("%s: %w", elem.Method, elem.Error)
-		}
-	}
-
-	for i, sender := range senders {
-		state := states[sender]
-		if state == nil {
-			continue
-		}
-
-		_, isDelegation := txtypes.ParseDelegation(codes[i])
-		state.hasCode = len(codes[i]) > 0 && !isDelegation
-		state.codeKnown = true
-	}
-
-	return nil
 }
