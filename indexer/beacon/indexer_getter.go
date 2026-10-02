@@ -561,7 +561,7 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 }
 
 // GetInclusionListsBySlot returns the cached inclusion lists for a given slot.
-func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedInclusionList {
+func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*InclusionListEntry {
 	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
 }
 

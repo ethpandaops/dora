@@ -6,8 +6,6 @@ import (
 	"net/http"
 
 	"github.com/ethpandaops/dora/services"
-	"github.com/ethpandaops/go-eth2-client/spec"
-	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/gorilla/mux"
@@ -25,6 +23,10 @@ type APISlotInclusionListsData struct {
 	Slot           uint64                  `json:"slot"`
 	BlockRoot      string                  `json:"block_root"`
 	Count          uint64                  `json:"count"`
+	TargetSlot     uint64                  `json:"target_slot"`
+	TargetRoot     string                  `json:"target_block_root,omitempty"`
+	TargetNumber   uint64                  `json:"target_block_number,omitempty"`
+	TargetGasLeft  uint64                  `json:"target_gas_left,omitempty"`
 	InclusionLists []*APISlotInclusionList `json:"inclusion_lists"`
 }
 
@@ -34,6 +36,9 @@ type APISlotInclusionList struct {
 	ValidatorName     string                             `json:"validator_name,omitempty"`
 	DependentRoot     string                             `json:"dependent_root"`
 	Signature         string                             `json:"signature"`
+	SeenDelayMs       int64                              `json:"seen_delay_ms"`
+	Timely            bool                               `json:"timely"`
+	Equivocation      bool                               `json:"equivocation"`
 	TransactionsCount uint64                             `json:"transactions_count"`
 	Transactions      []*APISlotInclusionListTransaction `json:"transactions"`
 }
@@ -50,13 +55,16 @@ type APISlotInclusionListTransaction struct {
 	Type       uint8  `json:"type"`
 	DataLen    uint64 `json:"data_len"`
 	IsIncluded bool   `json:"is_included"`
+	Status     string `json:"status"`
+	Reason     string `json:"reason,omitempty"`
 	DecodeErr  string `json:"decode_error,omitempty"`
 }
 
 // APISlotInclusionListsV1 returns the EIP-7805 inclusion lists for a slot.
 // @Summary Get inclusion lists for a slot
-// @Description Returns the cached EIP-7805 inclusion lists for a slot, with each transaction
-// @Description marked as included or not based on whether it appears in the slot's block transactions.
+// @Description Returns the cached EIP-7805 inclusion lists for a slot. Each transaction is checked against
+// @Description the payload of the block at slot+1 (the payload the lists constrain): included, or the reason
+// @Description it was validly omitted (block full, nonce too low/gap, insufficient funds, ...), or unsatisfied.
 // @Tags Slot
 // @Produce json
 // @Param slotOrHash path string true "Slot number or block root (0x-prefixed hex)"
@@ -78,33 +86,15 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 	indexer := services.GlobalBeaconService.GetBeaconIndexer()
 	inclusionLists := indexer.GetInclusionListsBySlot(phase0.Slot(dbSlot.Slot))
 
-	// Build a set of block transaction hashes so each inclusion list transaction
-	// can be marked included/not-included. For gloas+ the execution payload lives
-	// in the SignedExecutionPayloadEnvelope, not on the block, so source it from
-	// either the envelope (gloas+) or the in-block payload (pre-gloas).
-	blockTxHashes := make(map[string]bool)
-	if blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), phase0.Root(dbSlot.Root)); err == nil && blockData != nil && blockData.Block != nil {
-		var executionPayload *all.ExecutionPayload
-		if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil && blockData.Payload.Message != nil {
-			executionPayload = blockData.Payload.Message.Payload
-		} else if blockData.Block.Message != nil && blockData.Block.Message.Body != nil {
-			executionPayload = blockData.Block.Message.Body.ExecutionPayload
-		}
-
-		if executionPayload != nil {
-			for _, txBytes := range executionPayload.Transactions {
-				if tx, err := txtypes.DecodeTx(txBytes); err == nil {
-					blockTxHashes[string(tx.Hash().Bytes())] = true
-				}
-			}
-		}
-	}
+	evaluation := services.GlobalBeaconService.EvaluateInclusionLists(r.Context(), phase0.Slot(dbSlot.Slot), inclusionLists)
 
 	apiLists := make([]*APISlotInclusionList, 0, len(inclusionLists))
-	for _, il := range inclusionLists {
+	for idx, entry := range inclusionLists {
+		il := entry.InclusionList
 		if il == nil || il.Message == nil {
 			continue
 		}
+		listInfo := evaluation.Lists[idx]
 
 		valIndex := uint64(il.Message.ValidatorIndex)
 		listEntry := &APISlotInclusionList{
@@ -112,6 +102,9 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 			ValidatorName:  services.GlobalBeaconService.GetValidatorNameAt(valIndex, phase0.Slot(dbSlot.Slot)),
 			DependentRoot:  fmt.Sprintf("0x%x", il.Message.DependentRoot[:]),
 			Signature:      fmt.Sprintf("0x%x", il.Signature[:]),
+			SeenDelayMs:    listInfo.SeenDelay.Milliseconds(),
+			Timely:         listInfo.Timely,
+			Equivocation:   listInfo.Equivocation,
 			Transactions:   make([]*APISlotInclusionListTransaction, 0, len(il.Message.Transactions)),
 		}
 
@@ -138,7 +131,11 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 				if from, err := tx.From(tx.ChainId()); err == nil {
 					txEntry.From = fmt.Sprintf("0x%x", from.Bytes())
 				}
-				txEntry.IsIncluded = blockTxHashes[string(tx.Hash().Bytes())]
+				if txEval := evaluation.Transactions[tx.Hash()]; txEval != nil {
+					txEntry.IsIncluded = txEval.Status == services.ILTxStatusIncluded
+					txEntry.Status = txEval.Status.Label()
+					txEntry.Reason = txEval.Reason
+				}
 			}
 
 			listEntry.Transactions = append(listEntry.Transactions, txEntry)
@@ -154,8 +151,15 @@ func APISlotInclusionListsV1(w http.ResponseWriter, r *http.Request) {
 			Slot:           dbSlot.Slot,
 			BlockRoot:      fmt.Sprintf("0x%x", dbSlot.Root),
 			Count:          uint64(len(apiLists)),
+			TargetSlot:     uint64(evaluation.TargetSlot),
+			TargetNumber:   evaluation.TargetBlockNumber,
+			TargetGasLeft:  evaluation.TargetGasLeft,
 			InclusionLists: apiLists,
 		},
+	}
+
+	if evaluation.TargetBlockRoot != nil {
+		resp.Data.TargetRoot = fmt.Sprintf("0x%x", evaluation.TargetBlockRoot)
 	}
 
 	if err := json.NewEncoder(w).Encode(resp); err != nil {

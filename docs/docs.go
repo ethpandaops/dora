@@ -1444,7 +1444,7 @@ const docTemplate = `{
         },
         "/v1/slot/{slotOrHash}/inclusion_lists": {
             "get": {
-                "description": "Returns the cached EIP-7805 inclusion lists for a slot, with each transaction\nmarked as included or not based on whether it appears in the slot's block transactions.",
+                "description": "Returns the cached EIP-7805 inclusion lists for a slot. Each transaction is checked against\nthe payload of the block at slot+1 (the payload the lists constrain): included, or the reason\nit was validly omitted (block full, nonce too low/gap, insufficient funds, ...), or unsatisfied.",
                 "produces": [
                     "application/json"
                 ],
@@ -4918,8 +4918,17 @@ const docTemplate = `{
                 "dependent_root": {
                     "type": "string"
                 },
+                "equivocation": {
+                    "type": "boolean"
+                },
+                "seen_delay_ms": {
+                    "type": "integer"
+                },
                 "signature": {
                     "type": "string"
+                },
+                "timely": {
+                    "type": "boolean"
                 },
                 "transactions": {
                     "type": "array",
@@ -4965,6 +4974,12 @@ const docTemplate = `{
                 "nonce": {
                     "type": "integer"
                 },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
                 "to": {
                     "type": "string"
                 },
@@ -4992,6 +5007,18 @@ const docTemplate = `{
                     }
                 },
                 "slot": {
+                    "type": "integer"
+                },
+                "target_block_number": {
+                    "type": "integer"
+                },
+                "target_block_root": {
+                    "type": "string"
+                },
+                "target_gas_left": {
+                    "type": "integer"
+                },
+                "target_slot": {
                     "type": "integer"
                 }
             }

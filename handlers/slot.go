@@ -1143,7 +1143,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	// Load inclusion lists for EIP-7805 (heze+) slots
 	if services.GlobalBeaconService.GetChainState().IsEip7805Enabled(epoch) {
-		getSlotPageInclusionLists(pageData, blockData.Header.Message.Slot)
+		getSlotPageInclusionLists(ctx, pageData, blockData.Header.Message.Slot)
 	}
 
 	return pageData
@@ -1748,25 +1748,36 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 	pageData.PtcVotesCount = totalVotes
 }
 
-// getSlotPageInclusionLists fetches cached inclusion lists for the slot and decodes their transactions.
-func getSlotPageInclusionLists(pageData *models.SlotPageBlockData, slot phase0.Slot) {
+// getSlotPageInclusionLists fetches cached inclusion lists for the slot, decodes their
+// transactions and evaluates them against the payload of the block at slot+1, which is
+// the payload these lists constrain.
+func getSlotPageInclusionLists(ctx context.Context, pageData *models.SlotPageBlockData, slot phase0.Slot) {
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 	inclusionLists := beaconIndexer.GetInclusionListsBySlot(slot)
 	if len(inclusionLists) == 0 {
 		return
 	}
 
-	// Build a set of block transaction hashes for inclusion checking
-	blockTxHashes := make(map[string]bool, len(pageData.Transactions))
-	for _, tx := range pageData.Transactions {
-		blockTxHashes[string(tx.Hash)] = true
+	evaluation := services.GlobalBeaconService.EvaluateInclusionLists(ctx, slot, inclusionLists)
+	pageData.InclusionListsTarget = &models.SlotPageInclusionListTarget{
+		Slot:        uint64(evaluation.TargetSlot),
+		BlockRoot:   evaluation.TargetBlockRoot,
+		BlockNumber: evaluation.TargetBlockNumber,
+		GasLeft:     evaluation.TargetGasLeft,
+		Status:      uint8(evaluation.TargetStatus),
+		StatusText:  evaluation.TargetStatus.Label(),
 	}
 
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
 
 	pageData.InclusionLists = make([]*models.SlotPageInclusionList, 0, len(inclusionLists))
-	for _, il := range inclusionLists {
+	for idx, entry := range inclusionLists {
+		il := entry.InclusionList
+		listInfo := evaluation.Lists[idx]
 		ilData := &models.SlotPageInclusionList{
+			SeenDelayMs:  listInfo.SeenDelay.Milliseconds(),
+			Timely:       listInfo.Timely,
+			Equivocation: listInfo.Equivocation,
 			Validator: types.NamedValidator{
 				Index: uint64(il.Message.ValidatorIndex),
 				Name:  services.GlobalBeaconService.GetValidatorNameAt(uint64(il.Message.ValidatorIndex), slot),
@@ -1778,10 +1789,19 @@ func getSlotPageInclusionLists(pageData *models.SlotPageBlockData, slot phase0.S
 		ilData.Transactions = decodeInclusionListTransactions(il, sysContracts)
 		ilData.TransactionsCount = uint64(len(ilData.Transactions))
 
-		// Check which IL transactions are included in the block
-		ilData.TransactionsIncluded = make([]bool, len(ilData.Transactions))
+		ilData.TransactionsStatus = make([]*models.SlotPageInclusionListTxStatus, len(ilData.Transactions))
 		for i, tx := range ilData.Transactions {
-			ilData.TransactionsIncluded[i] = blockTxHashes[string(tx.Hash)]
+			txStatus := &models.SlotPageInclusionListTxStatus{}
+			if txEval := evaluation.Transactions[common.BytesToHash(tx.Hash)]; txEval != nil {
+				txStatus.Status = uint8(txEval.Status)
+				txStatus.Label = txEval.Status.Label()
+				txStatus.Class = txEval.Status.BadgeClass()
+				txStatus.Reason = txEval.Reason
+			} else {
+				txStatus.Label = services.ILTxStatusUnknown.Label()
+				txStatus.Class = services.ILTxStatusUnknown.BadgeClass()
+			}
+			ilData.TransactionsStatus[i] = txStatus
 		}
 
 		pageData.InclusionLists = append(pageData.InclusionLists, ilData)

@@ -362,6 +362,20 @@
                 <div class="row p-1 mx-0">
                   <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.InclusionListsCount }} Inclusion Lists</b></h3>
                 </div>
+                {{ with .Block.InclusionListsTarget }}
+                  <div class="row p-1 mx-0">
+                    <div class="col-md-12 text-center small">
+                      <span data-bs-toggle="tooltip" data-bs-placement="top" title="Inclusion lists of a slot constrain the execution payload of the block at the next slot (EIP-7805). Transactions missing from that payload are checked like the execution layer does: remaining block gas, then sender nonce and balance against the payload's post-state.">Checked against:</span>
+                      {{ if .BlockRoot }}
+                        <a href="/slot/0x{{ printf "%x" .BlockRoot }}">slot {{ formatAddCommas .Slot }}</a>
+                        {{ if .BlockNumber }}(block <a href="/block/{{ .BlockNumber }}">{{ formatAddCommas .BlockNumber }}</a>, {{ formatAddCommas .GasLeft }} gas left){{ end }}
+                      {{ else }}
+                        slot {{ formatAddCommas .Slot }}
+                      {{ end }}
+                      {{ if not .BlockNumber }}<span class="badge rounded-pill text-bg-secondary">{{ .StatusText }}</span>{{ end }}
+                    </div>
+                  </div>
+                {{ end }}
               </div>
               {{ template "block_inclusion_lists" . }}
             </div>
