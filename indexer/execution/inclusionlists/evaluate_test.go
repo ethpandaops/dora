@@ -249,4 +249,37 @@ func TestPayloadStateProbe(t *testing.T) {
 
 	assert.Nil(t, payloadStateProbe(nil))
 	assert.Nil(t, payloadStateProbe([]bellatrix.Transaction{{0x02, 0xff}}))
+
+	// A set-code transaction is sequenced by the account nonce too, so it is
+	// the sender's last transaction when it follows a plain one.
+	authorization, err := types.SignSetCode(otherKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(testChainID),
+		Address: common.HexToAddress("0x00000000000000000000000000000000000000aa"),
+		Nonce:   4,
+	})
+	require.NoError(t, err)
+	setCodeTx, err := types.SignNewTx(key, types.LatestSignerForChainID(testChainID), &types.SetCodeTx{
+		ChainID:   uint256.MustFromBig(testChainID),
+		Nonce:     42,
+		GasTipCap: uint256.NewInt(1),
+		GasFeeCap: uint256.NewInt(100),
+		Gas:       100000,
+		To:        common.HexToAddress("0x00000000000000000000000000000000000000ff"),
+		AuthList:  []types.SetCodeAuthorization{authorization},
+	})
+	require.NoError(t, err)
+	setCode, err := setCodeTx.MarshalBinary()
+	require.NoError(t, err)
+
+	probe = payloadStateProbe([]bellatrix.Transaction{last, setCode})
+	require.NotNil(t, probe)
+	assert.Equal(t, sender, probe.address)
+	assert.Equal(t, uint64(43), probe.nonce)
+
+	// The authorization advances the nonce of the account that signed it, so
+	// that account is not used even though the last transaction is its own.
+	probe = payloadStateProbe([]bellatrix.Transaction{last, setCode, first})
+	require.NotNil(t, probe)
+	assert.Equal(t, sender, probe.address)
+	assert.Equal(t, uint64(43), probe.nonce)
 }

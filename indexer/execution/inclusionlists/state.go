@@ -102,18 +102,36 @@ type stateProbe struct {
 }
 
 // payloadStateProbe derives a state probe from the transactions of a payload:
-// the sender of its last plain transaction, whose nonce after the payload is
-// that transaction's nonce plus one. Returns nil if the payload has no such
-// transaction.
+// the sender of its last transaction that is sequenced by the account nonce,
+// whose nonce after the payload is that transaction's nonce plus one. Accounts
+// that signed a set-code authorization in the payload are not used, as an
+// authorization advances the nonce as well. Returns nil if the payload has no
+// suitable transaction.
 func payloadStateProbe(transactions []bellatrix.Transaction) *stateProbe {
-	for idx := len(transactions) - 1; idx >= 0; idx-- {
-		tx, err := txtypes.DecodeTx(transactions[idx])
-		if err != nil || tx.Type() > txtypes.DynamicFeeTxType || !tx.UsesAccountNonce() {
+	decoded := make([]*txtypes.Transaction, len(transactions))
+	authorities := make(map[common.Address]bool, 4)
+	for idx, rawTx := range transactions {
+		tx, err := txtypes.DecodeTx(rawTx)
+		if err != nil {
+			continue
+		}
+		decoded[idx] = tx
+
+		for _, authorization := range tx.AuthList() {
+			if authority, err := authorization.Authority(); err == nil {
+				authorities[authority] = true
+			}
+		}
+	}
+
+	for idx := len(decoded) - 1; idx >= 0; idx-- {
+		tx := decoded[idx]
+		if tx == nil || tx.Type() == txtypes.FrameTxType || !tx.UsesAccountNonce() {
 			continue
 		}
 
 		sender, err := tx.From(tx.ChainId())
-		if err != nil {
+		if err != nil || authorities[sender] {
 			continue
 		}
 
