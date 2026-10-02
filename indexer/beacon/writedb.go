@@ -83,10 +83,11 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 			proposer = epochStatsValues.ProposerDuties[int(slot-firstSlot)]
 		}
 
-		missedSlot := &dbtypes.SlotHeader{
+		missedSlot := &dbtypes.MissedSlot{
 			Slot:     uint64(slot),
 			Proposer: uint64(proposer),
 			Status:   dbtypes.Missing,
+			IlCount:  dbw.indexer.inclusionListCache.getListCount(slot),
 		}
 
 		err := db.InsertMissingSlot(dbw.indexer.ctx, tx, missedSlot)
@@ -467,6 +468,8 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		BlockUid:              block.BlockUID,
 		BuilderIndex:          builderIndexInt64,
 		EthBidValue:           bidValue,
+		IlCount:               dbw.indexer.inclusionListCache.getListCount(block.Slot),
+		IlUnsatisfied:         dbw.indexer.inclusionListCache.getUnsatisfied(block.Slot, block.Root),
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)

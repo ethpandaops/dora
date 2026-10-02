@@ -27,6 +27,8 @@ type SlotPageData struct {
 	XatuCbtEnabled         bool                    `json:"xatu_cbt_enabled"`
 	SystemContracts        []*types.SystemContract `json:"system_contracts"`
 	TransactionDetails     []*SlotPageTransaction  `json:"transaction_details"`
+	InclusionListsEnabled  bool                    `json:"inclusion_lists_enabled"` // Inclusion lists (EIP-7805) are active for this slot; they are loaded lazily
+	InclusionListsCount    uint64                  `json:"inclusion_lists_count"`   // Number of inclusion lists published in this slot
 
 	EnsNameData
 }
@@ -81,6 +83,7 @@ type SlotPageBlockData struct {
 	BlobsCount                  uint64                  `json:"blobs_count"`
 	ExecutionProofsCount        uint64                  `json:"execution_proofs_count"`
 	TransactionsCount           uint64                  `json:"transactions_count"`
+	TransactionsIndexed         bool                    `json:"transactions_indexed"` // At least one transaction has indexed execution data; the transaction list then shows the execution columns for every row
 	DepositRequestsCount        uint64                  `json:"deposit_receipts_count"`
 	WithdrawalRequestsCount     uint64                  `json:"withdrawal_requests_count"`
 	ConsolidationRequestsCount  uint64                  `json:"consolidation_requests_count"`
@@ -98,26 +101,25 @@ type SlotPageBlockData struct {
 	ExecutionData          *SlotPageExecutionData `json:"execution_data"`
 	PayloadDataUnavailable bool                   `json:"payload_data_unavailable"`
 
-	Attestations           []*SlotPageAttestation           `json:"attestations"`             // Attestations included in this block
-	Deposits               []*SlotPageDeposit               `json:"deposits"`                 // Deposits included in this block
-	VoluntaryExits         []*SlotPageVoluntaryExit         `json:"voluntary_exits"`          // Voluntary Exits included in this block
-	AttesterSlashings      []*SlotPageAttesterSlashing      `json:"attester_slashings"`       // Attester Slashings included in this block
-	ProposerSlashings      []*SlotPageProposerSlashing      `json:"proposer_slashings"`       // Proposer Slashings included in this block
-	BLSChanges             []*SlotPageBLSChange             `json:"bls_changes"`              // BLSChanges included in this block
-	Withdrawals            []*SlotPageWithdrawal            `json:"withdrawals"`              // Withdrawals included in this block
-	Blobs                  []*SlotPageBlob                  `json:"blobs"`                    // Blob sidecars included in this block
-	ExecutionProofs        []*SlotPageExecutionProof        `json:"execution_proofs"`         // Execution proofs included in this block
-	Transactions           []*SlotPageTransaction           `json:"transactions"`             // Transactions included in this block
-	DepositRequests        []*SlotPageDepositRequest        `json:"deposit_receipts"`         // DepositRequests included in this block
-	WithdrawalRequests     []*SlotPageWithdrawalRequest     `json:"withdrawal_requests"`      // WithdrawalRequests included in this block
-	ConsolidationRequests  []*SlotPageConsolidationRequest  `json:"consolidation_requests"`   // ConsolidationRequests included in this block
-	BuilderDepositRequests []*SlotPageBuilderDepositRequest `json:"builder_deposit_requests"` // Builder deposit requests processed by this block (Gloas)
-	BuilderExitRequests    []*SlotPageBuilderExitRequest    `json:"builder_exit_requests"`    // Builder exit requests processed by this block (Gloas)
-	Bids                   []*SlotPageBid                   `json:"bids"`                     // Execution payload bids for this block (ePBS)
-	PtcVotes               *SlotPagePtcVotes                `json:"ptc_votes"`                // PTC votes included in this block (for previous slot)
-	BuilderPayment         *SlotPageBuilderPayment          `json:"builder_payment"`          // Gloas builder-payment vote quorum for this slot
-	InclusionLists         []*SlotPageInclusionList         `json:"inclusion_lists"`          // Inclusion lists for this slot (EIP-7805)
-	InclusionListsCount    uint64                           `json:"inclusion_lists_count"`
+	Attestations              []*SlotPageAttestation           `json:"attestations"`                // Attestations included in this block
+	Deposits                  []*SlotPageDeposit               `json:"deposits"`                    // Deposits included in this block
+	VoluntaryExits            []*SlotPageVoluntaryExit         `json:"voluntary_exits"`             // Voluntary Exits included in this block
+	AttesterSlashings         []*SlotPageAttesterSlashing      `json:"attester_slashings"`          // Attester Slashings included in this block
+	ProposerSlashings         []*SlotPageProposerSlashing      `json:"proposer_slashings"`          // Proposer Slashings included in this block
+	BLSChanges                []*SlotPageBLSChange             `json:"bls_changes"`                 // BLSChanges included in this block
+	Withdrawals               []*SlotPageWithdrawal            `json:"withdrawals"`                 // Withdrawals included in this block
+	Blobs                     []*SlotPageBlob                  `json:"blobs"`                       // Blob sidecars included in this block
+	ExecutionProofs           []*SlotPageExecutionProof        `json:"execution_proofs"`            // Execution proofs included in this block
+	Transactions              []*SlotPageTransaction           `json:"transactions"`                // Transactions included in this block
+	DepositRequests           []*SlotPageDepositRequest        `json:"deposit_receipts"`            // DepositRequests included in this block
+	WithdrawalRequests        []*SlotPageWithdrawalRequest     `json:"withdrawal_requests"`         // WithdrawalRequests included in this block
+	ConsolidationRequests     []*SlotPageConsolidationRequest  `json:"consolidation_requests"`      // ConsolidationRequests included in this block
+	BuilderDepositRequests    []*SlotPageBuilderDepositRequest `json:"builder_deposit_requests"`    // Builder deposit requests processed by this block (Gloas)
+	BuilderExitRequests       []*SlotPageBuilderExitRequest    `json:"builder_exit_requests"`       // Builder exit requests processed by this block (Gloas)
+	Bids                      []*SlotPageBid                   `json:"bids"`                        // Execution payload bids for this block (ePBS)
+	PtcVotes                  *SlotPagePtcVotes                `json:"ptc_votes"`                   // PTC votes included in this block (for previous slot)
+	BuilderPayment            *SlotPageBuilderPayment          `json:"builder_payment"`             // Gloas builder-payment vote quorum for this slot
+	InclusionListsUnsatisfied int64                            `json:"inclusion_lists_unsatisfied"` // Transactions of the previous slot's inclusion lists this block's payload left unsatisfied (-1 = not evaluated)
 }
 
 type SlotPageExecutionData struct {
@@ -479,16 +481,6 @@ type SlotPagePtcAggregate struct {
 	Signature         []byte                 `json:"signature"`           // Aggregate signature
 	VoteCount         uint64                 `json:"vote_count"`          // Number of votes in this aggregate
 	VotePercent       float64                `json:"vote_percent"`        // Percentage of committee
-}
-
-// SlotPageInclusionList holds data for an inclusion list entry on the slot page.
-type SlotPageInclusionList struct {
-	Validator            types.NamedValidator   `json:"validator"`
-	DependentRoot        []byte                 `json:"dependent_root"`
-	Transactions         []*SlotPageTransaction `json:"transactions"`
-	TransactionsCount    uint64                 `json:"transactions_count"`
-	TransactionsIncluded []bool                 `json:"transactions_included"`
-	Signature            []byte                 `json:"signature"`
 }
 
 type SlotPageExecutionProof struct {

@@ -122,8 +122,8 @@ type BlockDbStoredData struct {
 	EngineBlockCount     uint64
 	CanonicalDutiesCount uint64
 	DivergingDutiesCount uint64
-	BidsCount            uint64
-	BidsSize             uint64
+	SlotMetaCount        uint64
+	SlotMetaSize         uint64
 }
 
 // PebbleDebugData holds pebble-specific metrics.
@@ -450,17 +450,17 @@ func buildBlockDbStoredData() *BlockDbStoredData {
 	}
 
 	// Overlay engine-scanned object counts when available (Pebble / tiered hot
-	// tier). These include orphaned blocks, diverging duties and bids objects.
+	// tier). These include orphaned blocks, diverging duties and meta objects.
 	if blockdb.GlobalBlockDb != nil {
 		if objStats, serr := blockdb.GlobalBlockDb.GetObjectStats(context.Background()); serr == nil && objStats != nil {
 			data.HasEngineStats = true
 			data.EngineBlockCount = objStats.BlockCount
 			data.CanonicalDutiesCount = objStats.CanonicalDutiesCount
 			data.DivergingDutiesCount = objStats.DivergingDutiesCount
-			data.BidsCount = objStats.BidsCount
-			data.BidsSize = objStats.BidsBytes
-			data.TotalCount += int64(objStats.BidsCount)
-			data.TotalSize += int64(objStats.BidsBytes)
+			data.SlotMetaCount = objStats.MetaCount
+			data.SlotMetaSize = objStats.MetaBytes
+			data.TotalCount += int64(objStats.MetaCount)
+			data.TotalSize += int64(objStats.MetaBytes)
 		}
 	}
 

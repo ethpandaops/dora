@@ -1466,6 +1466,8 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 					blockRootsIdx = append(blockRootsIdx, resIdx)
 					blockRootsCachedId = append(blockRootsCachedId, cachedStart+uint64(cidx))
 				}
+			} else {
+				assignedBlock.IlCount = bs.beaconIndexer.GetInclusionListCount(phase0.Slot(block.slot))
 			}
 			resBlocks = append(resBlocks, &assignedBlock)
 			resIdx++

@@ -73,21 +73,21 @@ type ClassifiedBlockBid struct {
 
 // GetSlotBidSeen returns which clients observed each execution payload bid of
 // the given slot on gossip, merging live cache observations with the persisted
-// blockdb bids object (recent slots live in the cache; flushed slots only in
+// blockdb meta object (recent slots live in the cache; flushed slots only in
 // the blockdb). Returns nil if no observation data is available.
-func (bs *ChainService) GetSlotBidSeen(ctx context.Context, slot phase0.Slot) *btypes.SlotBids {
+func (bs *ChainService) GetSlotBidSeen(ctx context.Context, slot phase0.Slot) *btypes.SlotMeta {
 	cached := bs.beaconIndexer.GetSlotBidsWithSeen(slot)
 
-	var stored *btypes.SlotBids
-	if blockdb.GlobalBlockDb.SupportsSlotBids() {
+	var stored *btypes.SlotMeta
+	if blockdb.GlobalBlockDb.SupportsSlotMeta() {
 		var err error
-		stored, err = blockdb.GlobalBlockDb.GetSlotBids(ctx, uint64(slot))
+		stored, err = blockdb.GlobalBlockDb.GetSlotMeta(ctx, uint64(slot), btypes.SlotMetaFlagBids)
 		if err != nil {
-			bs.logger.Warnf("error loading bids object for slot %d: %v", slot, err)
+			bs.logger.Warnf("error loading meta object for slot %d: %v", slot, err)
 		}
 	}
 
-	return btypes.MergeSlotBids(stored, cached)
+	return btypes.MergeSlotMeta(stored, cached)
 }
 
 // GetSlotBidsClassified returns all execution payload bids for the given slot (regardless
