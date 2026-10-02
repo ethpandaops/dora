@@ -18,7 +18,6 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/statecache"
 	"github.com/ethpandaops/dora/utils"
-	"github.com/ethpandaops/ethwallclock"
 )
 
 const EtherGweiFactor = 1_000_000_000
@@ -67,7 +66,7 @@ type Indexer struct {
 	lastPruneRunEpoch     phase0.Epoch
 	lastPrecalcRunEpoch   phase0.Epoch
 	finalitySubscription  *utils.Subscription[*v1.Finality]
-	wallclockSubscription *utils.Subscription[*ethwallclock.Slot]
+	wallclockSubscription *utils.Subscription[phase0.Slot]
 
 	// dispatchers
 	blockDispatcher *utils.Dispatcher[*Block]
@@ -526,15 +525,9 @@ func (indexer *Indexer) runIndexerLoop() {
 
 			indexer.lastPruneRunEpoch = chainState.CurrentEpoch()
 
-		case slotEvent := <-indexer.wallclockSubscription.Channel():
-			genesis := chainState.GetGenesis()
-			if time.Since(genesis.GenesisTime) < 0 {
-				// genesis time is in the future, skip
-				continue
-			}
-
-			epoch := chainState.EpochOfSlot(phase0.Slot(slotEvent.Number()))
-			slotIndex := chainState.SlotToSlotIndex(phase0.Slot(slotEvent.Number()))
+		case currentSlot := <-indexer.wallclockSubscription.Channel():
+			epoch := chainState.EpochOfSlot(currentSlot)
+			slotIndex := chainState.SlotToSlotIndex(currentSlot)
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))
 
 			// flush old block bids if needed

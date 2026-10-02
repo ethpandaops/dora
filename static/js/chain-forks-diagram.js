@@ -281,11 +281,13 @@ function isAtHead() {
         return !urlParams.has('start') || urlParams.get('start') === '';
     }
     
-    // Calculate current slot based on time
+    // Calculate current slot based on time. Slot durations may change over
+    // time (EIP-8198), so extrapolate from the backend's current slot at page
+    // load with the current slot duration instead of from genesis.
     const nowMs = Date.now();
-    const genesisTimeMs = staticData.specs.genesis_time * 1000;
+    const loadTimeMs = staticData.loadTimeMs || (staticData.loadTimeMs = nowMs);
     const slotDurationMs = staticData.specs.slot_duration_ms;
-    const calculatedCurrentSlot = Math.floor((nowMs - genesisTimeMs) / slotDurationMs);
+    const calculatedCurrentSlot = (staticData.specs.current_slot || 0) + Math.floor((nowMs - loadTimeMs) / slotDurationMs);
     
     // Use the more recent of calculated vs backend-provided current slot
     const currentSlot = Math.max(calculatedCurrentSlot, staticData.specs.current_slot || 0);

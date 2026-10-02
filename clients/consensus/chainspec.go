@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/version"
 	"gopkg.in/Knetic/govaluate.v3"
 	"gopkg.in/yaml.v2"
 )
@@ -17,6 +18,13 @@ type ForkVersion struct {
 	Epoch           uint64
 	CurrentVersion  []byte
 	PreviousVersion []byte
+}
+
+// SlotDurationScheduleEntry is one entry of the EIP-8198 SLOT_DURATION_SCHEDULE:
+// slots from Epoch on last SlotDurationMs milliseconds.
+type SlotDurationScheduleEntry struct {
+	Epoch          uint64 `yaml:"EPOCH"`
+	SlotDurationMs uint64 `yaml:"SLOT_DURATION_MS"`
 }
 
 type BlobScheduleEntry struct {
@@ -53,10 +61,12 @@ type ChainSpecConfig struct {
 	ElectraForkEpoch     *uint64        `yaml:"ELECTRA_FORK_EPOCH"     check-if-fork:"ElectraForkEpoch"`
 	FuluForkVersion      phase0.Version `yaml:"FULU_FORK_VERSION"      check-if-fork:"FuluForkEpoch"`
 	FuluForkEpoch        *uint64        `yaml:"FULU_FORK_EPOCH"        check-if-fork:"FuluForkEpoch"`
-	GloasForkVersion     phase0.Version `yaml:"GLOAS_FORK_VERSION"   check-if-fork:"GloasForkEpoch"`
-	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"     check-if-fork:"GloasForkEpoch"`
-	HezeForkVersion      phase0.Version `yaml:"HEZE_FORK_VERSION"    check-if-fork:"HezeForkEpoch"`
-	HezeForkEpoch        *uint64        `yaml:"HEZE_FORK_EPOCH"      check-if-fork:"HezeForkEpoch"`
+	GloasForkVersion     phase0.Version `yaml:"GLOAS_FORK_VERSION"     check-if-fork:"GloasForkEpoch"`
+	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"       check-if-fork:"GloasForkEpoch"`
+	HezeForkVersion      phase0.Version `yaml:"HEZE_FORK_VERSION"      check-if-fork:"HezeForkEpoch"`
+	HezeForkEpoch        *uint64        `yaml:"HEZE_FORK_EPOCH"        check-if-fork:"HezeForkEpoch"`
+	Eip8198ForkVersion   phase0.Version `yaml:"EIP8198_FORK_VERSION"   check-if-fork:"Eip8198ForkEpoch"`
+	Eip8198ForkEpoch     *uint64        `yaml:"EIP8198_FORK_EPOCH"     check-if-fork:"Eip8198ForkEpoch"`
 
 	// Time parameters
 	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`
@@ -143,6 +153,9 @@ type ChainSpecConfig struct {
 
 	// Heze
 	InclusionListDueBPS uint64 `yaml:"INCLUSION_LIST_DUE_BPS" check-if-fork:"HezeForkEpoch"`
+
+	// EIP-8198
+	SlotDurationSchedule []SlotDurationScheduleEntry `yaml:"SLOT_DURATION_SCHEDULE" check-if-fork:"Eip8198ForkEpoch"`
 }
 
 type ChainSpecPreset struct {
@@ -275,6 +288,10 @@ var byteType = reflect.TypeOf(byte(0))
 var specExpressionCache = map[string]*govaluate.EvaluableExpression{}
 var specExpressionCacheMutex sync.Mutex
 
+func init() {
+	version.AddDataVersionAlias("eip8198", version.DataVersionHeze)
+}
+
 func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 	valuesYaml, err := yaml.Marshal(values)
 	if err != nil {
@@ -396,6 +413,34 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]SpecMismatch, error)
 				// compare each entry
 				for i := range blobScheduleA {
 					if len(blobScheduleB) > i && blobScheduleA[i] != blobScheduleB[i] {
+						mismatches = append(mismatches, SpecMismatch{
+							Name:     fmt.Sprintf("%s[%d]", fieldT.Name, i),
+							Severity: checkSeverity,
+						})
+						break
+					}
+				}
+			} else if fieldV.Type().Kind() == reflect.Slice && fieldV.Type().Elem() == reflect.TypeOf(SlotDurationScheduleEntry{}) {
+				// compare slot duration schedule entries
+				slotScheduleA := fieldV.Interface().([]SlotDurationScheduleEntry)
+				slotScheduleB := field2V.Interface().([]SlotDurationScheduleEntry)
+
+				// sort both by epoch
+				sort.Slice(slotScheduleA, func(i, j int) bool {
+					return slotScheduleA[i].Epoch < slotScheduleA[j].Epoch
+				})
+				sort.Slice(slotScheduleB, func(i, j int) bool {
+					return slotScheduleB[i].Epoch < slotScheduleB[j].Epoch
+				})
+
+				if len(slotScheduleA) == 0 {
+					// empty schedule on chain side is allowed
+					continue
+				}
+
+				// compare each entry, a missing or extra entry is a mismatch too
+				for i := range max(len(slotScheduleA), len(slotScheduleB)) {
+					if i >= len(slotScheduleA) || i >= len(slotScheduleB) || slotScheduleA[i] != slotScheduleB[i] {
 						mismatches = append(mismatches, SpecMismatch{
 							Name:     fmt.Sprintf("%s[%d]", fieldT.Name, i),
 							Severity: checkSeverity,

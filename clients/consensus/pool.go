@@ -7,8 +7,8 @@ import (
 	"math/rand/v2"
 
 	"github.com/ethpandaops/dora/utils"
-	"github.com/ethpandaops/ethwallclock"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,12 +33,12 @@ func (pool *Pool) SubscribeFinalizedEvent(capacity int) *utils.Subscription[*v1.
 	return pool.chainState.checkpointDispatcher.Subscribe(capacity, false)
 }
 
-func (pool *Pool) SubscribeWallclockEpochEvent(capacity int) *utils.Subscription[*ethwallclock.Epoch] {
-	return pool.chainState.wallclockEpochDispatcher.Subscribe(capacity, false)
+func (pool *Pool) SubscribeWallclockEpochEvent(capacity int) *utils.Subscription[phase0.Epoch] {
+	return pool.chainState.EpochDispatcher.Subscribe(capacity, false)
 }
 
-func (pool *Pool) SubscribeWallclockSlotEvent(capacity int) *utils.Subscription[*ethwallclock.Slot] {
-	return pool.chainState.wallclockSlotDispatcher.Subscribe(capacity, false)
+func (pool *Pool) SubscribeWallclockSlotEvent(capacity int) *utils.Subscription[phase0.Slot] {
+	return pool.chainState.SlotDispatcher.Subscribe(capacity, false)
 }
 
 func (pool *Pool) GetChainState() *ChainState {

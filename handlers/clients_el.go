@@ -224,8 +224,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		return enrValues
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
-	cacheTime := time.Duration(specs.SlotDurationMs) * time.Millisecond
+	cacheTime := chainState.GetCurrentSlotDuration()
 
 	aliases := map[string]string{}
 	for idx, client := range services.GlobalBeaconService.GetExecutionClients() {

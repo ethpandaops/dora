@@ -125,8 +125,8 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		DepositContract:       common.Address(specs.DepositContractAddress).String(),
 		ShowSyncingMessage:    !isSynced,
 		SlotsPerEpoch:         specs.SlotsPerEpoch,
-		SlotDurationMs:        specs.SlotDurationMs,
-		EpochDurationMs:       specs.SlotDurationMs * specs.SlotsPerEpoch,
+		SlotDurationMs:        uint64(chainState.GetCurrentSlotDuration().Milliseconds()),
+		EpochDurationMs:       uint64(chainState.GetCurrentSlotDuration().Milliseconds()) * specs.SlotsPerEpoch,
 		CurrentEpoch:          uint64(currentEpoch),
 		CurrentFinalizedEpoch: int64(finalizedEpoch),
 		CurrentJustifiedEpoch: int64(justifiedEpoch),
@@ -311,6 +311,20 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 			Version:    specs.HezeForkVersion[:],
 			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.HezeForkEpoch)).Unix()),
 			Active:     uint64(currentEpoch) >= *specs.HezeForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
+		})
+	}
+
+	if specs.Eip8198ForkEpoch != nil && *specs.Eip8198ForkEpoch < uint64(18446744073709551615) {
+		blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*specs.Eip8198ForkEpoch))
+		forkDigest := chainState.GetForkDigest(specs.Eip8198ForkVersion, blobParams)
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:       "EIP-8198",
+			Epoch:      *specs.Eip8198ForkEpoch,
+			Version:    specs.Eip8198ForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.Eip8198ForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.Eip8198ForkEpoch,
 			Type:       "consensus",
 			ForkDigest: forkDigest[:],
 		})
