@@ -560,9 +560,122 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 	return validatorData
 }
 
-// GetInclusionListsBySlot returns the cached inclusion lists for a given slot.
-func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedInclusionList {
-	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
+// GetInclusionListsBySlot returns the cached inclusion lists published in the
+// given slot with the time they were first seen.
+func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*InclusionListObservation {
+	return indexer.inclusionListCache.getInclusionLists(slot)
+}
+
+// GetInclusionListCount returns the number of inclusion lists published in
+// the given slot.
+func (indexer *Indexer) GetInclusionListCount(slot phase0.Slot) int16 {
+	return indexer.inclusionListCache.getListCount(slot)
+}
+
+// GetInclusionListSlots returns the slots the inclusion list cache holds lists for.
+func (indexer *Indexer) GetInclusionListSlots() []phase0.Slot {
+	return indexer.inclusionListCache.getSlots()
+}
+
+// GetSlotInclusionLists assembles the cached inclusion lists published in the
+// given slot with their committee, observations and evaluations as a bids
+// object without bids. Returns nil if the cache holds no lists for the slot.
+func (indexer *Indexer) GetSlotInclusionLists(slot phase0.Slot) *btypes.SlotMeta {
+	return indexer.inclusionListCache.getSlotObject(slot)
+}
+
+// GetInclusionListEvaluation returns the cached evaluation of the inclusion
+// lists of the given slot against a block of the following slot, or nil.
+func (indexer *Indexer) GetInclusionListEvaluation(slot phase0.Slot, blockRoot phase0.Root) *btypes.SlotInclusionListEval {
+	return indexer.inclusionListCache.getEvaluation(slot, blockRoot)
+}
+
+// SetInclusionListEvaluation stores the evaluation of the inclusion lists of
+// the given slot against one block of the following slot. The fragment must
+// hold exactly one evaluation with its own transaction and list tables.
+func (indexer *Indexer) SetInclusionListEvaluation(slot phase0.Slot, fragment *btypes.SlotInclusionLists) {
+	indexer.inclusionListCache.setEvaluation(slot, fragment)
+}
+
+// GetInclusionListCommittee returns the inclusion list committee of the given
+// slot on the canonical chain, or nil if its duties are not available.
+func (indexer *Indexer) GetInclusionListCommittee(slot phase0.Slot) *btypes.SlotInclusionListCommittee {
+	return indexer.getInclusionListCommittee(slot)
+}
+
+// getInclusionListCommittee computes the inclusion list committee of the given
+// slot on the canonical chain: the first INCLUSION_LIST_COMMITTEE_SIZE members
+// of the slot's concatenated beacon committees.
+func (indexer *Indexer) getInclusionListCommittee(slot phase0.Slot) *btypes.SlotInclusionListCommittee {
+	chainState := indexer.consensusPool.GetChainState()
+	specs := chainState.GetSpecs()
+	if specs == nil || specs.InclusionListCommitteeSize == 0 {
+		return nil
+	}
+
+	epoch := chainState.EpochOfSlot(slot)
+	slotIndex := int(chainState.SlotToSlotIndex(slot))
+
+	values := indexer.GetEpochStats(epoch, nil).GetOrLoadValues(indexer.ctx, indexer, true, false)
+	if values == nil || slotIndex >= len(values.AttesterDuties) {
+		return nil
+	}
+
+	members := make([]uint64, 0, 256)
+	for _, committee := range values.AttesterDuties[slotIndex] {
+		for _, activeIdx := range committee {
+			if int(activeIdx) < len(values.ActiveIndices) {
+				members = append(members, uint64(values.ActiveIndices[activeIdx]))
+			}
+		}
+	}
+	if len(members) == 0 {
+		return nil
+	}
+
+	committee := &btypes.SlotInclusionListCommittee{
+		Members: make([]uint64, 0, specs.InclusionListCommitteeSize),
+	}
+	for i := range specs.InclusionListCommitteeSize {
+		committee.Members = append(committee.Members, members[int(i)%len(members)])
+	}
+
+	if head := indexer.GetCanonicalHead(nil); head != nil {
+		if root, ok := indexer.GetShufflingDependentRoot(head, epoch); ok {
+			committee.DependentRoot = root
+		}
+	}
+
+	return committee
+}
+
+// GetShufflingDependentRoot returns the root that fixes the committee
+// shuffling of the given epoch on the chain of the given block: the latest
+// block at or before the last slot of the epoch two epochs earlier. Returns
+// false if it cannot be resolved.
+func (indexer *Indexer) GetShufflingDependentRoot(block *Block, epoch phase0.Epoch) (phase0.Root, bool) {
+	chainState := indexer.consensusPool.GetChainState()
+
+	var dependentSlot phase0.Slot
+	if epoch > 0 {
+		if lookaheadStart := chainState.EpochToSlot(epoch - 1); lookaheadStart > 0 {
+			dependentSlot = lookaheadStart - 1
+		}
+	}
+
+	// The dependent block of a block is the last block before its epoch, so
+	// at most two hops lead to the shuffling dependent block.
+	for range 3 {
+		if block == nil {
+			return phase0.Root{}, false
+		}
+		if block.Slot <= dependentSlot {
+			return block.Root, true
+		}
+		block = indexer.blockCache.getDependentBlock(chainState, block, nil)
+	}
+
+	return phase0.Root{}, false
 }
 
 // GetBlockBidsForSlot returns all execution payload bids for a slot regardless of their
@@ -611,8 +724,8 @@ func (indexer *Indexer) GetCachedBidsByBuilderIndex(builderIndex int64, minSlot 
 // GetSlotBidsWithSeen returns the slot's bids with their per-client gossip
 // observations from the bid cache. Returns nil if the cache holds no bids for
 // the slot (flushed or never seen).
-func (indexer *Indexer) GetSlotBidsWithSeen(slot phase0.Slot) *btypes.SlotBids {
-	return indexer.blockBidCache.GetSlotBids(slot)
+func (indexer *Indexer) GetSlotBidsWithSeen(slot phase0.Slot) *btypes.SlotMeta {
+	return indexer.blockBidCache.GetSlotMeta(slot)
 }
 
 // StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.

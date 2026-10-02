@@ -1,79 +1,284 @@
 {{ define "block_inclusion_lists" }}
-  {{ range $i, $inclusionList := .Block.InclusionLists }}
-    <div class="card my-2">
-      <div class="card-body px-0 py-1">
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-12 text-center"><b>Inclusion List {{ $i }}</b></div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="A validator who has submitted their inclusion list">Validator:</span></div>
-          <div class="col-md-10">
-            {{ formatValidatorWithIndex $inclusionList.Validator.Index $inclusionList.Validator.Name }}
-          </div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The shuffling dependent root of the block the inclusion list committee was computed from">Dependent Root:</span></div>
-          <div class="col-md-10 text-monospace text-break">
-            0x{{ printf "%x" $inclusionList.DependentRoot }}
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $inclusionList.DependentRoot }}"></i>
-          </div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2">Signature:</div>
-          <div class="col-md-10 text-monospace text-break">0x{{ printf "%x" $inclusionList.Signature }}</div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Amount of transactions included in this inclusion list">Transactions:</span></div>
-          <div class="col-md-10 text-monospace text-break"><b>{{ formatAddCommas $inclusionList.TransactionsCount }}</b></div>
-        </div>
-        {{ if gt $inclusionList.TransactionsCount 0 }}
-          <div class="table-responsive px-0">
-            <table class="table table-sm">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Hash</th>
-                  <th>Type</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Value</th>
-                  <th>Included</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{ range $j, $transaction := $inclusionList.Transactions }}
-                  <tr>
-                    <td>{{ $j }}</td>
-                    <td class="text-monospace text-truncate" style="max-width: 150px;">
-                      <span data-bs-toggle="tooltip" title="0x{{ printf "%x" $transaction.Hash }}">0x{{ printf "%x" $transaction.Hash }}</span>
-                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $transaction.Hash }}"></i>
-                    </td>
-                    <td><span class="badge rounded-pill text-bg-light">{{ $transaction.TypeName }}</span></td>
-                    <td class="text-monospace text-truncate" style="max-width: 120px;">
-                      {{ if $transaction.From }}
-                        <span data-bs-toggle="tooltip" title="0x{{ printf "%x" $transaction.From }}">0x{{ printf "%x" $transaction.From }}</span>
-                      {{ end }}
-                    </td>
-                    <td class="text-monospace text-truncate" style="max-width: 120px;">
-                      {{ if $transaction.To }}
-                        <span data-bs-toggle="tooltip" title="0x{{ printf "%x" $transaction.To }}">0x{{ printf "%x" $transaction.To }}</span>
-                      {{ end }}
-                    </td>
-                    <td>{{ $transaction.Value }} ETH</td>
-                    <td>
-                      {{ if index $inclusionList.TransactionsIncluded $j }}
-                        <span class="badge rounded-pill text-bg-success">Yes</span>
-                      {{ else }}
-                        <span class="badge rounded-pill text-bg-danger">No</span>
-                      {{ end }}
-                    </td>
-                  </tr>
-                {{ end }}
-              </tbody>
-            </table>
-          </div>
-        {{ end }}
+  <div id="inclusionListsContent" class="px-2 pb-2">
+    <div class="text-center py-4">
+      <div class="spinner-border spinner-border-sm text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
       </div>
+      <span class="ms-2 text-muted">Loading inclusion lists…</span>
     </div>
-  {{ end }}
+  </div>
+  <style>
+    .il-member {
+      border: 1px solid var(--bs-border-color);
+      border-radius: .375rem;
+      padding: .15rem .5rem;
+      font-size: .875rem;
+      white-space: nowrap;
+    }
+    .il-reason {
+      font-size: .8125rem;
+    }
+  </style>
+  <script type="text/javascript">
+    (function() {
+      var slot = {{ .Slot }};
+      var txLinkBase = {{ ethTransactionLinkBase }};
+      var container = document.getElementById('inclusionListsContent');
+      var loaded = false;
+      var view = null;
+      var targetIdx = 0;
+
+      var typeNames = {0: 'Legacy', 1: '2930', 2: '1559', 3: 'Blob', 4: '7702', 6: 'Frame'};
+      var groupClasses = {
+        included: 'text-bg-success',
+        not_enforced: 'text-bg-secondary',
+        omitted: 'text-bg-info',
+        unsatisfied: 'text-bg-danger',
+        unknown: 'text-bg-warning'
+      };
+      var memberIcons = {
+        submitted: ['fa-check text-success', 'Submitted a list in time'],
+        late: ['fa-clock text-warning', 'Submitted a list after the due time, it is not enforced'],
+        equivocated: ['fa-triangle-exclamation text-danger', 'Published conflicting lists, they are not enforced'],
+        missing: ['fa-times text-danger', 'No list seen']
+      };
+      var notEnforcedLabels = {
+        late: 'Late, not enforced',
+        equivocation: 'Equivocation, not enforced',
+        wrong_branch: 'Other branch, not enforced'
+      };
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function(c) {
+          return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+      }
+      function formatOffset(ms) {
+        var sign = ms < 0 ? '-' : '+';
+        var abs = Math.abs(ms);
+        if (abs >= 1000) return sign + (abs / 1000).toFixed(2) + 's';
+        return sign + abs + 'ms';
+      }
+      function shortHex(hex, chars) {
+        if (!hex || hex.length <= 2 + 2 * chars) return hex || '';
+        return hex.substring(0, 2 + chars) + '…' + hex.substring(hex.length - chars);
+      }
+      function formatEth(wei) {
+        if (!wei) return '0';
+        try {
+          var value = BigInt(wei);
+          var whole = value / 1000000000000000000n;
+          var frac = (value % 1000000000000000000n).toString().padStart(18, '0').substring(0, 6).replace(/0+$/, '');
+          return whole.toString() + (frac ? '.' + frac : '');
+        } catch (e) {
+          return wei;
+        }
+      }
+      function validatorLabel(index, name) {
+        var label = name ? escapeHtml(name) + ' (' + index + ')' : index;
+        return '<a href="/validator/' + index + '">' + label + '</a>';
+      }
+      function addressLink(address) {
+        if (!address) return '<span class="text-muted">-</span>';
+        return '<a href="/address/' + escapeHtml(address) + '" title="' + escapeHtml(address) + '">' + escapeHtml(shortHex(address, 8)) + '</a>';
+      }
+      function txLink(hash) {
+        var label = '<span title="' + escapeHtml(hash) + '">' + escapeHtml(shortHex(hash, 12)) + '</span>';
+        if (!txLinkBase) return label;
+        return '<a href="' + escapeHtml(txLinkBase + hash) + '">' + label + '</a>';
+      }
+
+      function renderCommittee(target) {
+        var members = view.committee || [];
+        if (members.length === 0) {
+          return '<div class="text-muted small px-1 pb-2">Inclusion list committee not available.</div>';
+        }
+
+        var submitted = members.filter(function(m) { return m.status !== 'missing'; }).length;
+        var html = '<div class="px-1 pb-2">';
+        html += '<div class="mb-1"><b>Committee</b> <span class="text-muted">' + submitted + ' of ' + members.length +
+          ' members submitted a list, due ' + (view.due_ms / 1000).toFixed(1) + 's into the slot</span></div>';
+        html += '<div class="d-flex flex-wrap gap-1">';
+        members.forEach(function(member, idx) {
+          var icon = memberIcons[member.status] || memberIcons.missing;
+          var title = icon[1];
+          html += '<div class="il-member" title="' + escapeHtml(title) + '">';
+          html += '<i class="fas ' + icon[0] + ' me-1"></i>' + validatorLabel(member.validator_index, member.validator_name);
+          if (member.first_seen !== undefined && member.first_seen !== null) {
+            html += ' <span class="text-muted small">' + formatOffset(member.first_seen) + '</span>';
+          }
+          if (target && target.bid_acknowledged && member.status !== 'missing' && !target.bid_acknowledged[idx]) {
+            html += ' <i class="fas fa-gavel text-warning" title="The execution payload bid of the block does not acknowledge a list of this member"></i>';
+          }
+          html += '</div>';
+        });
+        html += '</div></div>';
+        return html;
+      }
+
+      function renderTarget(target) {
+        var html = '<div class="border-top border-bottom px-1 py-2 mb-2">';
+
+        if (!target) {
+          if (view.target_state === 'pending') {
+            html += '<span class="text-muted">These lists constrain the execution payload of slot <a href="/slot/' + view.target_slot + '">' + view.target_slot + '</a>, which has not been proposed yet.</span>';
+          } else {
+            html += '<span class="text-muted">Slot <a href="/slot/' + view.target_slot + '">' + view.target_slot + '</a> has no block, so these lists are not enforced.</span>';
+          }
+          return html + '</div>';
+        }
+
+        html += '<div class="d-flex flex-wrap align-items-center gap-2">';
+        html += '<span>Constrains the execution payload of slot <a href="/slot/' + escapeHtml(target.block_root) + '">' + view.target_slot + '</a></span>';
+        if ((view.targets || []).length > 1) {
+          html += '<select class="form-select form-select-sm w-auto" id="inclusionListTarget">';
+          view.targets.forEach(function(t, idx) {
+            html += '<option value="' + idx + '"' + (idx === targetIdx ? ' selected' : '') + '>' + escapeHtml(shortHex(t.block_root, 8)) + ' (' + escapeHtml(t.status) + ')</option>';
+          });
+          html += '</select>';
+        }
+        if (target.status === 'orphaned') {
+          html += '<span class="badge text-bg-warning">Orphaned block</span>';
+        }
+        if (target.payload_status === 'canonical') {
+          html += '<span class="badge text-bg-success" title="The chain built on this execution payload">Payload extended</span>';
+        } else if (target.payload_status === 'orphaned') {
+          html += '<span class="badge text-bg-warning" title="The chain did not build on this execution payload">Payload not extended</span>';
+        } else {
+          html += '<span class="badge text-bg-secondary" title="The execution payload was never revealed">Payload missing</span>';
+        }
+        if (!target.evaluated) {
+          html += '<span class="badge text-bg-secondary">Not evaluated</span>';
+        } else if (target.unsatisfied > 0) {
+          html += '<span class="badge text-bg-danger">' + target.unsatisfied + ' unsatisfied</span>';
+        } else {
+          html += '<span class="badge text-bg-success">Lists satisfied</span>';
+        }
+        if (target.evaluated) {
+          html += '<span class="text-muted small">' + Number(target.gas_left).toLocaleString() + ' gas left, base fee ' + Number(target.base_fee).toLocaleString() + ' wei</span>';
+        }
+        html += '</div>';
+
+        // The chain shows how the network judged the payload: fork choice does
+        // not extend one that leaves the lists unsatisfied.
+        if (target.evaluated && target.unsatisfied > 0 && target.payload_status === 'canonical') {
+          html += '<div class="small text-warning mt-1"><i class="fas fa-triangle-exclamation me-1"></i>The chain built on this payload although transactions look unsatisfied here: either the lists were not enforced, or the nodes saw other lists than this explorer.</div>';
+        } else if (target.evaluated && target.unsatisfied === 0 && target.payload_status === 'orphaned') {
+          html += '<div class="small text-muted mt-1"><i class="fas fa-circle-info me-1"></i>The chain did not build on this payload, but not because of the lists seen here: it was left out for another reason, or the nodes saw other lists than this explorer.</div>';
+        }
+
+        return html + '</div>';
+      }
+
+      function renderList(list, listIdx, target) {
+        var clients = view.clients || [];
+        var seen = (list.seen || []).slice().sort(function(a, b) { return a.time - b.time; });
+        var seenTitle = seen.map(function(o) { return (clients[o.client] || ('client ' + o.client)) + ' ' + formatOffset(o.time); }).join('\n');
+
+        var html = '<div class="card my-2"><div class="card-body px-0 py-1">';
+        html += '<div class="d-flex flex-wrap align-items-center gap-2 border-bottom px-2 pb-1">';
+        html += '<b>List ' + listIdx + '</b><span>by ' + validatorLabel(list.validator_index, list.validator_name) + '</span>';
+        if (list.first_seen !== undefined && list.first_seen !== null) {
+          html += '<span class="text-muted small">first seen ' + formatOffset(list.first_seen) + '</span>';
+        }
+        if (clients.length > 0) {
+          html += '<span class="badge bg-secondary" title="' + escapeHtml(seenTitle) + '">seen by ' + seen.length + '/' + clients.length + '</span>';
+        }
+        if (target && target.lists && target.lists[listIdx]) {
+          html += '<span class="badge text-bg-warning">' + escapeHtml(notEnforcedLabels[target.lists[listIdx]] || target.lists[listIdx]) + '</span>';
+        }
+        html += '<span class="text-muted small ms-auto" title="' + escapeHtml(list.dependent_root) + '">dependent root ' + escapeHtml(shortHex(list.dependent_root, 8)) +
+          ' <i class="fa fa-copy p-1" role="button" data-clipboard-text="' + escapeHtml(list.dependent_root) + '"></i></span>';
+        html += '</div>';
+
+        var txs = list.transactions || [];
+        if (txs.length === 0) {
+          return html + '<div class="text-muted px-2 py-1">No transactions</div></div></div>';
+        }
+
+        html += '<div class="table-responsive px-0"><table class="table table-sm mb-0"><thead><tr>' +
+          '<th>#</th><th>Hash</th><th>Type</th><th>From</th><th>To</th><th>Value</th><th>Status</th><th>Reason</th>' +
+          '</tr></thead><tbody>';
+        txs.forEach(function(txIdx, i) {
+          var tx = (view.transactions || [])[txIdx] || {};
+          var outcome = target && target.transactions ? target.transactions[txIdx] : null;
+          html += '<tr><td>' + i + '</td>';
+          html += '<td class="text-monospace">' + txLink(tx.hash || '') + ' <i class="fa fa-copy text-muted p-1" role="button" data-clipboard-text="' + escapeHtml(tx.hash || '') + '"></i></td>';
+          if (tx.decoded) {
+            html += '<td><span class="badge rounded-pill text-bg-light">' + escapeHtml(typeNames[tx.type] || ('Type ' + tx.type)) + '</span></td>';
+            html += '<td class="text-monospace">' + addressLink(tx.from) + '</td>';
+            html += '<td class="text-monospace">' + (tx.to ? addressLink(tx.to) : '<span class="text-muted">-</span>') + '</td>';
+            html += '<td>' + escapeHtml(formatEth(tx.value)) + ' ETH</td>';
+          } else {
+            html += '<td colspan="4" class="text-muted">not decodable</td>';
+          }
+          if (outcome) {
+            html += '<td><span class="badge rounded-pill ' + (groupClasses[outcome.group] || 'text-bg-secondary') + '">' + escapeHtml(outcome.label) + '</span></td>';
+            html += '<td class="il-reason text-muted">' + escapeHtml(outcome.reason || '') + '</td>';
+          } else {
+            html += '<td><span class="badge rounded-pill text-bg-secondary">' + (view.target_state === 'pending' ? 'Pending' : 'Not enforced') + '</span></td><td></td>';
+          }
+          html += '</tr>';
+        });
+        html += '</tbody></table></div></div></div>';
+        return html;
+      }
+
+      function render() {
+        var target = (view.targets || [])[targetIdx] || null;
+        var lists = view.lists || [];
+
+        var html = renderCommittee(target);
+        if (lists.length === 0) {
+          html += '<div class="border-top px-1 py-2 text-muted">No inclusion lists seen for this slot.</div>';
+        } else {
+          html += renderTarget(target);
+          lists.forEach(function(list, idx) {
+            html += renderList(list, idx, target);
+          });
+        }
+        container.innerHTML = html;
+
+        var select = document.getElementById('inclusionListTarget');
+        if (select) {
+          select.addEventListener('change', function() {
+            targetIdx = parseInt(select.value, 10) || 0;
+            render();
+          });
+        }
+
+        var badge = document.getElementById('inclusionListsCount');
+        if (badge) badge.textContent = lists.length;
+      }
+
+      function load() {
+        if (loaded) return;
+        loaded = true;
+
+        fetch('/slot/' + slot + '/inclusionlists')
+          .then(function(r) {
+            if (!r.ok) throw new Error('request failed');
+            return r.json();
+          })
+          .then(function(data) {
+            view = data;
+            // Show the canonical block of the target slot first.
+            (view.targets || []).forEach(function(t, idx) {
+              if (t.status === 'canonical') targetIdx = idx;
+            });
+            render();
+          })
+          .catch(function() {
+            loaded = false;
+            container.innerHTML = '<div class="alert alert-danger m-2">Failed to load inclusion lists</div>';
+          });
+      }
+
+      var tab = document.getElementById('inclusionLists-tab');
+      if (tab) tab.addEventListener('shown.bs.tab', load);
+      if ((window.location.hash || window.__doraInitialHash || '') === '#inclusionLists') {
+        load();
+      }
+    })();
+  </script>
 {{ end }}

@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
@@ -298,8 +296,15 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	}
 
 	// Get all blocks for this slot (used for multi-block display and proposer fallback)
-	slotBlocks, slotBlockProposers := getSlotBlocks(ctx, slot, blockRoot, blockData)
+	slotBlocks, slotBlockProposers, inclusionListIndex := getSlotBlocks(ctx, slot, blockRoot, blockData)
 	pageData.SlotBlocks = slotBlocks
+
+	// The inclusion lists published in this slot are loaded lazily; only their
+	// count from the slots index is known here.
+	if chainState.IsEip7805Enabled(epoch) && !pageData.Future {
+		pageData.InclusionListsEnabled = true
+		pageData.InclusionListsCount = uint64(max(inclusionListIndex.count, 0))
+	}
 
 	if blockData == nil {
 		pageData.Status = uint16(models.SlotStatusMissed)
@@ -342,6 +347,9 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 			blockUid = dbBlock.BlockUid
 		}
 		pageData.Block = getSlotPageBlockData(ctx, blockData, epochStatsValues, blockUid)
+		if pageData.Block != nil && pageData.InclusionListsEnabled {
+			pageData.Block.InclusionListsUnsatisfied = int64(inclusionListIndex.unsatisfied)
+		}
 
 		// Expose block transactions to the access-list UI via a stable field.
 		if pageData.Block != nil && pageData.Block.Transactions != nil {
@@ -411,12 +419,24 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	return pageData, cacheTimeout
 }
 
+// slotInclusionListIndex holds the inclusion list values of the slots index
+// for a slot page.
+type slotInclusionListIndex struct {
+	// count is the number of inclusion lists published in the slot.
+	count int16
+	// unsatisfied is the number of transactions of the previous slot's lists
+	// that the displayed block left unsatisfied (-1 = not evaluated).
+	unsatisfied int16
+}
+
 // getSlotBlocks retrieves all blocks for a given slot and builds the SlotBlocks slice
 // for the multi-block display. Uses GetDbBlocksByFilter which handles both cache and database.
+// It also returns the slot's inclusion list index values, which are stored with the blocks.
 // Also returns a list of proposers from orphaned blocks (used as fallback when proposer is unknown).
-func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byte, currentBlockData *services.CombinedBlockResponse) ([]*models.SlotPageSlotBlock, []uint64) {
+func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byte, currentBlockData *services.CombinedBlockResponse) ([]*models.SlotPageSlotBlock, []uint64, slotInclusionListIndex) {
 	slotBlocks := make([]*models.SlotPageSlotBlock, 0)
 	orphanedProposers := make([]uint64, 0)
+	inclusionListIndex := slotInclusionListIndex{}
 	hasCanonicalOrMissed := false
 
 	// Get all blocks for the slot (from cache and database)
@@ -431,6 +451,9 @@ func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byt
 		if dbBlock.Block == nil {
 			// This is a missed slot row (canonical proposer info without a block)
 			hasCanonicalOrMissed = true
+			if dbBlock.IlCount > inclusionListIndex.count {
+				inclusionListIndex.count = dbBlock.IlCount
+			}
 			slotBlocks = append(slotBlocks, &models.SlotPageSlotBlock{
 				BlockRoot: nil, // nil indicates missed
 				Status:    uint16(models.SlotStatusMissed),
@@ -467,6 +490,13 @@ func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byt
 			Status:    status,
 			IsCurrent: isCurrent,
 		})
+
+		if dbBlock.Block.IlCount > inclusionListIndex.count {
+			inclusionListIndex.count = dbBlock.Block.IlCount
+		}
+		if isCurrent {
+			inclusionListIndex.unsatisfied = dbBlock.Block.IlUnsatisfied
+		}
 	}
 
 	// If no canonical or missed block was returned but there are orphaned blocks,
@@ -481,7 +511,7 @@ func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byt
 		slotBlocks = append([]*models.SlotPageSlotBlock{missedBlock}, slotBlocks...)
 	}
 
-	return slotBlocks, orphanedProposers
+	return slotBlocks, orphanedProposers, inclusionListIndex
 }
 
 func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues, blockUid uint64) *models.SlotPageBlockData {
@@ -1141,11 +1171,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		getSlotPagePtcVotes(pageData, blockData, blockData.Header.Message.Slot)
 	}
 
-	// Load inclusion lists for EIP-7805 (heze+) slots
-	if services.GlobalBeaconService.GetChainState().IsEip7805Enabled(epoch) {
-		getSlotPageInclusionLists(pageData, blockData.Header.Message.Slot)
-	}
-
 	return pageData
 }
 
@@ -1746,120 +1771,6 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 
 	pageData.PtcVotes = ptcVotes
 	pageData.PtcVotesCount = totalVotes
-}
-
-// getSlotPageInclusionLists fetches cached inclusion lists for the slot and decodes their transactions.
-func getSlotPageInclusionLists(pageData *models.SlotPageBlockData, slot phase0.Slot) {
-	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
-	inclusionLists := beaconIndexer.GetInclusionListsBySlot(slot)
-	if len(inclusionLists) == 0 {
-		return
-	}
-
-	// Build a set of block transaction hashes for inclusion checking
-	blockTxHashes := make(map[string]bool, len(pageData.Transactions))
-	for _, tx := range pageData.Transactions {
-		blockTxHashes[string(tx.Hash)] = true
-	}
-
-	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
-
-	pageData.InclusionLists = make([]*models.SlotPageInclusionList, 0, len(inclusionLists))
-	for _, il := range inclusionLists {
-		ilData := &models.SlotPageInclusionList{
-			Validator: types.NamedValidator{
-				Index: uint64(il.Message.ValidatorIndex),
-				Name:  services.GlobalBeaconService.GetValidatorNameAt(uint64(il.Message.ValidatorIndex), slot),
-			},
-			DependentRoot: il.Message.DependentRoot[:],
-			Signature:     il.Signature[:],
-		}
-
-		ilData.Transactions = decodeInclusionListTransactions(il, sysContracts)
-		ilData.TransactionsCount = uint64(len(ilData.Transactions))
-
-		// Check which IL transactions are included in the block
-		ilData.TransactionsIncluded = make([]bool, len(ilData.Transactions))
-		for i, tx := range ilData.Transactions {
-			ilData.TransactionsIncluded[i] = blockTxHashes[string(tx.Hash)]
-		}
-
-		pageData.InclusionLists = append(pageData.InclusionLists, ilData)
-	}
-
-	pageData.InclusionListsCount = uint64(len(pageData.InclusionLists))
-}
-
-// decodeInclusionListTransactions decodes the raw transactions from an inclusion list.
-func decodeInclusionListTransactions(il *v1.SignedInclusionList, sysContracts map[common.Address]string) []*models.SlotPageTransaction {
-	txList := make([]*models.SlotPageTransaction, 0, len(il.Message.Transactions))
-
-	for idx, txBytes := range il.Message.Transactions {
-		tx, err := txtypes.DecodeTx(txBytes)
-		if err != nil {
-			logrus.Warnf("error decoding inclusion list transaction %v.%v: %v", il.Message.ValidatorIndex, idx, err)
-			continue
-		}
-
-		txHash := tx.Hash()
-		txBigFloat := new(big.Float).SetInt(tx.Value())
-		txBigFloat.Quo(txBigFloat, new(big.Float).SetInt(utils.ETH))
-		txValue, _ := txBigFloat.Float64()
-
-		txType := uint8(tx.Type())
-		typeName := slotTxTypeNames[txType]
-		if typeName == "" {
-			typeName = fmt.Sprintf("Type %d", txType)
-		}
-
-		txData := &models.SlotPageTransaction{
-			Index:    uint64(idx),
-			Hash:     txHash[:],
-			Value:    txValue,
-			Data:     tx.Data(),
-			Type:     uint64(txType),
-			TypeName: typeName,
-			GasLimit: tx.Gas(),
-		}
-		txData.DataLen = uint64(len(txData.Data))
-
-		txFrom, err := tx.From(tx.ChainId())
-		if err == nil {
-			txData.From = txFrom.Bytes()
-		}
-		// A frame transaction addresses each of its frames separately, exactly as on the
-		// block's own transaction list: To() reports the first SENDER frame's target,
-		// which is not the recipient, and its absence is not a creation.
-		txTo := tx.To()
-
-		if frameTx, ok := tx.Inner().(*txtypes.FrameTx); ok {
-			txData.IsMultiTarget = true
-			txData.FrameCount = uint64(len(frameTx.Frames))
-			txTo = nil
-		} else if txTo != nil {
-			txData.To = txTo.Bytes()
-		}
-
-		// Check call fn signature
-		isCreate := txTo == nil && !txData.IsMultiTarget
-		if txData.DataLen >= 4 {
-			if skip, altName := utils.ShouldSkipSignatureLookup(txData.To, isCreate, sysContracts); skip {
-				txData.FuncSigStatus = 10
-				txData.FuncName = altName
-			} else {
-				txData.FuncBytes = fmt.Sprintf("0x%x", txData.Data[0:4])
-				txData.FuncName = txData.FuncBytes
-				txData.FuncSigStatus = 0
-			}
-		} else {
-			txData.FuncSigStatus = 10
-			txData.FuncName = "transfer"
-		}
-
-		txList = append(txList, txData)
-	}
-
-	return txList
 }
 
 // handleSlotParseAccessList accepts RLP-encoded BAL bytes and returns the

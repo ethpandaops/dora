@@ -260,10 +260,10 @@ func (c *CacheCleanup) runCleanup() {
 		c.cleanupSlotNamespace(KeyNamespaceExecData, execDataKeyLen, execEntityTailLen, &c.config.ExecDataRetention)
 	}
 
-	// Bids objects are never cached in tiered mode (reads go straight to S3),
+	// Slot meta objects are never cached in tiered mode (reads go straight to S3),
 	// so their retention only applies when Pebble is authoritative.
 	if !c.cacheMode {
-		c.cleanupSlotNamespace(KeyNamespaceBids, BidsKeyLen, bidsEntityTailLen, &c.config.BidsRetention)
+		c.cleanupSlotNamespace(KeyNamespaceMeta, MetaKeyLen, metaEntityTailLen, &c.config.BidsRetention)
 	}
 }
 

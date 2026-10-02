@@ -19,7 +19,7 @@ type BlockDb struct {
 	engine         types.BlockDbEngine
 	execEngine     types.ExecDataEngine // nil if engine doesn't support exec data
 	dutiesEngine   types.DutiesEngine   // nil if engine doesn't support duties storage
-	slotBidsEngine types.SlotBidsEngine // nil if engine doesn't support per-slot bids storage
+	slotMetaEngine types.SlotMetaEngine // nil if engine doesn't support per-slot meta storage
 
 	txHashIndex       types.TxHashIndex // nil until detected natively or injected
 	txHashIndexNative bool              // true if provided by the engine (write post-commit), false if a relational adapter (write in-tx)
@@ -73,8 +73,8 @@ func InitWithPebble(config dtypes.PebbleBlockDBConfig, logger logrus.FieldLogger
 	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
 		db.dutiesEngine = dutiesEngine
 	}
-	if slotBidsEngine, ok := engine.(types.SlotBidsEngine); ok {
-		db.slotBidsEngine = slotBidsEngine
+	if slotMetaEngine, ok := engine.(types.SlotMetaEngine); ok {
+		db.slotMetaEngine = slotMetaEngine
 	}
 	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
 		db.txHashIndex = txHashIndex
@@ -113,8 +113,8 @@ func InitWithS3(config dtypes.S3BlockDBConfig) error {
 	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
 		db.dutiesEngine = dutiesEngine
 	}
-	if slotBidsEngine, ok := engine.(types.SlotBidsEngine); ok {
-		db.slotBidsEngine = slotBidsEngine
+	if slotMetaEngine, ok := engine.(types.SlotMetaEngine); ok {
+		db.slotMetaEngine = slotMetaEngine
 	}
 	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
 		db.txHashIndex = txHashIndex
@@ -145,8 +145,8 @@ func InitWithTiered(pebbleConfig dtypes.PebbleBlockDBConfig, s3Config dtypes.S3B
 	if dutiesEngine, ok := engine.(types.DutiesEngine); ok {
 		db.dutiesEngine = dutiesEngine
 	}
-	if slotBidsEngine, ok := engine.(types.SlotBidsEngine); ok {
-		db.slotBidsEngine = slotBidsEngine
+	if slotMetaEngine, ok := engine.(types.SlotMetaEngine); ok {
+		db.slotMetaEngine = slotMetaEngine
 	}
 	if txHashIndex, ok := engine.(types.TxHashIndex); ok {
 		db.txHashIndex = txHashIndex
@@ -453,31 +453,33 @@ func (db *BlockDb) GetObjectStats(ctx context.Context) (*types.BlockDbObjectStat
 	return nil, nil
 }
 
-// SupportsSlotBids returns true if the underlying engine supports per-slot bids storage.
-func (db *BlockDb) SupportsSlotBids() bool {
-	return db != nil && db.slotBidsEngine != nil
+// SupportsSlotMeta returns true if the underlying engine supports per-slot meta storage.
+func (db *BlockDb) SupportsSlotMeta() bool {
+	return db != nil && db.slotMetaEngine != nil
 }
 
-// AddSlotBids stores the per-slot bids object. Returns stored size.
-func (db *BlockDb) AddSlotBids(ctx context.Context, bids *types.SlotBids) (int64, error) {
-	if db.slotBidsEngine == nil {
-		return 0, fmt.Errorf("per-slot bids storage not supported by engine")
+// AddSlotMeta stores the per-slot meta object. Returns stored size.
+func (db *BlockDb) AddSlotMeta(ctx context.Context, meta *types.SlotMeta) (int64, error) {
+	if db.slotMetaEngine == nil {
+		return 0, fmt.Errorf("per-slot meta storage not supported by engine")
 	}
-	return db.slotBidsEngine.AddSlotBids(ctx, bids)
+	return db.slotMetaEngine.AddSlotMeta(ctx, meta)
 }
 
-// GetSlotBids retrieves the bids object for a slot (nil if not found).
-func (db *BlockDb) GetSlotBids(ctx context.Context, slot uint64) (*types.SlotBids, error) {
-	if db.slotBidsEngine == nil {
+// GetSlotMeta retrieves the parts of the meta object for a slot selected by
+// flags (nil if not found). An object that is written back must be loaded
+// with types.SlotMetaFlagAll.
+func (db *BlockDb) GetSlotMeta(ctx context.Context, slot uint64, flags types.SlotMetaFlags) (*types.SlotMeta, error) {
+	if db.slotMetaEngine == nil {
 		return nil, nil
 	}
-	return db.slotBidsEngine.GetSlotBids(ctx, slot)
+	return db.slotMetaEngine.GetSlotMeta(ctx, slot, flags)
 }
 
-// PruneSlotBidsBefore deletes bids objects for all slots before maxSlot.
-func (db *BlockDb) PruneSlotBidsBefore(ctx context.Context, maxSlot uint64) (int64, error) {
-	if db.slotBidsEngine == nil {
+// PruneSlotMetaBefore deletes meta objects for all slots before maxSlot.
+func (db *BlockDb) PruneSlotMetaBefore(ctx context.Context, maxSlot uint64) (int64, error) {
+	if db.slotMetaEngine == nil {
 		return 0, nil
 	}
-	return db.slotBidsEngine.PruneSlotBidsBefore(ctx, maxSlot)
+	return db.slotMetaEngine.PruneSlotMetaBefore(ctx, maxSlot)
 }
