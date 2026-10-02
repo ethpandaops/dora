@@ -242,8 +242,8 @@ func buildNetworkOverviewData(ctx context.Context) (*APINetworkOverviewData, tim
 		CurrentEpoch:         uint64(currentEpoch),
 		CurrentEpochProgress: float64(100) * float64(currentSlotIndex) / float64(specs.SlotsPerEpoch),
 		SlotsPerEpoch:        specs.SlotsPerEpoch,
-		SlotDurationMs:       specs.SlotDurationMs,
-		EpochDurationMs:      specs.SlotDurationMs * specs.SlotsPerEpoch,
+		SlotDurationMs:       uint64(chainState.GetCurrentSlotDuration().Milliseconds()),
+		EpochDurationMs:      uint64(chainState.GetCurrentSlotDuration().Milliseconds()) * specs.SlotsPerEpoch,
 	}
 
 	// Checkpoints
@@ -384,7 +384,7 @@ func buildNetworkOverviewData(ctx context.Context) (*APINetworkOverviewData, tim
 		},
 	}
 
-	cacheTimeout := time.Duration(specs.SlotDurationMs) * time.Millisecond
+	cacheTimeout := chainState.GetCurrentSlotDuration()
 	return data, cacheTimeout
 }
 

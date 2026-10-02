@@ -79,9 +79,6 @@ func (client *Client) checkClient() error {
 		return err
 	}
 
-	// init wallclock
-	client.pool.chainState.initWallclock()
-
 	// set metadata refresh epoch
 	client.lastMetadataUpdateEpoch = client.pool.chainState.CurrentEpoch()
 

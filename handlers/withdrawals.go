@@ -92,10 +92,10 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 
 	// Compute total amount withdrawn in last 24h
 	currentSlot := chainState.CurrentSlot()
-	slotsPerDay := uint64(86400000 / chainState.GetSpecs().SlotDurationMs)
+	// EIP-8198: slot durations vary, so resolve the 24h window by time.
 	minSlot24h := uint64(0)
-	if uint64(currentSlot) > slotsPerDay {
-		minSlot24h = uint64(currentSlot) - slotsPerDay
+	if dayAgo := time.Now().Add(-24 * time.Hour); dayAgo.After(chainState.GetGenesis().GenesisTime) {
+		minSlot24h = uint64(chainState.TimeToSlot(dayAgo))
 	}
 	minBlockUid24h := minSlot24h << 16
 	maxBlockUid24h := (uint64(currentSlot) + 1) << 16
