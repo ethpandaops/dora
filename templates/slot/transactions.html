@@ -9,7 +9,7 @@
           <th>To</th>
           <th>Method</th>
           <th>Value</th>
-          {{ if and (gt (len .Block.Transactions) 0) (index .Block.Transactions 0).HasElData }}
+          {{ if .Block.TransactionsIndexed }}
           <th>Status</th>
           <th>Gas Used</th>
           <th>Fee</th>
@@ -72,6 +72,12 @@
                 {{ formatTransactionFee $transaction.TxFee }}
               </span>
             </td>
+            {{ else if $.Block.TransactionsIndexed }}
+            <td>
+              <span class="badge text-bg-secondary" style="font-size: 11px;" data-bs-toggle="tooltip" title="No execution data is indexed for this transaction"><i class="fas fa-question me-1"></i>Unindexed</span>
+            </td>
+            <td><span class="text-muted">-</span></td>
+            <td><span class="text-muted">-</span></td>
             {{ else }}
             <td>
               {{ if gt $transaction.DataLen 0 }}

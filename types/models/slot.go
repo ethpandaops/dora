@@ -83,6 +83,7 @@ type SlotPageBlockData struct {
 	BlobsCount                  uint64                  `json:"blobs_count"`
 	ExecutionProofsCount        uint64                  `json:"execution_proofs_count"`
 	TransactionsCount           uint64                  `json:"transactions_count"`
+	TransactionsIndexed         bool                    `json:"transactions_indexed"` // At least one transaction has indexed execution data; the transaction list then shows the execution columns for every row
 	DepositRequestsCount        uint64                  `json:"deposit_receipts_count"`
 	WithdrawalRequestsCount     uint64                  `json:"withdrawal_requests_count"`
 	ConsolidationRequestsCount  uint64                  `json:"consolidation_requests_count"`

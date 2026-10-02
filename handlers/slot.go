@@ -1299,6 +1299,7 @@ func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlock
 				}
 
 				txData.HasElData = true
+				pageData.TransactionsIndexed = true
 				txData.Reverted = elTx.RevertID > 0
 				if elTx.RevertID > 0 {
 					revertIDMap[elTx.RevertID] = append(revertIDMap[elTx.RevertID], txData)
