@@ -475,6 +475,15 @@ func (t *TxIndexer) fetchBlockReceipts(
 		return nil, fmt.Errorf("unmarshal block receipts: %w", err)
 	}
 
+	// A client that does not know the block may answer with the receipts of
+	// the canonical block at the same height. Those belong to other
+	// transactions, apart from the ones both blocks happen to share.
+	for _, receipt := range receipts {
+		if receipt.BlockHash != (common.Hash{}) && receipt.BlockHash != blockHash {
+			return nil, fmt.Errorf("block receipts are for block %s, not %s", receipt.BlockHash.Hex(), blockHash.Hex())
+		}
+	}
+
 	return receipts, nil
 }
 

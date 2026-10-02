@@ -228,3 +228,25 @@ func TestEvaluation(t *testing.T) {
 	_, err = btypes.EncodeSlotMeta(meta)
 	require.NoError(t, err)
 }
+
+func TestPayloadStateProbe(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	otherKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	first := testTx(t, otherKey, 3, 21000, 100, 0)
+	last := testTx(t, key, 41, 21000, 100, 0)
+
+	// The probe is the sender of the last decodable transaction, with the
+	// nonce the account has after it.
+	probe := payloadStateProbe([]bellatrix.Transaction{first, last, {0x02, 0xff}})
+	require.NotNil(t, probe)
+	assert.Equal(t, sender, probe.address)
+	assert.Equal(t, uint64(42), probe.nonce)
+
+	assert.Nil(t, payloadStateProbe(nil))
+	assert.Nil(t, payloadStateProbe([]bellatrix.Transaction{{0x02, 0xff}}))
+}

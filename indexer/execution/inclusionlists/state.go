@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/spamoor/txtypes"
 
 	"github.com/ethpandaops/dora/clients/execution"
@@ -91,12 +92,44 @@ func (r *Resolver) isMulticallReady(ctx context.Context, client *execution.Clien
 	return r.multicallReady
 }
 
+// stateProbe is an account whose nonce at the post-state of a payload is known
+// from the payload itself. Not every client answers a state query for a block
+// hash at that block: some ignore the hash and answer at their head. Reading
+// the probe along with the sender states tells whether the client did.
+type stateProbe struct {
+	address common.Address
+	nonce   uint64
+}
+
+// payloadStateProbe derives a state probe from the transactions of a payload:
+// the sender of its last plain transaction, whose nonce after the payload is
+// that transaction's nonce plus one. Returns nil if the payload has no such
+// transaction.
+func payloadStateProbe(transactions []bellatrix.Transaction) *stateProbe {
+	for idx := len(transactions) - 1; idx >= 0; idx-- {
+		tx, err := txtypes.DecodeTx(transactions[idx])
+		if err != nil || tx.Type() > txtypes.DynamicFeeTxType || !tx.UsesAccountNonce() {
+			continue
+		}
+
+		sender, err := tx.From(tx.ChainId())
+		if err != nil {
+			continue
+		}
+
+		return &stateProbe{address: sender, nonce: tx.Nonce() + 1}
+	}
+
+	return nil
+}
+
 // fetchSenderStates loads nonce and balance of the given accounts at the
 // post-state of the execution block with the given hash, in a single JSON-RPC
 // batch request. The account nonce is not readable from within the EVM, so
 // nonces are read with one eth_getTransactionCount call each; the balances are
-// read with a single Multicall3 call where it is deployed.
-func (r *Resolver) fetchSenderStates(ctx context.Context, client *execution.Client, blockHash common.Hash, senders []common.Address) (map[common.Address]*senderState, error) {
+// read with a single Multicall3 call where it is deployed. If a probe is
+// given, the client's answer is rejected unless it reports the probe's nonce.
+func (r *Resolver) fetchSenderStates(ctx context.Context, client *execution.Client, blockHash common.Hash, senders []common.Address, probe *stateProbe) (map[common.Address]*senderState, error) {
 	ethClient := client.GetRPCClient().GetEthClient()
 	if ethClient == nil {
 		return nil, fmt.Errorf("client not initialized")
@@ -112,12 +145,21 @@ func (r *Resolver) fetchSenderStates(ctx context.Context, client *execution.Clie
 	balances := make([]hexutil.Big, len(senders))
 	var multicallResult hexutil.Bytes
 
-	batch := make([]rpc.BatchElem, 0, 2*len(senders))
+	batch := make([]rpc.BatchElem, 0, 2*len(senders)+1)
 	for i, sender := range senders {
 		batch = append(batch, rpc.BatchElem{
 			Method: "eth_getTransactionCount",
 			Args:   []any{sender, block},
 			Result: &nonces[i],
+		})
+	}
+
+	var probeNonce hexutil.Uint64
+	if probe != nil {
+		batch = append(batch, rpc.BatchElem{
+			Method: "eth_getTransactionCount",
+			Args:   []any{probe.address, block},
+			Result: &probeNonce,
 		})
 	}
 
@@ -161,6 +203,11 @@ func (r *Resolver) fetchSenderStates(ctx context.Context, client *execution.Clie
 		if elem.Error != nil {
 			return nil, fmt.Errorf("%s: %w", elem.Method, elem.Error)
 		}
+	}
+
+	if probe != nil && uint64(probeNonce) != probe.nonce {
+		return nil, fmt.Errorf("state is not served at block %s: nonce of %s is %d, expected %d",
+			blockHash.Hex(), probe.address.Hex(), uint64(probeNonce), probe.nonce)
 	}
 
 	states := make(map[common.Address]*senderState, len(senders))

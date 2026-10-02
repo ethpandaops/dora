@@ -39,7 +39,7 @@ const (
 	stateRetryDelay = 6 * time.Second
 
 	// maxStateClients is the number of clients asked per attempt.
-	maxStateClients = 3
+	maxStateClients = 6
 )
 
 // targetKey identifies the evaluation of a slot's lists against one block.
@@ -222,7 +222,7 @@ func (r *Resolver) resolveTarget(ctx context.Context, slot phase0.Slot, block *b
 	var stateErr error
 	if senders := eval.senders(); len(senders) > 0 {
 		var states map[common.Address]*senderState
-		states, stateErr = r.loadSenderStates(ctx, eval, common.Hash(payload.BlockHash), senders)
+		states, stateErr = r.loadSenderStates(ctx, eval, common.Hash(payload.BlockHash), senders, payloadStateProbe(payload.Transactions))
 		if states != nil {
 			eval.applySenderStates(states)
 		}
@@ -270,8 +270,9 @@ func (r *Resolver) parentTransactions(ctx context.Context, payload *all.Executio
 }
 
 // loadSenderStates loads the sender states at the given execution block,
-// trying the ready clients in priority order.
-func (r *Resolver) loadSenderStates(ctx context.Context, eval *evaluation, blockHash common.Hash, senders []common.Address) (map[common.Address]*senderState, error) {
+// trying the ready clients in priority order. A client that does not report
+// the probe's nonce is skipped, as it does not answer at that block.
+func (r *Resolver) loadSenderStates(ctx context.Context, eval *evaluation, blockHash common.Hash, senders []common.Address, probe *stateProbe) (map[common.Address]*senderState, error) {
 	clients := r.indexerCtx.ExecutionPool.GetReadyEndpoints(execution.AnyClient)
 	if len(clients) == 0 {
 		return nil, fmt.Errorf("no ready execution clients")
@@ -280,13 +281,14 @@ func (r *Resolver) loadSenderStates(ctx context.Context, eval *evaluation, block
 	sort.Slice(clients, func(i, j int) bool {
 		return r.indexerCtx.SortClients(clients[i], clients[j], false)
 	})
+
 	if len(clients) > maxStateClients {
 		clients = clients[:maxStateClients]
 	}
 
 	var lastErr error
 	for _, client := range clients {
-		states, err := r.fetchSenderStates(ctx, client, blockHash, senders)
+		states, err := r.fetchSenderStates(ctx, client, blockHash, senders, probe)
 		if err != nil {
 			lastErr = fmt.Errorf("sender states from %s: %w", client.GetName(), err)
 			continue
