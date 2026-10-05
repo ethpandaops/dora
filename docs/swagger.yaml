@@ -1419,65 +1419,10 @@ definitions:
       withdrawalcount:
         type: integer
     type: object
-  api.APISlotInclusionList:
-    properties:
-      dependent_root:
-        type: string
-      signature:
-        type: string
-      transactions:
-        items:
-          $ref: '#/definitions/api.APISlotInclusionListTransaction'
-        type: array
-      transactions_count:
-        type: integer
-      validator_index:
-        type: integer
-      validator_name:
-        type: string
-    type: object
-  api.APISlotInclusionListTransaction:
-    properties:
-      data_len:
-        type: integer
-      decode_error:
-        type: string
-      from:
-        type: string
-      gas_limit:
-        type: integer
-      hash:
-        type: string
-      index:
-        type: integer
-      is_included:
-        type: boolean
-      nonce:
-        type: integer
-      to:
-        type: string
-      type:
-        type: integer
-      value:
-        type: string
-    type: object
-  api.APISlotInclusionListsData:
-    properties:
-      block_root:
-        type: string
-      count:
-        type: integer
-      inclusion_lists:
-        items:
-          $ref: '#/definitions/api.APISlotInclusionList'
-        type: array
-      slot:
-        type: integer
-    type: object
   api.APISlotInclusionListsResponse:
     properties:
       data:
-        $ref: '#/definitions/api.APISlotInclusionListsData'
+        $ref: '#/definitions/services.SlotInclusionListsView'
       status:
         type: string
     type: object
@@ -2125,6 +2070,193 @@ definitions:
         type: integer
       min_time:
         type: integer
+    type: object
+  services.SlotInclusionListEntry:
+    properties:
+      dependent_root:
+        type: string
+      first_seen:
+        description: FirstSeen is the earliest observation as ms offset from slot
+          start.
+        type: integer
+      seen:
+        items:
+          $ref: '#/definitions/services.SlotInclusionListSeenBy'
+        type: array
+      signature:
+        type: string
+      transactions:
+        description: |-
+          Transactions holds the list's transactions in list order as indexes
+          into SlotInclusionListsView.Transactions.
+        items:
+          type: integer
+        type: array
+      validator_index:
+        type: integer
+      validator_name:
+        type: string
+    type: object
+  services.SlotInclusionListMember:
+    properties:
+      first_seen:
+        description: |-
+          FirstSeen is the earliest observation of a list of the member as ms
+          offset from slot start.
+        type: integer
+      lists:
+        description: Lists holds the indexes of the member's lists in SlotInclusionListsView.Lists.
+        items:
+          type: integer
+        type: array
+      status:
+        description: Status is "submitted", "late", "equivocated" or "missing".
+        type: string
+      validator_index:
+        type: integer
+      validator_name:
+        type: string
+    type: object
+  services.SlotInclusionListOutcome:
+    properties:
+      group:
+        description: |-
+          Group is "included", "not_enforced", "omitted" (validly left out),
+          "unsatisfied" (inclusion list violation) or "unknown".
+        type: string
+      label:
+        type: string
+      reason:
+        type: string
+      status:
+        description: Status is the persisted status code (blockdb ILTxStatus*).
+        type: integer
+    type: object
+  services.SlotInclusionListSeenBy:
+    properties:
+      client:
+        description: Client is an index into SlotInclusionListsView.Clients.
+        type: integer
+      time:
+        description: Time is the first-seen offset in ms from slot start.
+        type: integer
+    type: object
+  services.SlotInclusionListTarget:
+    properties:
+      base_fee:
+        type: integer
+      bid_acknowledged:
+        description: |-
+          BidAcknowledged holds, per committee member, whether the block's
+          execution payload bid acknowledges a list of the member
+          (inclusion_list_bits). Nil if the bid is not available.
+        items:
+          type: boolean
+        type: array
+      block_hash:
+        type: string
+      block_number:
+        type: integer
+      block_root:
+        type: string
+      evaluated:
+        description: Evaluated is false if the lists have not been checked against
+          the block.
+        type: boolean
+      gas_left:
+        type: integer
+      lists:
+        description: |-
+          Lists holds, per list, why the list is not enforced against this block:
+          "late", "equivocation" or "wrong_branch", or "not_evaluated" if the
+          evaluation does not cover the list. Empty if it is enforced.
+        items:
+          type: string
+        type: array
+      payload_status:
+        description: |-
+          PayloadStatus is "canonical" if the chain built on the block's payload,
+          "orphaned" if it did not and "missing" if the payload was never revealed.
+          Fork choice does not extend a payload that leaves the lists unsatisfied,
+          so this is how the network judged the payload.
+        type: string
+      status:
+        description: Status is "canonical" or "orphaned".
+        type: string
+      transactions:
+        description: Transactions holds the outcome per entry of SlotInclusionListsView.Transactions.
+        items:
+          $ref: '#/definitions/services.SlotInclusionListOutcome'
+        type: array
+      unsatisfied:
+        type: integer
+    type: object
+  services.SlotInclusionListTransaction:
+    properties:
+      data_len:
+        type: integer
+      decoded:
+        type: boolean
+      from:
+        type: string
+      gas_limit:
+        type: integer
+      hash:
+        type: string
+      max_fee_per_gas:
+        type: string
+      nonce:
+        type: integer
+      raw:
+        description: Raw is the encoded transaction as carried by the lists.
+        type: string
+      to:
+        type: string
+      type:
+        type: integer
+      value:
+        type: string
+    type: object
+  services.SlotInclusionListsView:
+    properties:
+      clients:
+        description: Clients holds the observer client names; observations reference
+          them by index.
+        items:
+          type: string
+        type: array
+      committee:
+        items:
+          $ref: '#/definitions/services.SlotInclusionListMember'
+        type: array
+      due_ms:
+        description: |-
+          DueMs is the inclusion list due time as ms offset into the slot. Lists
+          first seen after it are not enforced.
+        type: integer
+      lists:
+        items:
+          $ref: '#/definitions/services.SlotInclusionListEntry'
+        type: array
+      slot:
+        description: Slot is the slot the lists were published in.
+        type: integer
+      target_slot:
+        description: TargetSlot is the slot whose execution payload the lists constrain.
+        type: integer
+      target_state:
+        description: |-
+          TargetState tells why Targets is empty: "pending" while the target slot
+          has not passed, "missed" if it has no block. Empty otherwise.
+        type: string
+      targets:
+        items:
+          $ref: '#/definitions/services.SlotInclusionListTarget'
+        type: array
+      transactions:
+        items:
+          $ref: '#/definitions/services.SlotInclusionListTransaction'
+        type: array
     type: object
 info:
   contact: {}
@@ -3171,8 +3303,10 @@ paths:
   /v1/slot/{slotOrHash}/inclusion_lists:
     get:
       description: |-
-        Returns the cached EIP-7805 inclusion lists for a slot, with each transaction
-        marked as included or not based on whether it appears in the slot's block transactions.
+        Returns the EIP-7805 inclusion lists published in a slot: the inclusion list committee
+        with each member's submission status, the lists with their gossip observations, and for
+        every block of the following slot how its execution payload treated each list transaction
+        (included, validly omitted with the reason, not enforced, or unsatisfied).
       operationId: getSlotInclusionLists
       parameters:
       - description: Slot number or block root (0x-prefixed hex)

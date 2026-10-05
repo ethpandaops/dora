@@ -23,6 +23,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	execindexer "github.com/ethpandaops/dora/indexer/execution"
+	"github.com/ethpandaops/dora/indexer/execution/inclusionlists"
 	syscontracts "github.com/ethpandaops/dora/indexer/execution/system_contracts"
 	"github.com/ethpandaops/dora/indexer/execution/txindexer"
 	"github.com/ethpandaops/dora/indexer/mevrelay"
@@ -48,6 +49,7 @@ type ChainService struct {
 	mevRelayIndexer       *mevrelay.MevIndexer
 	snooperManager        *snooper.SnooperManager
 	txIndexer             *txindexer.TxIndexer
+	inclusionListResolver *inclusionlists.Resolver
 	ensResolver           *EnsResolver
 	started               bool
 
@@ -381,6 +383,12 @@ func (cs *ChainService) StartService() error {
 	cs.withdrawalIndexer = syscontracts.NewWithdrawalIndexer(executionIndexerCtx)
 	cs.builderDepositIndexer = syscontracts.NewBuilderDepositIndexer(executionIndexerCtx)
 	cs.builderExitIndexer = syscontracts.NewBuilderExitIndexer(executionIndexerCtx)
+
+	// start inclusion list resolver
+	cs.inclusionListResolver = inclusionlists.NewResolver(cs.logger.WithField("service", "il-resolver"), executionIndexerCtx)
+	if err := cs.inclusionListResolver.Start(); err != nil {
+		cs.logger.WithError(err).Error("failed to start inclusion list resolver")
+	}
 
 	// start EL transaction indexer if enabled
 	if utils.Config.ExecutionIndexer.Enabled {

@@ -104,7 +104,9 @@ func init() {
 	blockdbCopyCmd.Flags().Bool("no-blocks", false, "Skip block data")
 	blockdbCopyCmd.Flags().Bool("no-execdata", false, "Skip execution data")
 	blockdbCopyCmd.Flags().Bool("no-duties", false, "Skip per-epoch duties data")
-	blockdbCopyCmd.Flags().Bool("no-bids", false, "Skip per-slot bids data")
+	blockdbCopyCmd.Flags().Bool("no-meta", false, "Skip per-slot meta data (bids and inclusion lists)")
+	blockdbCopyCmd.Flags().Bool("no-bids", false, "Skip per-slot meta data")
+	_ = blockdbCopyCmd.Flags().MarkDeprecated("no-bids", "use --no-meta")
 	blockdbCopyCmd.Flags().Int64("min-slot", -1, "Minimum slot to copy (inclusive, -1 = no limit)")
 	blockdbCopyCmd.Flags().Int64("max-slot", -1, "Maximum slot to copy (inclusive, -1 = no limit)")
 	blockdbCopyCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
@@ -125,7 +127,10 @@ func runBlockdbCopy(cmd *cobra.Command, _ []string) error {
 	noBlocks, _ := cmd.Flags().GetBool("no-blocks")
 	noExecdata, _ := cmd.Flags().GetBool("no-execdata")
 	noDuties, _ := cmd.Flags().GetBool("no-duties")
-	noBids, _ := cmd.Flags().GetBool("no-bids")
+	noMeta, _ := cmd.Flags().GetBool("no-meta")
+	if legacyNoMeta, _ := cmd.Flags().GetBool("no-bids"); legacyNoMeta {
+		noMeta = true
+	}
 	minSlot, _ := cmd.Flags().GetInt64("min-slot")
 	maxSlot, _ := cmd.Flags().GetInt64("max-slot")
 	verbose, _ := cmd.Flags().GetBool("verbose")
@@ -143,8 +148,8 @@ func runBlockdbCopy(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("--target-engine must be 'pebble' or 's3', got %q", targetEngine)
 	}
 
-	if noBlocks && noExecdata && noDuties && noBids {
-		return fmt.Errorf("--no-blocks, --no-execdata, --no-duties and --no-bids cannot all be set")
+	if noBlocks && noExecdata && noDuties && noMeta {
+		return fmt.Errorf("--no-blocks, --no-execdata, --no-duties and --no-meta cannot all be set")
 	}
 
 	if threads < 1 {
@@ -157,7 +162,7 @@ func runBlockdbCopy(cmd *cobra.Command, _ []string) error {
 		copyBlocks:   !noBlocks,
 		copyExec:     !noExecdata,
 		copyDuties:   !noDuties,
-		copyBids:     !noBids,
+		copyMeta:     !noMeta,
 		minSlot:      minSlot,
 		maxSlot:      maxSlot,
 		sourceEngine: sourceEngine,
@@ -258,7 +263,7 @@ type blockdbCopier struct {
 	copyBlocks   bool
 	copyExec     bool
 	copyDuties   bool
-	copyBids     bool
+	copyMeta     bool
 	minSlot      int64 // -1 = no limit
 	maxSlot      int64 // -1 = no limit
 	sourceEngine string
@@ -376,10 +381,10 @@ func (c *blockdbCopier) run(ctx context.Context) error {
 		}
 	}
 
-	// Bids objects use the same encoding on both backends, so they are copied
+	// Slot meta objects use the same encoding on both backends, so they are copied
 	// as raw bytes via a dedicated pass.
-	if c.copyBids {
-		if err := c.copyBidsPass(ctx); err != nil {
+	if c.copyMeta {
+		if err := c.copyMetaPass(ctx); err != nil {
 			return err
 		}
 	}
@@ -407,8 +412,8 @@ func (c *blockdbCopier) enumerateS3(ctx context.Context, workCh chan<- copyWorkI
 
 		c.objectsScanned.Add(1)
 
-		// Bids objects are handled by their own pass.
-		if strings.HasSuffix(obj.Key, "_bids") {
+		// Slot meta objects are handled by their own pass.
+		if strings.HasSuffix(obj.Key, copyCmdMetaSuffix) || strings.HasSuffix(obj.Key, copyCmdLegacyMetaSuffix) {
 			c.objectsSkipped.Add(1)
 			continue
 		}
@@ -547,8 +552,8 @@ func (c *blockdbCopier) enumeratePebble(ctx context.Context, workCh chan<- copyW
 
 		ns := binary.BigEndian.Uint16(key[:2])
 
-		// Bids objects (namespace 7) are handled by their own pass.
-		if ns == dpebble.KeyNamespaceBids {
+		// Slot meta objects (namespace 7) are handled by their own pass.
+		if ns == dpebble.KeyNamespaceMeta {
 			continue
 		}
 
@@ -1584,20 +1589,20 @@ func copyCmdBuildS3DutiesKey(prefix string, firstSlot uint64) string {
 	return path.Join(prefix, tier, name)
 }
 
-// copyBidsPass copies the per-slot bids objects from source to target. Both
+// copyMetaPass copies the per-slot meta objects from source to target. Both
 // backends store the same encoded object per slot, so entries are copied as
 // raw bytes without decoding.
-func (c *blockdbCopier) copyBidsPass(ctx context.Context) error {
-	slots, err := c.enumerateBids(ctx)
+func (c *blockdbCopier) copyMetaPass(ctx context.Context) error {
+	slots, err := c.enumerateMeta(ctx)
 	if err != nil {
-		return fmt.Errorf("enumerate bids: %w", err)
+		return fmt.Errorf("enumerate slot meta: %w", err)
 	}
 
 	if len(slots) == 0 {
 		return nil
 	}
 
-	c.logger.WithField("slots", len(slots)).Info("copying bids")
+	c.logger.WithField("slots", len(slots)).Info("copying slot meta")
 
 	work := make(chan uint64, c.threads*2)
 
@@ -1607,9 +1612,9 @@ func (c *blockdbCopier) copyBidsPass(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			for slot := range work {
-				if err := c.copyBidsSlot(ctx, slot); err != nil {
+				if err := c.copyMetaSlot(ctx, slot); err != nil {
 					c.errors.Add(1)
-					c.logger.WithError(err).WithField("slot", slot).Error("copy bids failed")
+					c.logger.WithError(err).WithField("slot", slot).Error("copy slot meta failed")
 				}
 			}
 		}()
@@ -1624,25 +1629,26 @@ func (c *blockdbCopier) copyBidsPass(ctx context.Context) error {
 	return nil
 }
 
-// enumerateBids returns the slots of all bids objects in the source that fall
+// enumerateMeta returns the slots of all meta objects in the source that fall
 // within the configured slot range.
-func (c *blockdbCopier) enumerateBids(ctx context.Context) ([]uint64, error) {
+func (c *blockdbCopier) enumerateMeta(ctx context.Context) ([]uint64, error) {
 	switch c.sourceEngine {
 	case "s3":
-		return c.enumerateBidsS3(ctx)
+		return c.enumerateMetaS3(ctx)
 	case "pebble":
-		return c.enumerateBidsPebble()
+		return c.enumerateMetaPebble()
 	}
 	return nil, nil
 }
 
-func (c *blockdbCopier) enumerateBidsS3(ctx context.Context) ([]uint64, error) {
+func (c *blockdbCopier) enumerateMetaS3(ctx context.Context) ([]uint64, error) {
 	prefix := c.sourceS3Prefix
 	if prefix != "" && prefix[len(prefix)-1] != '/' {
 		prefix += "/"
 	}
 
 	var slots []uint64
+	seen := make(map[uint64]bool, 1024)
 	objectsCh := c.sourceS3.ListObjects(ctx, c.sourceS3Bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: true,
@@ -1651,7 +1657,7 @@ func (c *blockdbCopier) enumerateBidsS3(ctx context.Context) ([]uint64, error) {
 		if obj.Err != nil {
 			return nil, obj.Err
 		}
-		if !strings.HasSuffix(obj.Key, "_bids") {
+		if !strings.HasSuffix(obj.Key, copyCmdMetaSuffix) && !strings.HasSuffix(obj.Key, copyCmdLegacyMetaSuffix) {
 			continue
 		}
 		slot := copyCmdParseSlotFromS3Key(obj.Key)
@@ -1659,16 +1665,21 @@ func (c *blockdbCopier) enumerateBidsS3(ctx context.Context) ([]uint64, error) {
 			c.slotsOutOfRange.Add(1)
 			continue
 		}
+		// A slot can hold an object under both suffixes.
+		if seen[slot] {
+			continue
+		}
+		seen[slot] = true
 		slots = append(slots, slot)
 	}
 	return slots, nil
 }
 
-func (c *blockdbCopier) enumerateBidsPebble() ([]uint64, error) {
+func (c *blockdbCopier) enumerateMetaPebble() ([]uint64, error) {
 	lower := make([]byte, 2)
-	binary.BigEndian.PutUint16(lower, dpebble.KeyNamespaceBids)
+	binary.BigEndian.PutUint16(lower, dpebble.KeyNamespaceMeta)
 	upper := make([]byte, 2)
-	binary.BigEndian.PutUint16(upper, dpebble.KeyNamespaceBids+1)
+	binary.BigEndian.PutUint16(upper, dpebble.KeyNamespaceMeta+1)
 
 	iter, err := c.sourcePebble.NewIter(&cpebble.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
@@ -1679,7 +1690,7 @@ func (c *blockdbCopier) enumerateBidsPebble() ([]uint64, error) {
 	var slots []uint64
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		if len(key) != dpebble.BidsKeyLen {
+		if len(key) != dpebble.MetaKeyLen {
 			continue
 		}
 		slot := binary.BigEndian.Uint64(key[2:10])
@@ -1692,10 +1703,10 @@ func (c *blockdbCopier) enumerateBidsPebble() ([]uint64, error) {
 	return slots, iter.Error()
 }
 
-// copyBidsSlot reads one slot's bids object from the source and writes it to
+// copyMetaSlot reads one slot's meta object from the source and writes it to
 // the target as raw bytes.
-func (c *blockdbCopier) copyBidsSlot(ctx context.Context, slot uint64) error {
-	data, err := c.readBidsRaw(ctx, slot)
+func (c *blockdbCopier) copyMetaSlot(ctx context.Context, slot uint64) error {
+	data, err := c.readMetaRaw(ctx, slot)
 	if err != nil {
 		return err
 	}
@@ -1704,7 +1715,7 @@ func (c *blockdbCopier) copyBidsSlot(ctx context.Context, slot uint64) error {
 		return nil
 	}
 
-	if err := c.writeBidsRaw(ctx, slot, data); err != nil {
+	if err := c.writeMetaRaw(ctx, slot, data); err != nil {
 		return err
 	}
 
@@ -1713,46 +1724,67 @@ func (c *blockdbCopier) copyBidsSlot(ctx context.Context, slot uint64) error {
 	return nil
 }
 
-func (c *blockdbCopier) readBidsRaw(ctx context.Context, slot uint64) ([]byte, error) {
+func (c *blockdbCopier) readMetaRaw(ctx context.Context, slot uint64) ([]byte, error) {
 	switch c.sourceEngine {
 	case "s3":
-		key := copyCmdBuildS3BidsKey(c.sourceS3Prefix, slot)
-		obj, err := c.sourceS3.GetObject(ctx, c.sourceS3Bucket, key, minio.GetObjectOptions{})
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = obj.Close() }()
-
-		data, err := io.ReadAll(obj)
-		if err != nil {
-			if minio.ToErrorResponse(err).Code == "NoSuchKey" {
-				return nil, nil
+		// Older objects are stored under the legacy suffix.
+		for _, suffix := range []string{copyCmdMetaSuffix, copyCmdLegacyMetaSuffix} {
+			data, err := c.readMetaRawS3(ctx, copyCmdBuildS3MetaKey(c.sourceS3Prefix, slot, suffix))
+			if err != nil || data != nil {
+				return data, err
 			}
-			return nil, err
 		}
-		return data, nil
+		return nil, nil
 	case "pebble":
-		return pebbleGet(c.sourcePebble, dpebble.MakeBidsKey(slot))
+		return pebbleGet(c.sourcePebble, dpebble.MakeMetaKey(slot))
 	}
 	return nil, nil
 }
 
-func (c *blockdbCopier) writeBidsRaw(ctx context.Context, slot uint64, data []byte) error {
+// readMetaRawS3 reads a meta object from the source bucket, returning nil if absent.
+func (c *blockdbCopier) readMetaRawS3(ctx context.Context, key string) ([]byte, error) {
+	obj, err := c.sourceS3.GetObject(ctx, c.sourceS3Bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer func() { _ = obj.Close() }()
+
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return data, nil
+}
+
+func (c *blockdbCopier) writeMetaRaw(ctx context.Context, slot uint64, data []byte) error {
 	switch c.targetEngine {
 	case "s3":
-		key := copyCmdBuildS3BidsKey(c.targetS3Prefix, slot)
+		key := copyCmdBuildS3MetaKey(c.targetS3Prefix, slot, copyCmdMetaSuffix)
 		_, err := c.targetS3.PutObject(ctx, c.targetS3Bucket, key, bytes.NewReader(data), int64(len(data)),
 			minio.PutObjectOptions{ContentType: "application/octet-stream"})
 		return err
 	case "pebble":
-		return c.targetPebble.Set(dpebble.MakeBidsKey(slot), data, cpebble.Sync)
+		return c.targetPebble.Set(dpebble.MakeMetaKey(slot), data, cpebble.Sync)
 	}
 	return nil
 }
 
-// copyCmdBuildS3BidsKey builds the S3 object key for a slot's bids object.
-func copyCmdBuildS3BidsKey(prefix string, slot uint64) string {
-	name := fmt.Sprintf("%010d_bids", slot)
+// S3 key suffixes of the per-slot meta objects: the current one and the
+// legacy one older objects are stored under.
+const (
+	copyCmdMetaSuffix       = "_meta"
+	copyCmdLegacyMetaSuffix = "_bids"
+)
+
+// copyCmdBuildS3MetaKey builds the S3 object key for a slot's meta object.
+func copyCmdBuildS3MetaKey(prefix string, slot uint64, suffix string) string {
+	name := fmt.Sprintf("%010d%s", slot, suffix)
 	tier := fmt.Sprintf("%06d", slot/10000)
 	if prefix == "" {
 		return path.Join(tier, name)

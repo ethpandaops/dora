@@ -9,6 +9,7 @@ type AssignedSlot struct {
 	Slot     uint64 `db:"slot"`
 	Proposer uint64 `db:"proposer"`
 	Block    *Slot  `db:"block"`
+	IlCount  int16  `db:"il_count"`
 }
 
 type BlockStatus struct {

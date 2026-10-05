@@ -61,7 +61,7 @@ var (
 	_ types.BlockDbEngine  = (*TieredEngine)(nil)
 	_ types.ExecDataEngine = (*TieredEngine)(nil)
 	_ types.DutiesEngine   = (*TieredEngine)(nil)
-	_ types.SlotBidsEngine = (*TieredEngine)(nil)
+	_ types.SlotMetaEngine = (*TieredEngine)(nil)
 	_ types.TxHashIndex    = (*TieredEngine)(nil)
 )
 

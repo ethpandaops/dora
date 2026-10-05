@@ -47,10 +47,11 @@ const (
 	PayloadStatusOrphaned
 )
 
-type SlotHeader struct {
+type MissedSlot struct {
 	Slot     uint64     `db:"slot"`
 	Proposer uint64     `db:"proposer"`
 	Status   SlotStatus `db:"status"`
+	IlCount  int16      `db:"il_count"`
 }
 
 type Slot struct {
@@ -94,6 +95,8 @@ type Slot struct {
 	EthBidValue           uint64        `db:"eth_bid_value"`           // Bid value in Gwei (0 for self-builds and pre-gloas blocks)
 	BuilderPaymentWeight  uint64        `db:"builder_payment_weight"`  // Gloas: same-slot attester balance backing the builder payment quorum (Gwei); 0 pre-gloas
 	BuilderPaymentPercent float32       `db:"builder_payment_percent"` // Gloas: BuilderPaymentWeight as % of the per-slot quorum base (total active balance / slots-per-epoch)
+	IlCount               int16         `db:"il_count"`                // Heze: number of inclusion lists published in this slot
+	IlUnsatisfied         int16         `db:"il_unsatisfied"`          // Heze: transactions of the previous slot's inclusion lists this block's payload left unsatisfied; -1 if not evaluated
 }
 
 type Epoch struct {
