@@ -128,9 +128,9 @@
             <a class="nav-link" id="accessList-tab" data-bs-toggle="tab" href="#accessList" role="tab" aria-controls="accessList" aria-selected="false">Access List <span class="badge bg-secondary text-white">{{ .Block.ExecutionData.BALSummary.UniqueAddresses }}</span></a>
           </li>
         {{ end }}
-        {{ if gt .Block.InclusionListsCount 0 }}
+        {{ if $.InclusionListsEnabled }}
           <li class="nav-item">
-            <a class="nav-link" id="inclusionLists-tab" data-bs-toggle="tab" href="#inclusionLists" role="tab" aria-controls="inclusionLists" aria-selected="false">Inclusion Lists <span class="badge bg-secondary text-white">{{ .Block.InclusionListsCount }}</span></a>
+            <a class="nav-link" id="inclusionLists-tab" data-bs-toggle="tab" href="#inclusionLists" role="tab" aria-controls="inclusionLists" aria-selected="false">Inclusion Lists <span class="badge bg-secondary text-white" id="inclusionListsCount">{{ if gt $.InclusionListsCount 0 }}{{ $.InclusionListsCount }}{{ end }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.ExecutionProofsCount 0 }}
@@ -150,6 +150,10 @@
             </a>
           </li>
         {{ end }}
+      {{ else if .InclusionListsEnabled }}
+        <li class="nav-item">
+          <a class="nav-link" id="inclusionLists-tab" data-bs-toggle="tab" href="#inclusionLists" role="tab" aria-controls="inclusionLists" aria-selected="false">Inclusion Lists <span class="badge bg-secondary text-white" id="inclusionListsCount">{{ if gt $.InclusionListsCount 0 }}{{ $.InclusionListsCount }}{{ end }}</span></a>
+        </li>
       {{ end }}
     </ul>
 
@@ -164,9 +168,23 @@
           <div class="tab-pane fade show active" id="transactions" role="tabpanel" aria-labelledby="transactions-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.TransactionsCount }} Transactions </b></h3>
+                <div class="row p-1 mx-0 align-items-center">
+                  <div class="d-none d-md-block col-md-3"></div>
+                  <h3 class="h5 col-12 col-md-6 text-center mb-0"><b>Showing {{ .Block.TransactionsCount }} Transactions </b></h3>
+                  <div class="col-12 col-md-3 d-flex flex-wrap justify-content-end align-items-center gap-2" id="blockInclusionListMarks">
+                    {{ if $.InclusionListsEnabled }}
+                      {{ if gt .Block.InclusionListsUnsatisfied 0 }}
+                        <a class="badge text-bg-danger text-decoration-none" href="/slot/{{ $.PreviousSlot }}#inclusionLists" data-bs-toggle="tooltip" title="Transactions of the inclusion lists of slot {{ $.PreviousSlot }} that this payload could have included but did not">{{ .Block.InclusionListsUnsatisfied }} IL unsatisfied</a>
+                      {{ end }}
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="resolveInclusionListTxs" data-bs-toggle="tooltip" title="Mark the transactions that were on the inclusion lists of slot {{ $.PreviousSlot }}">
+                        <i class="fas fa-list-check me-1"></i>Resolve IL Included
+                      </button>
+                    {{ end }}
+                  </div>
                 </div>
+                {{ if $.InclusionListsEnabled }}
+                  <div class="text-end small text-muted px-2 pb-1" id="resolveInclusionListResult"></div>
+                {{ end }}
               </div>
               {{ template "block_transactions" . }}
             </div>
@@ -355,18 +373,6 @@
             </div>
           </div>
         {{ end }}
-        {{ if gt .Block.InclusionListsCount 0 }}
-          <div class="tab-pane fade show active" id="inclusionLists" role="tabpanel" aria-labelledby="inclusionLists-tab">
-            <div class="card block-card">
-              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
-                <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.InclusionListsCount }} Inclusion Lists</b></h3>
-                </div>
-              </div>
-              {{ template "block_inclusion_lists" . }}
-            </div>
-          </div>
-        {{ end }}
         {{ if gt .Block.ExecutionProofsCount 0 }}
           <div class="tab-pane fade show active" id="proofs" role="tabpanel" aria-labelledby="proofs-tab">
             <div class="card block-card">
@@ -472,6 +478,18 @@
             </div>
           </div>
         {{ end }}
+      {{ end }}
+      {{ if .InclusionListsEnabled }}
+        <div class="tab-pane fade" id="inclusionLists" role="tabpanel" aria-labelledby="inclusionLists-tab">
+          <div class="card block-card">
+            <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+              <div class="row p-1 mx-0">
+                <h3 class="h5 col-md-12 text-center"><b>Inclusion Lists (EIP-7805)</b></h3>
+              </div>
+            </div>
+            {{ template "block_inclusion_lists" . }}
+          </div>
+        </div>
       {{ end }}
     </div>
     <script type="text/javascript">

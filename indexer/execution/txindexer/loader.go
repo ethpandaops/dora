@@ -362,6 +362,12 @@ func (t *TxIndexer) fetchBlockTransactions(
 		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block number is nil")
 	}
 
+	// A client may answer a request for a block it does not know with
+	// another block, such as the canonical one at the same height.
+	if block.Hash != hash {
+		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block is %s, not %s", block.Hash.Hex(), hash.Hex())
+	}
+
 	transactions := make([]*txtypes.Transaction, 0, len(block.Transactions))
 	for idx, rawTx := range block.Transactions {
 		tx, derived, err := decodeBlockTransaction(rawTx)
@@ -473,6 +479,15 @@ func (t *TxIndexer) fetchBlockReceipts(
 	receipts := []*txtypes.Receipt{}
 	if err := json.Unmarshal(raw, &receipts); err != nil {
 		return nil, fmt.Errorf("unmarshal block receipts: %w", err)
+	}
+
+	// A client that does not know the block may answer with the receipts of
+	// the canonical block at the same height. Those belong to other
+	// transactions, apart from the ones both blocks happen to share.
+	for _, receipt := range receipts {
+		if receipt.BlockHash != (common.Hash{}) && receipt.BlockHash != blockHash {
+			return nil, fmt.Errorf("block receipts are for block %s, not %s", receipt.BlockHash.Hex(), blockHash.Hex())
+		}
 	}
 
 	return receipts, nil

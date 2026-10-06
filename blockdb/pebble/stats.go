@@ -11,8 +11,8 @@ import (
 
 // GetObjectStats scans the key namespaces to count stored objects: blocks
 // (ns1, header records; includes orphaned blocks), canonical vs diverging
-// duties (ns3), and per-slot bids (ns7). The scans are key-only (no value
-// reads except bids sizing) so they stay cheap enough for the debug page.
+// duties (ns3), and per-slot meta objects (ns7). The scans are key-only (no value
+// reads except meta sizing) so they stay cheap enough for the debug page.
 func (e *PebbleEngine) GetObjectStats(_ context.Context) (*types.BlockDbObjectStats, error) {
 	stats := &types.BlockDbObjectStats{}
 
@@ -44,13 +44,13 @@ func (e *PebbleEngine) GetObjectStats(_ context.Context) (*types.BlockDbObjectSt
 	}
 	stats.DivergingDutiesCount = diverging
 
-	// Bids: one object per slot key.
-	bidsCount, bidsBytes, err := e.countBids()
+	// Slot meta: one object per slot key.
+	metaCount, metaBytes, err := e.countSlotMeta()
 	if err != nil {
 		return nil, err
 	}
-	stats.BidsCount = bidsCount
-	stats.BidsBytes = bidsBytes
+	stats.MetaCount = metaCount
+	stats.MetaBytes = metaBytes
 
 	return stats, nil
 }
@@ -75,11 +75,11 @@ func (e *PebbleEngine) countKeys(ns uint16, match func(key []byte) bool) (uint64
 	return count, iter.Error()
 }
 
-// countBids counts the per-slot bids objects and sums their encoded sizes.
-func (e *PebbleEngine) countBids() (count uint64, bytes uint64, err error) {
+// countSlotMeta counts the per-slot meta objects and sums their encoded sizes.
+func (e *PebbleEngine) countSlotMeta() (count uint64, bytes uint64, err error) {
 	iter, ierr := e.db.NewIter(&pebble.IterOptions{
-		LowerBound: makeNamespaceRangeStart(KeyNamespaceBids),
-		UpperBound: makeNamespaceRangeStart(KeyNamespaceBids + 1),
+		LowerBound: makeNamespaceRangeStart(KeyNamespaceMeta),
+		UpperBound: makeNamespaceRangeStart(KeyNamespaceMeta + 1),
 	})
 	if ierr != nil {
 		return 0, 0, ierr
@@ -87,7 +87,7 @@ func (e *PebbleEngine) countBids() (count uint64, bytes uint64, err error) {
 	defer func() { _ = iter.Close() }()
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		if len(iter.Key()) != BidsKeyLen {
+		if len(iter.Key()) != MetaKeyLen {
 			continue
 		}
 		count++

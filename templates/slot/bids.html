@@ -13,7 +13,7 @@
           <th class="border-0">Value</th>
           <th class="border-0">EL Payment</th>
           <th class="border-0">Total</th>
-          <th class="border-0">Seen by</th>
+          {{ if .Block.HasGossipBids }}<th class="border-0">Seen by</th>{{ end }}
         </tr>
       </thead>
       <tbody>
@@ -61,17 +61,21 @@
             <td>{{ formatEthFromGwei $bid.Value }}</td>
             <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
             <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+            {{ if $.Block.HasGossipBids }}
             <td>
-              {{ if gt $bid.SeenTotal 0 }}
+              {{ if $bid.IsSelfBuilt }}
+                <span class="text-muted" data-bs-toggle="tooltip" title="Self-built bids are not gossiped">-</span>
+              {{ else if gt $bid.SeenTotal 0 }}
                 <a class="badge bg-{{ $bid.SeenColor }}{{ if eq $bid.SeenColor "warning" }} text-dark{{ end }} text-decoration-none bid-seen-btn" role="button"
                    data-block-hash="0x{{ printf "%x" $bid.BlockHash }}"
-                   data-builder-index="{{ if $bid.IsSelfBuilt }}-1{{ else }}{{ $bid.BuilderIndex }}{{ end }}"
+                   data-builder-index="{{ $bid.BuilderIndex }}"
                    data-parent-root="0x{{ printf "%x" $bid.ParentRoot }}"
                    data-parent-hash="0x{{ printf "%x" $bid.ParentHash }}">{{ $bid.SeenCount }}/{{ $bid.SeenTotal }} <i class="fas fa-caret-down"></i></a>
               {{ else }}
                 <span class="text-muted" data-bs-toggle="tooltip" title="No gossip observation data for this bid">-</span>
               {{ end }}
             </td>
+            {{ end }}
           </tr>
         {{ end }}
       </tbody>

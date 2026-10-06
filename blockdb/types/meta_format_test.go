@@ -8,17 +8,17 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
-// buildTestSlotBids constructs a SlotBids with the given per-bid observations
+// buildTestSlotMeta constructs a SlotMeta with the given per-bid observations
 // (client table index -> first-seen offset).
-func buildTestSlotBids(slot uint64, clients []string, observations []map[int]int32) *SlotBids {
-	s := &SlotBids{
+func buildTestSlotMeta(slot uint64, clients []string, observations []map[int]int32) *SlotMeta {
+	s := &SlotMeta{
 		Slot:    slot,
 		Clients: clients,
-		Bids:    make([]*SlotBidsEntry, 0, len(observations)),
+		Bids:    make([]*SlotMetaBid, 0, len(observations)),
 	}
 	for i, seen := range observations {
 		mask, times := NewSeenObservations(seen, len(clients))
-		entry := &SlotBidsEntry{
+		entry := &SlotMetaBid{
 			Bid: &dbtypes.BlockBid{
 				ParentRoot:   bytes.Repeat([]byte{byte(i + 1)}, 32),
 				ParentHash:   bytes.Repeat([]byte{byte(i + 2)}, 32),
@@ -67,14 +67,14 @@ func TestSlotBidsRoundTrip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			src := buildTestSlotBids(12345, tt.clients, tt.observations)
+			src := buildTestSlotMeta(12345, tt.clients, tt.observations)
 
-			data, err := EncodeSlotBids(src)
+			data, err := EncodeSlotMeta(src)
 			if err != nil {
 				t.Fatalf("encode failed: %v", err)
 			}
 
-			decoded, err := DecodeSlotBids(data)
+			decoded, err := DecodeSlotMeta(data)
 			if err != nil {
 				t.Fatalf("decode failed: %v", err)
 			}
@@ -115,17 +115,17 @@ func TestSlotBidsRoundTrip(t *testing.T) {
 
 func TestSlotBidsMerge(t *testing.T) {
 	// Stored object: clients A/B, one bid seen by both.
-	stored := buildTestSlotBids(100, []string{"client-a", "client-b"}, []map[int]int32{
+	stored := buildTestSlotMeta(100, []string{"client-a", "client-b"}, []map[int]int32{
 		{0: 500, 1: 700},
 	})
 	// Live object: clients B/C, the same bid (same key tuple: index 0) seen by
 	// B (earlier) and C, plus a new bid.
-	live := buildTestSlotBids(100, []string{"client-b", "client-c"}, []map[int]int32{
+	live := buildTestSlotMeta(100, []string{"client-b", "client-c"}, []map[int]int32{
 		{0: 300, 1: 900},
 		{1: 1200},
 	})
 
-	merged := MergeSlotBids(stored, live)
+	merged := MergeSlotMeta(stored, live)
 
 	if !reflect.DeepEqual(merged.Clients, []string{"client-a", "client-b", "client-c"}) {
 		t.Fatalf("unexpected merged client table: %v", merged.Clients)
@@ -152,16 +152,16 @@ func TestSlotBidsMerge(t *testing.T) {
 	}
 
 	// Nil handling.
-	if MergeSlotBids(nil, live) != live || MergeSlotBids(stored, nil) != stored {
+	if MergeSlotMeta(nil, live) != live || MergeSlotMeta(stored, nil) != stored {
 		t.Error("nil merge should return the non-nil object")
 	}
 
 	// Merged object must round-trip.
-	data, err := EncodeSlotBids(merged)
+	data, err := EncodeSlotMeta(merged)
 	if err != nil {
 		t.Fatalf("encode of merged object failed: %v", err)
 	}
-	if _, err := DecodeSlotBids(data); err != nil {
+	if _, err := DecodeSlotMeta(data); err != nil {
 		t.Fatalf("decode of merged object failed: %v", err)
 	}
 }

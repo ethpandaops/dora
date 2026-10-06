@@ -757,11 +757,21 @@ func (c *Client) persistExecutionPayload(block *Block) error {
 }
 
 func (c *Client) processInclusionListEvent(inclusionListEvent *v1.InclusionListEvent) {
-	if inclusionListEvent.Data == nil {
+	if inclusionListEvent.Data == nil || inclusionListEvent.Data.Message == nil {
 		return
 	}
 
-	c.indexer.inclusionListCache.addInclusionList(inclusionListEvent.Data)
+	// Track this client's observation with the receive time as offset from
+	// the start of the list's slot.
+	chainState := c.client.GetPool().GetChainState()
+	seenOffset := time.Since(chainState.SlotToTime(inclusionListEvent.Data.Message.Slot)).Milliseconds()
+	if seenOffset > math.MaxInt32 {
+		seenOffset = math.MaxInt32
+	} else if seenOffset < math.MinInt32 {
+		seenOffset = math.MinInt32
+	}
+
+	c.indexer.inclusionListCache.addInclusionList(inclusionListEvent.Data, c.client.GetName(), int32(seenOffset))
 }
 
 func (c *Client) processExecutionPayloadBidEvent(executionPayloadBidEvent *gloas.SignedExecutionPayloadBid) error {

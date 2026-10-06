@@ -968,7 +968,8 @@ type cachedDbBlock struct {
 // GetDbBlocksByFilter retrieves a filtered range of blocks from cache & database.
 // The filter parameter specifies the filter criteria.
 // The pageIdx parameter specifies the page index.
-// The pageSize parameter specifies the page size.
+// The pageSize parameter specifies the page stride; the result includes up to
+// pageSize+1 blocks so callers can detect whether another page exists.
 // The withScheduledCount parameter specifies the number of scheduled slots to include.
 // The returned slice contains the retrieved blocks.
 func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes.BlockFilter, pageIdx uint64, pageSize uint32, withScheduledCount uint64) []*dbtypes.AssignedSlot {
@@ -1466,6 +1467,8 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 					blockRootsIdx = append(blockRootsIdx, resIdx)
 					blockRootsCachedId = append(blockRootsCachedId, cachedStart+uint64(cidx))
 				}
+			} else {
+				assignedBlock.IlCount = bs.beaconIndexer.GetInclusionListCount(phase0.Slot(block.slot))
 			}
 			resBlocks = append(resBlocks, &assignedBlock)
 			resIdx++
