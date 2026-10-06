@@ -117,6 +117,7 @@ type SlotPageBlockData struct {
 	BuilderDepositRequests    []*SlotPageBuilderDepositRequest `json:"builder_deposit_requests"`    // Builder deposit requests processed by this block (Gloas)
 	BuilderExitRequests       []*SlotPageBuilderExitRequest    `json:"builder_exit_requests"`       // Builder exit requests processed by this block (Gloas)
 	Bids                      []*SlotPageBid                   `json:"bids"`                        // Execution payload bids for this block (ePBS)
+	HasGossipBids             bool                             `json:"has_gossip_bids"`             // At least one bid came from an external builder (self-built bids are not gossiped)
 	PtcVotes                  *SlotPagePtcVotes                `json:"ptc_votes"`                   // PTC votes included in this block (for previous slot)
 	BuilderPayment            *SlotPageBuilderPayment          `json:"builder_payment"`             // Gloas builder-payment vote quorum for this slot
 	InclusionListsUnsatisfied int64                            `json:"inclusion_lists_unsatisfied"` // Transactions of the previous slot's inclusion lists this block's payload left unsatisfied (-1 = not evaluated)
