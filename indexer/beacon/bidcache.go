@@ -39,6 +39,8 @@ type cachedBid struct {
 // which clients observed each bid on gossip. Bids for older slots are ignored.
 // The cache is flushed to DB (and, when available, the per-slot observations
 // to the blockdb) on shutdown or when the slot span exceeds the threshold.
+// The flush also persists the inclusion lists of the flushed slots, which
+// share the per-slot blockdb object with the bids.
 type blockBidCache struct {
 	indexer    *Indexer
 	cacheMutex sync.RWMutex
@@ -144,14 +146,12 @@ func (cache *blockBidCache) loadFromDB(currentSlot phase0.Slot) {
 		minSlot = currentSlot - bidCacheRetainSlots
 	}
 
-	slots := map[uint64]bool{}
 	dbBids := db.GetBidsForSlotRange(cache.indexer.ctx, uint64(minSlot))
 	for _, bid := range dbBids {
 		cache.bids[makeBidCacheKey(bid)] = &cachedBid{
 			bid:  bid,
 			seen: make(map[int]int32, 8),
 		}
-		slots[bid.Slot] = true
 
 		slot := phase0.Slot(bid.Slot)
 		if cache.minSlot == 0 || slot < cache.minSlot {
@@ -163,27 +163,31 @@ func (cache *blockBidCache) loadFromDB(currentSlot phase0.Slot) {
 	}
 
 	// Restore per-client observations so a later re-flush merges instead of
-	// starting from scratch.
-	if blockdb.GlobalBlockDb.SupportsSlotBids() {
-		for slot := range slots {
-			slotBids, err := blockdb.GlobalBlockDb.GetSlotBids(cache.indexer.ctx, slot)
+	// starting from scratch, and the inclusion lists stored with them. The
+	// whole window is scanned, as a slot can hold inclusion lists but no bids.
+	cache.indexer.inclusionListCache.setLiveFromSlot(minSlot)
+	if blockdb.GlobalBlockDb.SupportsSlotMeta() {
+		for slot := uint64(minSlot); slot <= uint64(currentSlot); slot++ {
+			slotMeta, err := blockdb.GlobalBlockDb.GetSlotMeta(cache.indexer.ctx, slot, btypes.SlotMetaFlagAll)
 			if err != nil {
 				cache.indexer.logger.Warnf("error loading bid observations for slot %d: %v", slot, err)
 				continue
 			}
-			if slotBids == nil {
+			if slotMeta == nil {
 				continue
 			}
 
-			for _, entry := range slotBids.Bids {
+			cache.indexer.inclusionListCache.restoreSlotObject(slotMeta)
+
+			for _, entry := range slotMeta.Bids {
 				cached := cache.bids[makeBidCacheKey(entry.Bid)]
 				if cached == nil {
 					continue
 				}
 
 				for clientIdx, offset := range entry.SeenByClientIndex() {
-					if clientIdx < len(slotBids.Clients) {
-						cache.recordSeenLocked(cached, slotBids.Clients[clientIdx], offset)
+					if clientIdx < len(slotMeta.Clients) {
+						cache.recordSeenLocked(cached, slotMeta.Clients[clientIdx], offset)
 					}
 				}
 			}
@@ -277,9 +281,9 @@ func (cache *blockBidCache) GetBidsByBuilderIndex(builderIndex int64, minSlot ui
 	return result
 }
 
-// GetSlotBids assembles the slot's bids with their per-client observations
+// GetSlotMeta assembles the slot's bids with their per-client observations
 // from the cache. Returns nil if the cache holds no bids for the slot.
-func (cache *blockBidCache) GetSlotBids(slot phase0.Slot) *btypes.SlotBids {
+func (cache *blockBidCache) GetSlotMeta(slot phase0.Slot) *btypes.SlotMeta {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
@@ -297,13 +301,13 @@ func (cache *blockBidCache) GetSlotBids(slot phase0.Slot) *btypes.SlotBids {
 		return nil
 	}
 
-	return buildSlotBids(uint64(slot), cache.sessionClientNames(), bids, seen)
+	return buildSlotMeta(uint64(slot), cache.sessionClientNames(), bids, seen)
 }
 
-// buildSlotBids assembles a SlotBids object for one slot. The client table
+// buildSlotMeta assembles a SlotMeta object for one slot. The client table
 // holds all session clients (so silent clients stay part of the "not seen"
 // denominator) plus any other observer names present in the data.
-func buildSlotBids(slot uint64, sessionClients []string, bids []*dbtypes.BlockBid, seen []map[string]int32) *btypes.SlotBids {
+func buildSlotMeta(slot uint64, sessionClients []string, bids []*dbtypes.BlockBid, seen []map[string]int32) *btypes.SlotMeta {
 	clients := make([]string, 0, len(sessionClients))
 	clientIdx := make(map[string]int, len(sessionClients))
 	addClient := func(name string) int {
@@ -324,10 +328,10 @@ func buildSlotBids(slot uint64, sessionClients []string, bids []*dbtypes.BlockBi
 		}
 	}
 
-	obj := &btypes.SlotBids{
+	obj := &btypes.SlotMeta{
 		Slot:    slot,
 		Clients: clients,
-		Bids:    make([]*btypes.SlotBidsEntry, 0, len(bids)),
+		Bids:    make([]*btypes.SlotMetaBid, 0, len(bids)),
 	}
 	for i, bid := range bids {
 		observations := make(map[int]int32, len(seen[i]))
@@ -335,7 +339,7 @@ func buildSlotBids(slot uint64, sessionClients []string, bids []*dbtypes.BlockBi
 			observations[clientIdx[name]] = offset
 		}
 		mask, times := btypes.NewSeenObservations(observations, len(clients))
-		obj.Bids = append(obj.Bids, &btypes.SlotBidsEntry{
+		obj.Bids = append(obj.Bids, &btypes.SlotMetaBid{
 			Bid:       bid,
 			SeenMask:  mask,
 			SeenTimes: times,
@@ -368,40 +372,54 @@ func (cache *blockBidCache) collectFlushEntriesLocked(toFlush map[bidCacheKey]*c
 }
 
 // persistFlushEntries writes flushed bids to the SQL DB and their per-slot
-// observations to the blockdb (merged with any previously stored object).
+// observations to the blockdb, together with the flushed inclusion list
+// objects of the same slots (merged with any previously stored object).
 // Must be called without holding the cache lock.
-func (cache *blockBidCache) persistFlushEntries(entries []*flushEntry, sessionClients []string) error {
-	if len(entries) == 0 {
+func (cache *blockBidCache) persistFlushEntries(entries []*flushEntry, inclusionLists map[uint64]*btypes.SlotMeta, sessionClients []string) error {
+	if len(entries) == 0 && len(inclusionLists) == 0 {
 		return nil
 	}
 
-	if blockdb.GlobalBlockDb.SupportsSlotBids() {
+	if blockdb.GlobalBlockDb.SupportsSlotMeta() {
 		bySlot := make(map[uint64][]*flushEntry, bidCacheMaxSlots)
+		slots := make(map[uint64]bool, bidCacheMaxSlots)
 		for _, entry := range entries {
 			bySlot[entry.bid.Slot] = append(bySlot[entry.bid.Slot], entry)
+			slots[entry.bid.Slot] = true
+		}
+		for slot := range inclusionLists {
+			slots[slot] = true
 		}
 
-		for slot, slotEntries := range bySlot {
-			bids := make([]*dbtypes.BlockBid, 0, len(slotEntries))
-			seen := make([]map[string]int32, 0, len(slotEntries))
-			for _, entry := range slotEntries {
-				bids = append(bids, entry.bid)
-				seen = append(seen, entry.seen)
+		for slot := range slots {
+			var obj *btypes.SlotMeta
+			if slotEntries := bySlot[slot]; len(slotEntries) > 0 {
+				bids := make([]*dbtypes.BlockBid, 0, len(slotEntries))
+				seen := make([]map[string]int32, 0, len(slotEntries))
+				for _, entry := range slotEntries {
+					bids = append(bids, entry.bid)
+					seen = append(seen, entry.seen)
+				}
+				obj = buildSlotMeta(slot, sessionClients, bids, seen)
 			}
-			obj := buildSlotBids(slot, sessionClients, bids, seen)
+			obj = btypes.MergeSlotMeta(obj, inclusionLists[slot])
 
 			// Merge with a previously stored object: the slot may have been
 			// flushed before (partial late bids, restart overlap).
-			stored, err := blockdb.GlobalBlockDb.GetSlotBids(cache.indexer.ctx, slot)
+			stored, err := blockdb.GlobalBlockDb.GetSlotMeta(cache.indexer.ctx, slot, btypes.SlotMetaFlagAll)
 			if err != nil {
-				cache.indexer.logger.Warnf("error loading stored bids object for slot %d: %v", slot, err)
+				cache.indexer.logger.Warnf("error loading stored meta object for slot %d: %v", slot, err)
 			}
-			merged := btypes.MergeSlotBids(stored, obj)
+			merged := btypes.MergeSlotMeta(stored, obj)
 
-			if _, err := blockdb.GlobalBlockDb.AddSlotBids(cache.indexer.ctx, merged); err != nil {
-				cache.indexer.logger.Errorf("error persisting bids object for slot %d: %v", slot, err)
+			if _, err := blockdb.GlobalBlockDb.AddSlotMeta(cache.indexer.ctx, merged); err != nil {
+				cache.indexer.logger.Errorf("error persisting meta object for slot %d: %v", slot, err)
 			}
 		}
+	}
+
+	if len(entries) == 0 {
+		return nil
 	}
 
 	bidsToFlush := make([]*dbtypes.BlockBid, 0, len(entries))
@@ -423,16 +441,32 @@ func (cache *blockBidCache) persistFlushEntries(entries []*flushEntry, sessionCl
 // checkAndFlush checks if the cache needs to be flushed and performs the flush if necessary.
 // This should be called periodically (e.g., on each new block).
 func (cache *blockBidCache) checkAndFlush() error {
+	// The inclusion lists share the flush window with the bids, so the window
+	// spans the slots of both caches.
+	canPersistLists := blockdb.GlobalBlockDb.SupportsSlotMeta()
+	var listMinSlot, listMaxSlot phase0.Slot
+	if canPersistLists {
+		listMinSlot, listMaxSlot = cache.indexer.inclusionListCache.slotBounds()
+	}
+
 	cache.cacheMutex.Lock()
 
+	minSlot, maxSlot := cache.minSlot, cache.maxSlot
+	if listMaxSlot > maxSlot {
+		maxSlot = listMaxSlot
+	}
+	if listMinSlot > 0 && (minSlot == 0 || listMinSlot < minSlot) {
+		minSlot = listMinSlot
+	}
+
 	// Check if we need to flush
-	if cache.maxSlot == 0 || cache.maxSlot-cache.minSlot < bidCacheFlushThreshold {
+	if maxSlot == 0 || maxSlot-minSlot < bidCacheFlushThreshold {
 		cache.cacheMutex.Unlock()
 		return nil
 	}
 
 	// Calculate the cutoff slot - we'll flush bids older than this
-	cutoffSlot := cache.maxSlot - bidCacheRetainSlots
+	cutoffSlot := maxSlot - bidCacheRetainSlots
 
 	// Collect bids to flush (from minSlot to cutoffSlot)
 	toFlush := make(map[bidCacheKey]*cachedBid, len(cache.bids))
@@ -445,16 +479,26 @@ func (cache *blockBidCache) checkAndFlush() error {
 	sessionClients := cache.sessionClientNames()
 
 	// Update minSlot
-	cache.minSlot = cutoffSlot
+	if cache.maxSlot > 0 {
+		cache.minSlot = cutoffSlot
+		if cache.maxSlot < cutoffSlot {
+			cache.maxSlot = cutoffSlot
+		}
+	}
 
 	cache.cacheMutex.Unlock()
 
+	var inclusionLists map[uint64]*btypes.SlotMeta
+	if canPersistLists {
+		inclusionLists = cache.indexer.inclusionListCache.collectFlushObjects(cutoffSlot)
+	}
+
 	// Write to DB outside of lock
-	if len(entries) > 0 {
-		if err := cache.persistFlushEntries(entries, sessionClients); err != nil {
+	if len(entries) > 0 || len(inclusionLists) > 0 {
+		if err := cache.persistFlushEntries(entries, inclusionLists, sessionClients); err != nil {
 			return err
 		}
-		cache.indexer.logger.Debugf("flushed %d bids to DB (slots < %d)", len(entries), cutoffSlot)
+		cache.indexer.logger.Debugf("flushed %d bids and %d inclusion list slots to DB (slots < %d)", len(entries), len(inclusionLists), cutoffSlot)
 	}
 
 	return nil
@@ -463,9 +507,15 @@ func (cache *blockBidCache) checkAndFlush() error {
 // flushAll flushes all cached bids to the database.
 // This should be called on shutdown.
 func (cache *blockBidCache) flushAll() error {
+	var inclusionLists map[uint64]*btypes.SlotMeta
+	if blockdb.GlobalBlockDb.SupportsSlotMeta() {
+		_, listMaxSlot := cache.indexer.inclusionListCache.slotBounds()
+		inclusionLists = cache.indexer.inclusionListCache.collectFlushObjects(listMaxSlot + 1)
+	}
+
 	cache.cacheMutex.Lock()
 
-	if len(cache.bids) == 0 {
+	if len(cache.bids) == 0 && len(inclusionLists) == 0 {
 		cache.cacheMutex.Unlock()
 		return nil
 	}
@@ -483,10 +533,10 @@ func (cache *blockBidCache) flushAll() error {
 	cache.cacheMutex.Unlock()
 
 	// Write to DB outside of lock
-	if err := cache.persistFlushEntries(entries, sessionClients); err != nil {
+	if err := cache.persistFlushEntries(entries, inclusionLists, sessionClients); err != nil {
 		return err
 	}
 
-	cache.indexer.logger.Infof("flushed %d bids to DB on shutdown", len(entries))
+	cache.indexer.logger.Infof("flushed %d bids and %d inclusion list slots to DB on shutdown", len(entries), len(inclusionLists))
 	return nil
 }

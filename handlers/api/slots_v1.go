@@ -288,8 +288,9 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		blockFilter.MaxSlot = &maxSlot
 	}
 
-	// Get blocks from database
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), blockFilter, pageIdx, uint32(limit+1), 0)
+	// The service returns one lookahead record beyond pageSize. Keep the page
+	// stride at limit so that record is returned on the next numbered page.
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), blockFilter, pageIdx, uint32(limit), 0)
 
 	// Check if we have MEV blocks to fetch
 	var mevBlocksMap map[string]*dbtypes.MevBlock

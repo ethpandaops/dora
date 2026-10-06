@@ -1441,7 +1441,7 @@
         },
         "/v1/slot/{slotOrHash}/inclusion_lists": {
             "get": {
-                "description": "Returns the cached EIP-7805 inclusion lists for a slot, with each transaction\nmarked as included or not based on whether it appears in the slot's block transactions.",
+                "description": "Returns the EIP-7805 inclusion lists published in a slot: the inclusion list committee\nwith each member's submission status, the lists with their gossip observations, and for\nevery block of the following slot how its execution payload treated each list transaction\n(included, validly omitted with the reason, not enforced, or unsatisfied).",
                 "produces": [
                     "application/json"
                 ],
@@ -4909,95 +4909,11 @@
                 }
             }
         },
-        "api.APISlotInclusionList": {
-            "type": "object",
-            "properties": {
-                "dependent_root": {
-                    "type": "string"
-                },
-                "signature": {
-                    "type": "string"
-                },
-                "transactions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.APISlotInclusionListTransaction"
-                    }
-                },
-                "transactions_count": {
-                    "type": "integer"
-                },
-                "validator_index": {
-                    "type": "integer"
-                },
-                "validator_name": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.APISlotInclusionListTransaction": {
-            "type": "object",
-            "properties": {
-                "data_len": {
-                    "type": "integer"
-                },
-                "decode_error": {
-                    "type": "string"
-                },
-                "from": {
-                    "type": "string"
-                },
-                "gas_limit": {
-                    "type": "integer"
-                },
-                "hash": {
-                    "type": "string"
-                },
-                "index": {
-                    "type": "integer"
-                },
-                "is_included": {
-                    "type": "boolean"
-                },
-                "nonce": {
-                    "type": "integer"
-                },
-                "to": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "integer"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.APISlotInclusionListsData": {
-            "type": "object",
-            "properties": {
-                "block_root": {
-                    "type": "string"
-                },
-                "count": {
-                    "type": "integer"
-                },
-                "inclusion_lists": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.APISlotInclusionList"
-                    }
-                },
-                "slot": {
-                    "type": "integer"
-                }
-            }
-        },
         "api.APISlotInclusionListsResponse": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/api.APISlotInclusionListsData"
+                    "$ref": "#/definitions/services.SlotInclusionListsView"
                 },
                 "status": {
                     "type": "string"
@@ -5986,6 +5902,245 @@
                 },
                 "min_time": {
                     "type": "integer"
+                }
+            }
+        },
+        "services.SlotInclusionListEntry": {
+            "type": "object",
+            "properties": {
+                "dependent_root": {
+                    "type": "string"
+                },
+                "first_seen": {
+                    "description": "FirstSeen is the earliest observation as ms offset from slot start.",
+                    "type": "integer"
+                },
+                "seen": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/services.SlotInclusionListSeenBy"
+                    }
+                },
+                "signature": {
+                    "type": "string"
+                },
+                "transactions": {
+                    "description": "Transactions holds the list's transactions in list order as indexes\ninto SlotInclusionListsView.Transactions.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "services.SlotInclusionListMember": {
+            "type": "object",
+            "properties": {
+                "first_seen": {
+                    "description": "FirstSeen is the earliest observation of a list of the member as ms\noffset from slot start.",
+                    "type": "integer"
+                },
+                "lists": {
+                    "description": "Lists holds the indexes of the member's lists in SlotInclusionListsView.Lists.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "status": {
+                    "description": "Status is \"submitted\", \"late\", \"equivocated\" or \"missing\".",
+                    "type": "string"
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "services.SlotInclusionListOutcome": {
+            "type": "object",
+            "properties": {
+                "group": {
+                    "description": "Group is \"included\", \"not_enforced\", \"omitted\" (validly left out),\n\"unsatisfied\" (inclusion list violation) or \"unknown\".",
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status is the persisted status code (blockdb ILTxStatus*).",
+                    "type": "integer"
+                }
+            }
+        },
+        "services.SlotInclusionListSeenBy": {
+            "type": "object",
+            "properties": {
+                "client": {
+                    "description": "Client is an index into SlotInclusionListsView.Clients.",
+                    "type": "integer"
+                },
+                "time": {
+                    "description": "Time is the first-seen offset in ms from slot start.",
+                    "type": "integer"
+                }
+            }
+        },
+        "services.SlotInclusionListTarget": {
+            "type": "object",
+            "properties": {
+                "base_fee": {
+                    "type": "integer"
+                },
+                "bid_acknowledged": {
+                    "description": "BidAcknowledged holds, per committee member, whether the block's\nexecution payload bid acknowledges a list of the member\n(inclusion_list_bits). Nil if the bid is not available.",
+                    "type": "array",
+                    "items": {
+                        "type": "boolean"
+                    }
+                },
+                "block_hash": {
+                    "type": "string"
+                },
+                "block_number": {
+                    "type": "integer"
+                },
+                "block_root": {
+                    "type": "string"
+                },
+                "evaluated": {
+                    "description": "Evaluated is false if the lists have not been checked against the block.",
+                    "type": "boolean"
+                },
+                "gas_left": {
+                    "type": "integer"
+                },
+                "lists": {
+                    "description": "Lists holds, per list, why the list is not enforced against this block:\n\"late\", \"equivocation\" or \"wrong_branch\", or \"not_evaluated\" if the\nevaluation does not cover the list. Empty if it is enforced.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "payload_status": {
+                    "description": "PayloadStatus is \"canonical\" if the chain built on the block's payload,\n\"orphaned\" if it did not and \"missing\" if the payload was never revealed.\nFork choice does not extend a payload that leaves the lists unsatisfied,\nso this is how the network judged the payload.",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status is \"canonical\" or \"orphaned\".",
+                    "type": "string"
+                },
+                "transactions": {
+                    "description": "Transactions holds the outcome per entry of SlotInclusionListsView.Transactions.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/services.SlotInclusionListOutcome"
+                    }
+                },
+                "unsatisfied": {
+                    "type": "integer"
+                }
+            }
+        },
+        "services.SlotInclusionListTransaction": {
+            "type": "object",
+            "properties": {
+                "data_len": {
+                    "type": "integer"
+                },
+                "decoded": {
+                    "type": "boolean"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "gas_limit": {
+                    "type": "integer"
+                },
+                "hash": {
+                    "type": "string"
+                },
+                "max_fee_per_gas": {
+                    "type": "string"
+                },
+                "nonce": {
+                    "type": "integer"
+                },
+                "raw": {
+                    "description": "Raw is the encoded transaction as carried by the lists.",
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "services.SlotInclusionListsView": {
+            "type": "object",
+            "properties": {
+                "clients": {
+                    "description": "Clients holds the observer client names; observations reference them by index.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "committee": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/services.SlotInclusionListMember"
+                    }
+                },
+                "due_ms": {
+                    "description": "DueMs is the inclusion list due time as ms offset into the slot. Lists\nfirst seen after it are not enforced.",
+                    "type": "integer"
+                },
+                "lists": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/services.SlotInclusionListEntry"
+                    }
+                },
+                "slot": {
+                    "description": "Slot is the slot the lists were published in.",
+                    "type": "integer"
+                },
+                "target_slot": {
+                    "description": "TargetSlot is the slot whose execution payload the lists constrain.",
+                    "type": "integer"
+                },
+                "target_state": {
+                    "description": "TargetState tells why Targets is empty: \"pending\" while the target slot\nhas not passed, \"missed\" if it has no block. Empty otherwise.",
+                    "type": "string"
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/services.SlotInclusionListTarget"
+                    }
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/services.SlotInclusionListTransaction"
+                    }
                 }
             }
         }

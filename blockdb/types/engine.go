@@ -156,10 +156,10 @@ type BlockDbObjectStats struct {
 	CanonicalDutiesCount uint64
 	// DivergingDutiesCount is the number of diverging-fork duties objects.
 	DivergingDutiesCount uint64
-	// BidsCount is the number of per-slot bids objects (namespace ns7).
-	BidsCount uint64
-	// BidsBytes is the total encoded size of the bids objects, if available.
-	BidsBytes uint64
+	// MetaCount is the number of per-slot meta objects (namespace ns7).
+	MetaCount uint64
+	// MetaBytes is the total encoded size of the meta objects, if available.
+	MetaBytes uint64
 }
 
 // ObjectStatsEngine is an optional interface implemented by engines that can
@@ -170,18 +170,19 @@ type ObjectStatsEngine interface {
 	GetObjectStats(ctx context.Context) (*BlockDbObjectStats, error)
 }
 
-// SlotBidsEngine stores per-slot bids objects: all execution payload bids of
-// a slot with their gossip observations, keyed by slot.
-type SlotBidsEngine interface {
-	// AddSlotBids stores the bids object for a slot, replacing any existing
+// SlotMetaEngine stores per-slot meta objects: all execution payload bids and
+// inclusion lists of a slot with their gossip observations, keyed by slot.
+type SlotMetaEngine interface {
+	// AddSlotMeta stores the meta object for a slot, replacing any existing
 	// object. Returns the stored size in bytes.
-	AddSlotBids(ctx context.Context, bids *SlotBids) (int64, error)
+	AddSlotMeta(ctx context.Context, meta *SlotMeta) (int64, error)
 
-	// GetSlotBids retrieves the bids object for a slot.
+	// GetSlotMeta retrieves the parts of the meta object for a slot selected
+	// by flags. Engines with ranged reads only fetch the selected sections.
 	// Returns nil, nil if not found.
-	GetSlotBids(ctx context.Context, slot uint64) (*SlotBids, error)
+	GetSlotMeta(ctx context.Context, slot uint64, flags SlotMetaFlags) (*SlotMeta, error)
 
-	// PruneSlotBidsBefore deletes bids objects for all slots before maxSlot.
+	// PruneSlotMetaBefore deletes meta objects for all slots before maxSlot.
 	// Returns the number of objects deleted.
-	PruneSlotBidsBefore(ctx context.Context, maxSlot uint64) (int64, error)
+	PruneSlotMetaBefore(ctx context.Context, maxSlot uint64) (int64, error)
 }

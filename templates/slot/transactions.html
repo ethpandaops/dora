@@ -9,7 +9,7 @@
           <th>To</th>
           <th>Method</th>
           <th>Value</th>
-          {{ if and (gt (len .Block.Transactions) 0) (index .Block.Transactions 0).HasElData }}
+          {{ if .Block.TransactionsIndexed }}
           <th>Status</th>
           <th>Gas Used</th>
           <th>Fee</th>
@@ -21,11 +21,12 @@
       </thead>
       <tbody>
         {{ range $i, $transaction := .Block.Transactions }}
-          <tr>
+          <tr data-txhash="0x{{ printf "%x" $transaction.Hash }}">
             <td>{{ $i }}</td>
             <td class="text-monospace">
               {{ ethTransactionLink $transaction.Hash 16 }}
               <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $transaction.Hash }}"></i>
+              <span class="il-tx-mark"></span>
             </td>
             <td class="text-monospace">
               {{ formatEthAddressShortLink $transaction.From false }}
@@ -71,6 +72,12 @@
                 {{ formatTransactionFee $transaction.TxFee }}
               </span>
             </td>
+            {{ else if $.Block.TransactionsIndexed }}
+            <td>
+              <span class="badge text-bg-secondary" style="font-size: 11px;" data-bs-toggle="tooltip" title="No execution data is indexed for this transaction"><i class="fas fa-question me-1"></i>Unindexed</span>
+            </td>
+            <td><span class="text-muted">-</span></td>
+            <td><span class="text-muted">-</span></td>
             {{ else }}
             <td>
               {{ if gt $transaction.DataLen 0 }}
@@ -99,4 +106,60 @@
       </tbody>
     </table>
   </div>
+  {{ if $.InclusionListsEnabled }}
+    <script type="text/javascript">
+      (function() {
+        var blockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
+        var prevSlot = {{ .PreviousSlot }};
+        var button = document.getElementById('resolveInclusionListTxs');
+        var result = document.getElementById('resolveInclusionListResult');
+        if (!button) return;
+
+        // The transactions of the previous slot's inclusion lists constrain this
+        // block's payload. They are only loaded on request.
+        button.addEventListener('click', function() {
+          button.disabled = true;
+          result.textContent = 'Loading…';
+
+          fetch('/slot/' + prevSlot + '/inclusionlists?brief=1')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              var txs = data.transactions || [];
+              var target = (data.targets || []).find(function(t) { return t.block_root === blockRoot; });
+              var rows = {};
+              document.querySelectorAll('#block_transactions tr[data-txhash]').forEach(function(row) {
+                rows[row.getAttribute('data-txhash')] = row;
+              });
+
+              var marked = 0;
+              txs.forEach(function(tx, idx) {
+                var row = rows[tx.hash];
+                if (!row) return;
+                marked++;
+                var mark = row.querySelector('.il-tx-mark');
+                if (mark) {
+                  mark.innerHTML = '<a class="badge text-bg-info text-decoration-none" href="/slot/' + prevSlot + '#inclusionLists" title="On the inclusion lists of slot ' + prevSlot + '">IL</a>';
+                }
+              });
+
+              var summary = marked + ' of ' + txs.length + ' inclusion list transactions of slot ' + prevSlot + ' are in this block';
+              if (txs.length === 0) {
+                summary = 'No inclusion lists known for slot ' + prevSlot;
+              } else if (target && target.evaluated && target.unsatisfied > 0) {
+                summary += ', ' + target.unsatisfied + ' unsatisfied';
+              }
+              result.innerHTML = '';
+              var link = document.createElement('a');
+              link.href = '/slot/' + prevSlot + '#inclusionLists';
+              link.textContent = summary;
+              result.appendChild(link);
+            })
+            .catch(function() {
+              button.disabled = false;
+              result.textContent = 'Failed to load inclusion lists';
+            });
+        });
+      })();
+    </script>
+  {{ end }}
 {{ end }}
