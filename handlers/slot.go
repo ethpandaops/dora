@@ -1595,6 +1595,9 @@ func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, bl
 		}
 		bidData.ClassLabel, bidData.ClassColor, bidData.ClassTitle = describeBidClass(bid)
 		bidData.SeenColor = seenBadgeColor(bid.SeenCount, bid.SeenTotal)
+		if !bidData.IsSelfBuilt {
+			pageData.HasGossipBids = true
+		}
 
 		pageData.Bids = append(pageData.Bids, bidData)
 	}
