@@ -103,11 +103,11 @@ func (client *Client) buildEventStreamMask() uint16 {
 	chainState := client.pool.chainState
 	currentEpoch := chainState.CurrentEpoch()
 
-	if chainState.IsEip7732Enabled(currentEpoch) {
+	if chainState.IsEip7732Enabled(currentEpoch + 1) {
 		events |= rpc.StreamExecutionPayloadEvent | rpc.StreamExecutionPayloadBidEvent
 	}
 
-	if chainState.IsEip7805Enabled(currentEpoch) {
+	if chainState.IsEip7805Enabled(currentEpoch + 1) {
 		events |= rpc.StreamInclusionListEvent
 	}
 
