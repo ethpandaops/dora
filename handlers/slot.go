@@ -1007,7 +1007,10 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			} else {
 				pageData.ExecutionData.BALSummary = computeBALSummary(accesses)
 			}
+			pageData.ExecutionData.BALSize = uint64(len(blockData.BlockAccessList))
 		}
+
+		setSlotPagePayloadSizes(pageData.ExecutionData, blockData, executionPayload)
 
 		// Check if execution data exists in blockdb for receipt downloads
 		if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
@@ -1884,4 +1887,40 @@ func computeBALSummary(accesses []utils.BALAccountAccess) *models.SlotPageBALSum
 		s.NonceChanges += uint64(len(e.NonceChanges))
 	}
 	return s
+}
+
+// setSlotPagePayloadSizes fills the EIP-7934 RLP block size and, for Gloas+, the SSZ
+// size of the gossiped execution payload envelope.
+func setSlotPagePayloadSizes(execData *models.SlotPageExecutionData, blockData *services.CombinedBlockResponse, payload *all.ExecutionPayload) {
+	if payload.BlockHash == (phase0.Hash32{}) {
+		return // pre-merge (empty) payload
+	}
+
+	parentRoot := blockData.Header.Message.ParentRoot
+	requests := blockData.Block.Message.Body.ExecutionRequests
+	var envelope *all.SignedExecutionPayloadEnvelope
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		envelope = blockData.Payload // non-nil: payload came from the envelope
+		parentRoot = envelope.Message.ParentBeaconBlockRoot
+		requests = envelope.Message.ExecutionRequests
+	}
+
+	size, exact, err := utils.ExecutionBlockSize(payload, parentRoot, requests, blockData.BlockAccessList)
+	if err != nil {
+		logrus.Warnf("error computing rlp block size for slot %v: %v", blockData.Header.Message.Slot, err)
+	} else {
+		execData.RlpBlockSize = size
+		execData.RlpBlockSizePct = utils.CalculatePercentage(size, utils.MaxRlpBlockSize)
+		execData.RlpBlockSizeExact = exact
+	}
+
+	if envelope != nil {
+		size, err := utils.EnvelopeSSZSize(services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ(), envelope, blockData.BlockAccessList)
+		if err != nil {
+			logrus.Warnf("error computing envelope ssz size for slot %v: %v", blockData.Header.Message.Slot, err)
+		} else {
+			execData.EnvelopeSize = size
+			execData.EnvelopeSizePct = utils.CalculatePercentage(size, utils.MaxGossipPayloadSize)
+		}
+	}
 }

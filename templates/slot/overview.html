@@ -528,6 +528,43 @@
                 </div>
                 {{ end }}
 
+                {{ if .RlpBlockSize }}
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7934 block size: len(rlp(header, transactions, ommers, withdrawals)) against MAX_RLP_BLOCK_SIZE of 8 MiB; the block access list is not counted.">RLP Block Size:</span></div>
+                  <div class="col-md-10">
+                    <div style="position:relative;width:200px;height:inherit;white-space:nowrap;">
+                      <span class="{{ if gt .RlpBlockSizePct 90.0 }}text-warning{{ end }}">{{ if not .RlpBlockSizeExact }}<span data-bs-toggle="tooltip" title="The reconstructed EL header does not hash to the block hash (e.g. the BAL is unavailable), so this size is approximate.">≈</span> {{ end }}{{ formatAddCommas .RlpBlockSize }} B</span>
+                      <small class="text-muted ml-3">({{ formatByteAmount .RlpBlockSize }}, {{ formatFloat .RlpBlockSizePct 2 }}% of 8 MiB)</small>
+                      <div class="progress" style="position:absolute;bottom:-6px;width:200px;height:4px;">
+                        <div class="progress-bar{{ if gt .RlpBlockSizePct 90.0 }} bg-warning{{ end }}" role="progressbar" style="width: {{ .RlpBlockSizePct }}%;" aria-valuenow="{{ .RlpBlockSize }}" aria-valuemin="0" aria-valuemax="8388608"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {{ end }}
+
+                {{ if .BALSize }}
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Size of the raw RLP-encoded EIP-7928 block access list; it travels in the payload envelope but is not counted in the EIP-7934 block size.">BAL Size:</span></div>
+                  <div class="col-md-10">{{ formatAddCommas .BALSize }} B <small class="text-muted ml-3">({{ formatByteAmount .BALSize }})</small></div>
+                </div>
+                {{ end }}
+
+                {{ if .EnvelopeSize }}
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="SSZ size of the gossiped SignedExecutionPayloadEnvelope (payload incl. transactions and BAL, plus execution requests and signature) against the 10 MiB gossip MAX_PAYLOAD_SIZE.">Envelope Size:</span></div>
+                  <div class="col-md-10">
+                    <div style="position:relative;width:200px;height:inherit;white-space:nowrap;">
+                      <span class="{{ if gt .EnvelopeSizePct 90.0 }}text-warning{{ end }}">{{ formatAddCommas .EnvelopeSize }} B</span>
+                      <small class="text-muted ml-3">({{ formatByteAmount .EnvelopeSize }}, {{ formatFloat .EnvelopeSizePct 2 }}% of 10 MiB)</small>
+                      <div class="progress" style="position:absolute;bottom:-6px;width:200px;height:4px;">
+                        <div class="progress-bar{{ if gt .EnvelopeSizePct 90.0 }} bg-warning{{ end }}" role="progressbar" style="width: {{ .EnvelopeSizePct }}%;" aria-valuenow="{{ .EnvelopeSize }}" aria-valuemin="0" aria-valuemax="10485760"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {{ end }}
+
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transactions">Transactions:</span></div>
                   <div class="col-md-10 text-monospace text-break">{{ $block.TransactionsCount }}</div>

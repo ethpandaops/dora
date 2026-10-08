@@ -152,6 +152,15 @@ type SlotPageExecutionData struct {
 	// tens of thousands of addresses.
 	BlockAccessListHash []byte              `json:"block_access_list_hash,omitempty"`
 	BALSummary          *SlotPageBALSummary `json:"bal_summary,omitempty"`
+	BALSize             uint64              `json:"bal_size,omitempty"` // len of the raw BAL RLP
+
+	// EIP-7934 RLP block size (header+txs+ommers+withdrawals, no BAL) and, for Gloas+,
+	// the SSZ size of the gossiped SignedExecutionPayloadEnvelope. Pct are of the limits.
+	RlpBlockSize      uint64  `json:"rlp_block_size,omitempty"`
+	RlpBlockSizePct   float64 `json:"rlp_block_size_pct,omitempty"`
+	RlpBlockSizeExact bool    `json:"rlp_block_size_exact,omitempty"` // reconstructed header hash == block hash
+	EnvelopeSize      uint64  `json:"envelope_size,omitempty"`
+	EnvelopeSizePct   float64 `json:"envelope_size_pct,omitempty"`
 
 	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
 	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).
