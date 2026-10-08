@@ -161,6 +161,7 @@ type SlotPageExecutionData struct {
 	RlpBlockSizeExact bool    `json:"rlp_block_size_exact,omitempty"` // reconstructed header hash == block hash
 	EnvelopeSize      uint64  `json:"envelope_size,omitempty"`
 	EnvelopeSizePct   float64 `json:"envelope_size_pct,omitempty"`
+	EnvelopeSizeLimit uint64  `json:"envelope_size_limit,omitempty"` // gossip MAX_PAYLOAD_SIZE from the chain spec
 
 	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
 	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).

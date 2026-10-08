@@ -1010,7 +1010,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			pageData.ExecutionData.BALSize = uint64(len(blockData.BlockAccessList))
 		}
 
-		setSlotPagePayloadSizes(pageData.ExecutionData, blockData, executionPayload)
+		setSlotPagePayloadSizes(pageData.ExecutionData, blockData, executionPayload, specs.MaxPayloadSize)
 
 		// Check if execution data exists in blockdb for receipt downloads
 		if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
@@ -1890,8 +1890,8 @@ func computeBALSummary(accesses []utils.BALAccountAccess) *models.SlotPageBALSum
 }
 
 // setSlotPagePayloadSizes fills the EIP-7934 RLP block size and, for Gloas+, the SSZ
-// size of the gossiped execution payload envelope.
-func setSlotPagePayloadSizes(execData *models.SlotPageExecutionData, blockData *services.CombinedBlockResponse, payload *all.ExecutionPayload) {
+// size of the gossiped execution payload envelope against the network's MAX_PAYLOAD_SIZE.
+func setSlotPagePayloadSizes(execData *models.SlotPageExecutionData, blockData *services.CombinedBlockResponse, payload *all.ExecutionPayload, maxPayloadSize uint64) {
 	if payload.BlockHash == (phase0.Hash32{}) {
 		return // pre-merge (empty) payload
 	}
@@ -1919,8 +1919,12 @@ func setSlotPagePayloadSizes(execData *models.SlotPageExecutionData, blockData *
 		if err != nil {
 			logrus.Warnf("error computing envelope ssz size for slot %v: %v", blockData.Header.Message.Slot, err)
 		} else {
+			if maxPayloadSize == 0 {
+				maxPayloadSize = utils.MaxGossipPayloadSize // MAX_PAYLOAD_SIZE missing from the chain config
+			}
 			execData.EnvelopeSize = size
-			execData.EnvelopeSizePct = utils.CalculatePercentage(size, utils.MaxGossipPayloadSize)
+			execData.EnvelopeSizeLimit = maxPayloadSize
+			execData.EnvelopeSizePct = utils.CalculatePercentage(size, maxPayloadSize)
 		}
 	}
 }
