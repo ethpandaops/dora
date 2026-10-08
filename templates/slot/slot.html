@@ -434,7 +434,7 @@
                         <small class="text-muted">eth_getBlockByHash format with full transactions</small>
                       </div>
                       <div class="btn-group btn-group-sm" role="group" aria-label="Execution block downloads">
-                        {{ if and .Block.Sizes .Block.Sizes.RlpBlockExact }}<a href="?download=block-body-rlp" class="btn btn-outline-primary"><i class="fas fa-file-archive me-1"></i>RLP</a>{{ end }}
+                        {{ if and .Block.Sizes .Block.Sizes.RlpDownload }}<a href="?download=block-body-rlp" class="btn btn-outline-primary"><i class="fas fa-file-archive me-1"></i>RLP</a>{{ end }}
                         <a href="?download=block-body-json" class="btn btn-outline-primary"><i class="fas fa-file-code me-1"></i>JSON</a>
                       </div>
                     </div>

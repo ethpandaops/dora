@@ -136,6 +136,7 @@ type SlotPageBlockSizes struct {
 	RlpBlock       uint64  `json:"rlp_block,omitempty"`
 	RlpBlockPct    float64 `json:"rlp_block_pct,omitempty"`
 	RlpBlockExact  bool    `json:"rlp_block_exact,omitempty"` // reconstructed header hash == block hash
+	RlpDownload    bool    `json:"rlp_download,omitempty"`    // RLP download available: header verified and go-ethereum decoded every tx
 	BAL            uint64  `json:"bal,omitempty"`             // raw BAL RLP
 }
 
