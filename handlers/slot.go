@@ -830,27 +830,18 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			executionPayload = blockData.Payload.Message.Payload
 		}
 
-		// The payload is canonical if a canonical successor builds on top of it -
-		// i.e. some canonical slot has its execution parent hash set to this block's
-		// committed block hash. A single indexed, canonical-only lookup answers that.
 		payloadIncluded := false
-		if pageData.PayloadHeader != nil {
-			builtOn := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
-				EthBlockParentHash: pageData.PayloadHeader.BlockHash,
-				WithOrphaned:       0, // canonical successors only
-			}, 0, 1, 0)
-			payloadIncluded = len(builtOn) > 0
-		}
-
-		// Distinguish a genuinely orphaned payload from the chain tip: a canonical
-		// block at the head has no successor yet that could reference its payload.
 		hasCanonicalChild := false
-		if !payloadIncluded && !blockData.Orphaned {
+		if !blockData.Orphaned {
 			for _, child := range services.GlobalBeaconService.GetDbBlocksByParentRoot(ctx, blockData.Root) {
-				if child.Status == dbtypes.Canonical {
-					hasCanonicalChild = true
-					break
+				if child.Status != dbtypes.Canonical {
+					continue
 				}
+				hasCanonicalChild = true
+				if pageData.PayloadHeader != nil && bytes.Equal(child.EthBlockParentHash, pageData.PayloadHeader.BlockHash) {
+					payloadIncluded = true
+				}
+				break
 			}
 		}
 
