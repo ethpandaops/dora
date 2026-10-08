@@ -164,7 +164,6 @@ type execBlockJSON struct {
 	Miner                 string            `json:"miner"`
 	Difficulty            string            `json:"difficulty"`
 	ExtraData             string            `json:"extraData"`
-	Size                  string            `json:"size,omitempty"`
 	GasLimit              string            `json:"gasLimit"`
 	GasUsed               string            `json:"gasUsed"`
 	Timestamp             string            `json:"timestamp"`
@@ -289,9 +288,6 @@ func handleBlockBodyDownload(w http.ResponseWriter, blockData *services.Combined
 		MixHash:          header.MixDigest.Hex(),
 		BaseFeePerGas:    fmt.Sprintf("0x%x", header.BaseFee),
 		Uncles:           []string{},
-	}
-	if execBlock.Block != nil && execBlock.HashMatch {
-		block.Size = fmt.Sprintf("0x%x", execBlock.Block.Size())
 	}
 	if header.WithdrawalsHash != nil {
 		block.WithdrawalsRoot = header.WithdrawalsHash.Hex()
