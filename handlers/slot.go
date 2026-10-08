@@ -1007,10 +1007,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			} else {
 				pageData.ExecutionData.BALSummary = computeBALSummary(accesses)
 			}
-			pageData.ExecutionData.BALSize = uint64(len(blockData.BlockAccessList))
 		}
-
-		setSlotPagePayloadSizes(pageData.ExecutionData, blockData, executionPayload, specs.MaxPayloadSize)
 
 		// Check if execution data exists in blockdb for receipt downloads
 		if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
@@ -1022,6 +1019,8 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			pageData.ExecutionData.HasExecData = hasExecData
 		}
 	}
+
+	pageData.Sizes = getSlotPageBlockSizes(blockData, specs.MaxPayloadSize)
 
 	if specs.DenebForkEpoch != nil && uint64(epoch) >= *specs.DenebForkEpoch {
 		// Post-Gloas the blob commitments come from the bid, but the blobs themselves only
@@ -1889,42 +1888,43 @@ func computeBALSummary(accesses []utils.BALAccountAccess) *models.SlotPageBALSum
 	return s
 }
 
-// setSlotPagePayloadSizes fills the EIP-7934 RLP block size and, for Gloas+, the SSZ
-// size of the gossiped execution payload envelope against the network's MAX_PAYLOAD_SIZE.
-func setSlotPagePayloadSizes(execData *models.SlotPageExecutionData, blockData *services.CombinedBlockResponse, payload *all.ExecutionPayload, maxPayloadSize uint64) {
-	if payload.BlockHash == (phase0.Hash32{}) {
-		return // pre-merge (empty) payload
+// getSlotPageBlockSizes measures the SSZ sizes of the beacon block and (Gloas+) the
+// payload envelope against the gossip MAX_PAYLOAD_SIZE, and the EIP-7934 RLP size of
+// the reconstructed EL block.
+func getSlotPageBlockSizes(blockData *services.CombinedBlockResponse, maxPayloadSize uint64) *models.SlotPageBlockSizes {
+	if maxPayloadSize == 0 {
+		maxPayloadSize = utils.MaxGossipPayloadSize // MAX_PAYLOAD_SIZE missing from the chain config
 	}
+	slot := blockData.Header.Message.Slot
+	ds := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ()
+	sizes := &models.SlotPageBlockSizes{GossipLimit: maxPayloadSize, BAL: uint64(len(blockData.BlockAccessList))}
 
-	parentRoot := blockData.Header.Message.ParentRoot
-	requests := blockData.Block.Message.Body.ExecutionRequests
-	var envelope *all.SignedExecutionPayloadEnvelope
-	if blockData.Block.Version >= spec.DataVersionGloas {
-		envelope = blockData.Payload // non-nil: payload came from the envelope
-		parentRoot = envelope.Message.ParentBeaconBlockRoot
-		requests = envelope.Message.ExecutionRequests
-	}
-
-	size, exact, err := utils.ExecutionBlockSize(payload, parentRoot, requests, blockData.BlockAccessList)
-	if err != nil {
-		logrus.Warnf("error computing rlp block size for slot %v: %v", blockData.Header.Message.Slot, err)
+	if size, err := ds.SizeSSZ(blockData.Block); err != nil {
+		logrus.Warnf("error computing beacon block ssz size for slot %v: %v", slot, err)
 	} else {
-		execData.RlpBlockSize = size
-		execData.RlpBlockSizePct = utils.CalculatePercentage(size, utils.MaxRlpBlockSize)
-		execData.RlpBlockSizeExact = exact
+		sizes.BeaconBlock = uint64(size)
+		sizes.BeaconBlockPct = utils.CalculatePercentage(sizes.BeaconBlock, maxPayloadSize)
 	}
 
-	if envelope != nil {
-		size, err := utils.EnvelopeSSZSize(services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ(), envelope, blockData.BlockAccessList)
-		if err != nil {
-			logrus.Warnf("error computing envelope ssz size for slot %v: %v", blockData.Header.Message.Slot, err)
+	if blockData.Payload != nil {
+		if size, err := utils.EnvelopeSSZSize(ds, blockData.Payload, blockData.BlockAccessList); err != nil {
+			logrus.Warnf("error computing envelope ssz size for slot %v: %v", slot, err)
 		} else {
-			if maxPayloadSize == 0 {
-				maxPayloadSize = utils.MaxGossipPayloadSize // MAX_PAYLOAD_SIZE missing from the chain config
-			}
-			execData.EnvelopeSize = size
-			execData.EnvelopeSizeLimit = maxPayloadSize
-			execData.EnvelopeSizePct = utils.CalculatePercentage(size, maxPayloadSize)
+			sizes.Envelope = size
+			sizes.EnvelopePct = utils.CalculatePercentage(size, maxPayloadSize)
 		}
 	}
+
+	payload, execBlock, err := resolveExecutionBlock(blockData)
+	switch {
+	case err != nil || payload.BlockHash == (phase0.Hash32{}):
+		// no (or a pre-merge empty) execution payload
+	case execBlock.Block == nil:
+		logrus.Debugf("no rlp block size for slot %v: %v", slot, execBlock.TxError)
+	default:
+		sizes.RlpBlock = execBlock.Block.Size()
+		sizes.RlpBlockPct = utils.CalculatePercentage(sizes.RlpBlock, utils.MaxRlpBlockSize)
+		sizes.RlpBlockExact = execBlock.HashMatch
+	}
+	return sizes
 }

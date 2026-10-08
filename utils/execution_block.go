@@ -2,17 +2,17 @@ package utils
 
 import (
 	"bytes"
-	"io"
+	"fmt"
 	"math/big"
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -20,64 +20,31 @@ import (
 const (
 	// MaxRlpBlockSize is the EIP-7934 cap on len(rlp(block)): MAX_BLOCK_SIZE (10 MiB) - SAFETY_MARGIN (2 MiB).
 	MaxRlpBlockSize = 8_388_608
-	// MaxGossipPayloadSize is the consensus-layer gossip MAX_PAYLOAD_SIZE (10 MiB).
+	// MaxGossipPayloadSize is the default consensus-layer gossip MAX_PAYLOAD_SIZE (10 MiB).
 	MaxGossipPayloadSize = 10_485_760
 )
 
-// rawTxs is a list of opaque EIP-2718 transaction encodings. It encodes exactly like
-// geth's types.Transactions (legacy txs as their RLP list, typed txs as an RLP string
-// of the envelope) without having to decode transactions of possibly unknown types.
-type rawTxs [][]byte
+// ExecutionBlock is the EL block reconstructed from a beacon execution payload.
+type ExecutionBlock struct {
+	Header    *types.Header // always set
+	Block     *types.Block  // nil if go-ethereum cannot decode a transaction (see TxError)
+	TxError   error
+	HashMatch bool // Header.Hash() equals the payload block hash
+}
+
+// rawTxs feeds the opaque EIP-2718 tx encodings to DeriveSha, so the transactions
+// root does not depend on go-ethereum knowing every tx type.
+type rawTxs []bellatrix.Transaction
 
 func (t rawTxs) Len() int                           { return len(t) }
 func (t rawTxs) EncodeIndex(i int, w *bytes.Buffer) { w.Write(t[i]) }
-func (t rawTxs) EncodeRLP(w io.Writer) error {
-	buf := rlp.NewEncoderBuffer(w)
-	list := buf.List()
-	for _, tx := range t {
-		if len(tx) > 0 && tx[0] >= 0xc0 {
-			buf.Write(tx) // legacy tx: already an RLP list
-		} else {
-			buf.WriteBytes(tx) // typed tx: RLP string of type || payload
-		}
-	}
-	buf.ListEnd(list)
-	return buf.Flush()
-}
 
-// rlpBlock mirrors geth's extblock (core/types/block.go), the encoding measured by
-// EIP-7934 and returned by eth_getBlockByNumber "size". The BAL is not part of it.
-type rlpBlock struct {
-	Header      *types.Header
-	Txs         rawTxs
-	Uncles      []*types.Header
-	Withdrawals []*types.Withdrawal `rlp:"optional"`
-}
-
-// ExecutionBlockSize reconstructs the EL block from a beacon execution payload and
-// returns len(rlp(block)) plus whether the reconstructed header hash matches the
-// payload block hash. parentRoot is the parent beacon block root (Deneb+), requests
-// the payload's execution requests (Electra+), and bal the raw RLP block access list
-// (Gloas+). When the header cannot be fully reconstructed (e.g. a pruned BAL), the
-// size is still exact as long as the header carries all fork fields, but the hash
-// check fails.
-func ExecutionBlockSize(payload *all.ExecutionPayload, parentRoot phase0.Root, requests *all.ExecutionRequests, bal []byte) (size uint64, hashMatch bool, err error) {
-	header, txs, withdrawals := executionBlockFromPayload(payload, parentRoot, requests, bal)
-	enc, err := rlp.EncodeToBytes(&rlpBlock{Header: header, Txs: txs, Withdrawals: withdrawals})
-	if err != nil {
-		return 0, false, err
-	}
-	return uint64(len(enc)), header.Hash() == common.Hash(payload.BlockHash), nil
-}
-
-// executionBlockFromPayload builds the EL header (geth types) and the raw body from a
-// beacon execution payload, following engine.ExecutableDataToBlock.
-func executionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.Root, requests *all.ExecutionRequests, bal []byte) (header *types.Header, txs rawTxs, withdrawals []*types.Withdrawal) {
-	txs = make(rawTxs, len(payload.Transactions))
-	for i, tx := range payload.Transactions {
-		txs[i] = tx
-	}
-
+// ExecutionBlockFromPayload reconstructs the EL block (go-ethereum types) from a beacon
+// execution payload, following engine.ExecutableDataToBlock. parentRoot is the parent
+// beacon block root (Deneb+), requests the payload's execution requests (Electra+) and
+// bal the raw RLP block access list (Gloas+). Without the BAL the header carries a zero
+// BAL hash: the RLP size stays exact, but HashMatch is false.
+func ExecutionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.Root, requests *all.ExecutionRequests, bal []byte) *ExecutionBlock {
 	baseFee := new(big.Int)
 	if payload.BaseFeePerGas != nil {
 		baseFee = payload.BaseFeePerGas.ToBig()
@@ -87,12 +54,12 @@ func executionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.
 		baseFee.SetBytes(le[:])
 	}
 
-	header = &types.Header{
+	header := &types.Header{
 		ParentHash:  common.Hash(payload.ParentHash),
 		UncleHash:   types.EmptyUncleHash,
 		Coinbase:    common.Address(payload.FeeRecipient),
 		Root:        common.Hash(payload.StateRoot),
-		TxHash:      types.DeriveSha(txs, trie.NewStackTrie(nil)),
+		TxHash:      types.DeriveSha(rawTxs(payload.Transactions), trie.NewStackTrie(nil)),
 		ReceiptHash: common.Hash(payload.ReceiptsRoot),
 		Bloom:       types.Bloom(payload.LogsBloom),
 		Difficulty:  new(big.Int),
@@ -105,6 +72,7 @@ func executionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.
 		BaseFee:     baseFee,
 	}
 
+	var withdrawals []*types.Withdrawal
 	if payload.Version >= spec.DataVersionCapella {
 		withdrawals = make([]*types.Withdrawal, len(payload.Withdrawals))
 		for i, w := range payload.Withdrawals {
@@ -128,14 +96,25 @@ func executionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.
 		header.RequestsHash = &h
 	}
 	if payload.Version >= spec.DataVersionGloas {
-		var balHash common.Hash // placeholder when the BAL is unavailable: same size, hash check fails
+		var balHash common.Hash // placeholder when the BAL is unavailable
 		if len(bal) > 0 {
 			balHash = crypto.Keccak256Hash(bal)
 		}
 		slot := payload.SlotNumber
 		header.BlockAccessListHash, header.SlotNumber = &balHash, &slot
 	}
-	return header, txs, withdrawals
+
+	result := &ExecutionBlock{Header: header, HashMatch: header.Hash() == common.Hash(payload.BlockHash)}
+	txs := make([]*types.Transaction, len(payload.Transactions))
+	for i, raw := range payload.Transactions {
+		txs[i] = new(types.Transaction)
+		if err := txs[i].UnmarshalBinary(raw); err != nil {
+			result.TxError = fmt.Errorf("go-ethereum cannot decode tx %d: %w", i, err)
+			return result
+		}
+	}
+	result.Block = types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: txs, Withdrawals: withdrawals})
+	return result
 }
 
 // ExecutionRequestsList encodes execution requests as the EIP-7685 list
@@ -154,7 +133,7 @@ func ExecutionRequestsList(requests *all.ExecutionRequests) [][]byte {
 		for i := 0; i < n; i++ {
 			enc, err := item(i).MarshalSSZ()
 			if err != nil {
-				return // drop the type; the block hash check will then flag the header as unverified
+				return // drop the type; the block hash check then flags the header as unverified
 			}
 			buf = append(buf, enc...)
 		}

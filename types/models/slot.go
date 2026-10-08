@@ -99,6 +99,7 @@ type SlotPageBlockData struct {
 
 	PayloadHeader          *SlotPagePayloadHeader `json:"payload_header"`
 	ExecutionData          *SlotPageExecutionData `json:"execution_data"`
+	Sizes                  *SlotPageBlockSizes    `json:"sizes,omitempty"`
 	PayloadDataUnavailable bool                   `json:"payload_data_unavailable"`
 
 	Attestations              []*SlotPageAttestation           `json:"attestations"`                // Attestations included in this block
@@ -121,6 +122,21 @@ type SlotPageBlockData struct {
 	PtcVotes                  *SlotPagePtcVotes                `json:"ptc_votes"`                   // PTC votes included in this block (for previous slot)
 	BuilderPayment            *SlotPageBuilderPayment          `json:"builder_payment"`             // Gloas builder-payment vote quorum for this slot
 	InclusionListsUnsatisfied int64                            `json:"inclusion_lists_unsatisfied"` // Transactions of the previous slot's inclusion lists this block's payload left unsatisfied (-1 = not evaluated)
+}
+
+// SlotPageBlockSizes holds the encoded sizes of the block and its payload against their
+// limits: SSZ sizes against the gossip MAX_PAYLOAD_SIZE, the EL block RLP size against
+// EIP-7934's MAX_RLP_BLOCK_SIZE (the BAL is not part of it). Zero = unavailable.
+type SlotPageBlockSizes struct {
+	GossipLimit    uint64  `json:"gossip_limit"`
+	BeaconBlock    uint64  `json:"beacon_block"` // SignedBeaconBlock SSZ
+	BeaconBlockPct float64 `json:"beacon_block_pct"`
+	Envelope       uint64  `json:"envelope,omitempty"` // SignedExecutionPayloadEnvelope SSZ (Gloas+)
+	EnvelopePct    float64 `json:"envelope_pct,omitempty"`
+	RlpBlock       uint64  `json:"rlp_block,omitempty"`
+	RlpBlockPct    float64 `json:"rlp_block_pct,omitempty"`
+	RlpBlockExact  bool    `json:"rlp_block_exact,omitempty"` // reconstructed header hash == block hash
+	BAL            uint64  `json:"bal,omitempty"`             // raw BAL RLP
 }
 
 type SlotPageExecutionData struct {
@@ -152,16 +168,6 @@ type SlotPageExecutionData struct {
 	// tens of thousands of addresses.
 	BlockAccessListHash []byte              `json:"block_access_list_hash,omitempty"`
 	BALSummary          *SlotPageBALSummary `json:"bal_summary,omitempty"`
-	BALSize             uint64              `json:"bal_size,omitempty"` // len of the raw BAL RLP
-
-	// EIP-7934 RLP block size (header+txs+ommers+withdrawals, no BAL) and, for Gloas+,
-	// the SSZ size of the gossiped SignedExecutionPayloadEnvelope. Pct are of the limits.
-	RlpBlockSize      uint64  `json:"rlp_block_size,omitempty"`
-	RlpBlockSizePct   float64 `json:"rlp_block_size_pct,omitempty"`
-	RlpBlockSizeExact bool    `json:"rlp_block_size_exact,omitempty"` // reconstructed header hash == block hash
-	EnvelopeSize      uint64  `json:"envelope_size,omitempty"`
-	EnvelopeSizePct   float64 `json:"envelope_size_pct,omitempty"`
-	EnvelopeSizeLimit uint64  `json:"envelope_size_limit,omitempty"` // gossip MAX_PAYLOAD_SIZE from the chain spec
 
 	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
 	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).

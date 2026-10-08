@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
@@ -111,32 +112,46 @@ func testPayload(t *testing.T, version spec.DataVersion) (*all.ExecutionPayload,
 	return p, parentRoot, requests, bal, block
 }
 
-func TestExecutionBlockSize(t *testing.T) {
+func TestExecutionBlockFromPayload(t *testing.T) {
 	for _, version := range []spec.DataVersion{spec.DataVersionBellatrix, spec.DataVersionCapella, spec.DataVersionDeneb, spec.DataVersionElectra, spec.DataVersionFulu, spec.DataVersionGloas} {
 		p, parentRoot, requests, bal, ref := testPayload(t, version)
-		size, ok, err := ExecutionBlockSize(p, parentRoot, requests, bal)
-		if err != nil {
-			t.Fatalf("%v: %v", version, err)
+		eb := ExecutionBlockFromPayload(p, parentRoot, requests, bal)
+		if eb.Block == nil {
+			t.Fatalf("%v: no block: %v", version, eb.TxError)
 		}
-		if !ok {
+		if !eb.HashMatch || eb.Block.Hash() != ref.Hash() {
 			t.Errorf("%v: reconstructed header hash does not match block hash", version)
 		}
-		if size != ref.Size() {
-			t.Errorf("%v: size %d, geth block.Size() %d", version, size, ref.Size())
+		got, _ := rlp.EncodeToBytes(eb.Block)
+		want, _ := rlp.EncodeToBytes(ref)
+		if !bytes.Equal(got, want) || eb.Block.Size() != ref.Size() {
+			t.Errorf("%v: rlp mismatch: size %d, want %d", version, eb.Block.Size(), ref.Size())
 		}
 
 		if version >= spec.DataVersionGloas {
 			// A pruned BAL keeps the size exact but cannot verify the header.
-			prunedSize, prunedOk, _ := ExecutionBlockSize(p, parentRoot, requests, nil)
-			if prunedOk || prunedSize != size {
-				t.Errorf("pruned BAL: size %d (want %d), hashMatch %v (want false)", prunedSize, size, prunedOk)
+			pruned := ExecutionBlockFromPayload(p, parentRoot, requests, nil)
+			if pruned.HashMatch || pruned.Block.Size() != ref.Size() {
+				t.Errorf("pruned BAL: size %d (want %d), hashMatch %v (want false)", pruned.Block.Size(), ref.Size(), pruned.HashMatch)
 			}
 			// The BAL is not part of the EIP-7934 block size.
-			p.BlockAccessList = append(bal, bytes.Repeat([]byte{0x80}, 1000)...)
-			if biggerBal, _, _ := ExecutionBlockSize(p, parentRoot, requests, p.BlockAccessList); biggerBal != size {
-				t.Errorf("BAL leaked into block size: %d != %d", biggerBal, size)
+			bigger := append(bal, bytes.Repeat([]byte{0x80}, 1000)...)
+			if size := ExecutionBlockFromPayload(p, parentRoot, requests, bigger).Block.Size(); size != ref.Size() {
+				t.Errorf("BAL leaked into block size: %d != %d", size, ref.Size())
 			}
 		}
+	}
+}
+
+func TestExecutionBlockUnknownTxType(t *testing.T) {
+	p, parentRoot, requests, bal, ref := testPayload(t, spec.DataVersionGloas)
+	p.Transactions = append(p.Transactions, bellatrix.Transaction{0x7e, 0xc0}) // tx type go-ethereum does not know
+	eb := ExecutionBlockFromPayload(p, parentRoot, requests, bal)
+	if eb.Block != nil || eb.TxError == nil {
+		t.Fatalf("expected a tx decode error, got block %v err %v", eb.Block != nil, eb.TxError)
+	}
+	if eb.Header == nil || eb.Header.TxHash == ref.TxHash() {
+		t.Fatal("header must still be built, with the unknown tx in its transactions root")
 	}
 }
 
@@ -170,5 +185,28 @@ func TestEnvelopeSSZSize(t *testing.T) {
 	}
 	if p.BlockAccessList != nil {
 		t.Fatal("EnvelopeSSZSize mutated the envelope")
+	}
+}
+
+func TestBeaconBlockSSZSize(t *testing.T) {
+	// The slot page sizes the beacon block via DynSsz.SizeSSZ; it must equal the
+	// encoded length, for blocks with an inline payload (Fulu) and without (Gloas).
+	ds := dynssz.GetGlobalDynSsz()
+	fuluPayload, _, fuluRequests, _, _ := testPayload(t, spec.DataVersionFulu)
+	for _, block := range []*all.SignedBeaconBlock{
+		{Version: spec.DataVersionFulu, Message: &all.BeaconBlock{Version: spec.DataVersionFulu, Body: &all.BeaconBlockBody{
+			Version: spec.DataVersionFulu, Graffiti: [32]byte{0x01}, ExecutionPayload: fuluPayload, ExecutionRequests: fuluRequests,
+		}}},
+		{Version: spec.DataVersionGloas, Message: &all.BeaconBlock{Version: spec.DataVersionGloas, Body: &all.BeaconBlockBody{
+			Version: spec.DataVersionGloas, Graffiti: [32]byte{0x02},
+		}}},
+	} {
+		enc, err := ds.MarshalSSZ(block)
+		if err != nil {
+			t.Fatalf("%v: %v", block.Version, err)
+		}
+		if size, err := ds.SizeSSZ(block); err != nil || size != len(enc) {
+			t.Fatalf("%v: size %d (err %v), marshalled %d", block.Version, size, err, len(enc))
+		}
 	}
 }

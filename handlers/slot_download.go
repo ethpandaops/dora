@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ethereum/go-ethereum/rlp"
+
 	"github.com/ethpandaops/dora/blockdb"
 	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/services"
@@ -90,6 +92,9 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 	case "block-body-json":
 		return handleBlockBodyDownload(w, blockData)
 
+	case "block-body-rlp":
+		return handleBlockBodyRlpDownload(w, blockData)
+
 	case "payload-ssz":
 		if blockData.Payload == nil {
 			return fmt.Errorf("block has no execution payload envelope")
@@ -147,27 +152,34 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 
 // execBlockJSON matches the eth_getBlockByHash JSON format (with full transactions).
 type execBlockJSON struct {
-	Number        string            `json:"number"`
-	Hash          string            `json:"hash"`
-	ParentHash    string            `json:"parentHash"`
-	Nonce         string            `json:"nonce"`
-	Sha3Uncles    string            `json:"sha3Uncles"`
-	LogsBloom     string            `json:"logsBloom"`
-	StateRoot     string            `json:"stateRoot"`
-	ReceiptsRoot  string            `json:"receiptsRoot"`
-	Miner         string            `json:"miner"`
-	Difficulty    string            `json:"difficulty"`
-	ExtraData     string            `json:"extraData"`
-	GasLimit      string            `json:"gasLimit"`
-	GasUsed       string            `json:"gasUsed"`
-	Timestamp     string            `json:"timestamp"`
-	MixHash       string            `json:"mixHash"`
-	BaseFeePerGas string            `json:"baseFeePerGas"`
-	Transactions  []json.RawMessage `json:"transactions"`
-	Uncles        []string          `json:"uncles"`
-	Withdrawals   []*withdrawalJSON `json:"withdrawals,omitempty"`
-	BlobGasUsed   string            `json:"blobGasUsed,omitempty"`
-	ExcessBlobGas string            `json:"excessBlobGas,omitempty"`
+	Number                string            `json:"number"`
+	Hash                  string            `json:"hash"`
+	ParentHash            string            `json:"parentHash"`
+	Nonce                 string            `json:"nonce"`
+	Sha3Uncles            string            `json:"sha3Uncles"`
+	LogsBloom             string            `json:"logsBloom"`
+	TransactionsRoot      string            `json:"transactionsRoot"`
+	StateRoot             string            `json:"stateRoot"`
+	ReceiptsRoot          string            `json:"receiptsRoot"`
+	Miner                 string            `json:"miner"`
+	Difficulty            string            `json:"difficulty"`
+	ExtraData             string            `json:"extraData"`
+	Size                  string            `json:"size,omitempty"`
+	GasLimit              string            `json:"gasLimit"`
+	GasUsed               string            `json:"gasUsed"`
+	Timestamp             string            `json:"timestamp"`
+	MixHash               string            `json:"mixHash"`
+	BaseFeePerGas         string            `json:"baseFeePerGas"`
+	Transactions          []json.RawMessage `json:"transactions"`
+	Uncles                []string          `json:"uncles"`
+	WithdrawalsRoot       string            `json:"withdrawalsRoot,omitempty"`
+	Withdrawals           []*withdrawalJSON `json:"withdrawals,omitempty"`
+	BlobGasUsed           string            `json:"blobGasUsed,omitempty"`
+	ExcessBlobGas         string            `json:"excessBlobGas,omitempty"`
+	ParentBeaconBlockRoot string            `json:"parentBeaconBlockRoot,omitempty"`
+	RequestsHash          string            `json:"requestsHash,omitempty"`
+	BlockAccessListHash   string            `json:"blockAccessListHash,omitempty"`
+	SlotNumber            string            `json:"slotNumber,omitempty"`
 }
 
 // withdrawalJSON matches the withdrawal format in eth_getBlockByHash.
@@ -201,52 +213,106 @@ func resolveExecutionPayload(blockData *services.CombinedBlockResponse) (*all.Ex
 	return executionPayload, nil
 }
 
+// resolveExecutionBlock reconstructs the slot's EL block from its execution payload.
+// It is the single payload -> go-ethereum block conversion shared by the EL block
+// downloads and the slot page size display.
+func resolveExecutionBlock(blockData *services.CombinedBlockResponse) (*all.ExecutionPayload, *utils.ExecutionBlock, error) {
+	executionPayload, err := resolveExecutionPayload(blockData)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	parentRoot := blockData.Header.Message.ParentRoot
+	requests := blockData.Block.Message.Body.ExecutionRequests
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		// The EL payload commits to the envelope's parent root and execution requests.
+		parentRoot = blockData.Payload.Message.ParentBeaconBlockRoot
+		requests = blockData.Payload.Message.ExecutionRequests
+	}
+
+	return executionPayload, utils.ExecutionBlockFromPayload(executionPayload, parentRoot, requests, blockData.BlockAccessList), nil
+}
+
+// handleBlockBodyRlpDownload returns the reconstructed execution block RLP encoded,
+// as served by debug_getRawBlock (the BAL is not part of it).
+func handleBlockBodyRlpDownload(w http.ResponseWriter, blockData *services.CombinedBlockResponse) error {
+	_, execBlock, err := resolveExecutionBlock(blockData)
+	if err != nil {
+		return err
+	}
+	if execBlock.Block == nil {
+		return execBlock.TxError
+	}
+	if !execBlock.HashMatch {
+		return fmt.Errorf("reconstructed execution block does not match the payload block hash (block access list unavailable?)")
+	}
+
+	rlpBytes, err := rlp.EncodeToBytes(execBlock.Block)
+	if err != nil {
+		return fmt.Errorf("error encoding execution block: %v", err)
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-body-%d-%x.rlp", blockData.Header.Message.Slot, blockData.Root[:]))
+	_, _ = w.Write(rlpBytes)
+	return nil
+}
+
 // handleBlockBodyDownload builds and returns the execution block in
 // eth_getBlockByHash JSON format, reconstructed from the beacon block's
 // execution payload.
 func handleBlockBodyDownload(w http.ResponseWriter, blockData *services.CombinedBlockResponse) error {
-	executionPayload, err := resolveExecutionPayload(blockData)
+	executionPayload, execBlock, err := resolveExecutionBlock(blockData)
 	if err != nil {
 		return err
 	}
+	header := execBlock.Header
 
 	blockHashHex := fmt.Sprintf("0x%x", executionPayload.BlockHash[:])
-	blockNumberHex := fmt.Sprintf("0x%x", executionPayload.BlockNumber)
-
-	var baseFeeHex string
-	if executionPayload.BaseFeePerGas != nil {
-		baseFeeHex = fmt.Sprintf("0x%x", executionPayload.BaseFeePerGas.ToBig())
-	} else {
-		baseFeeHex = fmt.Sprintf("0x%x", utils.GetBaseFeeAsUint64(executionPayload.BaseFeePerGasLE))
-	}
+	blockNumberHex := fmt.Sprintf("0x%x", header.Number)
 
 	block := &execBlockJSON{
-		Number:        blockNumberHex,
-		Hash:          blockHashHex,
-		ParentHash:    fmt.Sprintf("0x%x", executionPayload.ParentHash[:]),
-		Nonce:         "0x0000000000000000",
-		Sha3Uncles:    "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
-		LogsBloom:     fmt.Sprintf("0x%x", executionPayload.LogsBloom[:]),
-		StateRoot:     fmt.Sprintf("0x%x", executionPayload.StateRoot[:]),
-		ReceiptsRoot:  fmt.Sprintf("0x%x", executionPayload.ReceiptsRoot[:]),
-		Miner:         fmt.Sprintf("0x%x", executionPayload.FeeRecipient[:]),
-		Difficulty:    "0x0",
-		ExtraData:     fmt.Sprintf("0x%x", executionPayload.ExtraData),
-		GasLimit:      fmt.Sprintf("0x%x", executionPayload.GasLimit),
-		GasUsed:       fmt.Sprintf("0x%x", executionPayload.GasUsed),
-		Timestamp:     fmt.Sprintf("0x%x", executionPayload.Timestamp),
-		MixHash:       fmt.Sprintf("0x%x", executionPayload.PrevRandao[:]),
-		BaseFeePerGas: baseFeeHex,
-		Uncles:        []string{},
+		Number:           blockNumberHex,
+		Hash:             blockHashHex,
+		ParentHash:       header.ParentHash.Hex(),
+		Nonce:            "0x0000000000000000",
+		Sha3Uncles:       header.UncleHash.Hex(),
+		LogsBloom:        fmt.Sprintf("0x%x", header.Bloom[:]),
+		TransactionsRoot: header.TxHash.Hex(),
+		StateRoot:        header.Root.Hex(),
+		ReceiptsRoot:     header.ReceiptHash.Hex(),
+		Miner:            fmt.Sprintf("0x%x", header.Coinbase[:]),
+		Difficulty:       "0x0",
+		ExtraData:        fmt.Sprintf("0x%x", header.Extra),
+		GasLimit:         fmt.Sprintf("0x%x", header.GasLimit),
+		GasUsed:          fmt.Sprintf("0x%x", header.GasUsed),
+		Timestamp:        fmt.Sprintf("0x%x", header.Time),
+		MixHash:          header.MixDigest.Hex(),
+		BaseFeePerGas:    fmt.Sprintf("0x%x", header.BaseFee),
+		Uncles:           []string{},
+	}
+	if execBlock.Block != nil && execBlock.HashMatch {
+		block.Size = fmt.Sprintf("0x%x", execBlock.Block.Size())
+	}
+	if header.WithdrawalsHash != nil {
+		block.WithdrawalsRoot = header.WithdrawalsHash.Hex()
+	}
+	if header.BlobGasUsed != nil {
+		block.BlobGasUsed = fmt.Sprintf("0x%x", *header.BlobGasUsed)
+		block.ExcessBlobGas = fmt.Sprintf("0x%x", *header.ExcessBlobGas)
+		block.ParentBeaconBlockRoot = header.ParentBeaconRoot.Hex()
+	}
+	if header.RequestsHash != nil {
+		block.RequestsHash = header.RequestsHash.Hex()
+	}
+	if header.BlockAccessListHash != nil && len(blockData.BlockAccessList) > 0 {
+		block.BlockAccessListHash = header.BlockAccessListHash.Hex()
+	}
+	if header.SlotNumber != nil {
+		block.SlotNumber = fmt.Sprintf("0x%x", *header.SlotNumber)
 	}
 
-	// Deneb+ blob gas fields.
-	if executionPayload.Version >= spec.DataVersionDeneb {
-		block.ExcessBlobGas = fmt.Sprintf("0x%x", executionPayload.ExcessBlobGas)
-		block.BlobGasUsed = fmt.Sprintf("0x%x", executionPayload.BlobGasUsed)
-	}
-
-	// Decode and serialize transactions.
+	// Decode and serialize transactions. spamoor's decoder also covers tx types
+	// go-ethereum does not know (e.g. EIP-8141 frame transactions).
 	transactions := executionPayload.Transactions
 
 	block.Transactions = make([]json.RawMessage, 0, len(transactions))
