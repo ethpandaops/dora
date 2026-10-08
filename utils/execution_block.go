@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
@@ -29,7 +30,8 @@ type ExecutionBlock struct {
 	Header    *types.Header // always set
 	Block     *types.Block  // nil if go-ethereum cannot decode a transaction (see TxError)
 	TxError   error
-	HashMatch bool // Header.Hash() equals the payload block hash
+	HashMatch bool   // Header.Hash() equals the payload block hash
+	Size      uint64 // len(rlp(block)) (EIP-7934); from the raw tx bytes when Block is nil
 }
 
 // rawTxs feeds the opaque EIP-2718 tx encodings to DeriveSha, so the transactions
@@ -110,11 +112,38 @@ func ExecutionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.
 		txs[i] = new(types.Transaction)
 		if err := txs[i].UnmarshalBinary(raw); err != nil {
 			result.TxError = fmt.Errorf("go-ethereum cannot decode tx %d: %w", i, err)
+			result.Size, _ = rawBlockSize(header, payload.Transactions, withdrawals)
 			return result
 		}
 	}
 	result.Block = types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: txs, Withdrawals: withdrawals})
+	result.Size = result.Block.Size()
 	return result
+}
+
+// rawBlockSize is len(rlp(block)) computed from the opaque tx encodings, for blocks
+// with tx types go-ethereum cannot decode. It encodes the same list as geth's extblock:
+// a legacy tx is already an RLP list, a typed tx is an RLP string of type || payload.
+func rawBlockSize(header *types.Header, txs []bellatrix.Transaction, withdrawals []*types.Withdrawal) (uint64, error) {
+	encTxs := make([]rlp.RawValue, len(txs))
+	for i, tx := range txs {
+		if len(tx) > 0 && tx[0] >= 0xc0 {
+			encTxs[i] = rlp.RawValue(tx)
+		} else {
+			enc, err := rlp.EncodeToBytes([]byte(tx))
+			if err != nil {
+				return 0, err
+			}
+			encTxs[i] = enc
+		}
+	}
+	enc, err := rlp.EncodeToBytes(&struct {
+		Header      *types.Header
+		Txs         []rlp.RawValue
+		Uncles      []*types.Header
+		Withdrawals []*types.Withdrawal `rlp:"optional"`
+	}{header, encTxs, nil, withdrawals})
+	return uint64(len(enc)), err
 }
 
 // ExecutionRequestsList encodes execution requests as the EIP-7685 list

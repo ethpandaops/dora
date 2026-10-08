@@ -1919,10 +1919,10 @@ func getSlotPageBlockSizes(blockData *services.CombinedBlockResponse, maxPayload
 	switch {
 	case err != nil || payload.BlockHash == (phase0.Hash32{}):
 		// no (or a pre-merge empty) execution payload
-	case execBlock.Block == nil:
+	case execBlock.Size == 0:
 		logrus.Debugf("no rlp block size for slot %v: %v", slot, execBlock.TxError)
 	default:
-		sizes.RlpBlock = execBlock.Block.Size()
+		sizes.RlpBlock = execBlock.Size
 		sizes.RlpBlockPct = utils.CalculatePercentage(sizes.RlpBlock, utils.MaxRlpBlockSize)
 		sizes.RlpBlockExact = execBlock.HashMatch
 	}

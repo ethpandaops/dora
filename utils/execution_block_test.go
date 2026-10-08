@@ -127,6 +127,9 @@ func TestExecutionBlockFromPayload(t *testing.T) {
 		if !bytes.Equal(got, want) || eb.Block.Size() != ref.Size() {
 			t.Errorf("%v: rlp mismatch: size %d, want %d", version, eb.Block.Size(), ref.Size())
 		}
+		if raw, err := rawBlockSize(eb.Header, p.Transactions, ref.Withdrawals()); err != nil || raw != ref.Size() || eb.Size != ref.Size() {
+			t.Errorf("%v: raw-tx size %d / Size %d, want %d (err %v)", version, raw, eb.Size, ref.Size(), err)
+		}
 
 		if version >= spec.DataVersionGloas {
 			// A pruned BAL keeps the size exact but cannot verify the header.
@@ -152,6 +155,10 @@ func TestExecutionBlockUnknownTxType(t *testing.T) {
 	}
 	if eb.Header == nil || eb.Header.TxHash == ref.TxHash() {
 		t.Fatal("header must still be built, with the unknown tx in its transactions root")
+	}
+	// Size still comes from the raw tx bytes: one extra RLP string 0x82 0x7e 0xc0.
+	if eb.Size != ref.Size()+3 {
+		t.Errorf("unknown tx type: size %d, want %d", eb.Size, ref.Size()+3)
 	}
 }
 
