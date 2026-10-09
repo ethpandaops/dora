@@ -57,13 +57,9 @@ var supportedForks = map[string]spec.DataVersion{
 	"heze":  spec.DataVersionHeze,
 }
 
-// defaultForks are the fork directories run when SPEC_TESTS_FORK is unset. Heze
-// is left out until the dependency carrying its containers is released: the
-// BeaconState the vectors hold does not match the one this build decodes with,
-// so every heze case fails on the SSZ decode rather than on a state transition
-// result. Its suites pass once that lands - upgrade_to_heze is the only part
-// still missing, and the fork and transition suites skip without it.
-var defaultForks = []string{"fulu", "gloas"}
+// defaultForks are the fork directories run when SPEC_TESTS_FORK is unset.
+// upgrade_to_heze is not implemented yet, so the heze fork and transition suites skip.
+var defaultForks = []string{"fulu", "gloas", "heze"}
 
 // unsupportedSuites lists the runner/handler combinations this package does not
 // implement, with the reason. Anything not listed is expected to pass.

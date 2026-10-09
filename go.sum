@@ -125,8 +125,8 @@ github.com/ethpandaops/eth-das-guardian v0.1.1 h1:RN96h3HSAMyU4XUOCqkj/9+lB+UW7c
 github.com/ethpandaops/eth-das-guardian v0.1.1/go.mod h1:7amdK4bN9N9Zp0b9Y9FcbDm1YrpeGBm8ix8qpiX0WuY=
 github.com/ethpandaops/ethcore v0.0.0-20260807105509-b0a20c27b6e7 h1:BpbY4wxDlLH+adeEB6SzXyGmYOWWK4kc3z1u+PJa2cg=
 github.com/ethpandaops/ethcore v0.0.0-20260807105509-b0a20c27b6e7/go.mod h1:my+mlolmidi2VzoaGhchtcxDVbp1ZNVQJtnkk3oe6+M=
-github.com/ethpandaops/go-eth2-client v0.1.8 h1:qGsIQE0esu9OFuQ6A9h8JqsDCvwgrBS5SOhaqgWMszI=
-github.com/ethpandaops/go-eth2-client v0.1.8/go.mod h1:sIVbaug0GsltsJS+hj8ID4dmWBIt8TXoNIesvuBCGt0=
+github.com/ethpandaops/go-eth2-client v0.1.11-0.20261009085230-6080c97a3541 h1:/BgCEH2dX6nxEelL05VijftWLBJePDBO1HpWY/tTBjY=
+github.com/ethpandaops/go-eth2-client v0.1.11-0.20261009085230-6080c97a3541/go.mod h1:sIVbaug0GsltsJS+hj8ID4dmWBIt8TXoNIesvuBCGt0=
 github.com/ethpandaops/spamoor v1.2.5-0.20260925130528-570d240766f6 h1:XxfX8pKAH1JJ3X0GKjqqXg5OuhcDJYLR4uGU5yWplSE=
 github.com/ethpandaops/spamoor v1.2.5-0.20260925130528-570d240766f6/go.mod h1:5Ao5i8PwU4CSXRNOH2olYqZyCE8MnyLSJsfxnaVR31s=
 github.com/ethpandaops/xatu v1.24.1 h1:70WWy0AFSX2NgJ3A9C2Sk/TV6yPvOb3qT1EC5rFQDKo=
