@@ -1916,16 +1916,20 @@ func getSlotPageBlockSizes(blockData *services.CombinedBlockResponse, maxPayload
 	}
 
 	payload, execBlock, err := resolveExecutionBlock(blockData)
-	switch {
-	case err != nil || payload.BlockHash == (phase0.Hash32{}):
-		// no (or a pre-merge empty) execution payload
-	case execBlock.Size == 0:
-		logrus.Debugf("no rlp block size for slot %v: %v", slot, execBlock.TxError)
-	default:
-		sizes.RlpBlock = execBlock.Size
-		sizes.RlpBlockPct = utils.CalculatePercentage(sizes.RlpBlock, utils.MaxRlpBlockSize)
-		sizes.RlpBlockExact = execBlock.HashMatch
-		sizes.RlpDownload = execBlock.HashMatch && execBlock.Block != nil // the download additionally checks the bid block hash
+	if err != nil || payload.BlockHash == (phase0.Hash32{}) {
+		return sizes // no (or a pre-merge empty) execution payload
 	}
+	if err := verifyExecutionBlock(blockData, payload, execBlock); err != nil {
+		sizes.BlockDownloadError = err.Error()
+	} else {
+		sizes.BlockDownload = true
+	}
+	if execBlock.Size == 0 {
+		logrus.Debugf("no rlp block size for slot %v: %v", slot, execBlock.TxError)
+		return sizes
+	}
+	sizes.RlpBlock = execBlock.Size
+	sizes.RlpBlockPct = utils.CalculatePercentage(sizes.RlpBlock, utils.MaxRlpBlockSize)
+	sizes.RlpBlockExact = execBlock.HashMatch
 	return sizes
 }

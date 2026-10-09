@@ -201,20 +201,24 @@ func resolveVerifiedExecutionBlock(blockData *services.CombinedBlockResponse) (*
 	if err != nil {
 		return nil, err
 	}
+	if err := verifyExecutionBlock(blockData, executionPayload, execBlock); err != nil {
+		return nil, err
+	}
+	return execBlock, nil
+}
 
+// verifyExecutionBlock returns an error unless the EL block downloads can serve execBlock.
+// The slot page gates the download buttons with it, so they only show what the downloads serve.
+func verifyExecutionBlock(blockData *services.CombinedBlockResponse, executionPayload *all.ExecutionPayload, execBlock *utils.ExecutionBlock) error {
 	var bid *all.ExecutionPayloadBid
 	if blockData.Block.Version >= spec.DataVersionGloas {
 		signedBid := blockData.Block.Message.Body.SignedExecutionPayloadBid
 		if signedBid == nil || signedBid.Message == nil {
-			return nil, fmt.Errorf("block has no execution payload bid")
+			return fmt.Errorf("block has no execution payload bid")
 		}
 		bid = signedBid.Message
 	}
-
-	if err := execBlock.Verify(executionPayload, bid); err != nil {
-		return nil, err
-	}
-	return execBlock, nil
+	return execBlock.Verify(executionPayload, bid)
 }
 
 // handleBlockBodyRlpDownload returns the reconstructed execution block RLP encoded,
