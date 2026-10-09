@@ -350,40 +350,7 @@ func processProposerSlashing(s *stateAccessor, slashing *phase0.ProposerSlashing
 		return
 	}
 
-	// New in Gloas: clear the BuilderPendingPayment tied to this proposal if it is
-	// still in the 2-epoch window and bound to the slashed proposer (per #5365 the
-	// payment is only griefed when the slashed validator is its proposer).
-	// https://github.com/ethereum/consensus-specs/pull/5365
-	if s.Version >= spec.DataVersionGloas {
-		clearSlashedBuilderPendingPayment(s, header.Slot, proposerIndex)
-	}
-
 	slashValidator(s, proposerIndex)
-}
-
-// clearSlashedBuilderPendingPayment removes the builder pending payment recorded
-// for the slashed proposer's slot, if that slot is still within the 2-epoch
-// BuilderPendingPayments window and the payment is bound to the slashed proposer.
-func clearSlashedBuilderPendingPayment(s *stateAccessor, slot phase0.Slot, proposerIndex phase0.ValidatorIndex) {
-	slotsPerEpoch := s.specs.SlotsPerEpoch
-	proposalEpoch := phase0.Epoch(uint64(slot) / slotsPerEpoch)
-
-	var paymentIdx uint64
-	switch proposalEpoch {
-	case s.currentEpoch():
-		paymentIdx = slotsPerEpoch + uint64(slot)%slotsPerEpoch
-	case s.previousEpoch():
-		paymentIdx = uint64(slot) % slotsPerEpoch
-	default:
-		return
-	}
-
-	if paymentIdx >= uint64(len(s.BuilderPendingPayments)) {
-		return
-	}
-	if payment := s.BuilderPendingPayments[paymentIdx]; payment != nil && payment.ProposerIndex == proposerIndex {
-		s.BuilderPendingPayments[paymentIdx] = &gloas.BuilderPendingPayment{}
-	}
 }
 
 // processAttesterSlashing processes an attester slashing.
@@ -951,6 +918,16 @@ func slashValidator(s *stateAccessor, index phase0.ValidatorIndex) {
 		proposerReward := whistleblowerReward * ProposerWeight / WeightDenominator
 		s.increaseBalance(proposerIndex, proposerReward)
 		s.increaseBalance(whistleblowerIndex, whistleblowerReward-proposerReward)
+	}
+
+	// New in Gloas: remove pending builder payments for blocks proposed by the slashed validator.
+	// https://github.com/ethereum/consensus-specs/pull/5719
+	if s.Version >= spec.DataVersionGloas {
+		for i, payment := range s.BuilderPendingPayments {
+			if payment != nil && payment.ProposerIndex == index {
+				s.BuilderPendingPayments[i] = &gloas.BuilderPendingPayment{}
+			}
+		}
 	}
 }
 
