@@ -119,6 +119,24 @@ func getBalanceAfterWithdrawals(s *stateAccessor, vidx phase0.ValidatorIndex, wi
 	return balance
 }
 
+// getBuilderBalanceAfterWithdrawals returns the builder balance minus the withdrawals already queued for it.
+// https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#new-get_builder_balance_after_withdrawals
+func getBuilderBalanceAfterWithdrawals(builder *gloas.Builder, builderIdx gloas.BuilderIndex, withdrawals []*capella.Withdrawal) phase0.Gwei {
+	validatorIdx := convertBuilderIndexToValidatorIndex(builderIdx)
+	withdrawn := phase0.Gwei(0)
+	for _, w := range withdrawals {
+		if w.ValidatorIndex == validatorIdx {
+			withdrawn += w.Amount
+		}
+	}
+
+	if withdrawn >= builder.Balance {
+		return 0
+	}
+
+	return builder.Balance - withdrawn
+}
+
 // isFullyWithdrawableValidator checks if a validator is fully withdrawable.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-is_fully_withdrawable_validator
 func isFullyWithdrawableValidator(v *phase0.Validator, balance phase0.Gwei, epoch phase0.Epoch) bool {
@@ -217,12 +235,13 @@ func getExpectedWithdrawals(s *stateAccessor) *expectedWithdrawals {
 			}
 
 			builder := s.Builders[builderIdx]
-			if builder.WithdrawableEpoch <= epoch && builder.Balance > 0 {
+			balance := getBuilderBalanceAfterWithdrawals(builder, builderIdx, result.withdrawals)
+			if builder.WithdrawableEpoch <= epoch && balance > 0 {
 				result.withdrawals = append(result.withdrawals, &capella.Withdrawal{
 					Index:          nextIdx,
 					ValidatorIndex: convertBuilderIndexToValidatorIndex(builderIdx),
 					Address:        builder.ExecutionAddress,
-					Amount:         builder.Balance,
+					Amount:         balance,
 				})
 				nextIdx++
 			}
