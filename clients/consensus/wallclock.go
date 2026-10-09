@@ -73,15 +73,7 @@ func (w *Wallclock) Stop() {
 // change to timings that already passed is rejected and the clock keeps its
 // current schedule.
 func (w *Wallclock) SetupClock(genesisTime time.Time, specs *ChainSpec) error {
-	if specs == nil {
-		return errors.New("wallclock: missing chain specs")
-	}
-
-	return w.setupSchedule(genesisTime, specs.SlotsPerEpoch, specs.GetSlotDurationSchedule())
-}
-
-func (w *Wallclock) setupSchedule(genesisTime time.Time, slotsPerEpoch uint64, entries []SlotDurationScheduleEntry) error {
-	schedule, err := newWallclockSchedule(genesisTime, slotsPerEpoch, entries)
+	schedule, err := newWallclockSchedule(genesisTime, specs)
 	if err != nil {
 		return err
 	}
@@ -110,90 +102,67 @@ func (w *Wallclock) setupSchedule(genesisTime time.Time, slotsPerEpoch uint64, e
 	return nil
 }
 
-// newWallclockSchedule pre-calculates the segment cutoffs from the slot duration
-// schedule. Later entries for the same epoch override earlier ones. Entries that
-// cannot be represented (far future epochs) are cut off.
-func newWallclockSchedule(genesisTime time.Time, slotsPerEpoch uint64, schedule []SlotDurationScheduleEntry) (*wallclockSchedule, error) {
-	if slotsPerEpoch == 0 {
+// newWallclockSchedule pre-calculates the segment cutoffs from the specs:
+// SLOT_DURATION_MS from genesis and SLOT_DURATION_MS_EIP8198 from the EIP-8198
+// fork epoch on. A fork epoch that cannot be represented (far future) is ignored.
+func newWallclockSchedule(genesisTime time.Time, specs *ChainSpec) (*wallclockSchedule, error) {
+	if specs == nil {
+		return nil, errors.New("wallclock: missing chain specs")
+	}
+
+	if specs.SlotsPerEpoch == 0 {
 		return nil, errors.New("wallclock: SLOTS_PER_EPOCH is zero")
 	}
 
-	entries := make([]SlotDurationScheduleEntry, 0, len(schedule))
-	for _, entry := range schedule {
-		if entry.SlotDurationMs > 0 {
-			entries = append(entries, entry)
-		}
-	}
-
-	slices.SortStableFunc(entries, func(a, b SlotDurationScheduleEntry) int {
-		switch {
-		case a.Epoch < b.Epoch:
-			return -1
-		case a.Epoch > b.Epoch:
-			return 1
-		default:
-			return 0
-		}
-	})
-
-	if len(entries) == 0 || entries[0].Epoch != 0 {
+	if specs.SlotDurationMs == 0 {
 		return nil, errors.New("wallclock: no slot duration at genesis")
 	}
 
-	segments := make([]wallclockSegment, 0, len(entries))
+	genesisDuration, err := slotDurationFromMs(specs.SlotDurationMs)
+	if err != nil {
+		return nil, err
+	}
 
-	for _, entry := range entries {
-		if entry.SlotDurationMs > uint64(math.MaxInt64/time.Millisecond) {
-			return nil, fmt.Errorf("wallclock: slot duration %vms at epoch %v out of range", entry.SlotDurationMs, entry.Epoch)
+	segments := []wallclockSegment{{duration: genesisDuration}}
+
+	if specs.Eip8198ForkEpoch != nil && specs.SlotDurationMsEip8198 > 0 {
+		forkEpoch := *specs.Eip8198ForkEpoch
+
+		forkDuration, err := slotDurationFromMs(specs.SlotDurationMsEip8198)
+		if err != nil {
+			return nil, err
 		}
 
-		duration := time.Duration(entry.SlotDurationMs) * time.Millisecond
-		count := len(segments)
-
-		if count == 0 {
-			segments = append(segments, wallclockSegment{duration: duration})
-			continue
-		}
-
-		last := &segments[count-1]
-
-		if uint64(last.epoch) == entry.Epoch {
-			// duplicate epoch, the later entry wins
-			last.duration = duration
-
-			if count > 1 && segments[count-2].duration == duration {
-				segments = segments[:count-1]
+		switch {
+		case forkEpoch == 0:
+			segments[0].duration = forkDuration
+		case forkDuration == genesisDuration, forkEpoch > math.MaxUint64/specs.SlotsPerEpoch:
+		default:
+			slot := phase0.Slot(forkEpoch * specs.SlotsPerEpoch)
+			if uint64(slot) <= uint64(math.MaxInt64/genesisDuration) {
+				segments = append(segments, wallclockSegment{
+					epoch:    phase0.Epoch(forkEpoch),
+					slot:     slot,
+					offset:   time.Duration(slot) * genesisDuration,
+					duration: forkDuration,
+				})
 			}
-
-			continue
 		}
-
-		if last.duration == duration {
-			continue
-		}
-
-		if entry.Epoch > math.MaxUint64/slotsPerEpoch {
-			break
-		}
-
-		slot := phase0.Slot(entry.Epoch * slotsPerEpoch)
-		if uint64(slot-last.slot) > uint64((math.MaxInt64-last.offset)/last.duration) {
-			break
-		}
-
-		segments = append(segments, wallclockSegment{
-			epoch:    phase0.Epoch(entry.Epoch),
-			slot:     slot,
-			offset:   last.offset + time.Duration(slot-last.slot)*last.duration,
-			duration: duration,
-		})
 	}
 
 	return &wallclockSchedule{
 		genesisTime:   genesisTime,
-		slotsPerEpoch: slotsPerEpoch,
+		slotsPerEpoch: specs.SlotsPerEpoch,
 		segments:      segments,
 	}, nil
+}
+
+func slotDurationFromMs(slotDurationMs uint64) (time.Duration, error) {
+	if slotDurationMs > uint64(math.MaxInt64/time.Millisecond) {
+		return 0, fmt.Errorf("wallclock: slot duration %vms out of range", slotDurationMs)
+	}
+
+	return time.Duration(slotDurationMs) * time.Millisecond, nil
 }
 
 func (s *wallclockSchedule) equal(other *wallclockSchedule) bool {

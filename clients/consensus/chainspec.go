@@ -20,13 +20,6 @@ type ForkVersion struct {
 	PreviousVersion []byte
 }
 
-// SlotDurationScheduleEntry is one entry of the slot duration schedule:
-// slots from Epoch on last SlotDurationMs milliseconds.
-type SlotDurationScheduleEntry struct {
-	Epoch          uint64
-	SlotDurationMs uint64
-}
-
 type BlobScheduleEntry struct {
 	Epoch            uint64 `yaml:"EPOCH"`
 	MaxBlobsPerBlock uint64 `yaml:"MAX_BLOBS_PER_BLOCK"`
@@ -492,20 +485,4 @@ func (chain *ChainSpec) Clone() *ChainSpec {
 	}
 
 	return res
-}
-
-// GetSlotDurationSchedule returns the slot duration schedule derived from the
-// fork configuration: SLOT_DURATION_MS from genesis and SLOT_DURATION_MS_EIP8198
-// from the EIP-8198 fork epoch on.
-func (chain *ChainSpec) GetSlotDurationSchedule() []SlotDurationScheduleEntry {
-	schedule := make([]SlotDurationScheduleEntry, 0, 2)
-	if chain.SlotDurationMs > 0 {
-		schedule = append(schedule, SlotDurationScheduleEntry{Epoch: 0, SlotDurationMs: chain.SlotDurationMs})
-	}
-
-	if chain.Eip8198ForkEpoch != nil && chain.SlotDurationMsEip8198 > 0 {
-		schedule = append(schedule, SlotDurationScheduleEntry{Epoch: *chain.Eip8198ForkEpoch, SlotDurationMs: chain.SlotDurationMsEip8198})
-	}
-
-	return schedule
 }
