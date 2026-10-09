@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"math"
-	"math/bits"
 	"strings"
 	"sync"
 	"time"
@@ -611,12 +609,5 @@ func (cs *ChainState) scaleChurnToSlotDuration(epoch phase0.Epoch, churn uint64)
 		return churn
 	}
 
-	hi, lo := bits.Mul64(churn, durationMs)
-	if hi >= genesisDurationMs {
-		return math.MaxUint64
-	}
-
-	scaled, _ := bits.Div64(hi, lo, genesisDurationMs)
-
-	return scaled
+	return churn * durationMs / genesisDurationMs
 }
