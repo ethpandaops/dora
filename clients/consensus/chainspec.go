@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
-	"github.com/ethpandaops/go-eth2-client/spec/version"
 	"gopkg.in/Knetic/govaluate.v3"
 	"gopkg.in/yaml.v2"
 )
@@ -58,8 +57,6 @@ type ChainSpecConfig struct {
 	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"       check-if-fork:"GloasForkEpoch"`
 	HezeForkVersion      phase0.Version `yaml:"HEZE_FORK_VERSION"      check-if-fork:"HezeForkEpoch"`
 	HezeForkEpoch        *uint64        `yaml:"HEZE_FORK_EPOCH"        check-if-fork:"HezeForkEpoch"`
-	Eip8198ForkVersion   phase0.Version `yaml:"EIP8198_FORK_VERSION"   check-if-fork:"Eip8198ForkEpoch"`
-	Eip8198ForkEpoch     *uint64        `yaml:"EIP8198_FORK_EPOCH"     check-if-fork:"Eip8198ForkEpoch"`
 
 	// Time parameters
 	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`
@@ -145,10 +142,8 @@ type ChainSpecConfig struct {
 	MaxRequestPayloads                   uint64 `yaml:"MAX_REQUEST_PAYLOADS"                       check-if-fork:"GloasForkEpoch"`
 
 	// Heze
+	SlotDurationMsHeze  uint64 `yaml:"SLOT_DURATION_MS_HEZE"  check-if-fork:"HezeForkEpoch"`
 	InclusionListDueBPS uint64 `yaml:"INCLUSION_LIST_DUE_BPS" check-if-fork:"HezeForkEpoch"`
-
-	// EIP-8198
-	SlotDurationMsEip8198 uint64 `yaml:"SLOT_DURATION_MS_EIP8198" check-if-fork:"Eip8198ForkEpoch"`
 }
 
 type ChainSpecPreset struct {
@@ -280,10 +275,6 @@ type ChainSpec struct {
 var byteType = reflect.TypeOf(byte(0))
 var specExpressionCache = map[string]*govaluate.EvaluableExpression{}
 var specExpressionCacheMutex sync.Mutex
-
-func init() {
-	version.AddDataVersionAlias("eip8198", version.DataVersionHeze)
-}
 
 func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 	valuesYaml, err := yaml.Marshal(values)
@@ -485,4 +476,13 @@ func (chain *ChainSpec) Clone() *ChainSpec {
 	}
 
 	return res
+}
+
+// GetSlotDurationMs returns the slot duration in milliseconds in effect at the given epoch.
+func (chain *ChainSpec) GetSlotDurationMs(epoch phase0.Epoch) uint64 {
+	if chain.HezeForkEpoch != nil && chain.SlotDurationMsHeze > 0 && uint64(epoch) >= *chain.HezeForkEpoch {
+		return chain.SlotDurationMsHeze
+	}
+
+	return chain.SlotDurationMs
 }

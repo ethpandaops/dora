@@ -237,7 +237,7 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 		Targets:      []*SlotInclusionListTarget{},
 	}
 	if specs != nil {
-		view.DueMs = specs.SlotDurationMs * specs.InclusionListDueBPS / 10000
+		view.DueMs = uint64(chainState.GetSlotDuration(slot).Milliseconds()) * specs.InclusionListDueBPS / 10000
 	}
 
 	var lists *btypes.SlotInclusionLists
