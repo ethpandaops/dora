@@ -58,7 +58,6 @@ var supportedForks = map[string]spec.DataVersion{
 }
 
 // defaultForks are the fork directories run when SPEC_TESTS_FORK is unset.
-// upgrade_to_heze is not implemented yet, so the heze fork and transition suites skip.
 var defaultForks = []string{"fulu", "gloas", "heze"}
 
 // unsupportedSuites lists the runner/handler combinations this package does not
