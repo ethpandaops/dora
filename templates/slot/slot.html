@@ -431,7 +431,7 @@
                     <div class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
                       <div class="me-auto">
                         <div class="fw-semibold">Execution Block</div>
-                        <small class="text-muted">eth_getBlockByHash format with full transactions</small>
+                        <small class="text-muted">go-ethereum block JSON (header, transactions, withdrawals)</small>
                       </div>
                       <div class="btn-group btn-group-sm" role="group" aria-label="Execution block downloads">
                         {{ if and .Block.Sizes .Block.Sizes.RlpDownload }}<a href="?download=block-body-rlp" class="btn btn-outline-primary"><i class="fas fa-file-archive me-1"></i>RLP</a>{{ end }}

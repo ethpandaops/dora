@@ -2,6 +2,8 @@ package utils
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"slices"
@@ -119,6 +121,55 @@ func ExecutionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.
 	result.Block = types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: txs, Withdrawals: withdrawals})
 	result.Size = result.Block.Size()
 	return result
+}
+
+// unsupportedFork is the likely cause when a reconstructed block fails verification.
+const unsupportedFork = "dora's go-ethereum version likely does not support this fork's block format"
+
+// Verify returns an error unless the block can be served as the slot's EL block: the
+// header must hash to the payload block hash and, for Gloas+, to the block hash the
+// beacon block commits to in its execution payload bid (nil before Gloas), and
+// go-ethereum must have decoded every transaction.
+func (b *ExecutionBlock) Verify(payload *all.ExecutionPayload, bid *all.ExecutionPayloadBid) error {
+	hash := b.Header.Hash()
+	switch {
+	case b.Header.BlockAccessListHash != nil && *b.Header.BlockAccessListHash == (common.Hash{}):
+		return errors.New("block access list unavailable, the EL block header cannot be rebuilt without it")
+	case bid != nil && hash != common.Hash(bid.BlockHash):
+		return fmt.Errorf("reconstructed EL block hash %s does not match the block hash %s in the execution payload bid; %s", hash.Hex(), common.Hash(bid.BlockHash).Hex(), unsupportedFork)
+	case hash != common.Hash(payload.BlockHash):
+		return fmt.Errorf("reconstructed EL block hash %s does not match the execution payload block hash %s; %s", hash.Hex(), common.Hash(payload.BlockHash).Hex(), unsupportedFork)
+	case b.Block == nil:
+		return fmt.Errorf("%w; %s", b.TxError, unsupportedFork)
+	}
+	return nil
+}
+
+// BlockJSON returns the block's JSON fields as encoded by go-ethereum itself: the
+// header (incl. its hash) next to the body's transactions, uncles and (Capella+)
+// withdrawals. Block must be set.
+func (b *ExecutionBlock) BlockJSON() (map[string]json.RawMessage, error) {
+	if b.Block == nil {
+		return nil, b.TxError
+	}
+	headerJSON, err := json.Marshal(b.Block.Header())
+	if err != nil {
+		return nil, err
+	}
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(headerJSON, &fields); err != nil {
+		return nil, err
+	}
+	body := map[string]any{"transactions": b.Block.Transactions(), "uncles": []common.Hash{}} // post-merge blocks have no ommers
+	if b.Header.WithdrawalsHash != nil {
+		body["withdrawals"] = b.Block.Withdrawals()
+	}
+	for key, value := range body {
+		if fields[key], err = json.Marshal(value); err != nil {
+			return nil, err
+		}
+	}
+	return fields, nil
 }
 
 // rawBlockSize is len(rlp(block)) computed from the opaque tx encodings, for blocks

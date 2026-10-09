@@ -1925,7 +1925,7 @@ func getSlotPageBlockSizes(blockData *services.CombinedBlockResponse, maxPayload
 		sizes.RlpBlock = execBlock.Size
 		sizes.RlpBlockPct = utils.CalculatePercentage(sizes.RlpBlock, utils.MaxRlpBlockSize)
 		sizes.RlpBlockExact = execBlock.HashMatch
-		sizes.RlpDownload = execBlock.HashMatch && execBlock.Block != nil // same checks as handleBlockBodyRlpDownload
+		sizes.RlpDownload = execBlock.HashMatch && execBlock.Block != nil // the download additionally checks the bid block hash
 	}
 	return sizes
 }

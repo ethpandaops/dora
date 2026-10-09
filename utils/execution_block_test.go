@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -159,6 +161,78 @@ func TestExecutionBlockUnknownTxType(t *testing.T) {
 	// Size still comes from the raw tx bytes: one extra RLP string 0x82 0x7e 0xc0.
 	if eb.Size != ref.Size()+3 {
 		t.Errorf("unknown tx type: size %d, want %d", eb.Size, ref.Size()+3)
+	}
+}
+
+func TestExecutionBlockVerify(t *testing.T) {
+	p, parentRoot, requests, bal, _ := testPayload(t, spec.DataVersionGloas)
+	bid := &all.ExecutionPayloadBid{BlockHash: p.BlockHash}
+	if err := ExecutionBlockFromPayload(p, parentRoot, requests, bal).Verify(p, bid); err != nil {
+		t.Fatalf("matching block: %v", err)
+	}
+	fulu, fuluParent, fuluRequests, _, _ := testPayload(t, spec.DataVersionFulu)
+	if err := ExecutionBlockFromPayload(fulu, fuluParent, fuluRequests, nil).Verify(fulu, nil); err != nil {
+		t.Fatalf("matching pre-gloas block: %v", err)
+	}
+
+	mismatch := *p
+	mismatch.BlockHash = phase0.Hash32{0xff}
+	unknownTx := *p
+	unknownTx.Transactions = append(append([]bellatrix.Transaction{}, p.Transactions...), bellatrix.Transaction{0x7e, 0xc0})
+	unknownTxHash := phase0.Hash32(ExecutionBlockFromPayload(&unknownTx, parentRoot, requests, bal).Header.Hash())
+	unknownTx.BlockHash = unknownTxHash // header verifies, but go-ethereum cannot decode the tx
+	for name, tc := range map[string]struct {
+		payload *all.ExecutionPayload
+		bal     []byte
+		bid     *all.ExecutionPayloadBid
+		want    string
+	}{
+		"payload hash mismatch": {&mismatch, bal, bid, "does not match the execution payload block hash"},
+		"bid hash mismatch":     {p, bal, &all.ExecutionPayloadBid{BlockHash: phase0.Hash32{0xee}}, "in the execution payload bid; dora's go-ethereum"},
+		"pruned BAL":            {p, nil, bid, "block access list unavailable"},
+		"unknown tx type":       {&unknownTx, bal, &all.ExecutionPayloadBid{BlockHash: unknownTxHash}, "cannot decode tx 2"},
+	} {
+		err := ExecutionBlockFromPayload(tc.payload, parentRoot, requests, tc.bal).Verify(tc.payload, tc.bid)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: got %v, want an error containing %q", name, err, tc.want)
+		}
+	}
+}
+
+func TestExecutionBlockJSON(t *testing.T) {
+	for _, version := range []spec.DataVersion{spec.DataVersionBellatrix, spec.DataVersionCapella, spec.DataVersionDeneb, spec.DataVersionElectra, spec.DataVersionFulu, spec.DataVersionGloas} {
+		p, parentRoot, requests, bal, ref := testPayload(t, version)
+		fields, err := ExecutionBlockFromPayload(p, parentRoot, requests, bal).BlockJSON()
+		if err != nil {
+			t.Fatalf("%v: %v", version, err)
+		}
+		enc, _ := json.Marshal(fields)
+
+		// The download must decode with go-ethereum's own JSON types back to the same block.
+		var header types.Header
+		var body struct {
+			Hash         common.Hash          `json:"hash"`
+			Transactions []*types.Transaction `json:"transactions"`
+			Withdrawals  []*types.Withdrawal  `json:"withdrawals"`
+		}
+		if err := json.Unmarshal(enc, &header); err != nil {
+			t.Fatalf("%v: header: %v", version, err)
+		}
+		if err := json.Unmarshal(enc, &body); err != nil {
+			t.Fatalf("%v: body: %v", version, err)
+		}
+		block := types.NewBlockWithHeader(&header).WithBody(types.Body{Transactions: body.Transactions, Withdrawals: body.Withdrawals})
+		if block.Hash() != ref.Hash() || body.Hash != ref.Hash() {
+			t.Errorf("%v: decoded block hash %s, json hash %s, want %s", version, block.Hash(), body.Hash, ref.Hash())
+		}
+		if types.DeriveSha(types.Transactions(body.Transactions), trie.NewStackTrie(nil)) != ref.TxHash() {
+			t.Errorf("%v: decoded transactions do not match the transactions root", version)
+		}
+		if _, ok := fields["withdrawals"]; ok != (version >= spec.DataVersionCapella) {
+			t.Errorf("%v: withdrawals present %v", version, ok)
+		} else if ok && types.DeriveSha(types.Withdrawals(body.Withdrawals), trie.NewStackTrie(nil)) != *ref.Header().WithdrawalsHash {
+			t.Errorf("%v: decoded withdrawals do not match the withdrawals root", version)
+		}
 	}
 }
 
