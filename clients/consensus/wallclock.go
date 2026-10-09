@@ -103,8 +103,8 @@ func (w *Wallclock) SetupClock(genesisTime time.Time, specs *ChainSpec) error {
 }
 
 // newWallclockSchedule pre-calculates the segment cutoffs from the specs:
-// SLOT_DURATION_MS from genesis and SLOT_DURATION_MS_EIP8198 from the EIP-8198
-// fork epoch on. A fork epoch that cannot be represented (far future) is ignored.
+// SLOT_DURATION_MS from genesis and SLOT_DURATION_MS_HEZE from the Heze fork
+// epoch on (EIP-8198). A fork epoch that cannot be represented (far future) is ignored.
 func newWallclockSchedule(genesisTime time.Time, specs *ChainSpec) (*wallclockSchedule, error) {
 	if specs == nil {
 		return nil, errors.New("wallclock: missing chain specs")
@@ -125,10 +125,10 @@ func newWallclockSchedule(genesisTime time.Time, specs *ChainSpec) (*wallclockSc
 
 	segments := []wallclockSegment{{duration: genesisDuration}}
 
-	if specs.Eip8198ForkEpoch != nil && specs.SlotDurationMsEip8198 > 0 {
-		forkEpoch := *specs.Eip8198ForkEpoch
+	if specs.HezeForkEpoch != nil && specs.SlotDurationMsHeze > 0 {
+		forkEpoch := *specs.HezeForkEpoch
 
-		forkDuration, err := slotDurationFromMs(specs.SlotDurationMsEip8198)
+		forkDuration, err := slotDurationFromMs(specs.SlotDurationMsHeze)
 		if err != nil {
 			return nil, err
 		}

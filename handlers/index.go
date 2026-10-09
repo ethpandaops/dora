@@ -316,20 +316,6 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		})
 	}
 
-	if specs.Eip8198ForkEpoch != nil && *specs.Eip8198ForkEpoch < uint64(18446744073709551615) {
-		blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*specs.Eip8198ForkEpoch))
-		forkDigest := chainState.GetForkDigest(specs.Eip8198ForkVersion, blobParams)
-		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:       "EIP-8198",
-			Epoch:      *specs.Eip8198ForkEpoch,
-			Version:    specs.Eip8198ForkVersion[:],
-			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.Eip8198ForkEpoch)).Unix()),
-			Active:     uint64(currentEpoch) >= *specs.Eip8198ForkEpoch,
-			Type:       "consensus",
-			ForkDigest: forkDigest[:],
-		})
-	}
-
 	// Add BPO forks (from el genesis config if available, cl BLOB_SCHEDULE otherwise)
 	for _, bpoFork := range services.GlobalBeaconService.GetBpoForks() {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{

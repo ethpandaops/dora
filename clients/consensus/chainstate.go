@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"math"
+	"math/bits"
 	"strings"
 	"sync"
 	"time"
@@ -434,8 +436,6 @@ func (cs *ChainState) GetForkVersionAtEpoch(epoch phase0.Epoch) phase0.Version {
 	}
 
 	switch {
-	case cs.specs.Eip8198ForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.Eip8198ForkEpoch):
-		return cs.specs.Eip8198ForkVersion
 	case cs.specs.HezeForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.HezeForkEpoch):
 		return cs.specs.HezeForkVersion
 	case cs.specs.GloasForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.GloasForkEpoch):
@@ -543,13 +543,14 @@ func (cs *ChainState) GetActivationChurnLimit(epoch phase0.Epoch, totalActiveBal
 	if churn < cs.specs.MinPerEpochChurnLimitElectra {
 		churn = cs.specs.MinPerEpochChurnLimitElectra
 	}
-	churn -= churn % cs.specs.EffectiveBalanceIncrement
 
 	if churn > cs.specs.MaxPerEpochActivationChurnLimitGloas {
-		return cs.specs.MaxPerEpochActivationChurnLimitGloas
+		churn = cs.specs.MaxPerEpochActivationChurnLimitGloas
 	}
 
-	return churn
+	churn = cs.scaleChurnToSlotDuration(epoch, churn)
+
+	return churn - churn%cs.specs.EffectiveBalanceIncrement
 }
 
 // GetExitChurnLimit returns the per-epoch churn budget that voluntary exits consume.
@@ -572,6 +573,8 @@ func (cs *ChainState) GetExitChurnLimit(epoch phase0.Epoch, totalActiveBalance u
 		churn = cs.specs.MinPerEpochChurnLimitElectra
 	}
 
+	churn = cs.scaleChurnToSlotDuration(epoch, churn)
+
 	return churn - churn%cs.specs.EffectiveBalanceIncrement
 }
 
@@ -590,10 +593,30 @@ func (cs *ChainState) GetConsolidationChurnLimit(epoch phase0.Epoch, totalActive
 	}
 
 	if cs.IsEip7732Enabled(epoch) && cs.specs.ConsolidationChurnLimitQuotient > 0 {
-		churnLimit := totalActiveBalance / cs.specs.ConsolidationChurnLimitQuotient
+		churnLimit := cs.scaleChurnToSlotDuration(epoch, totalActiveBalance/cs.specs.ConsolidationChurnLimitQuotient)
 
 		return churnLimit - (churnLimit % cs.specs.EffectiveBalanceIncrement)
 	}
 
 	return cs.GetBalanceChurnLimit(totalActiveBalance) - cs.GetActivationExitChurnLimit(totalActiveBalance)
+}
+
+// scaleChurnToSlotDuration scales a per-epoch churn by the slot duration at the
+// given epoch relative to the genesis slot duration (Heze, EIP-8198).
+func (cs *ChainState) scaleChurnToSlotDuration(epoch phase0.Epoch, churn uint64) uint64 {
+	genesisDurationMs := cs.specs.SlotDurationMs
+	durationMs := cs.specs.GetSlotDurationMs(epoch)
+
+	if genesisDurationMs == 0 || durationMs == genesisDurationMs {
+		return churn
+	}
+
+	hi, lo := bits.Mul64(churn, durationMs)
+	if hi >= genesisDurationMs {
+		return math.MaxUint64
+	}
+
+	scaled, _ := bits.Div64(hi, lo, genesisDurationMs)
+
+	return scaled
 }
