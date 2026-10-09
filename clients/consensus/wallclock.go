@@ -73,7 +73,15 @@ func (w *Wallclock) Stop() {
 // change to timings that already passed is rejected and the clock keeps its
 // current schedule.
 func (w *Wallclock) SetupClock(genesisTime time.Time, specs *ChainSpec) error {
-	schedule, err := newWallclockSchedule(genesisTime, specs)
+	if specs == nil {
+		return errors.New("wallclock: missing chain specs")
+	}
+
+	return w.setupSchedule(genesisTime, specs.SlotsPerEpoch, specs.GetSlotDurationSchedule())
+}
+
+func (w *Wallclock) setupSchedule(genesisTime time.Time, slotsPerEpoch uint64, entries []SlotDurationScheduleEntry) error {
+	schedule, err := newWallclockSchedule(genesisTime, slotsPerEpoch, entries)
 	if err != nil {
 		return err
 	}
@@ -102,30 +110,21 @@ func (w *Wallclock) SetupClock(genesisTime time.Time, specs *ChainSpec) error {
 	return nil
 }
 
-// newWallclockSchedule pre-calculates the segment cutoffs from the specs.
-// SLOT_DURATION_MS applies from genesis unless the schedule has its own entry
-// for epoch 0. Entries that cannot be represented (far future epochs) are cut off.
-func newWallclockSchedule(genesisTime time.Time, specs *ChainSpec) (*wallclockSchedule, error) {
-	if specs == nil {
-		return nil, errors.New("wallclock: missing chain specs")
-	}
-
-	if specs.SlotsPerEpoch == 0 {
+// newWallclockSchedule pre-calculates the segment cutoffs from the slot duration
+// schedule. Later entries for the same epoch override earlier ones. Entries that
+// cannot be represented (far future epochs) are cut off.
+func newWallclockSchedule(genesisTime time.Time, slotsPerEpoch uint64, schedule []SlotDurationScheduleEntry) (*wallclockSchedule, error) {
+	if slotsPerEpoch == 0 {
 		return nil, errors.New("wallclock: SLOTS_PER_EPOCH is zero")
 	}
 
-	entries := make([]SlotDurationScheduleEntry, 0, len(specs.SlotDurationSchedule)+1)
-	if specs.SlotDurationMs > 0 {
-		entries = append(entries, SlotDurationScheduleEntry{Epoch: 0, SlotDurationMs: specs.SlotDurationMs})
-	}
-
-	for _, entry := range specs.SlotDurationSchedule {
+	entries := make([]SlotDurationScheduleEntry, 0, len(schedule))
+	for _, entry := range schedule {
 		if entry.SlotDurationMs > 0 {
 			entries = append(entries, entry)
 		}
 	}
 
-	// stable, so a schedule entry for epoch 0 stays behind SLOT_DURATION_MS and overrides it
 	slices.SortStableFunc(entries, func(a, b SlotDurationScheduleEntry) int {
 		switch {
 		case a.Epoch < b.Epoch:
@@ -173,11 +172,11 @@ func newWallclockSchedule(genesisTime time.Time, specs *ChainSpec) (*wallclockSc
 			continue
 		}
 
-		if entry.Epoch > math.MaxUint64/specs.SlotsPerEpoch {
+		if entry.Epoch > math.MaxUint64/slotsPerEpoch {
 			break
 		}
 
-		slot := phase0.Slot(entry.Epoch * specs.SlotsPerEpoch)
+		slot := phase0.Slot(entry.Epoch * slotsPerEpoch)
 		if uint64(slot-last.slot) > uint64((math.MaxInt64-last.offset)/last.duration) {
 			break
 		}
@@ -192,7 +191,7 @@ func newWallclockSchedule(genesisTime time.Time, specs *ChainSpec) (*wallclockSc
 
 	return &wallclockSchedule{
 		genesisTime:   genesisTime,
-		slotsPerEpoch: specs.SlotsPerEpoch,
+		slotsPerEpoch: slotsPerEpoch,
 		segments:      segments,
 	}, nil
 }

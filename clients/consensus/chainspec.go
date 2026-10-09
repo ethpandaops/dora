@@ -20,11 +20,11 @@ type ForkVersion struct {
 	PreviousVersion []byte
 }
 
-// SlotDurationScheduleEntry is one entry of the EIP-8198 SLOT_DURATION_SCHEDULE:
+// SlotDurationScheduleEntry is one entry of the slot duration schedule:
 // slots from Epoch on last SlotDurationMs milliseconds.
 type SlotDurationScheduleEntry struct {
-	Epoch          uint64 `yaml:"EPOCH"`
-	SlotDurationMs uint64 `yaml:"SLOT_DURATION_MS"`
+	Epoch          uint64
+	SlotDurationMs uint64
 }
 
 type BlobScheduleEntry struct {
@@ -155,7 +155,7 @@ type ChainSpecConfig struct {
 	InclusionListDueBPS uint64 `yaml:"INCLUSION_LIST_DUE_BPS" check-if-fork:"HezeForkEpoch"`
 
 	// EIP-8198
-	SlotDurationSchedule []SlotDurationScheduleEntry `yaml:"SLOT_DURATION_SCHEDULE" check-if-fork:"Eip8198ForkEpoch"`
+	SlotDurationMsEip8198 uint64 `yaml:"SLOT_DURATION_MS_EIP8198" check-if-fork:"Eip8198ForkEpoch"`
 }
 
 type ChainSpecPreset struct {
@@ -420,34 +420,6 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]SpecMismatch, error)
 						break
 					}
 				}
-			} else if fieldV.Type().Kind() == reflect.Slice && fieldV.Type().Elem() == reflect.TypeOf(SlotDurationScheduleEntry{}) {
-				// compare slot duration schedule entries
-				slotScheduleA := fieldV.Interface().([]SlotDurationScheduleEntry)
-				slotScheduleB := field2V.Interface().([]SlotDurationScheduleEntry)
-
-				// sort both by epoch
-				sort.Slice(slotScheduleA, func(i, j int) bool {
-					return slotScheduleA[i].Epoch < slotScheduleA[j].Epoch
-				})
-				sort.Slice(slotScheduleB, func(i, j int) bool {
-					return slotScheduleB[i].Epoch < slotScheduleB[j].Epoch
-				})
-
-				if len(slotScheduleA) == 0 {
-					// empty schedule on chain side is allowed
-					continue
-				}
-
-				// compare each entry, a missing or extra entry is a mismatch too
-				for i := range max(len(slotScheduleA), len(slotScheduleB)) {
-					if i >= len(slotScheduleA) || i >= len(slotScheduleB) || slotScheduleA[i] != slotScheduleB[i] {
-						mismatches = append(mismatches, SpecMismatch{
-							Name:     fmt.Sprintf("%s[%d]", fieldT.Name, i),
-							Severity: checkSeverity,
-						})
-						break
-					}
-				}
 			} else if fieldV.Interface() != field2V.Interface() {
 				if chainT.Field(i).Interface() == reflect.Zero(chainT.Field(i).Type()).Interface() {
 					// 0 value on chain side are allowed
@@ -520,4 +492,20 @@ func (chain *ChainSpec) Clone() *ChainSpec {
 	}
 
 	return res
+}
+
+// GetSlotDurationSchedule returns the slot duration schedule derived from the
+// fork configuration: SLOT_DURATION_MS from genesis and SLOT_DURATION_MS_EIP8198
+// from the EIP-8198 fork epoch on.
+func (chain *ChainSpec) GetSlotDurationSchedule() []SlotDurationScheduleEntry {
+	schedule := make([]SlotDurationScheduleEntry, 0, 2)
+	if chain.SlotDurationMs > 0 {
+		schedule = append(schedule, SlotDurationScheduleEntry{Epoch: 0, SlotDurationMs: chain.SlotDurationMs})
+	}
+
+	if chain.Eip8198ForkEpoch != nil && chain.SlotDurationMsEip8198 > 0 {
+		schedule = append(schedule, SlotDurationScheduleEntry{Epoch: *chain.Eip8198ForkEpoch, SlotDurationMs: chain.SlotDurationMsEip8198})
+	}
+
+	return schedule
 }

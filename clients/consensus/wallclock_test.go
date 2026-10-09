@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -9,13 +10,20 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
-func newWallclockTestSpecs(slotsPerEpoch uint64, slotDurationMs uint64, schedule ...SlotDurationScheduleEntry) *ChainSpec {
-	specs := &ChainSpec{}
-	specs.SlotsPerEpoch = slotsPerEpoch
-	specs.SlotDurationMs = slotDurationMs
-	specs.SlotDurationSchedule = schedule
+type wallclockTestSpecs struct {
+	slotsPerEpoch uint64
+	schedule      []SlotDurationScheduleEntry
+}
 
-	return specs
+func newWallclockTestSpecs(slotsPerEpoch uint64, slotDurationMs uint64, schedule ...SlotDurationScheduleEntry) *wallclockTestSpecs {
+	return &wallclockTestSpecs{
+		slotsPerEpoch: slotsPerEpoch,
+		schedule:      append([]SlotDurationScheduleEntry{{Epoch: 0, SlotDurationMs: slotDurationMs}}, schedule...),
+	}
+}
+
+func (w *Wallclock) setupTestClock(genesisTime time.Time, specs *wallclockTestSpecs) error {
+	return w.setupSchedule(genesisTime, specs.slotsPerEpoch, specs.schedule)
 }
 
 func TestWallclockScheduleSegments(t *testing.T) {
@@ -23,7 +31,7 @@ func TestWallclockScheduleSegments(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		specs    *ChainSpec
+		specs    *wallclockTestSpecs
 		segments []wallclockSegment
 		wantErr  bool
 	}{
@@ -75,15 +83,11 @@ func TestWallclockScheduleSegments(t *testing.T) {
 			specs:   newWallclockTestSpecs(0, 12000),
 			wantErr: true,
 		},
-		{
-			name:    "no specs",
-			wantErr: true,
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			schedule, err := newWallclockSchedule(genesis, test.specs)
+			schedule, err := newWallclockSchedule(genesis, test.specs.slotsPerEpoch, test.specs.schedule)
 			if test.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got segments %+v", schedule.segments)
@@ -115,7 +119,7 @@ func TestWallclockConversions(t *testing.T) {
 	// 4 slots per epoch: 12s slots until epoch 2 (slot 8, 96s), then 8s slots
 	// until epoch 5 (slot 20, 192s), then 6s slots
 	w := &Wallclock{}
-	if err := w.SetupClock(genesis, newWallclockTestSpecs(4, 12000,
+	if err := w.setupTestClock(genesis, newWallclockTestSpecs(4, 12000,
 		SlotDurationScheduleEntry{Epoch: 2, SlotDurationMs: 8000},
 		SlotDurationScheduleEntry{Epoch: 5, SlotDurationMs: 6000},
 	)); err != nil {
@@ -200,7 +204,7 @@ func TestWallclockUnsetReturnsZero(t *testing.T) {
 func TestWallclockScheduleUpdates(t *testing.T) {
 	// 4 slots per epoch with 10s slots: epoch 2 started 20s ago, epoch 3 starts in 20s
 	genesis := time.Now().Add(-100 * time.Second)
-	base := func(schedule ...SlotDurationScheduleEntry) *ChainSpec {
+	base := func(schedule ...SlotDurationScheduleEntry) *wallclockTestSpecs {
 		return newWallclockTestSpecs(4, 10000, append([]SlotDurationScheduleEntry{
 			{Epoch: 1, SlotDurationMs: 5000},
 			{Epoch: 2, SlotDurationMs: 10000},
@@ -210,7 +214,7 @@ func TestWallclockScheduleUpdates(t *testing.T) {
 	tests := []struct {
 		name    string
 		genesis time.Time
-		specs   *ChainSpec
+		specs   *wallclockTestSpecs
 		wantErr bool
 	}{
 		{
@@ -278,14 +282,14 @@ func TestWallclockScheduleUpdates(t *testing.T) {
 	}
 
 	w := &Wallclock{}
-	if err := w.SetupClock(genesis, base()); err != nil {
+	if err := w.setupTestClock(genesis, base()); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			before := w.schedule.Load()
-			err := w.SetupClock(test.genesis, test.specs)
+			err := w.setupTestClock(test.genesis, test.specs)
 
 			if test.wantErr {
 				if err == nil {
@@ -309,11 +313,11 @@ func TestWallclockScheduleUpdates(t *testing.T) {
 func TestWallclockPreGenesisUpdate(t *testing.T) {
 	w := &Wallclock{}
 
-	if err := w.SetupClock(time.Now().Add(time.Hour), newWallclockTestSpecs(4, 12000)); err != nil {
+	if err := w.setupTestClock(time.Now().Add(time.Hour), newWallclockTestSpecs(4, 12000)); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
 
-	if err := w.SetupClock(time.Now().Add(2*time.Hour), newWallclockTestSpecs(8, 6000)); err != nil {
+	if err := w.setupTestClock(time.Now().Add(2*time.Hour), newWallclockTestSpecs(8, 6000)); err != nil {
 		t.Fatalf("pre-genesis update rejected: %v", err)
 	}
 }
@@ -328,7 +332,7 @@ func TestWallclockEvents(t *testing.T) {
 	epochs := w.EpochDispatcher.Subscribe(100, false)
 
 	// genesis lies ahead, so the clock announces slot 0 / epoch 0 onwards
-	if err := w.SetupClock(time.Now().Add(2*slotDuration), newWallclockTestSpecs(2, uint64(slotDuration.Milliseconds()))); err != nil {
+	if err := w.setupTestClock(time.Now().Add(2*slotDuration), newWallclockTestSpecs(2, uint64(slotDuration.Milliseconds()))); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
 
@@ -369,7 +373,7 @@ func TestWallclockSkipsMissedSlots(t *testing.T) {
 
 	slots := w.SlotDispatcher.Subscribe(0, true)
 
-	if err := w.SetupClock(time.Now().Add(-time.Second), newWallclockTestSpecs(4, uint64(slotDuration.Milliseconds()))); err != nil {
+	if err := w.setupTestClock(time.Now().Add(-time.Second), newWallclockTestSpecs(4, uint64(slotDuration.Milliseconds()))); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
 
@@ -400,7 +404,9 @@ func TestChainStateWallclockEvents(t *testing.T) {
 	slots := cs.SlotDispatcher.Subscribe(10, false)
 
 	cs.genesis = &v1.Genesis{GenesisTime: time.Now().Add(-time.Second)}
-	cs.specs = newWallclockTestSpecs(4, uint64(slotDuration.Milliseconds()))
+	cs.specs = &ChainSpec{}
+	cs.specs.SlotsPerEpoch = 4
+	cs.specs.SlotDurationMs = uint64(slotDuration.Milliseconds())
 
 	if err := cs.updateWallclock(); err != nil {
 		t.Fatalf("wallclock update failed: %v", err)
@@ -416,77 +422,64 @@ func TestChainStateWallclockEvents(t *testing.T) {
 	}
 }
 
-func TestSlotDurationScheduleMismatch(t *testing.T) {
+func TestWallclockScheduleFromSpecs(t *testing.T) {
+	genesis := time.Unix(1_700_000_000, 0)
 	forkEpoch := uint64(2)
-	newSpecs := func(schedule ...SlotDurationScheduleEntry) *ChainSpec {
-		specs := newWallclockTestSpecs(4, 12000, schedule...)
-		specs.Eip8198ForkEpoch = &forkEpoch
-
-		return specs
-	}
-
-	entry2 := SlotDurationScheduleEntry{Epoch: 2, SlotDurationMs: 8000}
-	entry5 := SlotDurationScheduleEntry{Epoch: 5, SlotDurationMs: 6000}
-	entry9 := SlotDurationScheduleEntry{Epoch: 9, SlotDurationMs: 4000}
+	farFuture := uint64(math.MaxUint64)
 
 	tests := []struct {
-		name     string
-		chain    []SlotDurationScheduleEntry
-		other    []SlotDurationScheduleEntry
-		mismatch string
+		name      string
+		forkEpoch *uint64
+		eip8198Ms uint64
+		segments  []wallclockSegment
 	}{
 		{
-			name:  "reordered",
-			chain: []SlotDurationScheduleEntry{entry2, entry5},
-			other: []SlotDurationScheduleEntry{entry5, entry2},
+			name:     "no eip8198 fork",
+			segments: []wallclockSegment{{duration: 12 * time.Second}},
 		},
 		{
-			name:     "different entry",
-			chain:    []SlotDurationScheduleEntry{entry2, entry5},
-			other:    []SlotDurationScheduleEntry{entry2, {Epoch: 5, SlotDurationMs: 4000}},
-			mismatch: "SlotDurationSchedule[1]",
+			name:      "eip8198 fork scheduled",
+			forkEpoch: &forkEpoch,
+			eip8198Ms: 10000,
+			segments: []wallclockSegment{
+				{duration: 12 * time.Second},
+				{epoch: 2, slot: 8, offset: 96 * time.Second, duration: 10 * time.Second},
+			},
 		},
 		{
-			name:     "fewer entries",
-			chain:    []SlotDurationScheduleEntry{entry2, entry5},
-			other:    []SlotDurationScheduleEntry{entry2},
-			mismatch: "SlotDurationSchedule[1]",
+			name:      "eip8198 fork at far future epoch",
+			forkEpoch: &farFuture,
+			eip8198Ms: 10000,
+			segments:  []wallclockSegment{{duration: 12 * time.Second}},
 		},
 		{
-			name:     "extra entry",
-			chain:    []SlotDurationScheduleEntry{entry2, entry5},
-			other:    []SlotDurationScheduleEntry{entry2, entry5, entry9},
-			mismatch: "SlotDurationSchedule[2]",
-		},
-		{
-			name:     "no schedule",
-			chain:    []SlotDurationScheduleEntry{entry2, entry5},
-			mismatch: "SlotDurationSchedule[0]",
-		},
-		{
-			name:  "empty schedule on chain side",
-			other: []SlotDurationScheduleEntry{entry2, entry5},
+			name:      "eip8198 fork without slot duration",
+			forkEpoch: &forkEpoch,
+			segments:  []wallclockSegment{{duration: 12 * time.Second}},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			mismatches, err := newSpecs(test.chain...).CheckMismatch(newSpecs(test.other...))
-			if err != nil {
-				t.Fatalf("check failed: %v", err)
+			specs := &ChainSpec{}
+			specs.SlotsPerEpoch = 4
+			specs.SlotDurationMs = 12000
+			specs.Eip8198ForkEpoch = test.forkEpoch
+			specs.SlotDurationMsEip8198 = test.eip8198Ms
+
+			w := &Wallclock{}
+			if err := w.SetupClock(genesis, specs); err != nil {
+				t.Fatalf("setup failed: %v", err)
 			}
 
-			if test.mismatch == "" {
-				if len(mismatches) != 0 {
-					t.Fatalf("unexpected mismatches: %+v", mismatches)
-				}
-
-				return
-			}
-
-			if len(mismatches) != 1 || mismatches[0].Name != test.mismatch {
-				t.Fatalf("mismatches = %+v, want %v", mismatches, test.mismatch)
+			segments := w.schedule.Load().segments
+			if !slices.Equal(segments, test.segments) {
+				t.Fatalf("segments = %+v, want %+v", segments, test.segments)
 			}
 		})
+	}
+
+	if err := (&Wallclock{}).SetupClock(genesis, nil); err == nil {
+		t.Fatal("expected error for missing specs")
 	}
 }
