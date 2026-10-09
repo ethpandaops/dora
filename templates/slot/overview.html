@@ -552,6 +552,32 @@
             </div>
           {{ end }}
         {{ end }}
+        {{ with .Block.Sizes }}
+          {{ if .BeaconBlock }}
+          <div class="row border-bottom p-2 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="SSZ size of the gossiped SignedBeaconBlock, against the gossip MAX_PAYLOAD_SIZE">Block Size:</span></div>
+            <div class="col-md-10"><span class="{{ if gt .BeaconBlockPct 90.0 }}text-warning{{ end }}">{{ formatAddCommas .BeaconBlock }} B</span> <small class="text-muted ml-2">({{ formatByteAmount .BeaconBlock }}, {{ formatFloat .BeaconBlockPct 2 }}% of {{ formatByteAmount .GossipLimit }})</small></div>
+          </div>
+          {{ end }}
+          {{ if .Envelope }}
+          <div class="row border-bottom p-2 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="SSZ size of the gossiped SignedExecutionPayloadEnvelope (payload incl. transactions and BAL, execution requests, signature), against the gossip MAX_PAYLOAD_SIZE">Payload Envelope Size:</span></div>
+            <div class="col-md-10"><span class="{{ if gt .EnvelopePct 90.0 }}text-warning{{ end }}">{{ formatAddCommas .Envelope }} B</span> <small class="text-muted ml-2">({{ formatByteAmount .Envelope }}, {{ formatFloat .EnvelopePct 2 }}% of {{ formatByteAmount .GossipLimit }})</small></div>
+          </div>
+          {{ end }}
+          {{ if .RlpBlock }}
+          <div class="row border-bottom p-2 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-7934 block size: len(rlp(header, transactions, ommers, withdrawals)), against MAX_RLP_BLOCK_SIZE (8 MiB); the block access list is not counted">EL Block Size (RLP):</span></div>
+            <div class="col-md-10"><span class="{{ if gt .RlpBlockPct 90.0 }}text-warning{{ end }}">{{ if not .RlpBlockExact }}<span data-bs-toggle="tooltip" title="The reconstructed EL header does not hash to the block hash (e.g. the BAL is unavailable), so the header could not be verified">≈</span> {{ end }}{{ formatAddCommas .RlpBlock }} B</span> <small class="text-muted ml-2">({{ formatByteAmount .RlpBlock }}, {{ formatFloat .RlpBlockPct 2 }}% of 8 MiB)</small></div>
+          </div>
+          {{ end }}
+          {{ if .BAL }}
+          <div class="row border-bottom p-2 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Size of the raw RLP-encoded EIP-7928 block access list; part of the payload envelope, not of the EIP-7934 block size">BAL Size:</span></div>
+            <div class="col-md-10">{{ formatAddCommas .BAL }} B <small class="text-muted ml-2">({{ formatByteAmount .BAL }})</small></div>
+          </div>
+          {{ end }}
+        {{ end }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Amount of attestations included in this block by the block proposer">Attestations:</span></div>
           <div class="col-md-10"><b>{{ formatAddCommas .Block.AttestationsCount }}</b></div>
