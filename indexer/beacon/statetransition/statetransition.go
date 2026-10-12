@@ -24,6 +24,12 @@ import (
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
+// SpecVersion is the consensus-specs release this package implements. The spec
+// vector workflow replays the vectors of this release on every change, and a
+// scheduled run replays the newest release to report when the specs move ahead.
+// Bump it after catching up with a release (see README.md).
+const SpecVersion = "v1.7.0-beta.4"
+
 // StateTransition holds the chain spec, dynamic SSZ encoder, and reusable caches
 // for applying multiple blocks and epoch transitions to the same state.
 // Create one per state replay session and reuse across ApplyBlock calls.

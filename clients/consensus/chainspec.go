@@ -252,8 +252,6 @@ type ChainSpecPreset struct {
 	MaxBuilderExitRequestsPerPayload    uint64 `yaml:"MAX_BUILDER_EXIT_REQUESTS_PER_PAYLOAD" check-if-fork:"GloasForkEpoch"`
 	MaxSignedAggregateAndProofSize      uint64 `yaml:"MAX_SIGNED_AGGREGATE_AND_PROOF_SIZE" check-if-fork:"GloasForkEpoch"`
 	MaxAttesterSlashingSize             uint64 `yaml:"MAX_ATTESTER_SLASHING_SIZE" check-if-fork:"GloasForkEpoch"`
-	MaxDataColumnSidecarSize            uint64 `yaml:"MAX_DATA_COLUMN_SIDECAR_SIZE" check-if-fork:"GloasForkEpoch"`
-	MaxPartialDataColumnSidecarSize     uint64 `yaml:"MAX_PARTIAL_DATA_COLUMN_SIDECAR_SIZE" check-if-fork:"GloasForkEpoch"`
 	MaxSignedExecutionPayloadBidSize    uint64 `yaml:"MAX_SIGNED_EXECUTION_PAYLOAD_BID_SIZE" check-if-fork:"GloasForkEpoch"`
 
 	// Heze
