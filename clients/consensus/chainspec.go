@@ -20,13 +20,6 @@ type ForkVersion struct {
 	PreviousVersion []byte
 }
 
-// SlotDurationScheduleEntry is one entry of the EIP-8198 SLOT_DURATION_SCHEDULE:
-// slots from Epoch on last SlotDurationMs milliseconds.
-type SlotDurationScheduleEntry struct {
-	Epoch          uint64 `yaml:"EPOCH"`
-	SlotDurationMs uint64 `yaml:"SLOT_DURATION_MS"`
-}
-
 type BlobScheduleEntry struct {
 	Epoch            uint64 `yaml:"EPOCH"`
 	MaxBlobsPerBlock uint64 `yaml:"MAX_BLOBS_PER_BLOCK"`
@@ -155,7 +148,7 @@ type ChainSpecConfig struct {
 	InclusionListDueBPS uint64 `yaml:"INCLUSION_LIST_DUE_BPS" check-if-fork:"HezeForkEpoch"`
 
 	// EIP-8198
-	SlotDurationSchedule []SlotDurationScheduleEntry `yaml:"SLOT_DURATION_SCHEDULE" check-if-fork:"Eip8198ForkEpoch"`
+	SlotDurationMsEip8198 uint64 `yaml:"SLOT_DURATION_MS_EIP8198" check-if-fork:"Eip8198ForkEpoch"`
 }
 
 type ChainSpecPreset struct {
@@ -413,34 +406,6 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]SpecMismatch, error)
 				// compare each entry
 				for i := range blobScheduleA {
 					if len(blobScheduleB) > i && blobScheduleA[i] != blobScheduleB[i] {
-						mismatches = append(mismatches, SpecMismatch{
-							Name:     fmt.Sprintf("%s[%d]", fieldT.Name, i),
-							Severity: checkSeverity,
-						})
-						break
-					}
-				}
-			} else if fieldV.Type().Kind() == reflect.Slice && fieldV.Type().Elem() == reflect.TypeOf(SlotDurationScheduleEntry{}) {
-				// compare slot duration schedule entries
-				slotScheduleA := fieldV.Interface().([]SlotDurationScheduleEntry)
-				slotScheduleB := field2V.Interface().([]SlotDurationScheduleEntry)
-
-				// sort both by epoch
-				sort.Slice(slotScheduleA, func(i, j int) bool {
-					return slotScheduleA[i].Epoch < slotScheduleA[j].Epoch
-				})
-				sort.Slice(slotScheduleB, func(i, j int) bool {
-					return slotScheduleB[i].Epoch < slotScheduleB[j].Epoch
-				})
-
-				if len(slotScheduleA) == 0 {
-					// empty schedule on chain side is allowed
-					continue
-				}
-
-				// compare each entry, a missing or extra entry is a mismatch too
-				for i := range max(len(slotScheduleA), len(slotScheduleB)) {
-					if i >= len(slotScheduleA) || i >= len(slotScheduleB) || slotScheduleA[i] != slotScheduleB[i] {
 						mismatches = append(mismatches, SpecMismatch{
 							Name:     fmt.Sprintf("%s[%d]", fieldT.Name, i),
 							Severity: checkSeverity,
