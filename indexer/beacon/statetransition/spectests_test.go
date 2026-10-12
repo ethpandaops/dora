@@ -57,19 +57,14 @@ var supportedForks = map[string]spec.DataVersion{
 	"heze":  spec.DataVersionHeze,
 }
 
-// defaultForks are the fork directories run when SPEC_TESTS_FORK is unset. Heze
-// is left out until the dependency carrying its containers is released: the
-// BeaconState the vectors hold does not match the one this build decodes with,
-// so every heze case fails on the SSZ decode rather than on a state transition
-// result. Its suites pass once that lands - upgrade_to_heze is the only part
-// still missing, and the fork and transition suites skip without it.
-var defaultForks = []string{"fulu", "gloas"}
+// defaultForks are the fork directories run when SPEC_TESTS_FORK is unset.
+var defaultForks = []string{"fulu", "gloas", "heze"}
 
 // unsupportedSuites lists the runner/handler combinations this package does not
 // implement, with the reason. Anything not listed is expected to pass.
 var unsupportedSuites = map[string]string{
-	"fork":                   "", // only the Fulu→Gloas upgrade is implemented, see runFork
-	"transition":             "", // only the Fulu→Gloas transition is implemented, see runTransition
+	"fork":                   "", // the upgrades in forkUpgrades, see runFork
+	"transition":             "", // the upgrades in forkUpgrades, see runTransition
 	"rewards":                "the rewards suite asserts per-validator delta arrays; rewards are applied inline here",
 	"light_client":           "not a state transition suite",
 	"fast_confirmation":      "not a state transition suite",
@@ -436,17 +431,32 @@ func (tc *specTestCase) runEpochProcessing(t *testing.T, handler string) error {
 	return tc.compareState(t, state)
 }
 
-// preForkVersions maps a fork to the state version its upgrade starts from.
-var preForkVersions = map[string]spec.DataVersion{
-	"gloas": spec.DataVersionFulu,
+// forkUpgrade describes an implemented fork upgrade: the state version it starts
+// from, the upgrade itself, and how the transition runner schedules it.
+type forkUpgrade struct {
+	preVersion   spec.DataVersion
+	upgrade      func(s *stateAccessor)
+	setForkEpoch func(specs *consensus.ChainSpec, epoch *uint64)
+}
+
+// forkUpgrades maps a fork to its upgrade. The suites of the forks before Fulu
+// are skipped rather than reported as divergences.
+var forkUpgrades = map[string]forkUpgrade{
+	"gloas": {
+		preVersion:   spec.DataVersionFulu,
+		upgrade:      func(s *stateAccessor) { upgradeToGloas(s) },
+		setForkEpoch: func(specs *consensus.ChainSpec, epoch *uint64) { specs.GloasForkEpoch = epoch },
+	},
+	"heze": {
+		preVersion:   spec.DataVersionGloas,
+		upgrade:      upgradeToHeze,
+		setForkEpoch: func(specs *consensus.ChainSpec, epoch *uint64) { specs.HezeForkEpoch = epoch },
+	},
 }
 
 // runFork applies the fork's irregular state change to the pre-fork state.
-//
-// Only upgrade_to_gloas is implemented here, so the suites of the preceding
-// upgrades are skipped rather than reported as divergences.
 func (tc *specTestCase) runFork(t *testing.T) error {
-	preVersion, supported := preForkVersions[tc.fork]
+	fork, supported := forkUpgrades[tc.fork]
 	if !supported {
 		t.Skipf("upgrade_to_%v is not implemented", tc.fork)
 	}
@@ -454,7 +464,7 @@ func (tc *specTestCase) runFork(t *testing.T) error {
 	// The pre state is still of the previous fork's type; the post state is the
 	// upgraded one, so the accessor has to be built on the pre-fork version and
 	// carry the state across the version change itself.
-	state := &all.BeaconState{Version: preVersion}
+	state := &all.BeaconState{Version: fork.preVersion}
 	tc.readSSZ(t, "pre", state)
 
 	st := NewStateTransition(tc.specs, tc.dynSsz)
@@ -463,11 +473,11 @@ func (tc *specTestCase) runFork(t *testing.T) error {
 		return fmt.Errorf("failed to create accessor: %w", err)
 	}
 
-	// upgrade_to_gloas is called directly rather than through maybeUpgradeToGloas:
-	// the wrapper only fires on the first slot of the fork epoch, which is where
-	// process_slots triggers it on a chain, while the vectors carry pre states
-	// from arbitrary slots.
-	upgradeToGloas(s)
+	// The upgrade is called directly rather than through its maybeUpgradeTo*
+	// wrapper: the wrapper only fires on the first slot of the fork epoch, which
+	// is where process_slots triggers it on a chain, while the vectors carry pre
+	// states from arbitrary slots.
+	fork.upgrade(s)
 
 	if state.Version != supportedForks[tc.fork] {
 		return fmt.Errorf("state was not upgraded: version is %v", state.Version)
@@ -480,19 +490,19 @@ func (tc *specTestCase) runFork(t *testing.T) error {
 // upgrade is reached on a live chain: process_slots applies it at the first slot
 // of the fork epoch, in between the blocks of the two forks.
 func (tc *specTestCase) runTransition(t *testing.T) error {
-	preVersion, supported := preForkVersions[tc.fork]
+	fork, supported := forkUpgrades[tc.fork]
 	if !supported {
 		t.Skipf("the transition to %v is not implemented", tc.fork)
 	}
 
-	state := &all.BeaconState{Version: preVersion}
+	state := &all.BeaconState{Version: fork.preVersion}
 	tc.readSSZ(t, "pre", state)
 
 	// The vector picks the fork epoch, so the spec the transition runs against
 	// has to be the one the blocks were built for.
 	forkEpoch := uint64(tc.metaInt(t, "fork_epoch"))
 	specsAtFork := *tc.specs
-	specsAtFork.GloasForkEpoch = &forkEpoch
+	fork.setForkEpoch(&specsAtFork, &forkEpoch)
 
 	// fork_block is the index of the last block of the initial fork, so every
 	// later block is of the post-fork type. It is absent when the fork epoch
@@ -511,7 +521,7 @@ func (tc *specTestCase) runTransition(t *testing.T) error {
 	for i := 0; i < tc.metaInt(t, "blocks_count"); i++ {
 		version := tc.version
 		if i <= lastPreForkBlock {
-			version = preVersion
+			version = fork.preVersion
 		}
 
 		block := &all.SignedBeaconBlock{Version: version}

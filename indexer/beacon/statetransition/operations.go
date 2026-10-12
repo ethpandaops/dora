@@ -39,8 +39,11 @@ func processOperations(s *stateAccessor, block *all.SignedBeaconBlock, parentSlo
 
 	processAttestations(s, block, parentSlot)
 
-	for _, deposit := range body.Deposits {
-		processDeposit(s, deposit)
+	// Eth1 bridge deposits — the body no longer carries them from Heze on (EIP-8015).
+	if s.Version < spec.DataVersionHeze {
+		for _, deposit := range body.Deposits {
+			processDeposit(s, deposit)
+		}
 	}
 
 	for _, exit := range body.VoluntaryExits {
@@ -344,46 +347,12 @@ func processProposerSlashing(s *stateAccessor, slashing *phase0.ProposerSlashing
 	if slashing == nil || slashing.SignedHeader1 == nil || slashing.SignedHeader1.Message == nil {
 		return
 	}
-	header := slashing.SignedHeader1.Message
-	proposerIndex := header.ProposerIndex
+	proposerIndex := slashing.SignedHeader1.Message.ProposerIndex
 	if int(proposerIndex) >= len(s.Validators) {
 		return
 	}
 
-	// New in Gloas: clear the BuilderPendingPayment tied to this proposal if it is
-	// still in the 2-epoch window and bound to the slashed proposer (per #5365 the
-	// payment is only griefed when the slashed validator is its proposer).
-	// https://github.com/ethereum/consensus-specs/pull/5365
-	if s.Version >= spec.DataVersionGloas {
-		clearSlashedBuilderPendingPayment(s, header.Slot, proposerIndex)
-	}
-
 	slashValidator(s, proposerIndex)
-}
-
-// clearSlashedBuilderPendingPayment removes the builder pending payment recorded
-// for the slashed proposer's slot, if that slot is still within the 2-epoch
-// BuilderPendingPayments window and the payment is bound to the slashed proposer.
-func clearSlashedBuilderPendingPayment(s *stateAccessor, slot phase0.Slot, proposerIndex phase0.ValidatorIndex) {
-	slotsPerEpoch := s.specs.SlotsPerEpoch
-	proposalEpoch := phase0.Epoch(uint64(slot) / slotsPerEpoch)
-
-	var paymentIdx uint64
-	switch proposalEpoch {
-	case s.currentEpoch():
-		paymentIdx = slotsPerEpoch + uint64(slot)%slotsPerEpoch
-	case s.previousEpoch():
-		paymentIdx = uint64(slot) % slotsPerEpoch
-	default:
-		return
-	}
-
-	if paymentIdx >= uint64(len(s.BuilderPendingPayments)) {
-		return
-	}
-	if payment := s.BuilderPendingPayments[paymentIdx]; payment != nil && payment.ProposerIndex == proposerIndex {
-		s.BuilderPendingPayments[paymentIdx] = &gloas.BuilderPendingPayment{}
-	}
 }
 
 // processAttesterSlashing processes an attester slashing.
@@ -911,6 +880,7 @@ func processSyncAggregate(s *stateAccessor, block *all.SignedBeaconBlock) {
 
 // slashValidator applies the slashing penalty to a validator.
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-slash_validator
+// Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-slash_validator
 func slashValidator(s *stateAccessor, index phase0.ValidatorIndex) {
 	validator := s.Validators[index]
 	epoch := s.currentEpoch()
@@ -951,6 +921,16 @@ func slashValidator(s *stateAccessor, index phase0.ValidatorIndex) {
 		proposerReward := whistleblowerReward * ProposerWeight / WeightDenominator
 		s.increaseBalance(proposerIndex, proposerReward)
 		s.increaseBalance(whistleblowerIndex, whistleblowerReward-proposerReward)
+	}
+
+	// Gloas: a slashed proposer forfeits every builder payment still queued for
+	// its proposals, whichever slashing kind brought it down.
+	if s.Version >= spec.DataVersionGloas {
+		for i, payment := range s.BuilderPendingPayments {
+			if payment != nil && payment.ProposerIndex == index {
+				s.BuilderPendingPayments[i] = &gloas.BuilderPendingPayment{}
+			}
+		}
 	}
 }
 

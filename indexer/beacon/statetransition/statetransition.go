@@ -136,9 +136,10 @@ func (st *StateTransition) processSlots(state *all.BeaconState, targetSlot phase
 
 		s.Slot++
 
-		// Apply the Gloas fork upgrade at the first slot of GLOAS_FORK_EPOCH (after the
-		// preceding Fulu epoch transition has run, mirroring the spec's irregular state change).
+		// Apply the fork upgrades at the first slot of their fork epoch (after the
+		// preceding epoch transition has run, mirroring the spec's irregular state change).
 		maybeUpgradeToGloas(s, info)
+		maybeUpgradeToHeze(s)
 	}
 
 	return nil
@@ -199,7 +200,10 @@ func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 		return fmt.Errorf("process_slashings: %w", err)
 	}
 
-	processEth1DataReset(s)
+	// Removed in Heze along with the Eth1 bridge (EIP-8015).
+	if s.Version < spec.DataVersionHeze {
+		processEth1DataReset(s)
+	}
 
 	if err := processPendingDeposits(s); err != nil {
 		return fmt.Errorf("process_pending_deposits: %w", err)

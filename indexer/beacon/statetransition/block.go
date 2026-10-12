@@ -70,9 +70,10 @@ func (st *StateTransition) applyBlock(state *all.BeaconState, block *all.SignedB
 		}
 		s.Slot++
 
-		// Apply the Gloas fork upgrade when advancing into the first slot of GLOAS_FORK_EPOCH,
-		// so a block that is the first of the Gloas fork is processed against an upgraded state.
+		// Apply the fork upgrades when advancing into the first slot of their fork epoch,
+		// so a block that is the first of a fork is processed against an upgraded state.
 		maybeUpgradeToGloas(s, nil)
+		maybeUpgradeToHeze(s)
 	}
 
 	proposerIndex := block.Message.ProposerIndex
@@ -113,8 +114,10 @@ func (st *StateTransition) applyBlock(state *all.BeaconState, block *all.SignedB
 	// process_randao
 	processRandao(s, block)
 
-	// process_eth1_data
-	processEth1Data(s, block)
+	// process_eth1_data — removed in Heze along with the Eth1 bridge (EIP-8015)
+	if state.Version < spec.DataVersionHeze {
+		processEth1Data(s, block)
+	}
 
 	// process_operations
 	processOperations(s, block, parentSlot)
@@ -328,9 +331,10 @@ func processParentExecutionPayload(s *stateAccessor, block *all.SignedBeaconBloc
 		return
 	}
 
-	// Parent was FULL — apply the parent's execution requests.
-	applyExecutionRequests(s, parentRequests)
-
+	// Parent was FULL — settle the builder payment first, so that a builder exit
+	// request in the parent's payload is rejected while the payment is pending
+	// (the exit guard looks at builder_pending_withdrawals).
+	//
 	// Epoch-aware settle_builder_payment: the payment sits in the queue at a
 	// position determined by the parent's epoch relative to the current state's
 	// epoch. Spec handles 3 cases explicitly.
@@ -353,6 +357,10 @@ func processParentExecutionPayload(s *stateAccessor, block *all.SignedBeaconBloc
 			BuilderIndex: parentBuilderIdx,
 		})
 	}
+
+	// Apply the parent's execution requests. They are processed at state.slot
+	// (the child's slot), not the parent's slot.
+	applyExecutionRequests(s, parentRequests)
 
 	// Mark parent slot's payload as available and record its block hash.
 	s.setAvailabilityBit(parentSlot)
