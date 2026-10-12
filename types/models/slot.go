@@ -64,6 +64,7 @@ type SlotPageBlockData struct {
 	Signature                   []byte                  `json:"signature" ssz-size:"96"`
 	RandaoReveal                []byte                  `json:"randaoreveal" ssz-size:"96"`
 	Graffiti                    []byte                  `json:"graffiti"`
+	HasEth1Data                 bool                    `json:"has_eth1_data"`
 	Eth1dataDepositroot         []byte                  `json:"eth1data_depositroot" ssz-size:"32"`
 	Eth1dataDepositcount        uint64                  `json:"eth1data_depositcount"`
 	Eth1dataBlockhash           []byte                  `json:"eth1data_blockhash" ssz-size:"32"`

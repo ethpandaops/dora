@@ -547,9 +547,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		Signature:              blockData.Header.Signature[:],
 		RandaoReveal:           randaoReveal[:],
 		Graffiti:               graffiti[:],
-		Eth1dataDepositroot:    eth1Data.DepositRoot[:],
-		Eth1dataDepositcount:   eth1Data.DepositCount,
-		Eth1dataBlockhash:      eth1Data.BlockHash,
 		ValidatorNames:         make([]models.SlotPageValidatorName, 0),
 		SlotsPerEpoch:          specs.SlotsPerEpoch,
 		TargetCommitteeSize:    specs.TargetCommitteeSize,
@@ -560,6 +557,13 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		DepositsCount:          uint64(len(deposits)),
 		VoluntaryExitsCount:    uint64(len(voluntaryExits)),
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
+	}
+
+	if eth1Data != nil {
+		pageData.HasEth1Data = true
+		pageData.Eth1dataDepositroot = eth1Data.DepositRoot[:]
+		pageData.Eth1dataDepositcount = eth1Data.DepositCount
+		pageData.Eth1dataBlockhash = eth1Data.BlockHash
 	}
 
 	epoch := chainState.EpochOfSlot(blockData.Header.Message.Slot)
