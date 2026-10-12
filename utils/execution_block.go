@@ -1,0 +1,244 @@
+package utils
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math/big"
+	"slices"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
+	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	dynssz "github.com/pk910/dynamic-ssz"
+)
+
+const (
+	// MaxRlpBlockSize is the EIP-7934 cap on len(rlp(block)): MAX_BLOCK_SIZE (10 MiB) - SAFETY_MARGIN (2 MiB).
+	MaxRlpBlockSize = 8_388_608
+	// MaxGossipPayloadSize is the default consensus-layer gossip MAX_PAYLOAD_SIZE (10 MiB).
+	MaxGossipPayloadSize = 10_485_760
+)
+
+// ExecutionBlock is the EL block reconstructed from a beacon execution payload.
+type ExecutionBlock struct {
+	Header    *types.Header // always set
+	Block     *types.Block  // nil if go-ethereum cannot decode a transaction (see TxError)
+	TxError   error
+	HashMatch bool   // Header.Hash() equals the payload block hash
+	Size      uint64 // len(rlp(block)) (EIP-7934); from the raw tx bytes when Block is nil
+}
+
+// rawTxs feeds the opaque EIP-2718 tx encodings to DeriveSha, so the transactions
+// root does not depend on go-ethereum knowing every tx type.
+type rawTxs []bellatrix.Transaction
+
+func (t rawTxs) Len() int                           { return len(t) }
+func (t rawTxs) EncodeIndex(i int, w *bytes.Buffer) { w.Write(t[i]) }
+
+// ExecutionBlockFromPayload reconstructs the EL block (go-ethereum types) from a beacon
+// execution payload, following engine.ExecutableDataToBlock. parentRoot is the parent
+// beacon block root (Deneb+), requests the payload's execution requests (Electra+) and
+// bal the raw RLP block access list (Gloas+). Without the BAL the header carries a zero
+// BAL hash: the RLP size stays exact, but HashMatch is false.
+func ExecutionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.Root, requests *all.ExecutionRequests, bal []byte) *ExecutionBlock {
+	baseFee := new(big.Int)
+	if payload.BaseFeePerGas != nil {
+		baseFee = payload.BaseFeePerGas.ToBig()
+	} else {
+		le := payload.BaseFeePerGasLE
+		slices.Reverse(le[:])
+		baseFee.SetBytes(le[:])
+	}
+
+	header := &types.Header{
+		ParentHash:  common.Hash(payload.ParentHash),
+		UncleHash:   types.EmptyUncleHash,
+		Coinbase:    common.Address(payload.FeeRecipient),
+		Root:        common.Hash(payload.StateRoot),
+		TxHash:      types.DeriveSha(rawTxs(payload.Transactions), trie.NewStackTrie(nil)),
+		ReceiptHash: common.Hash(payload.ReceiptsRoot),
+		Bloom:       types.Bloom(payload.LogsBloom),
+		Difficulty:  new(big.Int),
+		Number:      new(big.Int).SetUint64(payload.BlockNumber),
+		GasLimit:    payload.GasLimit,
+		GasUsed:     payload.GasUsed,
+		Time:        payload.Timestamp,
+		Extra:       payload.ExtraData,
+		MixDigest:   common.Hash(payload.PrevRandao),
+		BaseFee:     baseFee,
+	}
+
+	var withdrawals []*types.Withdrawal
+	if payload.Version >= spec.DataVersionCapella {
+		withdrawals = make([]*types.Withdrawal, len(payload.Withdrawals))
+		for i, w := range payload.Withdrawals {
+			withdrawals[i] = &types.Withdrawal{
+				Index:     uint64(w.Index),
+				Validator: uint64(w.ValidatorIndex),
+				Address:   common.Address(w.Address),
+				Amount:    uint64(w.Amount),
+			}
+		}
+		h := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
+		header.WithdrawalsHash = &h
+	}
+	if payload.Version >= spec.DataVersionDeneb {
+		blobGasUsed, excessBlobGas := payload.BlobGasUsed, payload.ExcessBlobGas
+		beaconRoot := common.Hash(parentRoot)
+		header.BlobGasUsed, header.ExcessBlobGas, header.ParentBeaconRoot = &blobGasUsed, &excessBlobGas, &beaconRoot
+	}
+	if payload.Version >= spec.DataVersionElectra {
+		h := types.CalcRequestsHash(ExecutionRequestsList(requests))
+		header.RequestsHash = &h
+	}
+	if payload.Version >= spec.DataVersionGloas {
+		var balHash common.Hash // placeholder when the BAL is unavailable
+		if len(bal) > 0 {
+			balHash = crypto.Keccak256Hash(bal)
+		}
+		slot := payload.SlotNumber
+		header.BlockAccessListHash, header.SlotNumber = &balHash, &slot
+	}
+
+	result := &ExecutionBlock{Header: header, HashMatch: header.Hash() == common.Hash(payload.BlockHash)}
+	txs := make([]*types.Transaction, len(payload.Transactions))
+	for i, raw := range payload.Transactions {
+		txs[i] = new(types.Transaction)
+		if err := txs[i].UnmarshalBinary(raw); err != nil {
+			result.TxError = fmt.Errorf("go-ethereum cannot decode tx %d: %w", i, err)
+			result.Size, _ = rawBlockSize(header, payload.Transactions, withdrawals)
+			return result
+		}
+	}
+	result.Block = types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: txs, Withdrawals: withdrawals})
+	result.Size = result.Block.Size()
+	return result
+}
+
+// unsupportedFork is the likely cause when a reconstructed block fails verification.
+const unsupportedFork = "dora's go-ethereum version likely does not support this fork's block format"
+
+// Verify returns an error unless the block can be served as the slot's EL block: the
+// header must hash to the payload block hash and, for Gloas+, to the block hash the
+// beacon block commits to in its execution payload bid (nil before Gloas), and
+// go-ethereum must have decoded every transaction.
+func (b *ExecutionBlock) Verify(payload *all.ExecutionPayload, bid *all.ExecutionPayloadBid) error {
+	hash := b.Header.Hash()
+	switch {
+	case b.Header.BlockAccessListHash != nil && *b.Header.BlockAccessListHash == (common.Hash{}):
+		return errors.New("block access list unavailable, the EL block header cannot be rebuilt without it")
+	case bid != nil && hash != common.Hash(bid.BlockHash):
+		return fmt.Errorf("reconstructed EL block hash %s does not match the block hash %s in the execution payload bid; %s", hash.Hex(), common.Hash(bid.BlockHash).Hex(), unsupportedFork)
+	case hash != common.Hash(payload.BlockHash):
+		return fmt.Errorf("reconstructed EL block hash %s does not match the execution payload block hash %s; %s", hash.Hex(), common.Hash(payload.BlockHash).Hex(), unsupportedFork)
+	case b.Block == nil:
+		return fmt.Errorf("%w; %s", b.TxError, unsupportedFork)
+	}
+	return nil
+}
+
+// BlockJSON returns the block's JSON fields as encoded by go-ethereum itself: the
+// header (incl. its hash) next to the body's transactions, uncles and (Capella+)
+// withdrawals. Block must be set.
+func (b *ExecutionBlock) BlockJSON() (map[string]json.RawMessage, error) {
+	if b.Block == nil {
+		return nil, b.TxError
+	}
+	headerJSON, err := json.Marshal(b.Block.Header())
+	if err != nil {
+		return nil, err
+	}
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(headerJSON, &fields); err != nil {
+		return nil, err
+	}
+	body := map[string]any{"transactions": b.Block.Transactions(), "uncles": []common.Hash{}} // post-merge blocks have no ommers
+	if b.Header.WithdrawalsHash != nil {
+		body["withdrawals"] = b.Block.Withdrawals()
+	}
+	for key, value := range body {
+		if fields[key], err = json.Marshal(value); err != nil {
+			return nil, err
+		}
+	}
+	return fields, nil
+}
+
+// rawBlockSize is len(rlp(block)) computed from the opaque tx encodings, for blocks
+// with tx types go-ethereum cannot decode. It encodes the same list as geth's extblock:
+// a legacy tx is already an RLP list, a typed tx is an RLP string of type || payload.
+func rawBlockSize(header *types.Header, txs []bellatrix.Transaction, withdrawals []*types.Withdrawal) (uint64, error) {
+	encTxs := make([]rlp.RawValue, len(txs))
+	for i, tx := range txs {
+		if len(tx) > 0 && tx[0] >= 0xc0 {
+			encTxs[i] = rlp.RawValue(tx)
+		} else {
+			enc, err := rlp.EncodeToBytes([]byte(tx))
+			if err != nil {
+				return 0, err
+			}
+			encTxs[i] = enc
+		}
+	}
+	enc, err := rlp.EncodeToBytes(&struct {
+		Header      *types.Header
+		Txs         []rlp.RawValue
+		Uncles      []*types.Header
+		Withdrawals []*types.Withdrawal `rlp:"optional"`
+	}{header, encTxs, nil, withdrawals})
+	return uint64(len(enc)), err
+}
+
+// ExecutionRequestsList encodes execution requests as the EIP-7685 list
+// (request_type || ssz(requests)) per get_execution_requests_list, skipping empty types.
+func ExecutionRequestsList(requests *all.ExecutionRequests) [][]byte {
+	list := [][]byte{}
+	if requests == nil {
+		return list
+	}
+	type sszItem interface{ MarshalSSZ() ([]byte, error) }
+	add := func(reqType byte, n int, item func(i int) sszItem) {
+		if n == 0 {
+			return
+		}
+		buf := []byte{reqType}
+		for i := 0; i < n; i++ {
+			enc, err := item(i).MarshalSSZ()
+			if err != nil {
+				return // drop the type; the block hash check then flags the header as unverified
+			}
+			buf = append(buf, enc...)
+		}
+		list = append(list, buf)
+	}
+	add(0x00, len(requests.Deposits), func(i int) sszItem { return requests.Deposits[i] })
+	add(0x01, len(requests.Withdrawals), func(i int) sszItem { return requests.Withdrawals[i] })
+	add(0x02, len(requests.Consolidations), func(i int) sszItem { return requests.Consolidations[i] })
+	add(0x03, len(requests.BuilderDeposits), func(i int) sszItem { return requests.BuilderDeposits[i] })
+	add(0x04, len(requests.BuilderExits), func(i int) sszItem { return requests.BuilderExits[i] })
+	return list
+}
+
+// EnvelopeSSZSize returns the SSZ size of the signed execution payload envelope as
+// gossiped. If the stored envelope had its BAL pruned, the separately preserved bal is
+// substituted so the size reflects the original envelope.
+func EnvelopeSSZSize(ds *dynssz.DynSsz, env *all.SignedExecutionPayloadEnvelope, bal []byte) (uint64, error) {
+	if env.Message != nil && env.Message.Payload != nil && len(env.Message.Payload.BlockAccessList) == 0 && len(bal) > 0 {
+		msg, payload := *env.Message, *env.Message.Payload
+		payload.BlockAccessList = bal
+		msg.Payload = &payload
+		envCopy := *env
+		envCopy.Message = &msg
+		env = &envCopy
+	}
+	size, err := ds.SizeSSZ(env)
+	return uint64(size), err
+}

@@ -129,14 +129,13 @@ func applyPendingDeposit(s *stateAccessor, deposit *electra.PendingDeposit, pubk
 		return
 	}
 
-	// New validator: Heze no longer creates validators with BLS withdrawal
-	// credentials (EIP-8365), the deposit is dropped instead.
+	// New in Heze: deposits creating validators with BLS withdrawal credentials are skipped.
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/heze/beacon-chain.md#modified-apply_pending_deposit
 	if s.Version >= spec.DataVersionHeze && len(deposit.WithdrawalCredentials) > 0 && deposit.WithdrawalCredentials[0] == 0x00 {
 		return
 	}
 
-	// Only create it if the deposit signature is valid.
+	// New validator: only create it if the deposit signature is valid.
 	if !depositsig.Valid(deposit.Pubkey, deposit.WithdrawalCredentials, phase0.Gwei(deposit.Amount), deposit.Signature, depositDomain) {
 		return
 	}

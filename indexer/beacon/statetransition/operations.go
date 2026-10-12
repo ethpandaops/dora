@@ -347,7 +347,8 @@ func processProposerSlashing(s *stateAccessor, slashing *phase0.ProposerSlashing
 	if slashing == nil || slashing.SignedHeader1 == nil || slashing.SignedHeader1.Message == nil {
 		return
 	}
-	proposerIndex := slashing.SignedHeader1.Message.ProposerIndex
+	header := slashing.SignedHeader1.Message
+	proposerIndex := header.ProposerIndex
 	if int(proposerIndex) >= len(s.Validators) {
 		return
 	}
@@ -880,7 +881,6 @@ func processSyncAggregate(s *stateAccessor, block *all.SignedBeaconBlock) {
 
 // slashValidator applies the slashing penalty to a validator.
 // Modified in Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#modified-slash_validator
-// Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-slash_validator
 func slashValidator(s *stateAccessor, index phase0.ValidatorIndex) {
 	validator := s.Validators[index]
 	epoch := s.currentEpoch()
@@ -923,8 +923,8 @@ func slashValidator(s *stateAccessor, index phase0.ValidatorIndex) {
 		s.increaseBalance(whistleblowerIndex, whistleblowerReward-proposerReward)
 	}
 
-	// Gloas: a slashed proposer forfeits every builder payment still queued for
-	// its proposals, whichever slashing kind brought it down.
+	// New in Gloas: remove pending builder payments for blocks proposed by the slashed validator.
+	// https://github.com/ethereum/consensus-specs/pull/5719
 	if s.Version >= spec.DataVersionGloas {
 		for i, payment := range s.BuilderPendingPayments {
 			if payment != nil && payment.ProposerIndex == index {
