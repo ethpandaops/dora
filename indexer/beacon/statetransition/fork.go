@@ -129,6 +129,59 @@ func upgradeToGloas(s *stateAccessor) []*electra.PendingDeposit {
 	return onboardBuildersFromPendingDeposits(s)
 }
 
+// maybeUpgradeToHeze applies the upgrade_to_heze irregular state change at the first slot of
+// HEZE_FORK_EPOCH, with the same trigger as maybeUpgradeToGloas. It is a no-op for every other
+// slot, for chains without a configured Heze fork, and for states that are not Gloas.
+func maybeUpgradeToHeze(s *stateAccessor) {
+	if s.specs.HezeForkEpoch == nil || s.Version != spec.DataVersionGloas {
+		return
+	}
+	if uint64(s.Slot)%s.specs.SlotsPerEpoch != 0 {
+		return
+	}
+	if uint64(s.currentEpoch()) != *s.specs.HezeForkEpoch {
+		return
+	}
+
+	upgradeToHeze(s)
+}
+
+// upgradeToHeze implements upgrade_to_heze: it mutates the embedded state in place from Gloas to
+// Heze, dropping the Eth1 bridge fields (EIP-8015) and extending the latest bid with the empty
+// inclusion list bits (EIP-7805).
+//
+// The spec asserts eth1_deposit_index == deposit_requests_start_index here, i.e. that the Eth1
+// bridge has been drained before the fork; like every other spec assert it is left to the node.
+//
+// https://github.com/ethereum/consensus-specs/blob/master/specs/heze/fork.md
+func upgradeToHeze(s *stateAccessor) {
+	epoch := s.currentEpoch()
+
+	// [Modified in Heze] fork versions
+	s.Fork = &phase0.Fork{
+		PreviousVersion: s.Fork.CurrentVersion,
+		CurrentVersion:  s.specs.HezeForkVersion,
+		Epoch:           epoch,
+	}
+
+	// From here the state is treated as Heze for HTR and all fork-conditional logic.
+	s.Version = spec.DataVersionHeze
+
+	// [Removed in Heze:EIP8015] eth1_data, eth1_data_votes, eth1_deposit_index,
+	// deposit_requests_start_index.
+	s.ETH1Data = nil
+	s.ETH1DataVotes = nil
+	s.ETH1DepositIndex = 0
+	s.DepositRequestsStartIndex = 0
+
+	// [Modified in Heze:EIP7805] the bid gains inclusion_list_bits, empty at the fork. The HTR
+	// dispatches on the bid's own version, so it has to follow the state's.
+	if s.LatestExecutionPayloadBid != nil {
+		s.LatestExecutionPayloadBid.Version = spec.DataVersionHeze
+		s.LatestExecutionPayloadBid.InclusionListBits = make([]byte, (s.specs.InclusionListCommitteeSize+7)/8)
+	}
+}
+
 // initializePtcWindow implements initialize_ptc_window: an empty previous epoch (SLOTS_PER_EPOCH
 // vectors of PTC_SIZE zero indices) followed by the computed PTCs for the current epoch and the
 // next MIN_SEED_LOOKAHEAD epochs.

@@ -162,6 +162,7 @@
             
           </div>
         </div>
+        {{ if .Block.HasEth1Data }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Received Eth Block headers and Deposit data">Eth Data:</span></div>
           <div class="col-md-10">
@@ -182,6 +183,7 @@
             </div>
           </div>
         </div>
+        {{ end }}
         {{ if .Block.SyncAggregateSignature }}
           <div class="row border-bottom p-2 mx-0">
             <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Sync Aggregate (Altair Light-Client support)">Sync Aggregate:</span></div>

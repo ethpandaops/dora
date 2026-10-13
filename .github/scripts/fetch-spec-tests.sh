@@ -14,13 +14,16 @@
 # The constants are part of the fixture, so they have to come from the release
 # the vectors were generated from - which is why both are fetched together.
 #
-# Without a version, or with "latest", the newest release that carries the
-# requested vectors is used. Releases of the specs are pre-releases, so this is
-# the newest release by date rather than what the API calls the latest one.
+# Without a version, or with "pinned", the release the state transition was
+# updated to is used (SpecVersion in indexer/beacon/statetransition). With
+# "latest", the newest release that carries the requested vectors is used.
+# Releases of the specs are pre-releases, so this is the newest release by date
+# rather than what the API calls the latest one.
 #
-#   .github/scripts/fetch-spec-tests.sh                    # newest, minimal
+#   .github/scripts/fetch-spec-tests.sh                    # pinned, minimal
 #   .github/scripts/fetch-spec-tests.sh latest mainnet     # newest, mainnet
 #   .github/scripts/fetch-spec-tests.sh v1.7.0-alpha.14    # a specific release
+#   .github/scripts/fetch-spec-tests.sh --pinned-version   # only resolve, print, exit
 #   .github/scripts/fetch-spec-tests.sh --latest-version   # only resolve, print, exit
 #
 # Run the vectors against the result with:
@@ -31,6 +34,13 @@
 set -euo pipefail
 
 REPO="ethereum/consensus-specs"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SPEC_VERSION_FILE="$ROOT/indexer/beacon/statetransition/statetransition.go"
+
+# pinned_version prints the release the state transition was updated to.
+pinned_version() {
+    sed -n 's/^const SpecVersion = "\(.*\)"$/\1/p' "$SPEC_VERSION_FILE"
+}
 
 # github_api fetches a repository API path, authenticated through gh when it is
 # available so CI does not run into the anonymous rate limit.
@@ -65,17 +75,41 @@ for release in json.load(sys.stdin):
 ' "$preset"
 }
 
-if [ "${1:-}" = "--latest-version" ]; then
-    version="$(latest_version "${2:-minimal}")"
-    if [ -z "$version" ]; then
-        echo "could not resolve the newest $REPO release carrying vectors" >&2
-        exit 1
-    fi
-    echo "$version"
-    exit 0
-fi
+# resolve_version turns the "pinned" and "latest" keywords into a release tag.
+resolve_version() {
+    local version="$1" preset="$2"
 
-VERSION="${1:-latest}"
+    case "$version" in
+        pinned)
+            version="$(pinned_version)"
+            if [ -z "$version" ]; then
+                echo "could not read SpecVersion from $SPEC_VERSION_FILE" >&2
+                exit 1
+            fi
+            ;;
+        latest)
+            version="$(latest_version "$preset")"
+            if [ -z "$version" ]; then
+                echo "could not resolve the newest $REPO release carrying vectors" >&2
+                exit 1
+            fi
+            ;;
+    esac
+    echo "$version"
+}
+
+case "${1:-}" in
+    --pinned-version)
+        resolve_version pinned "${2:-minimal}"
+        exit 0
+        ;;
+    --latest-version)
+        resolve_version latest "${2:-minimal}"
+        exit 0
+        ;;
+esac
+
+VERSION="${1:-pinned}"
 if [ $# -gt 0 ]; then shift; fi
 
 PRESETS=("$@")
@@ -83,16 +117,12 @@ if [ ${#PRESETS[@]} -eq 0 ]; then
     PRESETS=("minimal")
 fi
 
-if [ "$VERSION" = "latest" ]; then
-    VERSION="$(latest_version "${PRESETS[0]}")"
-    if [ -z "$VERSION" ]; then
-        echo "could not resolve the newest $REPO release carrying vectors" >&2
-        exit 1
-    fi
-    echo "==> newest release with ${PRESETS[0]} vectors: $VERSION"
+if [ "$VERSION" = "pinned" ] || [ "$VERSION" = "latest" ]; then
+    requested="$VERSION"
+    VERSION="$(resolve_version "$VERSION" "${PRESETS[0]}")"
+    echo "==> $requested release: $VERSION"
 fi
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEST="${SPEC_TESTS_DIR:-$ROOT/.spec-tests/$VERSION}"
 mkdir -p "$DEST"
 
