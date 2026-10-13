@@ -39,8 +39,11 @@ func processOperations(s *stateAccessor, block *all.SignedBeaconBlock, parentSlo
 
 	processAttestations(s, block, parentSlot)
 
-	for _, deposit := range body.Deposits {
-		processDeposit(s, deposit)
+	// Eth1 bridge deposits — the body no longer carries them from Heze on (EIP-8015).
+	if s.Version < spec.DataVersionHeze {
+		for _, deposit := range body.Deposits {
+			processDeposit(s, deposit)
+		}
 	}
 
 	for _, exit := range body.VoluntaryExits {
