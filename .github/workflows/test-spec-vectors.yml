@@ -1,13 +1,17 @@
 name: Check spec vectors
 
 # Replays the consensus-specs reference test vectors through the state
-# transition. It runs on changes to the state transition and to the chain spec
-# it reads, which is where a divergence from the consensus specs can appear.
+# transition.
 #
-# The vectors come from the newest consensus-specs release, so this also reports
-# when the specs move ahead of what the state transition implements. A failure
-# is therefore either a bug or a spec change to catch up with - the run output
-# names the cases either way.
+# On changes to the state transition and to the chain spec it reads, the
+# vectors of the release the state transition was updated to (SpecVersion in
+# indexer/beacon/statetransition) are replayed, so a failure there is a
+# divergence from the specs the package claims to implement.
+#
+# On schedule, the vectors of the newest release are replayed instead, so a
+# failure there is a spec change to catch up with. Both results are shown as
+# badges in indexer/beacon/statetransition/README.md - the badge of a workflow
+# can be filtered by the event that triggered the run.
 
 on:
   pull_request:
@@ -26,11 +30,15 @@ on:
       - 'clients/consensus/chainstate.go'
       - '.github/scripts/fetch-spec-tests.sh'
       - '.github/workflows/test-spec-vectors.yml'
+  schedule:
+    # Spec releases are cut every week or two.
+    - cron: '30 5 * * 1,4'
   workflow_dispatch:
     inputs:
       spec_version:
-        description: 'consensus-specs release to take the vectors from (empty: newest)'
+        description: 'consensus-specs release to take the vectors from: pinned, latest or a tag'
         required: false
+        default: 'pinned'
         type: string
       preset:
         description: 'Preset to run'
@@ -42,7 +50,7 @@ on:
           - mainnet
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'schedule' }}
   cancel-in-progress: true
 
 permissions:
@@ -71,12 +79,17 @@ jobs:
 
         version="${{ inputs.spec_version }}"
         if [ -z "$version" ]; then
-          version="$(./.github/scripts/fetch-spec-tests.sh --latest-version "$preset")"
+          if [ "${{ github.event_name }}" = "schedule" ]; then version="latest"; else version="pinned"; fi
         fi
+        case "$version" in
+          pinned) version="$(./.github/scripts/fetch-spec-tests.sh --pinned-version "$preset")" ;;
+          latest) version="$(./.github/scripts/fetch-spec-tests.sh --latest-version "$preset")" ;;
+        esac
 
         echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "preset=$preset" >> "$GITHUB_OUTPUT"
         echo "Running the $preset vectors of $version"
+        echo "### Spec vectors: $version ($preset)" >> "$GITHUB_STEP_SUMMARY"
 
     # The vector tarballs are hundreds of megabytes and a release never changes,
     # so the extracted tree is cached per release and preset.
@@ -100,4 +113,10 @@ jobs:
         # so this has to be absolute.
         SPEC_TESTS_DIR: ${{ github.workspace }}/.spec-tests/${{ steps.params.outputs.version }}
         SPEC_TESTS_PRESET: ${{ steps.params.outputs.preset }}
-      run: go test -vet=off -timeout 60m ./indexer/beacon/statetransition/ -run TestSpecVectors -v
+      run: |
+        set -o pipefail
+        status=0
+        go test -vet=off -timeout 60m ./indexer/beacon/statetransition/ -run TestSpecVectors -v 2>&1 | tee spec-vectors.log || status=$?
+        # The totals line names what the run covered, also when it failed.
+        grep -E 'spec vectors: [0-9]+ passed' spec-vectors.log | sed 's/^ *[a-z_]*\.go:[0-9]*: //' >> "$GITHUB_STEP_SUMMARY" || true
+        exit $status
