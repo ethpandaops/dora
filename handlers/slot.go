@@ -564,7 +564,14 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	assignmentsMap[epoch] = epochStatsValues
 	assignmentsLoaded[epoch] = true
 
-	attHeadBlocks := make(map[phase0.Root]phase0.Slot)
+	// The head blocks the attestations vote for are resolved in one go.
+	attHeadRoots := make([]phase0.Root, 0, len(attestations))
+	for _, att := range attestations {
+		if att != nil && att.Data != nil {
+			attHeadRoots = append(attHeadRoots, att.Data.BeaconBlockRoot)
+		}
+	}
+	attHeadBlocks := services.GlobalBeaconService.GetBlockSlotsByRoots(ctx, attHeadRoots)
 
 	// Committee membership is loaded on demand via /slot/{slot}/duties; only the
 	// committee indices and aggregation bits are populated here.
@@ -621,15 +628,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		if slot, ok := attHeadBlocks[attData.BeaconBlockRoot]; ok {
 			attPageData.BeaconBlockSlot = uint64(slot)
-		} else {
-			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
-				BlockRoot: attData.BeaconBlockRoot[:],
-			}, 0, 1, 0)
-			if len(beaconBlocks) > 0 {
-				slot := phase0.Slot(beaconBlocks[0].Slot)
-				attHeadBlocks[attData.BeaconBlockRoot] = slot
-				attPageData.BeaconBlockSlot = uint64(slot)
-			}
 		}
 
 		if att.Version >= spec.DataVersionGloas {
