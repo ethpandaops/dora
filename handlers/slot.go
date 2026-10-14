@@ -84,12 +84,18 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if pageError := services.GlobalCallRateLimiter.CheckCallLimit(r, 1); pageError != nil {
+	// a download serializes the whole block, payload or receipts; it costs more
+	// of the visitor's call budget than a page view
+	urlArgs := r.URL.Query()
+	callCost := uint(1)
+	if urlArgs.Has("download") {
+		callCost = 4
+	}
+	if pageError := services.GlobalCallRateLimiter.CheckCallLimit(r, callCost); pageError != nil {
 		handlePageError(w, r, pageError)
 		return
 	}
 
-	urlArgs := r.URL.Query()
 	if urlArgs.Has("download") {
 		if err := handleSlotDownload(r.Context(), w, blockSlot, blockRootHash, urlArgs.Get("download")); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
