@@ -1021,14 +1021,13 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			}
 		}
 
-		// Check if execution data exists in blockdb for receipt downloads
+		// Receipt downloads need the block's execution data object. Whether it was
+		// written is recorded in the block's el_blocks row (data_status), which is
+		// reset when the object is cleaned up, so no object store lookup per page.
 		if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
-			hasExecData, _ := blockdb.GlobalBlockDb.HasExecData(
-				ctx,
-				uint64(blockData.Header.Message.Slot),
-				blockData.Root[:],
-			)
-			pageData.ExecutionData.HasExecData = hasExecData
+			if elBlock, err := db.GetElBlock(ctx, blockUid); err == nil {
+				pageData.ExecutionData.HasExecData = elBlock.DataStatus != 0
+			}
 		}
 	}
 
