@@ -504,6 +504,7 @@ func (indexer *Indexer) StopIndexer() {
 		indexer.logger.WithError(err).Errorf("error flushing block bids on shutdown")
 	}
 
+	indexer.executionProofCache.close()
 	indexer.pubkeyCache.Close()
 	// builderPubkeyCache shares pubkeyCache's store, so it is closed by the line above.
 	indexer.stateCache.Close()
