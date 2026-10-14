@@ -131,7 +131,7 @@ indexer:
   #  fetchDelaySlots: 2     # slots after a block before its proofs are first requested
   #  retryIntervalSlots: 2  # slots between two requests for the same block
   #  verificationDisabled: false  # verify the proofs with the embedded zkVM verifiers
-  #  verifierCacheDir: ""         # compiled verifier cache kept across restarts (default: a temp dir per instance)
+  #  verifierCacheDir: ""         # compiled verifier cache kept across restarts (default: dora-verifiers in the temp dir)
 
 executionIndexer:
   enabled: false # enable execution data indexing

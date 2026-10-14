@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -93,9 +94,6 @@ type executionProofCache struct {
 	verifiersOnce        sync.Once
 	verificationDisabled bool
 	verifierCacheDir     string
-	// verifierTempDir is the compilation cache dir created for this instance
-	// when none is configured; removed on close.
-	verifierTempDir string
 
 	cacheMutex sync.RWMutex
 	entries    map[phase0.Root]*proofFetchEntry
@@ -138,14 +136,9 @@ func (cache *executionProofCache) getVerifiers() *verifiers.Verifiers {
 	cache.verifiersOnce.Do(func() {
 		cacheDir := cache.verifierCacheDir
 		if cacheDir == "" {
-			// one dir per instance: several explorers may share the temp dir
-			tempDir, err := os.MkdirTemp("", "dora-verifiers-")
-			if err != nil {
-				cache.indexer.logger.WithError(err).Warnf("execution proof verification disabled")
-				return
-			}
-			cache.verifierTempDir = tempDir
-			cacheDir = tempDir
+			// a well-known dir: shared by the instances on a host and picked up
+			// again after a restart
+			cacheDir = filepath.Join(os.TempDir(), "dora-verifiers")
 		}
 		proofVerifiers, err := verifiers.New(cache.indexer.ctx, cacheDir)
 		if err != nil {
@@ -158,17 +151,11 @@ func (cache *executionProofCache) getVerifiers() *verifiers.Verifiers {
 	return cache.verifiers
 }
 
-// close releases the verifiers and the compilation cache dir created for this
-// instance.
+// close releases the verifiers.
 func (cache *executionProofCache) close() {
 	if cache.verifiers != nil {
 		if err := cache.verifiers.Close(cache.indexer.ctx); err != nil {
 			cache.indexer.logger.WithError(err).Warnf("error closing execution proof verifiers")
-		}
-	}
-	if cache.verifierTempDir != "" {
-		if err := os.RemoveAll(cache.verifierTempDir); err != nil {
-			cache.indexer.logger.WithError(err).Warnf("error removing verifier cache dir")
 		}
 	}
 }
