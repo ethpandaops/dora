@@ -28,6 +28,13 @@ func (cache *forkCache) processBlock(block *Block) error {
 	cache.forkProcessLock.Lock()
 	defer cache.forkProcessLock.Unlock()
 
+	if block.forkChecked {
+		// fork detection already ran for this block (e.g. a previous client processed it but failed
+		// to persist the block afterwards). Running it again would re-detect its own fork as a
+		// pre-existing sibling fork and overwrite the fork id with the parent's.
+		return nil
+	}
+
 	parentRoot := block.GetParentRoot()
 	if parentRoot == nil {
 		return fmt.Errorf("parent root not found for block %v", block.Slot)
@@ -114,8 +121,10 @@ func (cache *forkCache) processBlock(block *Block) error {
 			logbuf := strings.Builder{}
 
 			// parent already has a children, so this block introduces a new fork
-			if cache.getForkByLeaf(block.Root) != nil {
-				cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v, scenario 1)", block.Slot, block.Root.String(), block.Slot)
+			if existingFork := cache.getForkByLeaf(block.Root); existingFork != nil {
+				// the fork for this leaf is already known, the block belongs to it and not to the parent fork
+				currentForkId = existingFork.forkId
+				cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v, scenario 1), using fork %v", block.Slot, block.Root.String(), block.Slot, existingFork.forkId)
 			} else {
 				cache.lastForkId++
 				fork := newFork(cache.lastForkId, parentSlot, *parentRoot, block, parentForkId)
