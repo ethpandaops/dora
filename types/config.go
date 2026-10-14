@@ -159,7 +159,7 @@ type Config struct {
 			// embedded zkVM verifiers.
 			VerificationDisabled bool `yaml:"verificationDisabled" envconfig:"INDEXER_EXECUTION_PROOFS_VERIFICATION_DISABLED"`
 			// VerifierCacheDir keeps the compiled verifier modules across restarts
-			// (default: a dora directory in the OS cache dir).
+			// (default: dora-verifiers in the temp dir).
 			VerifierCacheDir string `yaml:"verifierCacheDir" envconfig:"INDEXER_EXECUTION_PROOFS_VERIFIER_CACHE_DIR"`
 		} `yaml:"executionProofs"`
 	} `yaml:"indexer"`

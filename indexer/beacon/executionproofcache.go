@@ -136,9 +136,7 @@ func (cache *executionProofCache) getVerifiers() *verifiers.Verifiers {
 	cache.verifiersOnce.Do(func() {
 		cacheDir := cache.verifierCacheDir
 		if cacheDir == "" {
-			if userCache, err := os.UserCacheDir(); err == nil {
-				cacheDir = filepath.Join(userCache, "dora", "verifiers")
-			}
+			cacheDir = filepath.Join(os.TempDir(), "dora-verifiers")
 		}
 		proofVerifiers, err := verifiers.New(cache.indexer.ctx, cacheDir)
 		if err != nil {
