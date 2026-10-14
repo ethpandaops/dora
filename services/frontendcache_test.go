@@ -132,15 +132,52 @@ func TestFrontendCache_ProcessPageCall_ConcurrencyLimit(t *testing.T) {
 		utils.Config.Frontend.PageCallTimeout = 0
 	}()
 
+	pageSemaphoreWait = 50 * time.Millisecond
+	defer func() {
+		pageSemaphoreWait = 5 * time.Second
+	}()
+
 	// Acquire the only slot in the semaphore manually
 	concurrencySem <- struct{}{}
 
-	// The call should fail immediately with ErrTooManyPageRequests
+	// The call should fail with ErrTooManyPageRequests after the semaphore wait
 	_, err := fc.processPageCall("test-limit-key", false, nil, func(pageCall *FrontendCacheProcessingPage) interface{} {
 		return "result"
 	}, &FrontendCacheProcessingPage{})
 
 	if !errors.Is(err, ErrTooManyPageRequests) {
 		t.Fatalf("expected ErrTooManyPageRequests, got %v", err)
+	}
+}
+
+func TestFrontendCache_ProcessPageCall_ConcurrencyLimitWaits(t *testing.T) {
+	concurrencySem := make(chan struct{}, 1)
+	fc := &FrontendCacheService{
+		processingDict:  make(map[string]*FrontendCacheProcessingPage),
+		callStackBuffer: make([]byte, 1024*1024*1),
+		cachingEnabled:  false,
+		concurrencySem:  concurrencySem,
+	}
+
+	utils.Config.Frontend.PageCallTimeout = 2 * time.Second
+	defer func() {
+		utils.Config.Frontend.PageCallTimeout = 0
+	}()
+
+	concurrencySem <- struct{}{}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		<-concurrencySem
+	}()
+
+	res, err := fc.processPageCall("test-wait-key", false, nil, func(pageCall *FrontendCacheProcessingPage) interface{} {
+		return "result"
+	}, &FrontendCacheProcessingPage{})
+
+	if err != nil {
+		t.Fatalf("expected call to succeed after the slot was freed, got %v", err)
+	}
+	if res != "result" {
+		t.Fatalf("expected result, got %v", res)
 	}
 }
