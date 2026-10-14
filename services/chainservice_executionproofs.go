@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/dora/blockdb"
 	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/executionproof"
+	"github.com/ethpandaops/dora/executionproof/verifiers"
 )
 
 // GetBlockExecutionProofs returns the EIP-8025 execution proofs collected for a block,
@@ -72,6 +73,10 @@ type ExecutionProofAnalysis struct {
 	// the block's epoch.
 	SignatureValid bool
 	ProverActive   bool
+	// Verification is the outcome of verifying the proof with the embedded
+	// zkVM verifiers when it was collected, Verifier the verifier release.
+	Verification verifiers.Status
+	Verifier     string
 }
 
 // BlockExecutionProofsAnalysis is the analysis of all execution proofs of a block.
@@ -85,8 +90,8 @@ type BlockExecutionProofsAnalysis struct {
 
 // AnalyzeBlockExecutionProofs interprets the execution proofs of a block: it
 // derives the public input the block's payload expects and reads what each proof
-// commits to. The prover signature outcome comes with the proof (checked when it
-// was collected); the zero knowledge proofs themselves are not verified.
+// commits to. The prover signature and zkVM verification outcomes come with the
+// proof (both done when it was collected).
 func (bs *ChainService) AnalyzeBlockExecutionProofs(ctx context.Context, slot phase0.Slot, blockRoot phase0.Root) *BlockExecutionProofsAnalysis {
 	analysis := &BlockExecutionProofsAnalysis{}
 
@@ -124,6 +129,8 @@ func (bs *ChainService) AnalyzeBlockExecutionProofs(ctx context.Context, slot ph
 		// the proof was collected; the outcome travels with the proof
 		entry.SignatureValid = proof.SignatureValid
 		entry.ProverActive = proof.ProverActive
+		entry.Verification = verifiers.Status(proof.Verification)
+		entry.Verifier = proof.Verifier
 
 		analysis.Proofs = append(analysis.Proofs, entry)
 	}

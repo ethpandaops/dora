@@ -94,6 +94,4 @@ func TestProofTypes(t *testing.T) {
 	assert.Nil(t, Lookup(0))
 	assert.Nil(t, Lookup(8))
 	assert.Equal(t, "SP1 + reth", Lookup(5).Name())
-	assert.True(t, ZkVMSP1.BrowserVerifiable())
-	assert.False(t, ZkVMOpenVM.BrowserVerifiable())
 }

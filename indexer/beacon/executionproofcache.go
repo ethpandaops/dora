@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/executionproof"
+	"github.com/ethpandaops/dora/executionproof/verifiers"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -32,9 +35,10 @@ const (
 	// proofApiRecheckEpochs is how long a client that answered the proofs route with
 	// 404/501 is not asked again.
 	proofApiRecheckEpochs = 1
-	// proofItemHeaderSize is the size of the crash copy item header: flags, proof
-	// type, validator index and signature precede the proof bytes.
-	proofItemHeaderSize = 1 + 1 + 8 + 96
+	// proofItemHeaderSize is the size of the fixed crash copy item header: flags,
+	// proof type, validator index, signature, verification outcome and the
+	// verifier name length; the verifier name and the proof bytes follow.
+	proofItemHeaderSize = 1 + 1 + 8 + 96 + 1 + 1
 	// proofItemFlagSignatureValid and proofItemFlagProverActive hold the signature
 	// check outcome as in the meta object.
 	proofItemFlagSignatureValid = 1
@@ -60,6 +64,9 @@ type proofFetchEntry struct {
 	proofs          map[uint8]*btypes.SlotExecutionProof
 	// dirty holds the proof types not written as crash copy yet.
 	dirty map[uint8]bool
+	// unverified holds the proof types whose verification waits for the block's
+	// payload envelope.
+	unverified map[uint8]bool
 }
 
 // executionProofCache collects the EIP-8025 execution proofs of recent blocks from the
@@ -80,6 +87,13 @@ type executionProofCache struct {
 	fetchDelay    phase0.Slot
 	retryInterval phase0.Slot
 	fetchSem      chan struct{}
+
+	// verifiers runs the embedded zkVM verifiers, created on the first proof;
+	// nil when verification is disabled.
+	verifiers            *verifiers.Verifiers
+	verifiersOnce        sync.Once
+	verificationDisabled bool
+	verifierCacheDir     string
 
 	cacheMutex sync.RWMutex
 	entries    map[phase0.Root]*proofFetchEntry
@@ -105,9 +119,36 @@ func newExecutionProofCache(indexer *Indexer) *executionProofCache {
 		if cfg.RetryIntervalSlots > 0 {
 			cache.retryInterval = phase0.Slot(cfg.RetryIntervalSlots)
 		}
+		cache.verificationDisabled = cfg.VerificationDisabled
+		cache.verifierCacheDir = cfg.VerifierCacheDir
 	}
 
 	return cache
+}
+
+// getVerifiers returns the zkVM verifiers, created on first use; nil when
+// verification is disabled or the verifiers cannot be set up.
+func (cache *executionProofCache) getVerifiers() *verifiers.Verifiers {
+	if cache.verificationDisabled {
+		return nil
+	}
+
+	cache.verifiersOnce.Do(func() {
+		cacheDir := cache.verifierCacheDir
+		if cacheDir == "" {
+			if userCache, err := os.UserCacheDir(); err == nil {
+				cacheDir = filepath.Join(userCache, "dora", "verifiers")
+			}
+		}
+		proofVerifiers, err := verifiers.New(cache.indexer.ctx, cacheDir)
+		if err != nil {
+			cache.indexer.logger.WithError(err).Warnf("execution proof verification disabled")
+			return
+		}
+		cache.verifiers = proofVerifiers
+	})
+
+	return cache.verifiers
 }
 
 // trackBlock queues a newly seen block for proof collection.
@@ -143,11 +184,12 @@ func (cache *executionProofCache) trackBlockLocked(slot phase0.Slot, root phase0
 	entry := cache.entries[root]
 	if entry == nil {
 		entry = &proofFetchEntry{
-			slot:      slot,
-			root:      root,
-			nextFetch: slot + cache.fetchDelay,
-			proofs:    make(map[uint8]*btypes.SlotExecutionProof, 2),
-			dirty:     make(map[uint8]bool, 2),
+			slot:       slot,
+			root:       root,
+			nextFetch:  slot + cache.fetchDelay,
+			proofs:     make(map[uint8]*btypes.SlotExecutionProof, 2),
+			dirty:      make(map[uint8]bool, 2),
+			unverified: make(map[uint8]bool, 2),
 		}
 		cache.entries[root] = entry
 	}
@@ -171,8 +213,9 @@ func (cache *executionProofCache) slotBounds() (minSlot phase0.Slot, maxSlot pha
 	return minSlot, maxSlot
 }
 
-// processDueFetches starts the proof requests that are due at the current slot.
-// Requests run in the background, bounded by the fetch semaphore.
+// processDueFetches starts the proof requests that are due at the current slot
+// and retries the verifications that waited for a block's payload. Requests
+// run in the background, bounded by the fetch semaphore.
 func (cache *executionProofCache) processDueFetches(currentSlot phase0.Slot) {
 	if cache.disabled {
 		return
@@ -180,7 +223,11 @@ func (cache *executionProofCache) processDueFetches(currentSlot phase0.Slot) {
 
 	cache.cacheMutex.Lock()
 	due := make([]*proofFetchEntry, 0, 8)
+	pending := make([]*proofFetchEntry, 0, 4)
 	for _, entry := range cache.entries {
+		if len(entry.unverified) > 0 && !entry.fetching {
+			pending = append(pending, entry)
+		}
 		if entry.fetching || entry.nextFetch > currentSlot {
 			continue
 		}
@@ -193,6 +240,24 @@ func (cache *executionProofCache) processDueFetches(currentSlot phase0.Slot) {
 	for _, entry := range due {
 		go cache.fetchEntry(entry)
 	}
+	for _, entry := range pending {
+		cache.verifyPending(entry)
+	}
+}
+
+// verifyPending verifies the proofs of an entry whose verification waited for
+// the block's payload envelope.
+func (cache *executionProofCache) verifyPending(entry *proofFetchEntry) {
+	cache.cacheMutex.RLock()
+	proofs := make([]*btypes.SlotExecutionProof, 0, len(entry.unverified))
+	for proofType := range entry.unverified {
+		if proof := entry.proofs[proofType]; proof != nil {
+			proofs = append(proofs, proof)
+		}
+	}
+	cache.cacheMutex.RUnlock()
+
+	cache.verifyProofs(entry, proofs)
 }
 
 // fetchEntry requests the proofs of one block from the proof-capable clients and merges
@@ -218,12 +283,87 @@ func (cache *executionProofCache) fetchEntry(entry *proofFetchEntry) {
 		return
 	}
 	cache.checkSignatures(entry, proofs)
+	cache.verifyProofs(entry, proofs)
 
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
 	entry.preferredClient = clientName
 	cache.addProofsLocked(entry, proofs)
+}
+
+// verifyProofs verifies proofs with the embedded zkVM verifiers against the
+// public input the block's payload expects and records the outcome on the
+// proofs. The check is done once here; the result is persisted with the proof.
+// A proof of a block whose payload envelope is not known yet stays unverified
+// and is retried on the next slot tick.
+func (cache *executionProofCache) verifyProofs(entry *proofFetchEntry, proofs []*btypes.SlotExecutionProof) {
+	proofVerifiers := cache.getVerifiers()
+	if proofVerifiers == nil || len(proofs) == 0 {
+		return
+	}
+
+	expected, ok := cache.expectedPublicInput(entry)
+
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	for _, proof := range proofs {
+		proofType := executionproof.Lookup(proof.ProofType)
+		if proofType == nil {
+			proof.Verification = uint8(verifiers.StatusUnverifiable)
+			delete(entry.unverified, proof.ProofType)
+			continue
+		}
+		if !ok {
+			entry.unverified[proof.ProofType] = true
+			continue
+		}
+
+		result := proofVerifiers.Verify(cache.indexer.ctx, proofType.ZkVM, proofType.ProgramVK, proof.ProofData)
+		if result.Status == verifiers.StatusValid {
+			// a valid proof of another payload is not a proof of this block
+			if committed, err := executionproof.PublicInputFromPublicValues(proofType.ZkVM, result.PublicValues); err != nil || *committed != *expected {
+				result.Status = verifiers.StatusInvalid
+			}
+		}
+		proof.Verification = uint8(result.Status)
+		proof.Verifier = result.Generation
+		delete(entry.unverified, proof.ProofType)
+		entry.dirty[proof.ProofType] = true
+	}
+}
+
+// expectedPublicInput derives the public input a valid proof of the entry's
+// block commits to. ok is false while the block's payload envelope is unknown.
+func (cache *executionProofCache) expectedPublicInput(entry *proofFetchEntry) (*executionproof.PublicInput, bool) {
+	block := cache.indexer.blockCache.getBlockByRoot(entry.root)
+	if block == nil {
+		return nil, false
+	}
+	body := block.GetBlock(cache.indexer.ctx)
+	envelope := block.GetExecutionPayload(cache.indexer.ctx)
+	if body == nil || envelope == nil {
+		return nil, false
+	}
+
+	request, err := executionproof.BlockNewPayloadRequest(body, envelope)
+	if err != nil {
+		cache.indexer.logger.Debugf("execution proofs of block 0x%x not verifiable: %v", entry.root[:], err)
+		return nil, false
+	}
+	root, err := request.Root(cache.indexer.dynSsz)
+	if err != nil {
+		cache.indexer.logger.Warnf("new payload request root of block 0x%x: %v", entry.root[:], err)
+		return nil, false
+	}
+
+	return &executionproof.PublicInput{
+		NewPayloadRequestRoot: root,
+		SuccessfulValidation:  true,
+		ChainID:               cache.indexer.consensusPool.GetChainState().GetSpecs().DepositChainId,
+		SchemaID:              executionproof.SchemaID,
+	}, true
 }
 
 // checkSignatures verifies the prover signatures of the proofs against the
@@ -387,9 +527,13 @@ func executionProofItemKey(root phase0.Root, proofType uint8) []byte {
 }
 
 // encodeExecutionProofItem encodes a proof as crash copy: flags, type, validator
-// index and signature, then the proof bytes.
+// index, signature, verification outcome and verifier, then the proof bytes.
 func encodeExecutionProofItem(proof *btypes.SlotExecutionProof) []byte {
-	data := make([]byte, proofItemHeaderSize+len(proof.ProofData))
+	verifier := proof.Verifier
+	if len(verifier) > 0xff {
+		verifier = verifier[:0xff]
+	}
+	data := make([]byte, proofItemHeaderSize+len(verifier)+len(proof.ProofData))
 	if proof.SignatureValid {
 		data[0] |= proofItemFlagSignatureValid
 	}
@@ -399,7 +543,10 @@ func encodeExecutionProofItem(proof *btypes.SlotExecutionProof) []byte {
 	data[1] = proof.ProofType
 	binary.BigEndian.PutUint64(data[2:10], proof.ValidatorIndex)
 	copy(data[10:106], proof.Signature[:])
-	copy(data[proofItemHeaderSize:], proof.ProofData)
+	data[106] = proof.Verification
+	data[107] = uint8(len(verifier))
+	copy(data[proofItemHeaderSize:], verifier)
+	copy(data[proofItemHeaderSize+len(verifier):], proof.ProofData)
 	return data
 }
 
@@ -409,17 +556,23 @@ func decodeExecutionProofItem(root phase0.Root, data []byte, withData bool) (*bt
 		return nil, fmt.Errorf("execution proof item too short")
 	}
 
+	verifierLen := int(data[107])
+	if len(data) < proofItemHeaderSize+verifierLen {
+		return nil, fmt.Errorf("execution proof item too short")
+	}
 	proof := &btypes.SlotExecutionProof{
 		BlockRoot:      root,
 		ProofType:      data[1],
 		SignatureValid: data[0]&proofItemFlagSignatureValid != 0,
 		ProverActive:   data[0]&proofItemFlagProverActive != 0,
 		ValidatorIndex: binary.BigEndian.Uint64(data[2:10]),
-		DataSize:       uint32(len(data) - proofItemHeaderSize),
+		Verification:   data[106],
+		Verifier:       string(data[proofItemHeaderSize : proofItemHeaderSize+verifierLen]),
+		DataSize:       uint32(len(data) - proofItemHeaderSize - verifierLen),
 	}
 	copy(proof.Signature[:], data[10:106])
 	if withData {
-		proof.ProofData = data[proofItemHeaderSize:]
+		proof.ProofData = data[proofItemHeaderSize+verifierLen:]
 	}
 
 	return proof, nil

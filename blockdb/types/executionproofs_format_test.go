@@ -18,6 +18,10 @@ func testExecutionProof(root byte, proofType uint8, size int, valid bool) *SlotE
 	proof.Signature[95] = proofType
 	proof.SignatureValid = valid
 	proof.ProverActive = valid
+	if valid {
+		proof.Verification = 1
+		proof.Verifier = "v0.17.2"
+	}
 	return proof
 }
 
@@ -43,6 +47,8 @@ func TestSlotExecutionProofsRoundTrip(t *testing.T) {
 		require.Equal(t, want.ProofType, proof.ProofType)
 		require.Equal(t, want.SignatureValid, proof.SignatureValid)
 		require.Equal(t, want.ProverActive, proof.ProverActive)
+		require.Equal(t, want.Verification, proof.Verification)
+		require.Equal(t, want.Verifier, proof.Verifier)
 		require.Equal(t, want.ValidatorIndex, proof.ValidatorIndex)
 		require.Equal(t, want.Signature, proof.Signature)
 		require.Equal(t, uint32(len(want.ProofData)), proof.DataSize)

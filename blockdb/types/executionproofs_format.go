@@ -15,8 +15,11 @@
 //	├── Flags:          uint8 (ExecutionProofFlag* constants)
 //	├── DataOffset:     uint32 (offset of the proof bytes in the data section)
 //	├── DataSize:       uint32
-//	├── ValidatorIndex: uint64 (zero unless signed)
-//	└── Signature:      96 bytes (zero unless signed)
+//	├── ValidatorIndex: uint64 (the prover)
+//	├── Signature:      96 bytes (the prover's envelope signature)
+//	├── Verification:   uint8 (outcome of the zkVM verification)
+//	├── VerifierLen:    uint8
+//	└── Verifier:       VerifierLen bytes (the verifier release)
 //
 // EXECUTION PROOF DATA section (snappy compressed): the proof bytes of all
 // proofs of the slot, concatenated in index order. Proofs can be large (up to
@@ -39,8 +42,9 @@ const (
 	ExecutionProofFlagSignatureValid uint8 = 1
 	ExecutionProofFlagProverActive   uint8 = 2
 
-	// executionProofRecordSize is the size of a proof index record.
-	executionProofRecordSize = 32 + 1 + 1 + 4 + 4 + 8 + 96
+	// executionProofRecordSize is the size of a proof index record without the
+	// verifier name.
+	executionProofRecordSize = 32 + 1 + 1 + 4 + 4 + 8 + 96 + 1 + 1
 )
 
 // SlotExecutionProof is one execution proof of a block in the slot.
@@ -53,6 +57,11 @@ type SlotExecutionProof struct {
 	// check done when the proof was collected.
 	SignatureValid bool
 	ProverActive   bool
+	// Verification is the outcome of verifying the proof with the embedded zkVM
+	// verifiers when it was collected (a verifiers.Status), Verifier the
+	// verifier release that produced it.
+	Verification uint8
+	Verifier     string
 
 	// DataSize is the proof size in bytes. It is known from the index even when
 	// the proof bytes were not loaded.
@@ -91,7 +100,11 @@ func encodeExecutionProofSections(proofs []*SlotExecutionProof) (*SlotMetaSectio
 			flags |= ExecutionProofFlagProverActive
 		}
 
-		_ = binary.Write(&indexBuf, binary.BigEndian, uint16(executionProofRecordSize))
+		if len(proof.Verifier) > 0xff {
+			return nil, nil, fmt.Errorf("execution proof verifier name too long")
+		}
+
+		_ = binary.Write(&indexBuf, binary.BigEndian, uint16(executionProofRecordSize+len(proof.Verifier)))
 		indexBuf.Write(proof.BlockRoot[:])
 		indexBuf.WriteByte(proof.ProofType)
 		indexBuf.WriteByte(flags)
@@ -99,6 +112,9 @@ func encodeExecutionProofSections(proofs []*SlotExecutionProof) (*SlotMetaSectio
 		_ = binary.Write(&indexBuf, binary.BigEndian, uint32(len(proof.ProofData)))
 		_ = binary.Write(&indexBuf, binary.BigEndian, proof.ValidatorIndex)
 		indexBuf.Write(proof.Signature[:])
+		indexBuf.WriteByte(proof.Verification)
+		indexBuf.WriteByte(uint8(len(proof.Verifier)))
+		indexBuf.WriteString(proof.Verifier)
 
 		dataBuf.Write(proof.ProofData)
 	}
@@ -155,6 +171,12 @@ func decodeExecutionProofSections(indexSection *SlotMetaSection, dataSection *Sl
 		}
 		copy(proof.BlockRoot[:], record[0:32])
 		copy(proof.Signature[:], record[50:146])
+		verifierLen := int(record[147])
+		if executionProofRecordSize+verifierLen > len(record) {
+			return nil, fmt.Errorf("truncated execution proof verifier name")
+		}
+		proof.Verification = record[146]
+		proof.Verifier = string(record[executionProofRecordSize : executionProofRecordSize+verifierLen])
 
 		if dataSection != nil {
 			offset := int(binary.BigEndian.Uint32(record[34:38]))

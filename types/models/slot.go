@@ -532,12 +532,16 @@ type SlotExecutionProof struct {
 	ProofName string `json:"proof_name"`
 	// Guest and ZkVM identify the program and proof system of the proof type;
 	// ProgramVK is the registered verification key of the program, in the
-	// encoding the zkVM's verifier takes. BrowserVerifiable tells whether that
-	// verifier is known to run as wasm module.
-	Guest             string `json:"guest"`
-	ZkVM              string `json:"zkvm"`
-	ProgramVK         string `json:"program_vk"`
-	BrowserVerifiable bool   `json:"browser_verifiable"`
+	// encoding the zkVM's verifier takes.
+	Guest     string `json:"guest"`
+	ZkVM      string `json:"zkvm"`
+	ProgramVK string `json:"program_vk"`
+	// Verification is the outcome of verifying the proof with the explorer's
+	// embedded zkVM verifiers when it was collected: valid, invalid,
+	// unverifiable (no verifier for the zkVM) or unknown; Verifier is the
+	// verifier release that produced it.
+	Verification string `json:"verification"`
+	Verifier     string `json:"verifier,omitempty"`
 	// The prover that signed the proof envelope; the signature was checked
 	// against the block's validator set when the proof was collected.
 	ValidatorIndex uint64 `json:"validator_index"`

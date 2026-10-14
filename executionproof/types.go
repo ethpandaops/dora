@@ -19,12 +19,6 @@ const (
 	ZkVMZisk   ZkVM = "zisk"
 )
 
-// BrowserVerifiable reports whether the zkVM's verifier is known to build and
-// run as wasm32 module: SP1 and Zisk do, OpenVM's verifier does not yet.
-func (z ZkVM) BrowserVerifiable() bool {
-	return z == ZkVMSP1 || z == ZkVMZisk
-}
-
 // Type describes one EIP-8025 proof type: an immutable combination of proof
 // system, guest program and version. The assignments mirror the devnet
 // registry of the clients (Lighthouse `optional-proofs`), including the program

@@ -58,10 +58,19 @@
       }
 
       function renderProof(data, proof) {
-        var expected = data.expected_public_input;
         var committed = proof.committed_public_input;
 
-        var badges = checkBadge(proof.signature_valid, 'prover signature', 'prover signature invalid', '');
+        var badges = '';
+        if (proof.verification === 'valid') {
+          badges += '<span class="badge rounded-pill text-bg-success me-1" data-bs-toggle="tooltip" title="Verified with the ere ' + escapeHtml(proof.verifier) + ' verifier"><i class="fa fa-shield-halved me-1"></i>zk proof valid</span>';
+        } else if (proof.verification === 'invalid') {
+          badges += '<span class="badge rounded-pill text-bg-danger me-1" data-bs-toggle="tooltip" title="Rejected by the ere ' + escapeHtml(proof.verifier) + ' verifier"><i class="fa fa-shield-halved me-1"></i>zk proof invalid</span>';
+        } else if (proof.verification === 'unverifiable') {
+          badges += '<span class="badge rounded-pill text-bg-secondary me-1">no verifier for this proof</span>';
+        } else {
+          badges += '<span class="badge rounded-pill text-bg-secondary me-1">zk proof not verified</span>';
+        }
+        badges += checkBadge(proof.signature_valid, 'prover signature', 'prover signature invalid', '');
         badges += checkBadge(proof.public_input_match, 'commits to this payload', 'commits to another payload', 'committed payload unknown');
         if (proof.program_vk_match !== null) {
           badges += checkBadge(proof.program_vk_match, 'known guest program', 'unknown guest program', '');
@@ -92,9 +101,7 @@
           inputRows = row('Public input', '<span class="text-danger">' + escapeHtml(proof.decode_error || 'not readable') + '</span>');
         }
 
-        return '<div class="card mb-3 execution-proof" data-proof-type="' + proof.proof_type + '" data-zkvm="' + escapeHtml(proof.zkvm) + '"' +
-          ' data-program-vk="' + escapeHtml(proof.program_vk) + '" data-download-url="' + escapeHtml(proof.download_url) + '"' +
-          ' data-expected-public-input="' + escapeHtml(expected ? expected.raw : '') + '">' +
+        return '<div class="card mb-3">' +
           '<div class="card-header d-flex flex-wrap align-items-center gap-2">' +
             '<span class="badge text-bg-secondary">' + proof.proof_type + '</span><span class="fw-semibold me-2">' + escapeHtml(proof.proof_name) + '</span>' +
             '<span class="me-auto">' + chips + '</span>' +

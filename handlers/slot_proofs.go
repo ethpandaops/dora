@@ -103,6 +103,8 @@ func buildSlotExecutionProofsData(ctx context.Context, slot phase0.Slot, blockRo
 			ProofName:        fmt.Sprintf("unassigned proof type #%d", proof.ProofType),
 			SignatureValid:   entry.SignatureValid,
 			ProverActive:     entry.ProverActive,
+			Verification:     entry.Verification.String(),
+			Verifier:         entry.Verifier,
 			Size:             proof.DataSize,
 			DownloadUrl:      fmt.Sprintf("/slot/0x%x/proofs/%d", blockRoot[:], proof.ProofType),
 			DecodeError:      entry.DecodeError,
@@ -114,7 +116,6 @@ func buildSlotExecutionProofsData(ctx context.Context, slot phase0.Slot, blockRo
 			model.Guest = entry.Type.Guest
 			model.ZkVM = string(entry.Type.ZkVM)
 			model.ProgramVK = fmt.Sprintf("0x%x", entry.Type.ProgramVK)
-			model.BrowserVerifiable = entry.Type.ZkVM.BrowserVerifiable()
 		}
 		model.ValidatorIndex = proof.ValidatorIndex
 		model.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(proof.ValidatorIndex, slot)

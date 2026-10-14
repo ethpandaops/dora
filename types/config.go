@@ -155,6 +155,12 @@ type Config struct {
 			// RetryIntervalSlots is the number of slots between two requests for the proofs
 			// of the same block (default 2).
 			RetryIntervalSlots uint64 `yaml:"retryIntervalSlots" envconfig:"INDEXER_EXECUTION_PROOFS_RETRY_INTERVAL_SLOTS"`
+			// VerificationDisabled turns off verifying the collected proofs with the
+			// embedded zkVM verifiers.
+			VerificationDisabled bool `yaml:"verificationDisabled" envconfig:"INDEXER_EXECUTION_PROOFS_VERIFICATION_DISABLED"`
+			// VerifierCacheDir keeps the compiled verifier modules across restarts
+			// (default: a dora directory in the OS cache dir).
+			VerifierCacheDir string `yaml:"verifierCacheDir" envconfig:"INDEXER_EXECUTION_PROOFS_VERIFIER_CACHE_DIR"`
 		} `yaml:"executionProofs"`
 	} `yaml:"indexer"`
 
