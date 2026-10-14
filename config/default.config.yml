@@ -104,6 +104,10 @@ indexer:
   # number of epochs to keep validator activity history for (high memory usage for large validator sets)
   activityHistoryLength: 6
 
+  # number of epochs to keep unfinalized slot metadata (inclusion lists, execution proofs)
+  # in the database when no blockdb is configured to persist it
+  metadataHistoryLength: 6
+
   # disable synchronizing historic data
   disableSynchronizer: false
 

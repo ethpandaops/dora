@@ -11,20 +11,21 @@ import (
 
 // GetBlockExecutionProofs returns the EIP-8025 execution proofs collected for a block,
 // in proof type order: the proofs the indexer still holds in memory for a recent block,
-// otherwise the ones stored in the slot's blockdb meta object. The proof bytes are
-// only loaded if withData is set. Returns nil if no proofs are known for the block.
+// otherwise the ones stored in the slot's blockdb meta object (the unfinalized_metadata
+// row where no blockdb takes the objects over). The proof bytes are only loaded if
+// withData is set. Returns nil if no proofs are known for the block.
 func (bs *ChainService) GetBlockExecutionProofs(ctx context.Context, slot phase0.Slot, blockRoot phase0.Root, withData bool) []*btypes.SlotExecutionProof {
 	if cached := bs.beaconIndexer.GetBlockExecutionProofs(blockRoot); len(cached) > 0 {
 		return cached
 	}
 
-	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsSlotMeta() {
-		return nil
-	}
-
 	flags := btypes.SlotMetaFlagExecutionProofs
 	if withData {
 		flags |= btypes.SlotMetaFlagExecutionProofData
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsSlotMeta() {
+		return bs.beaconIndexer.GetUnfinalizedExecutionProofs(ctx, slot, blockRoot, withData)
 	}
 
 	stored, err := blockdb.GlobalBlockDb.GetSlotMeta(ctx, uint64(slot), flags)

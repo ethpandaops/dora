@@ -1,67 +1,21 @@
 package beacon
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
-	"github.com/sirupsen/logrus"
-	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ethpandaops/dora/blockdb"
-	btypes "github.com/ethpandaops/dora/blockdb/types"
-	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
-	dtypes "github.com/ethpandaops/dora/types"
 )
 
-// newTestExecutionProofCache builds an execution proof cache on a minimal indexer
-// with a pebble blockdb in a temp dir, so flushed proofs can be read back.
-func newTestExecutionProofCache(t *testing.T) *executionProofCache {
-	t.Helper()
-
-	logger, _ := test.NewNullLogger()
-	require.NoError(t, blockdb.InitWithPebble(dtypes.PebbleBlockDBConfig{Path: t.TempDir()}, logrus.NewEntry(logger)))
-	t.Cleanup(func() {
-		_ = blockdb.GlobalBlockDb.Close()
-		blockdb.GlobalBlockDb = nil
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	indexer := &Indexer{
-		ctx:           ctx,
-		logger:        logrus.NewEntry(logger),
-		consensusPool: consensus.NewPool(ctx, logrus.NewEntry(logger)),
-	}
-	indexer.blockCache = newBlockCache(indexer)
-
-	cache := newExecutionProofCache(indexer)
-	cache.setLiveFromSlot(0)
-
-	return cache
-}
-
-func testRpcProof(proofType uint8, root phase0.Root, size int) *rpc.ExecutionProof {
-	proof := &rpc.ExecutionProof{
-		ProofType:       proofType,
-		ProofData:       make([]byte, size),
-		BeaconBlockRoot: root,
-		Signed:          true,
-		ValidatorIndex:  uint64(proofType),
-	}
-	proof.Signature[0] = proofType
-	return proof
-}
-
 func TestExecutionProofCache(t *testing.T) {
-	cache := newTestExecutionProofCache(t)
-	require.True(t, cache.enabled())
+	indexer := newTestMetadataIndexer(t, true)
+	cache := indexer.executionProofCache
 
 	rootA, rootB := phase0.Root{0xa}, phase0.Root{0xb}
-	cache.indexer.blockCache.createOrGetBlock(rootA, 10)
-	cache.indexer.blockCache.createOrGetBlock(rootB, 12)
+	blockA, _ := indexer.blockCache.createOrGetBlock(rootA, 10)
+	blockB, _ := indexer.blockCache.createOrGetBlock(rootB, 12)
 
 	cache.trackBlock(10, rootA)
 	cache.trackBlock(12, rootB)
@@ -76,16 +30,9 @@ func TestExecutionProofCache(t *testing.T) {
 	require.Equal(t, phase0.Slot(10+proofFetchDelaySlotsDefault), entryA.nextFetch)
 
 	// by-root proofs of other blocks are dropped, the rest keyed by type
-	converted := cache.convertProofs(entryA, proofApiByRoot, []*rpc.ExecutionProof{
-		testRpcProof(5, rootA, 100),
-		testRpcProof(1, rootA, 50),
-		testRpcProof(2, rootB, 10),
-	})
-	require.Len(t, converted, 2)
-	for _, proof := range converted {
-		entryA.proofs[proof.ProofType] = proof
-	}
-	require.Equal(t, uint8(2), cache.getProofCount(10, rootA))
+	addTestProofs(cache, rootA, testRpcProof(5, rootA, 100), testRpcProof(1, rootA, 50), testRpcProof(2, rootB, 10))
+	require.Len(t, entryA.proofs, 2)
+	require.Equal(t, int16(2), cache.getBlockProofCount(blockA))
 	proofs := cache.getProofs(rootA)
 	require.Len(t, proofs, 2)
 	require.Equal(t, uint8(1), proofs[0].ProofType, "proofs are returned in type order")
@@ -95,43 +42,56 @@ func TestExecutionProofCache(t *testing.T) {
 	// by-slot proofs (no block root) are only attributed to a block that is alone in its slot
 	entryB := cache.entries[rootB]
 	require.Len(t, cache.convertProofs(entryB, proofApiBySlot, []*rpc.ExecutionProof{testRpcProof(3, phase0.Root{}, 10)}), 1)
-	cache.indexer.blockCache.createOrGetBlock(phase0.Root{0xbb}, 12)
+	indexer.blockCache.createOrGetBlock(phase0.Root{0xbb}, 12)
 	require.Empty(t, cache.convertProofs(entryB, proofApiBySlot, []*rpc.ExecutionProof{testRpcProof(3, phase0.Root{}, 10)}))
 
-	// a block with a request in flight is not flushed
+	// every proof is offered as crash copy once and restores elsewhere
+	entries := cache.collectDirtyEntries()
+	require.Len(t, entries, 2)
+	require.Empty(t, cache.collectDirtyEntries())
+	other := newTestMetadataIndexer(t, true).executionProofCache
+	for _, entry := range entries {
+		require.NoError(t, other.restoreEntry(entry))
+	}
+	restored := other.getProofs(rootA)
+	require.Len(t, restored, 2)
+	require.Equal(t, uint8(5), restored[1].ProofType)
+	require.Equal(t, uint64(5), restored[1].ValidatorIndex)
+	require.True(t, restored[1].Signed)
+	require.Equal(t, byte(5), restored[1].Signature[0])
+	require.Len(t, restored[1].ProofData, 100)
+	require.Equal(t, phase0.Slot(10), other.entries[rootA].slot)
+	require.Empty(t, other.collectDirtyEntries(), "restored proofs are not written again")
+
+	// a block with a request in flight is not dropped, and its slot not reported as dropped
 	entryA.fetching = true
-	require.Empty(t, cache.collectFlushObjects(11, false))
+	objects, touched, dropped := cache.dropBefore(11, false, true)
+	require.Empty(t, objects)
+	require.Empty(t, touched)
+	require.Empty(t, dropped)
 	entryA.fetching = false
 
-	// the flush returns the proofs as per-slot object, forgets the bytes and remembers the count
-	objects := cache.collectFlushObjects(11, false)
+	// the drop returns the proofs as per-slot object, forgets the bytes and
+	// writes the count into the block
+	objects, touched, dropped = cache.dropBefore(11, false, true)
 	require.Len(t, objects, 1)
 	require.Len(t, objects[10].ExecutionProofs, 2)
 	require.Equal(t, rootA[:], objects[10].ExecutionProofs[0].BlockRoot[:])
+	require.Equal(t, []*Block{blockA}, touched)
+	require.Equal(t, []uint64{10}, dropped)
 	require.Nil(t, cache.getProofs(rootA))
 	require.Len(t, cache.entries, 1, "block B stays queued")
-	require.Equal(t, uint8(2), cache.getProofCount(10, rootA))
-	require.Equal(t, uint8(0), cache.getProofCount(12, rootB))
+	require.NotNil(t, blockA.GetMetadata())
+	require.Equal(t, int16(2), blockA.GetMetadata().ProofCount)
+	require.Equal(t, int16(2), cache.getBlockProofCount(blockA))
+	require.Equal(t, int16(0), cache.getBlockProofCount(blockB))
 
-	// a block without proofs is dropped silently at flush
-	_, err := blockdb.GlobalBlockDb.AddSlotMeta(cache.indexer.ctx, objects[10])
-	require.NoError(t, err)
-	require.Empty(t, cache.collectFlushObjects(13, false))
+	// a block without proofs leaves the cache with a zero count and no object
+	objects, touched, dropped = cache.dropBefore(13, false, true)
+	require.Empty(t, objects)
+	require.Equal(t, []*Block{blockB}, touched)
+	require.Equal(t, []uint64{12}, dropped)
 	require.Empty(t, cache.entries)
-
-	// the count of a block before the cache's knowledge is read from the stored object
-	cache.setLiveFromSlot(20)
-	delete(cache.counts, rootA)
-	require.Equal(t, uint8(2), cache.getProofCount(10, rootA))
-	require.Equal(t, uint8(0), cache.getProofCount(10, phase0.Root{0xaa}), "sibling block without proofs")
-
-	stored, err := blockdb.GlobalBlockDb.GetSlotMeta(cache.indexer.ctx, 10, btypes.SlotMetaFlagExecutionProofData)
-	require.NoError(t, err)
-	require.Len(t, stored.ExecutionProofs, 2)
-	require.Len(t, stored.ExecutionProofs[1].ProofData, 100)
-
-	// the cleanup needs the chain specs; without them it leaves the counts alone
-	cache.counts[rootB] = &proofCountEntry{slot: 0, count: 1}
-	cache.cleanupCache()
-	require.NotNil(t, cache.counts[rootB])
+	require.NotNil(t, blockB.GetMetadata())
+	require.Equal(t, int16(0), blockB.GetMetadata().ProofCount)
 }

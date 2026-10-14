@@ -2,15 +2,18 @@ package beacon
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
-	"github.com/ethpandaops/dora/blockdb"
 	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -28,6 +31,11 @@ const (
 	// proofApiRecheckEpochs is how long a client that answered the proof routes with
 	// 404/501 is not asked again.
 	proofApiRecheckEpochs = 1
+	// proofItemHeaderSize is the size of the crash copy item header: flags, proof
+	// type, validator index and signature precede the proof bytes.
+	proofItemHeaderSize = 1 + 1 + 8 + 96
+	// proofItemFlagSigned marks a proof that carries a validator signature.
+	proofItemFlagSigned = 1
 )
 
 // proofApiKind is the execution proofs API shape a client serves.
@@ -56,25 +64,21 @@ type proofFetchEntry struct {
 	// preferredClient served proofs for this block before and is asked first.
 	preferredClient string
 	proofs          map[uint8]*btypes.SlotExecutionProof
-}
-
-// proofCountEntry is the remembered proof count of a block whose proofs were flushed.
-type proofCountEntry struct {
-	slot  phase0.Slot
-	count uint8
+	// dirty holds the proof types not written as crash copy yet.
+	dirty map[uint8]bool
 }
 
 // executionProofCache collects the EIP-8025 execution proofs of recent blocks from the
-// proof-capable beacon nodes and hands them to the per-slot meta object flush.
+// proof-capable beacon nodes for the bid cache's flush window.
 //
 // Proofs are produced asynchronously after a block and are only served by the nodes
 // for a short window (Lighthouse keeps them in a 32-payload LRU, Lodestar in its op
 // pool), and no client publishes them as event stream topic. So every block the
 // indexer sees is queued, its proofs are requested a few slots after its slot and
-// again every retry interval, until the slot's meta object is flushed. The proofs of
-// a slot are written once, together with its bids and inclusion lists, and the proof
-// bytes leave memory with that flush; only the proof count per block is remembered
-// until the block is persisted on finalization.
+// again every retry interval, until the slot leaves the cache with the flush. The
+// proof count is then written into the block's metadata and the proofs are handed to
+// the slot's meta object where a blockdb exists. Every proof is written to the
+// unfinalized_metadata table as crash copy on the slot tick.
 type executionProofCache struct {
 	indexer *Indexer
 
@@ -85,12 +89,7 @@ type executionProofCache struct {
 
 	cacheMutex sync.RWMutex
 	entries    map[phase0.Root]*proofFetchEntry
-	counts     map[phase0.Root]*proofCountEntry
 	clients    map[string]*proofClientState
-	// liveFromSlot is the first slot the cache has complete knowledge of; the proof
-	// counts of earlier slots are read from the blockdb.
-	liveFromSlot phase0.Slot
-	liveKnown    bool
 }
 
 func newExecutionProofCache(indexer *Indexer) *executionProofCache {
@@ -100,7 +99,6 @@ func newExecutionProofCache(indexer *Indexer) *executionProofCache {
 		retryInterval: proofRetryIntervalSlotsDefault,
 		fetchSem:      make(chan struct{}, proofFetchConcurrency),
 		entries:       make(map[phase0.Root]*proofFetchEntry, 64),
-		counts:        make(map[phase0.Root]*proofCountEntry, 256),
 		clients:       make(map[string]*proofClientState, 8),
 	}
 
@@ -115,44 +113,51 @@ func newExecutionProofCache(indexer *Indexer) *executionProofCache {
 		}
 	}
 
-	go cache.cleanupLoop()
-
 	return cache
-}
-
-// enabled reports whether proofs are collected: the proofs are only kept via the
-// blockdb meta objects, so without them there is nothing to collect into.
-func (cache *executionProofCache) enabled() bool {
-	return !cache.disabled && blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsSlotMeta()
-}
-
-// setLiveFromSlot sets the first slot the cache has complete knowledge of.
-func (cache *executionProofCache) setLiveFromSlot(slot phase0.Slot) {
-	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-
-	cache.liveFromSlot = slot
-	cache.liveKnown = true
 }
 
 // trackBlock queues a newly seen block for proof collection.
 func (cache *executionProofCache) trackBlock(slot phase0.Slot, root phase0.Root) {
-	if !cache.enabled() {
+	if cache.disabled {
 		return
 	}
 
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	if cache.entries[root] != nil {
+	cache.trackBlockLocked(slot, root)
+}
+
+// trackBlocks queues the given blocks for proof collection (the blocks of the
+// collection window after a restart).
+func (cache *executionProofCache) trackBlocks(blocks []*Block) {
+	if cache.disabled {
 		return
 	}
-	cache.entries[root] = &proofFetchEntry{
-		slot:      slot,
-		root:      root,
-		nextFetch: slot + cache.fetchDelay,
-		proofs:    make(map[uint8]*btypes.SlotExecutionProof, 2),
+
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	for _, block := range blocks {
+		cache.trackBlockLocked(block.Slot, block.Root)
 	}
+}
+
+// trackBlockLocked returns the entry of a block, creating it if needed. Caller
+// must hold the write lock.
+func (cache *executionProofCache) trackBlockLocked(slot phase0.Slot, root phase0.Root) *proofFetchEntry {
+	entry := cache.entries[root]
+	if entry == nil {
+		entry = &proofFetchEntry{
+			slot:      slot,
+			root:      root,
+			nextFetch: slot + cache.fetchDelay,
+			proofs:    make(map[uint8]*btypes.SlotExecutionProof, 2),
+			dirty:     make(map[uint8]bool, 2),
+		}
+		cache.entries[root] = entry
+	}
+	return entry
 }
 
 // slotBounds returns the lowest and highest slot of the queued blocks (0, 0 if none).
@@ -175,7 +180,7 @@ func (cache *executionProofCache) slotBounds() (minSlot phase0.Slot, maxSlot pha
 // processDueFetches starts the proof requests that are due at the current slot.
 // Requests run in the background, bounded by the fetch semaphore.
 func (cache *executionProofCache) processDueFetches(currentSlot phase0.Slot) {
-	if !cache.enabled() {
+	if cache.disabled {
 		return
 	}
 
@@ -223,8 +228,18 @@ func (cache *executionProofCache) fetchEntry(entry *proofFetchEntry) {
 	defer cache.cacheMutex.Unlock()
 
 	entry.preferredClient = clientName
+	cache.addProofsLocked(entry, proofs)
+}
+
+// addProofsLocked merges proofs into an entry, keeping the first proof of each
+// type. Caller must hold the write lock.
+func (cache *executionProofCache) addProofsLocked(entry *proofFetchEntry, proofs []*btypes.SlotExecutionProof) {
 	for _, proof := range proofs {
+		if entry.proofs[proof.ProofType] != nil {
+			continue
+		}
 		entry.proofs[proof.ProofType] = proof
+		entry.dirty[proof.ProofType] = true
 	}
 }
 
@@ -367,35 +382,167 @@ func (cache *executionProofCache) convertProofs(entry *proofFetchEntry, kind pro
 	return converted
 }
 
-// collectFlushObjects removes the blocks of slots before cutoffSlot from the cache
-// and returns their proofs as per-slot meta objects, keyed by slot. The proof count
-// of each flushed block stays remembered. A block with a request in flight is left
-// for the next flush unless includeFetching is set (shutdown), so the request's
-// result is not lost.
-func (cache *executionProofCache) collectFlushObjects(cutoffSlot phase0.Slot, includeFetching bool) map[uint64]*btypes.SlotMeta {
+// executionProofItemKey returns the crash copy key of a proof: block root and type.
+func executionProofItemKey(root phase0.Root, proofType uint8) []byte {
+	key := make([]byte, 33)
+	copy(key[0:32], root[:])
+	key[32] = proofType
+	return key
+}
+
+// encodeExecutionProofItem encodes a proof as crash copy: flags, type, validator
+// index and signature, then the proof bytes.
+func encodeExecutionProofItem(proof *btypes.SlotExecutionProof) []byte {
+	data := make([]byte, proofItemHeaderSize+len(proof.ProofData))
+	if proof.Signed {
+		data[0] |= proofItemFlagSigned
+	}
+	data[1] = proof.ProofType
+	binary.BigEndian.PutUint64(data[2:10], proof.ValidatorIndex)
+	copy(data[10:106], proof.Signature[:])
+	copy(data[proofItemHeaderSize:], proof.ProofData)
+	return data
+}
+
+// decodeExecutionProofItem decodes a crash copy written by encodeExecutionProofItem.
+func decodeExecutionProofItem(root phase0.Root, data []byte, withData bool) (*btypes.SlotExecutionProof, error) {
+	if len(data) < proofItemHeaderSize {
+		return nil, fmt.Errorf("execution proof item too short")
+	}
+
+	proof := &btypes.SlotExecutionProof{
+		BlockRoot:      root,
+		ProofType:      data[1],
+		Signed:         data[0]&proofItemFlagSigned != 0,
+		ValidatorIndex: binary.BigEndian.Uint64(data[2:10]),
+		DataSize:       uint32(len(data) - proofItemHeaderSize),
+	}
+	copy(proof.Signature[:], data[10:106])
+	if withData {
+		proof.ProofData = data[proofItemHeaderSize:]
+	}
+
+	return proof, nil
+}
+
+// collectDirtyEntries returns the crash copies of the proofs collected since
+// the last call and clears their marks.
+func (cache *executionProofCache) collectDirtyEntries() []*dbtypes.UnfinalizedMetadata {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	entries := make([]*dbtypes.UnfinalizedMetadata, 0, 8)
+	for _, entry := range cache.entries {
+		for proofType := range entry.dirty {
+			delete(entry.dirty, proofType)
+			proof := entry.proofs[proofType]
+			if proof == nil {
+				continue
+			}
+			entries = append(entries, &dbtypes.UnfinalizedMetadata{
+				Slot: uint64(entry.slot),
+				Kind: dbtypes.UnfinalizedMetadataExecutionProof,
+				Key:  executionProofItemKey(entry.root, proofType),
+				Data: encodeExecutionProofItem(proof),
+			})
+		}
+	}
+
+	return entries
+}
+
+// markDirtyEntries re-marks entries whose crash copy failed to write.
+func (cache *executionProofCache) markDirtyEntries(entries []*dbtypes.UnfinalizedMetadata) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	for _, entry := range entries {
+		if entry.Kind != dbtypes.UnfinalizedMetadataExecutionProof || len(entry.Key) != 33 {
+			continue
+		}
+		if cached := cache.entries[phase0.Root(entry.Key[0:32])]; cached != nil && cached.proofs[entry.Key[32]] != nil {
+			cached.dirty[entry.Key[32]] = true
+		}
+	}
+}
+
+// restoreEntry restores a crash copy into the entry of its block.
+func (cache *executionProofCache) restoreEntry(entry *dbtypes.UnfinalizedMetadata) error {
+	if cache.disabled {
+		return nil
+	}
+	if entry.Kind != dbtypes.UnfinalizedMetadataExecutionProof || len(entry.Key) != 33 {
+		return fmt.Errorf("invalid execution proof item key")
+	}
+
+	root := phase0.Root(entry.Key[0:32])
+	proof, err := decodeExecutionProofItem(root, entry.Data, true)
+	if err != nil {
+		return err
+	}
+
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	cached := cache.trackBlockLocked(phase0.Slot(entry.Slot), root)
+	if cached.proofs[proof.ProofType] == nil {
+		cached.proofs[proof.ProofType] = proof
+	}
+
+	return nil
+}
+
+// dropBefore removes the blocks of slots before cutoffSlot from the cache. The
+// proof count of each removed block is written into the block's metadata. The
+// proofs of the dropped slots are returned as meta objects by slot if
+// withObjects is set (a blockdb takes them), together with the blocks whose
+// metadata changed and the slots no entry remains for. A block with a request
+// in flight is left for the next flush unless includeFetching is set (shutdown),
+// so the request's result is not lost.
+func (cache *executionProofCache) dropBefore(cutoffSlot phase0.Slot, includeFetching bool, withObjects bool) (map[uint64]*btypes.SlotMeta, []*Block, []uint64) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
 	objects := make(map[uint64]*btypes.SlotMeta, 8)
+	touched := make([]*Block, 0, 8)
+	droppedSlots := make(map[uint64]bool, 8)
 	for root, entry := range cache.entries {
-		if entry.slot >= cutoffSlot || (entry.fetching && !includeFetching) {
+		if entry.slot >= cutoffSlot {
+			continue
+		}
+		if entry.fetching && !includeFetching {
+			droppedSlots[uint64(entry.slot)] = false
 			continue
 		}
 		delete(cache.entries, root)
-		cache.counts[root] = &proofCountEntry{slot: entry.slot, count: uint8(min(len(entry.proofs), 0xff))}
-		if len(entry.proofs) == 0 {
-			continue
+		if _, ok := droppedSlots[uint64(entry.slot)]; !ok {
+			droppedSlots[uint64(entry.slot)] = true
 		}
 
-		obj := objects[uint64(entry.slot)]
-		if obj == nil {
-			obj = &btypes.SlotMeta{Slot: uint64(entry.slot)}
-			objects[uint64(entry.slot)] = obj
+		count := int16(min(len(entry.proofs), 0x7fff))
+		if block := cache.indexer.blockCache.getBlockByRoot(root); block != nil {
+			block.updateMetadata(func(metadata *BlockMetadata) { metadata.ProofCount = count })
+			touched = append(touched, block)
 		}
-		obj.ExecutionProofs = append(obj.ExecutionProofs, sortedProofs(entry.proofs)...)
+
+		if withObjects && len(entry.proofs) > 0 {
+			obj := objects[uint64(entry.slot)]
+			if obj == nil {
+				obj = &btypes.SlotMeta{Slot: uint64(entry.slot), Bids: []*btypes.SlotMetaBid{}}
+				objects[uint64(entry.slot)] = obj
+			}
+			obj.ExecutionProofs = append(obj.ExecutionProofs, sortedProofs(entry.proofs)...)
+		}
 	}
 
-	return objects
+	dropped := make([]uint64, 0, len(droppedSlots))
+	for slot, complete := range droppedSlots {
+		if complete {
+			dropped = append(dropped, slot)
+		}
+	}
+
+	return objects, touched, dropped
 }
 
 // sortedProofs returns the proofs of an entry in proof type order.
@@ -423,79 +570,42 @@ func (cache *executionProofCache) getProofs(root phase0.Root) []*btypes.SlotExec
 	return sortedProofs(entry.proofs)
 }
 
-// getProofCount returns the number of execution proofs known for a block.
-func (cache *executionProofCache) getProofCount(slot phase0.Slot, root phase0.Root) uint8 {
+// getBlockProofCount returns the number of execution proofs known for a block.
+func (cache *executionProofCache) getBlockProofCount(block *Block) int16 {
 	cache.cacheMutex.RLock()
-	entry := cache.entries[root]
-	remembered := cache.counts[root]
-	isLive := cache.liveKnown && slot >= cache.liveFromSlot
+	entry := cache.entries[block.Root]
+	count := 0
+	if entry != nil {
+		count = len(entry.proofs)
+	}
 	cache.cacheMutex.RUnlock()
 
 	if entry != nil {
-		return uint8(min(len(entry.proofs), 0xff))
-	}
-	if remembered != nil {
-		return remembered.count
-	}
-	if isLive || !cache.enabled() {
-		return 0
+		return int16(min(count, 0x7fff))
 	}
 
-	// a block that precedes the cache's knowledge: count the stored proofs
-	count := uint8(0)
-	stored, err := blockdb.GlobalBlockDb.GetSlotMeta(cache.indexer.ctx, uint64(slot), btypes.SlotMetaFlagExecutionProofs)
-	if err != nil {
-		cache.indexer.logger.Warnf("error loading meta object for slot %d: %v", slot, err)
-		return 0
-	}
-	if stored != nil {
-		for _, proof := range stored.ExecutionProofs {
-			if proof.BlockRoot == root && count < 0xff {
-				count++
-			}
-		}
-	}
-
-	cache.cacheMutex.Lock()
-	cache.counts[root] = &proofCountEntry{slot: slot, count: count}
-	cache.cacheMutex.Unlock()
-
-	return count
+	return cache.indexer.blockMetadataValue(block, func(metadata *BlockMetadata) int16 { return metadata.ProofCount })
 }
 
-// cleanupLoop periodically drops the remembered proof counts of finalized blocks.
-func (cache *executionProofCache) cleanupLoop() {
-	defer utils.HandleSubroutinePanic("indexer.beacon.executionProofCache.cleanupLoop", func() {
-		cache.cleanupLoop()
-	})
-
-	for {
-		select {
-		case <-cache.indexer.ctx.Done():
+// loadStoredProofs returns the proofs of a block that left the cache from its
+// unfinalized_metadata items, where no blockdb took them over, in proof type
+// order. The proof bytes are only included if withData is set.
+func (cache *executionProofCache) loadStoredProofs(ctx context.Context, slot phase0.Slot, root phase0.Root, withData bool) []*btypes.SlotExecutionProof {
+	proofs := make(map[uint8]*btypes.SlotExecutionProof, 2)
+	err := db.StreamUnfinalizedSlotMetadata(ctx, uint64(slot), dbtypes.UnfinalizedMetadataExecutionProof, func(entry *dbtypes.UnfinalizedMetadata) {
+		if len(entry.Key) != 33 || phase0.Root(entry.Key[0:32]) != root {
 			return
-		case <-time.After(30 * time.Minute):
 		}
-		cache.cleanupCache()
-	}
-}
-
-// cleanupCache removes the remembered proof counts of finalized blocks. The counts are
-// read when a block is persisted on finalization, so they are kept some epochs beyond it.
-func (cache *executionProofCache) cleanupCache() {
-	chainState := cache.indexer.consensusPool.GetChainState()
-	specs := chainState.GetSpecs()
-	if specs == nil {
-		return
-	}
-	finalizedSlot := chainState.GetFinalizedSlot()
-	retention := phase0.Slot(2 * specs.SlotsPerEpoch)
-
-	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-
-	for root, entry := range cache.counts {
-		if entry.slot+retention < finalizedSlot {
-			delete(cache.counts, root)
+		proof, err := decodeExecutionProofItem(root, entry.Data, withData)
+		if err != nil {
+			cache.indexer.logger.Warnf("error decoding stored execution proof of slot %d: %v", slot, err)
+			return
 		}
+		proofs[proof.ProofType] = proof
+	})
+	if err != nil || len(proofs) == 0 {
+		return nil
 	}
+
+	return sortedProofs(proofs)
 }

@@ -14,6 +14,9 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+// InsertSlot stores a block row. The slot metadata columns (il_count,
+// il_unsatisfied, proof_count) are left as stored for a writer that cannot know
+// them (dbtypes.MetadataUnknown, -2 in the statements), and start at 0.
 func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
@@ -25,7 +28,8 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 				eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
 				max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value, builder_payment_weight, builder_payment_percent,
 				il_count, il_unsatisfied, proof_count
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
+				CASE WHEN $41 = -2 THEN 0 ELSE $41 END, CASE WHEN $42 = -2 THEN 0 ELSE $42 END, CASE WHEN $43 = -2 THEN 0 ELSE $43 END)
 			ON CONFLICT (slot, root) DO UPDATE SET
 				status = excluded.status,
 				eth_block_extra = excluded.eth_block_extra,
@@ -34,11 +38,11 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 				payload_status = excluded.payload_status,
 				builder_payment_weight = excluded.builder_payment_weight,
 				builder_payment_percent = excluded.builder_payment_percent,
-				il_count = excluded.il_count,
-				il_unsatisfied = excluded.il_unsatisfied,
-				proof_count = excluded.proof_count`,
+				il_count = CASE WHEN $41 = -2 THEN slots.il_count ELSE excluded.il_count END,
+				il_unsatisfied = CASE WHEN $42 = -2 THEN slots.il_unsatisfied ELSE excluded.il_unsatisfied END,
+				proof_count = CASE WHEN $43 = -2 THEN slots.proof_count ELSE excluded.proof_count END`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR REPLACE INTO slots (
+			INSERT INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
@@ -46,7 +50,19 @@ func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
 				eth_gas_used, eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time,
 				max_exec_time, exec_times, block_uid, payload_status, builder_index, eth_bid_value, builder_payment_weight, builder_payment_percent,
 				il_count, il_unsatisfied, proof_count
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)`,
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
+				CASE WHEN $41 = -2 THEN 0 ELSE $41 END, CASE WHEN $42 = -2 THEN 0 ELSE $42 END, CASE WHEN $43 = -2 THEN 0 ELSE $43 END)
+			ON CONFLICT (slot, root) DO UPDATE SET
+				status = excluded.status,
+				eth_block_extra = excluded.eth_block_extra,
+				eth_block_extra_text = excluded.eth_block_extra_text,
+				fork_id = excluded.fork_id,
+				payload_status = excluded.payload_status,
+				builder_payment_weight = excluded.builder_payment_weight,
+				builder_payment_percent = excluded.builder_payment_percent,
+				il_count = CASE WHEN $41 = -2 THEN slots.il_count ELSE excluded.il_count END,
+				il_unsatisfied = CASE WHEN $42 = -2 THEN slots.il_unsatisfied ELSE excluded.il_unsatisfied END,
+				proof_count = CASE WHEN $43 = -2 THEN slots.proof_count ELSE excluded.proof_count END`,
 	}),
 		slot.Slot, slot.Proposer, slot.Status, slot.Root, slot.ParentRoot, slot.StateRoot, slot.Graffiti, slot.GraffitiText,
 		slot.AttestationCount, slot.DepositCount, slot.ExitCount, slot.WithdrawCount, slot.WithdrawAmount, slot.AttesterSlashingCount,
@@ -87,14 +103,17 @@ func InsertMissingSlot(ctx context.Context, tx *sqlx.Tx, block *dbtypes.MissedSl
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO slots (
 				slot, proposer, status, root, il_count
-			) VALUES ($1, $2, $3, '0x', $4)
+			) VALUES ($1, $2, $3, '0x', CASE WHEN $4 = -2 THEN 0 ELSE $4 END)
 			ON CONFLICT (slot, root) DO UPDATE SET
 			proposer = excluded.proposer,
-			il_count = excluded.il_count`,
+			il_count = CASE WHEN $4 = -2 THEN slots.il_count ELSE excluded.il_count END`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR REPLACE INTO slots (
+			INSERT INTO slots (
 				slot, proposer, status, root, il_count
-			) VALUES ($1, $2, $3, '0x', $4)`,
+			) VALUES ($1, $2, $3, '0x', CASE WHEN $4 = -2 THEN 0 ELSE $4 END)
+			ON CONFLICT (slot, root) DO UPDATE SET
+			proposer = excluded.proposer,
+			il_count = CASE WHEN $4 = -2 THEN slots.il_count ELSE excluded.il_count END`,
 	}),
 		block.Slot, block.Proposer, block.Status, block.IlCount)
 	if err != nil {
