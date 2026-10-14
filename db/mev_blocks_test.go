@@ -51,7 +51,7 @@ func insertMevBlock(t *testing.T, slot uint64, hash []byte, proposed int) {
 	_, err := writerDb.Exec(`INSERT INTO mev_blocks
 		(slot_number, block_hash, block_number, builder_pubkey, proposed,
 		 seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		slot, hash, 0, []byte{}, proposed, 0, []byte{}, 0, 0, []byte{}, 0)
 	if err != nil {
 		t.Fatalf("insert mev_block slot %d: %v", slot, err)
@@ -61,7 +61,7 @@ func insertMevBlock(t *testing.T, slot uint64, hash []byte, proposed int) {
 func proposedAt(t *testing.T, slot uint64) int {
 	t.Helper()
 	var proposed int
-	if err := ReaderDb.Get(&proposed, `SELECT proposed FROM mev_blocks WHERE slot_number = ?`, slot); err != nil {
+	if err := ReaderDb.Get(&proposed, `SELECT proposed FROM mev_blocks WHERE slot_number = $1`, slot); err != nil {
 		t.Fatalf("read proposed slot %d: %v", slot, err)
 	}
 	return proposed

@@ -14,7 +14,7 @@ func TestDeleteElDataBeforeBlockUid(t *testing.T) {
 	newTestDB(t)
 
 	for _, uid := range []uint64{10, 20, 100, 200} {
-		if _, err := writerDb.Exec(`INSERT INTO el_blocks (block_uid) VALUES (?)`, uid); err != nil {
+		if _, err := writerDb.Exec(`INSERT INTO el_blocks (block_uid) VALUES ($1)`, uid); err != nil {
 			t.Fatalf("insert el_block %d: %v", uid, err)
 		}
 	}
