@@ -191,7 +191,9 @@ func setupSlotsPaginationService(t *testing.T) {
 			// Keep client indexing idle; the fixed cache dataset was restored from DB.
 			data = map[string]any{"root": zeroRoot, "canonical": true, "header": &phase0.SignedBeaconBlockHeader{Message: &phase0.BeaconBlockHeader{}}}
 		case "/eth/v1/node/syncing":
-			data = map[string]any{"head_slot": "127", "sync_distance": "0", "is_syncing": true, "is_optimistic": false}
+			// must report synced: only synced nodes publish the pool's finality checkpoint,
+			// which StartService waits for before starting the indexer.
+			data = map[string]any{"head_slot": "127", "sync_distance": "0", "is_syncing": false, "is_optimistic": false}
 		case "/eth/v1/beacon/states/head/finality_checkpoints":
 			cp := map[string]any{"epoch": "3", "root": checkpointRoot}
 			data = map[string]any{"previous_justified": cp, "current_justified": cp, "finalized": cp}
