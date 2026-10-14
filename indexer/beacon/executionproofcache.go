@@ -14,6 +14,7 @@ import (
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/executionproof"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -28,30 +29,23 @@ const (
 	proofFetchConcurrency = 4
 	// proofFetchTimeout bounds one proof request.
 	proofFetchTimeout = 20 * time.Second
-	// proofApiRecheckEpochs is how long a client that answered the proof routes with
+	// proofApiRecheckEpochs is how long a client that answered the proofs route with
 	// 404/501 is not asked again.
 	proofApiRecheckEpochs = 1
 	// proofItemHeaderSize is the size of the crash copy item header: flags, proof
 	// type, validator index and signature precede the proof bytes.
 	proofItemHeaderSize = 1 + 1 + 8 + 96
-	// proofItemFlagSigned marks a proof that carries a validator signature.
-	proofItemFlagSigned = 1
+	// proofItemFlagSignatureValid and proofItemFlagProverActive hold the signature
+	// check outcome as in the meta object.
+	proofItemFlagSignatureValid = 1
+	proofItemFlagProverActive   = 2
 )
 
-// proofApiKind is the execution proofs API shape a client serves.
-type proofApiKind uint8
-
-const (
-	proofApiUnknown proofApiKind = iota
-	proofApiNone                 // no proof engine or no route
-	proofApiByRoot               // GET /eth/v1/beacon/execution_proofs/{block_root} (Lighthouse)
-	proofApiBySlot               // GET /eth/v1/beacon/pool/execution_proofs?slot= (Lodestar)
-)
-
-// proofClientState remembers which proof API a client serves.
+// proofClientState remembers whether a client serves the execution proofs route.
 type proofClientState struct {
-	kind proofApiKind
-	// recheckEpoch is the epoch from which a client without proof API is probed again.
+	// unsupported is set for a client without proof engine or route; it is probed
+	// again from recheckEpoch on.
+	unsupported  bool
 	recheckEpoch phase0.Epoch
 }
 
@@ -72,8 +66,8 @@ type proofFetchEntry struct {
 // proof-capable beacon nodes for the bid cache's flush window.
 //
 // Proofs are produced asynchronously after a block and are only served by the nodes
-// for a short window (Lighthouse keeps them in a 32-payload LRU, Lodestar in its op
-// pool), and no client publishes them as event stream topic. So every block the
+// for a short window (a cache of the last payloads), and no client publishes them as
+// event stream topic. So every block the
 // indexer sees is queued, its proofs are requested a few slots after its slot and
 // again every retry interval, until the slot leaves the cache with the flush. The
 // proof count is then written into the block's metadata and the proofs are handed to
@@ -223,12 +217,53 @@ func (cache *executionProofCache) fetchEntry(entry *proofFetchEntry) {
 	if len(proofs) == 0 {
 		return
 	}
+	cache.checkSignatures(entry, proofs)
 
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
 	entry.preferredClient = clientName
 	cache.addProofsLocked(entry, proofs)
+}
+
+// checkSignatures verifies the prover signatures of the proofs against the
+// validator set of the proofs' block and records the outcome on the proofs. The
+// check is done once here, where that validator set is at hand; the result is
+// persisted with the proof. A proof whose prover cannot be resolved is invalid,
+// as an envelope of an unknown validator is.
+func (cache *executionProofCache) checkSignatures(entry *proofFetchEntry, proofs []*btypes.SlotExecutionProof) {
+	chainState := cache.indexer.consensusPool.GetChainState()
+	specs := chainState.GetSpecs()
+	if specs == nil || cache.indexer.validatorCache == nil {
+		return
+	}
+	epoch := chainState.EpochOfSlot(entry.slot)
+	forkVersion := chainState.GetForkVersionAtEpoch(epoch)
+	var genesisValidatorsRoot phase0.Root
+	if genesis := chainState.GetGenesis(); genesis != nil {
+		genesisValidatorsRoot = genesis.GenesisValidatorsRoot
+	}
+
+	for _, proof := range proofs {
+		validator := cache.indexer.validatorCache.getValidatorByIndexAndRoot(phase0.ValidatorIndex(proof.ValidatorIndex), entry.root)
+		if validator == nil {
+			cache.indexer.logger.Warnf("execution proof for block 0x%x signed by unknown validator %d", entry.root[:], proof.ValidatorIndex)
+			continue
+		}
+
+		envelope := &executionproof.Envelope{
+			ProofData:       proof.ProofData,
+			ProofType:       proof.ProofType,
+			BeaconBlockRoot: entry.root,
+		}
+		valid, err := envelope.VerifySignature(cache.indexer.dynSsz, specs.DomainExecutionProof, validator.PublicKey, proof.Signature, forkVersion, genesisValidatorsRoot)
+		if err != nil {
+			cache.indexer.logger.Warnf("error verifying execution proof signature for block 0x%x: %v", entry.root[:], err)
+			continue
+		}
+		proof.SignatureValid = valid
+		proof.ProverActive = validator.ActivationEpoch <= epoch && epoch < validator.ExitEpoch
+	}
 }
 
 // addProofsLocked merges proofs into an entry, keeping the first proof of each
@@ -276,9 +311,9 @@ func (cache *executionProofCache) loadProofs(entry *proofFetchEntry) ([]*btypes.
 	return nil, ""
 }
 
-// loadProofsFromClient requests the proofs of the entry's block from one client via
-// the API shape the client serves, probing the shapes on first contact. A client that
-// serves none is not asked again before its recheck epoch.
+// loadProofsFromClient requests the proofs of the entry's block from one client. A
+// client that answers without proof engine or route is not asked again before its
+// recheck epoch.
 func (cache *executionProofCache) loadProofsFromClient(client *Client, entry *proofFetchEntry, currentEpoch phase0.Epoch) ([]*btypes.SlotExecutionProof, error) {
 	name := client.client.GetName()
 
@@ -288,90 +323,51 @@ func (cache *executionProofCache) loadProofsFromClient(client *Client, entry *pr
 		state = &proofClientState{}
 		cache.clients[name] = state
 	}
-	kind := state.kind
-	if kind == proofApiNone && currentEpoch >= state.recheckEpoch {
-		kind = proofApiUnknown
-	}
+	unsupported := state.unsupported && currentEpoch < state.recheckEpoch
 	cache.cacheMutex.Unlock()
 
-	if kind == proofApiNone {
+	if unsupported {
 		return nil, nil
 	}
 
 	ctx, cancel := context.WithTimeout(cache.indexer.ctx, proofFetchTimeout)
 	defer cancel()
 
-	rpcClient := client.client.GetRPCClient()
-	kinds := []proofApiKind{kind}
-	if kind == proofApiUnknown {
-		kinds = []proofApiKind{proofApiByRoot, proofApiBySlot}
+	proofs, err := client.client.GetRPCClient().GetExecutionProofsByBlockroot(ctx, entry.root[:])
+	switch {
+	case err == nil:
+		cache.setClientUnsupported(state, false, 0)
+		return cache.convertProofs(entry, proofs), nil
+	case errors.Is(err, rpc.ErrExecutionProofsUnsupported), errors.Is(err, rpc.ErrExecutionProofsNotFound):
+		// no proof engine, or no route (an unknown block on a node that serves the
+		// route is the rare case: the block was seen on this client)
+		cache.setClientUnsupported(state, true, currentEpoch+proofApiRecheckEpochs)
+		return nil, nil
+	default:
+		return nil, err
 	}
-
-	for _, tryKind := range kinds {
-		var proofs []*rpc.ExecutionProof
-		var err error
-		switch tryKind {
-		case proofApiByRoot:
-			proofs, err = rpcClient.GetExecutionProofsByBlockroot(ctx, entry.root[:])
-		case proofApiBySlot:
-			proofs, err = rpcClient.GetExecutionProofsBySlot(ctx, entry.slot)
-		}
-
-		switch {
-		case err == nil:
-			cache.setClientApi(state, tryKind, 0)
-			return cache.convertProofs(entry, tryKind, proofs), nil
-		case errors.Is(err, rpc.ErrExecutionProofsUnsupported):
-			// no proof engine: the node answers the same for every block
-			cache.setClientApi(state, proofApiNone, currentEpoch+proofApiRecheckEpochs)
-			return nil, nil
-		case errors.Is(err, rpc.ErrExecutionProofsNotFound):
-			// unknown route (or unknown block on a route the node serves - the block
-			// was seen on this client, so that is the rare case): try the next shape
-			continue
-		default:
-			return nil, err
-		}
-	}
-
-	if kind == proofApiUnknown {
-		cache.setClientApi(state, proofApiNone, currentEpoch+proofApiRecheckEpochs)
-	}
-
-	return nil, nil
 }
 
-// setClientApi remembers the proof API shape of a client.
-func (cache *executionProofCache) setClientApi(state *proofClientState, kind proofApiKind, recheckEpoch phase0.Epoch) {
+// setClientUnsupported remembers whether a client serves the proofs route.
+func (cache *executionProofCache) setClientUnsupported(state *proofClientState, unsupported bool, recheckEpoch phase0.Epoch) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	state.kind = kind
+	state.unsupported = unsupported
 	state.recheckEpoch = recheckEpoch
 }
 
-// convertProofs turns the proofs served by a client into meta object proofs of the
-// entry's block. By-root proofs are bound to a block root by the node; by-slot proofs
-// (Lodestar's pool, keyed by slot without block root) are attributed to the block
-// only when it is the only block the indexer knows in the slot.
-func (cache *executionProofCache) convertProofs(entry *proofFetchEntry, kind proofApiKind, proofs []*rpc.ExecutionProof) []*btypes.SlotExecutionProof {
-	if len(proofs) == 0 {
-		return nil
-	}
-	if kind == proofApiBySlot && len(cache.indexer.blockCache.getBlocksBySlot(entry.slot)) != 1 {
-		cache.indexer.logger.Debugf("ignoring %d by-slot execution proofs for slot %d: multiple blocks in slot", len(proofs), entry.slot)
-		return nil
-	}
-
+// convertProofs turns the proof envelopes served by a client into meta object proofs
+// of the entry's block; envelopes of other blocks are dropped.
+func (cache *executionProofCache) convertProofs(entry *proofFetchEntry, proofs []*rpc.ExecutionProof) []*btypes.SlotExecutionProof {
 	converted := make([]*btypes.SlotExecutionProof, 0, len(proofs))
 	for _, proof := range proofs {
-		if kind == proofApiByRoot && proof.BeaconBlockRoot != entry.root {
+		if proof.BeaconBlockRoot != entry.root {
 			continue
 		}
 		converted = append(converted, &btypes.SlotExecutionProof{
 			BlockRoot:      entry.root,
 			ProofType:      proof.ProofType,
-			Signed:         proof.Signed,
 			ValidatorIndex: proof.ValidatorIndex,
 			Signature:      proof.Signature,
 			DataSize:       uint32(len(proof.ProofData)),
@@ -394,8 +390,11 @@ func executionProofItemKey(root phase0.Root, proofType uint8) []byte {
 // index and signature, then the proof bytes.
 func encodeExecutionProofItem(proof *btypes.SlotExecutionProof) []byte {
 	data := make([]byte, proofItemHeaderSize+len(proof.ProofData))
-	if proof.Signed {
-		data[0] |= proofItemFlagSigned
+	if proof.SignatureValid {
+		data[0] |= proofItemFlagSignatureValid
+	}
+	if proof.ProverActive {
+		data[0] |= proofItemFlagProverActive
 	}
 	data[1] = proof.ProofType
 	binary.BigEndian.PutUint64(data[2:10], proof.ValidatorIndex)
@@ -413,7 +412,8 @@ func decodeExecutionProofItem(root phase0.Root, data []byte, withData bool) (*bt
 	proof := &btypes.SlotExecutionProof{
 		BlockRoot:      root,
 		ProofType:      data[1],
-		Signed:         data[0]&proofItemFlagSigned != 0,
+		SignatureValid: data[0]&proofItemFlagSignatureValid != 0,
+		ProverActive:   data[0]&proofItemFlagProverActive != 0,
 		ValidatorIndex: binary.BigEndian.Uint64(data[2:10]),
 		DataSize:       uint32(len(data) - proofItemHeaderSize),
 	}

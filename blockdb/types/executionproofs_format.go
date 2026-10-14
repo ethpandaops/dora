@@ -33,9 +33,11 @@ import (
 )
 
 const (
-	// ExecutionProofFlagSigned marks a proof served as signed envelope; unsigned
-	// proofs (e.g. from Lodestar's pool API) carry no validator index and signature.
-	ExecutionProofFlagSigned uint8 = 1
+	// ExecutionProofFlagSignatureValid and ExecutionProofFlagProverActive hold the
+	// outcome of the prover signature check done against the validator set of the
+	// proof's block when the proof was collected.
+	ExecutionProofFlagSignatureValid uint8 = 1
+	ExecutionProofFlagProverActive   uint8 = 2
 
 	// executionProofRecordSize is the size of a proof index record.
 	executionProofRecordSize = 32 + 1 + 1 + 4 + 4 + 8 + 96
@@ -45,9 +47,12 @@ const (
 type SlotExecutionProof struct {
 	BlockRoot      [32]byte
 	ProofType      uint8
-	Signed         bool
 	ValidatorIndex uint64
 	Signature      [96]byte
+	// SignatureValid and ProverActive are the outcome of the prover signature
+	// check done when the proof was collected.
+	SignatureValid bool
+	ProverActive   bool
 
 	// DataSize is the proof size in bytes. It is known from the index even when
 	// the proof bytes were not loaded.
@@ -79,8 +84,11 @@ func encodeExecutionProofSections(proofs []*SlotExecutionProof) (*SlotMetaSectio
 		}
 
 		var flags uint8
-		if proof.Signed {
-			flags |= ExecutionProofFlagSigned
+		if proof.SignatureValid {
+			flags |= ExecutionProofFlagSignatureValid
+		}
+		if proof.ProverActive {
+			flags |= ExecutionProofFlagProverActive
 		}
 
 		_ = binary.Write(&indexBuf, binary.BigEndian, uint16(executionProofRecordSize))
@@ -140,7 +148,8 @@ func decodeExecutionProofSections(indexSection *SlotMetaSection, dataSection *Sl
 
 		proof := &SlotExecutionProof{
 			ProofType:      record[32],
-			Signed:         record[33]&ExecutionProofFlagSigned != 0,
+			SignatureValid: record[33]&ExecutionProofFlagSignatureValid != 0,
+			ProverActive:   record[33]&ExecutionProofFlagProverActive != 0,
 			DataSize:       binary.BigEndian.Uint32(record[38:42]),
 			ValidatorIndex: binary.BigEndian.Uint64(record[42:50]),
 		}

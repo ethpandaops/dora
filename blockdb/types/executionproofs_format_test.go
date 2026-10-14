@@ -7,18 +7,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testExecutionProof(root byte, proofType uint8, size int, signed bool) *SlotExecutionProof {
+func testExecutionProof(root byte, proofType uint8, size int, valid bool) *SlotExecutionProof {
 	proof := &SlotExecutionProof{
 		ProofType: proofType,
-		Signed:    signed,
 		ProofData: bytes.Repeat([]byte{root ^ proofType}, size),
 	}
 	proof.BlockRoot[0] = root
-	if signed {
-		proof.ValidatorIndex = uint64(100 + proofType)
-		proof.Signature[0] = 0xaa
-		proof.Signature[95] = proofType
-	}
+	proof.ValidatorIndex = uint64(100 + proofType)
+	proof.Signature[0] = 0xaa
+	proof.Signature[95] = proofType
+	proof.SignatureValid = valid
+	proof.ProverActive = valid
 	return proof
 }
 
@@ -27,7 +26,7 @@ func TestSlotExecutionProofsRoundTrip(t *testing.T) {
 	obj.ExecutionProofs = []*SlotExecutionProof{
 		testExecutionProof(1, 1, 3000, true),
 		testExecutionProof(1, 5, 7, true),
-		testExecutionProof(2, 1, 0, false), // orphaned sibling block, unsigned
+		testExecutionProof(2, 1, 0, false), // orphaned sibling block, invalid signature
 	}
 
 	data, err := EncodeSlotMeta(obj)
@@ -42,7 +41,8 @@ func TestSlotExecutionProofsRoundTrip(t *testing.T) {
 		want := obj.ExecutionProofs[i]
 		require.Equal(t, want.BlockRoot, proof.BlockRoot)
 		require.Equal(t, want.ProofType, proof.ProofType)
-		require.Equal(t, want.Signed, proof.Signed)
+		require.Equal(t, want.SignatureValid, proof.SignatureValid)
+		require.Equal(t, want.ProverActive, proof.ProverActive)
 		require.Equal(t, want.ValidatorIndex, proof.ValidatorIndex)
 		require.Equal(t, want.Signature, proof.Signature)
 		require.Equal(t, uint32(len(want.ProofData)), proof.DataSize)

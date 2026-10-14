@@ -15,29 +15,10 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/executionproof"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types/models"
 )
-
-// executionProofTypeNames maps the EIP-8025 proof types of the proof devnets to the
-// zkVM + EL combination that produces them.
-var executionProofTypeNames = map[uint8]string{
-	1: "OpenVM + Ethrex",
-	2: "SP1 + Ethrex",
-	3: "Zisk + Ethrex",
-	4: "OpenVM + Reth",
-	5: "SP1 + Reth",
-	6: "Zisk + Reth",
-	7: "Zisk + Zesu",
-}
-
-// executionProofTypeName returns the display name of a proof type.
-func executionProofTypeName(proofType uint8) string {
-	if name, ok := executionProofTypeNames[proofType]; ok {
-		return name
-	}
-	return fmt.Sprintf("zkVM + EL #%d", proofType)
-}
 
 // resolveSlotPathBlock resolves the slot number or block root of a slot page path to
 // an indexed block (a slot number yields its canonical block). Only a block the
@@ -100,31 +81,56 @@ func SlotExecutionProofs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// buildSlotExecutionProofsData lists the proofs of a block. The proofs of a block
-// still being collected can grow, so the list of an unfinalized block is cached
-// briefly; the stored list of a finalized block is final.
+// buildSlotExecutionProofsData lists the proofs of a block with what the explorer
+// can tell about them: the public input they commit to against the one the block
+// expects, and their prover signatures. The proofs of a block still being collected
+// can grow, so the list of an unfinalized block is cached briefly; the stored list
+// of a finalized block is final.
 func buildSlotExecutionProofsData(ctx context.Context, slot phase0.Slot, blockRoot phase0.Root) (*models.SlotExecutionProofsResponse, time.Duration) {
-	proofs := services.GlobalBeaconService.GetBlockExecutionProofs(ctx, slot, blockRoot, false)
+	analysis := services.GlobalBeaconService.AnalyzeBlockExecutionProofs(ctx, slot, blockRoot)
 
 	result := &models.SlotExecutionProofsResponse{
-		Slot:      uint64(slot),
-		BlockRoot: fmt.Sprintf("0x%x", blockRoot[:]),
-		Proofs:    make([]*models.SlotExecutionProof, 0, len(proofs)),
+		Slot:                     uint64(slot),
+		BlockRoot:                fmt.Sprintf("0x%x", blockRoot[:]),
+		ExpectedPublicInput:      slotExecutionProofPublicInput(analysis.Expected),
+		ExpectedPublicInputError: analysis.ExpectedError,
+		Proofs:                   make([]*models.SlotExecutionProof, 0, len(analysis.Proofs)),
 	}
-	for _, proof := range proofs {
-		entry := &models.SlotExecutionProof{
-			ProofType:   proof.ProofType,
-			ProofName:   executionProofTypeName(proof.ProofType),
-			Signed:      proof.Signed,
-			Size:        proof.DataSize,
-			DownloadUrl: fmt.Sprintf("/slot/0x%x/proofs/%d", blockRoot[:], proof.ProofType),
+	for _, entry := range analysis.Proofs {
+		proof := entry.Proof
+		model := &models.SlotExecutionProof{
+			ProofType:        proof.ProofType,
+			ProofName:        fmt.Sprintf("unassigned proof type #%d", proof.ProofType),
+			SignatureValid:   entry.SignatureValid,
+			ProverActive:     entry.ProverActive,
+			Size:             proof.DataSize,
+			DownloadUrl:      fmt.Sprintf("/slot/0x%x/proofs/%d", blockRoot[:], proof.ProofType),
+			DecodeError:      entry.DecodeError,
+			PublicInputMatch: entry.PublicInputMatch,
+			ProgramVKMatch:   entry.ProgramVKMatch,
 		}
-		if proof.Signed {
-			entry.ValidatorIndex = proof.ValidatorIndex
-			entry.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(proof.ValidatorIndex, slot)
-			entry.Signature = fmt.Sprintf("0x%x", proof.Signature[:])
+		if entry.Type != nil {
+			model.ProofName = entry.Type.Name()
+			model.Guest = entry.Type.Guest
+			model.ZkVM = string(entry.Type.ZkVM)
+			model.ProgramVK = fmt.Sprintf("0x%x", entry.Type.ProgramVK)
+			model.BrowserVerifiable = entry.Type.ZkVM.BrowserVerifiable()
 		}
-		result.Proofs = append(result.Proofs, entry)
+		model.ValidatorIndex = proof.ValidatorIndex
+		model.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(proof.ValidatorIndex, slot)
+		model.Signature = fmt.Sprintf("0x%x", proof.Signature[:])
+		if committed := entry.Committed; committed != nil {
+			model.ProofMode = committed.ProofMode
+			model.SdkVersion = committed.SdkVersion
+			model.CommittedPublicInput = slotExecutionProofPublicInput(committed.PublicInput)
+			if committed.PublicInput == nil {
+				model.DecodeError = committed.DecodeError
+			}
+			if committed.ProgramVK != nil {
+				model.CommittedProgramVK = fmt.Sprintf("0x%x", committed.ProgramVK)
+			}
+		}
+		result.Proofs = append(result.Proofs, model)
 	}
 
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
@@ -133,6 +139,20 @@ func buildSlotExecutionProofsData(ctx context.Context, slot phase0.Slot, blockRo
 		return result, 30 * time.Minute
 	}
 	return result, 30 * time.Second
+}
+
+// slotExecutionProofPublicInput converts a public input to its page model.
+func slotExecutionProofPublicInput(input *executionproof.PublicInput) *models.SlotExecutionProofPublicInput {
+	if input == nil {
+		return nil
+	}
+	return &models.SlotExecutionProofPublicInput{
+		NewPayloadRequestRoot: fmt.Sprintf("0x%x", input.NewPayloadRequestRoot[:]),
+		SuccessfulValidation:  input.SuccessfulValidation,
+		ChainID:               input.ChainID,
+		SchemaID:              input.SchemaID,
+		Raw:                   fmt.Sprintf("0x%x", input.Marshal()),
+	}
 }
 
 // SlotExecutionProofDownload serves the bytes of one execution proof of a block as

@@ -27,35 +27,103 @@
         if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' KiB';
         return bytes + ' bytes';
       }
+      // a shortened hex value with its copy control, optionally led by a mark; kept on one line
+      function hexCell(hex, chars, mark) {
+        if (!hex) return '<span class="text-body-secondary">-</span>';
+        return '<span class="text-nowrap">' + (mark || '') + '<span class="font-monospace">' + escapeHtml(shortHex(hex, chars)) + '</span>' +
+          ' <i class="fa fa-copy text-body-secondary p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="' + escapeHtml(hex) + '"></i></span>';
+      }
+      // a check that is true, false or unknown (null)
+      function checkBadge(value, okText, failText, unknownText) {
+        if (value === true) return '<span class="badge rounded-pill text-bg-success me-1"><i class="fa fa-check me-1"></i>' + escapeHtml(okText) + '</span>';
+        if (value === false) return '<span class="badge rounded-pill text-bg-danger me-1"><i class="fa fa-times me-1"></i>' + escapeHtml(failText) + '</span>';
+        return unknownText ? '<span class="badge rounded-pill text-bg-secondary me-1">' + escapeHtml(unknownText) + '</span>' : '';
+      }
+      function chip(text, title) {
+        return '<span class="badge rounded-pill text-bg-light border text-body-secondary fw-normal me-1"' + (title ? ' data-bs-toggle="tooltip" title="' + escapeHtml(title) + '"' : '') + '>' + escapeHtml(text) + '</span>';
+      }
       function validatorLabel(index, name) {
         var label = name ? escapeHtml(name) + ' (' + index + ')' : index;
         return '<a href="/validator/' + index + '">' + label + '</a>';
+      }
+      function row(label, value) {
+        return '<tr><td class="text-nowrap text-body-secondary ps-0" style="width: 110px">' + label + '</td><td>' + value + '</td></tr>';
+      }
+      function detailTable(title, rows) {
+        return '<div class="col-lg-4 col-md-6"><div class="small text-uppercase text-body-secondary fw-semibold mb-1">' + title + '</div>' +
+          '<table class="table table-sm table-borderless mb-0"><tbody>' + rows + '</tbody></table></div>';
+      }
+      function zkvmName(zkvm) {
+        return {openvm: 'OpenVM', sp1: 'SP1', zisk: 'Zisk'}[zkvm] || zkvm || '-';
+      }
+
+      function renderProof(data, proof) {
+        var expected = data.expected_public_input;
+        var committed = proof.committed_public_input;
+
+        var badges = checkBadge(proof.signature_valid, 'prover signature', 'prover signature invalid', '');
+        badges += checkBadge(proof.public_input_match, 'commits to this payload', 'commits to another payload', 'committed payload unknown');
+        if (proof.program_vk_match !== null) {
+          badges += checkBadge(proof.program_vk_match, 'known guest program', 'unknown guest program', '');
+        }
+
+        var chips = chip(zkvmName(proof.zkvm) + (proof.sdk_version ? ' ' + proof.sdk_version : ''), 'Proof system');
+        if (proof.proof_mode) chips += chip(proof.proof_mode, 'Proof mode');
+        chips += chip(formatSize(proof.size), 'Proof size');
+
+        var proofRows = row('Guest program', escapeHtml(proof.guest || '-'));
+        proofRows += row('Program key', hexCell(proof.program_vk, 6));
+        if (proof.committed_program_vk) {
+          proofRows += row('Key in proof', hexCell(proof.committed_program_vk, 6,
+            proof.program_vk_match === false ? '<i class="fa fa-triangle-exclamation text-danger me-1" data-bs-toggle="tooltip" title="Not the registered key of this proof type"></i>' : ''));
+        }
+        var proverRows = row('Prover', validatorLabel(proof.validator_index, proof.validator_name) +
+          (proof.prover_active ? '' : ' <span class="badge text-bg-danger">not active</span>'));
+        proverRows += row('Signature', hexCell(proof.signature, 6));
+
+        var inputRows;
+        if (committed) {
+          var rootMark = proof.public_input_match === true ? '<i class="fa fa-check text-success me-1" data-bs-toggle="tooltip" title="Matches the payload request root of this block"></i>'
+            : proof.public_input_match === false ? '<i class="fa fa-triangle-exclamation text-danger me-1" data-bs-toggle="tooltip" title="Differs from the payload request root of this block"></i>' : '';
+          inputRows = row('Payload request', hexCell(committed.new_payload_request_root, 6, rootMark));
+          inputRows += row('Chain / schema', 'chain ' + committed.chain_id + ' · schema 0x' + committed.schema_id.toString(16) +
+            (committed.successful_validation ? '' : ' <span class="badge text-bg-danger">validation failed</span>'));
+        } else {
+          inputRows = row('Public input', '<span class="text-danger">' + escapeHtml(proof.decode_error || 'not readable') + '</span>');
+        }
+
+        return '<div class="card mb-3 execution-proof" data-proof-type="' + proof.proof_type + '" data-zkvm="' + escapeHtml(proof.zkvm) + '"' +
+          ' data-program-vk="' + escapeHtml(proof.program_vk) + '" data-download-url="' + escapeHtml(proof.download_url) + '"' +
+          ' data-expected-public-input="' + escapeHtml(expected ? expected.raw : '') + '">' +
+          '<div class="card-header d-flex flex-wrap align-items-center gap-2">' +
+            '<span class="badge text-bg-secondary">' + proof.proof_type + '</span><span class="fw-semibold me-2">' + escapeHtml(proof.proof_name) + '</span>' +
+            '<span class="me-auto">' + chips + '</span>' +
+            '<a class="btn btn-sm btn-outline-primary" href="' + escapeHtml(proof.download_url) + '" rel="nofollow"><i class="fa fa-download me-1"></i>Raw proof</a>' +
+          '</div>' +
+          '<div class="card-body pb-2"><div class="mb-3">' + badges + '</div>' +
+          '<div class="row g-4">' + detailTable('Program', proofRows) + detailTable('Prover', proverRows) + detailTable('Committed public input', inputRows) + '</div>' +
+          '</div></div>';
       }
 
       function render(data) {
         var proofs = data.proofs || [];
         if (proofs.length === 0) {
-          container.innerHTML = '<div class="text-center py-4 text-muted">No execution proofs collected for this block.</div>';
+          container.innerHTML = '<div class="text-center py-4 text-body-secondary">No execution proofs collected for this block.</div>';
           return;
         }
 
-        var html = '<div class="table-responsive"><table class="table table-nobr mb-0">';
-        html += '<thead><tr><th>Proof Type</th><th>Prover</th><th>Signature</th><th>Size</th><th></th></tr></thead><tbody>';
-        proofs.forEach(function(proof) {
-          html += '<tr>';
-          html += '<td><span class="badge bg-secondary me-2">' + proof.proof_type + '</span>' + escapeHtml(proof.proof_name) + '</td>';
-          if (proof.signed) {
-            html += '<td>' + validatorLabel(proof.validator_index, proof.validator_name) + '</td>';
-            html += '<td><span class="font-monospace">' + escapeHtml(shortHex(proof.signature, 8)) + '</span>';
-            html += ' <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="' + escapeHtml(proof.signature) + '"></i></td>';
-          } else {
-            html += '<td><span class="text-muted">unsigned</span></td><td><span class="text-muted">-</span></td>';
-          }
-          html += '<td>' + formatSize(proof.size) + '</td>';
-          html += '<td class="text-end"><a class="btn btn-sm btn-primary" href="' + escapeHtml(proof.download_url) + '" rel="nofollow"><i class="fa fa-download me-1"></i>Download</a></td>';
-          html += '</tr>';
-        });
-        html += '</tbody></table></div>';
+        var html = '';
+        if (data.expected_public_input) {
+          var expected = data.expected_public_input;
+          html += '<div class="d-flex flex-wrap align-items-center gap-3 small py-2 mb-2 border-bottom">' +
+            '<span class="text-body-secondary">Payload request root of this block</span>' + hexCell(expected.new_payload_request_root, 12) +
+            '<span class="text-body-secondary">chain ' + expected.chain_id + ' · schema 0x' + expected.schema_id.toString(16) + '</span>' +
+            '<span class="ms-auto text-body-secondary">public input</span>' + hexCell(expected.raw, 8) +
+            '</div>';
+        } else if (data.expected_public_input_error) {
+          html += '<div class="alert alert-warning py-2">Expected public input not available: ' + escapeHtml(data.expected_public_input_error) + '</div>';
+        }
+        proofs.forEach(function(proof) { html += renderProof(data, proof); });
         container.innerHTML = html;
 
         if (window.explorer && window.explorer.initControls) {

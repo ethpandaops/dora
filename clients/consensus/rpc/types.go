@@ -13,28 +13,23 @@ var ErrExecutionProofsUnsupported = errors.New("execution proofs not supported b
 // is unknown to it or, on nodes without the route, that the route does not exist.
 var ErrExecutionProofsNotFound = errors.New("execution proofs not found")
 
-// ExecutionProof is one EIP-8025 execution proof of a block's payload, decoded from a
-// node's execution proofs API.
+// ExecutionProof is one EIP-8025 execution proof of a block's payload as served by a
+// node's execution proofs API: the signed proof envelope.
 type ExecutionProof struct {
 	// ProofType identifies the zkVM+EL combination that produced the proof.
 	ProofType uint8
 	ProofData []byte
-
-	// BeaconBlockRoot is the block whose payload the proof attests. Zero when the node's
-	// API does not bind proofs to a block root (Lodestar's pool API keys them by slot).
+	// BeaconBlockRoot is the block whose payload the proof attests.
 	BeaconBlockRoot phase0.Root
-
-	// Signed is set when the node served the signed envelope; Lodestar's pool API serves
-	// the bare proof message without signer.
-	Signed         bool
+	// ValidatorIndex and Signature identify the prover and its envelope signature.
 	ValidatorIndex uint64
 	Signature      phase0.BLSSignature
 }
 
-// lighthouseExecutionProof is a signed proof envelope as served by
-// GET /eth/v1/beacon/execution_proofs/{block_id} (eth-act Lighthouse). proof_type and
-// validator_index are quoted decimals.
-type lighthouseExecutionProof struct {
+// executionProofEnvelope is a signed proof envelope as served by
+// GET /eth/v1/beacon/execution_proofs/{block_id}. proof_type and validator_index are
+// quoted decimals.
+type executionProofEnvelope struct {
 	Message struct {
 		ProofType       string `json:"proof_type"`
 		ProofData       string `json:"proof_data"`
@@ -42,13 +37,4 @@ type lighthouseExecutionProof struct {
 	} `json:"message"`
 	ValidatorIndex string `json:"validator_index"`
 	Signature      string `json:"signature"`
-}
-
-// lodestarExecutionProof is a bare proof message as served by
-// GET /eth/v1/beacon/pool/execution_proofs?slot= (Lodestar). The public input is the
-// root of the new payload request the proof is for, not a beacon block root.
-type lodestarExecutionProof struct {
-	ProofType   string `json:"proof_type"`
-	ProofData   string `json:"proof_data"`
-	PublicInput string `json:"public_input"`
 }

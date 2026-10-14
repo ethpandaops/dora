@@ -5,8 +5,6 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/stretchr/testify/require"
-
-	"github.com/ethpandaops/dora/clients/consensus/rpc"
 )
 
 func TestExecutionProofCache(t *testing.T) {
@@ -39,11 +37,10 @@ func TestExecutionProofCache(t *testing.T) {
 	require.Equal(t, uint8(5), proofs[1].ProofType)
 	require.Equal(t, uint32(100), proofs[1].DataSize)
 
-	// by-slot proofs (no block root) are only attributed to a block that is alone in its slot
-	entryB := cache.entries[rootB]
-	require.Len(t, cache.convertProofs(entryB, proofApiBySlot, []*rpc.ExecutionProof{testRpcProof(3, phase0.Root{}, 10)}), 1)
-	indexer.blockCache.createOrGetBlock(phase0.Root{0xbb}, 12)
-	require.Empty(t, cache.convertProofs(entryB, proofApiBySlot, []*rpc.ExecutionProof{testRpcProof(3, phase0.Root{}, 10)}))
+	// the signature check outcome travels with the proof
+	require.False(t, entryA.proofs[5].SignatureValid, "no validator set in the test indexer")
+	entryA.proofs[5].SignatureValid = true
+	entryA.proofs[5].ProverActive = true
 
 	// every proof is offered as crash copy once and restores elsewhere
 	entries := cache.collectDirtyEntries()
@@ -57,9 +54,11 @@ func TestExecutionProofCache(t *testing.T) {
 	require.Len(t, restored, 2)
 	require.Equal(t, uint8(5), restored[1].ProofType)
 	require.Equal(t, uint64(5), restored[1].ValidatorIndex)
-	require.True(t, restored[1].Signed)
 	require.Equal(t, byte(5), restored[1].Signature[0])
 	require.Len(t, restored[1].ProofData, 100)
+	require.True(t, restored[1].SignatureValid)
+	require.True(t, restored[1].ProverActive)
+	require.False(t, restored[0].SignatureValid)
 	require.Equal(t, phase0.Slot(10), other.entries[rootA].slot)
 	require.Empty(t, other.collectDirtyEntries(), "restored proofs are not written again")
 

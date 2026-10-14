@@ -465,12 +465,12 @@ func (bc *BeaconClient) GetBlobSidecarsByBlockroot(ctx context.Context, blockroo
 }
 
 // GetExecutionProofsByBlockroot loads the EIP-8025 execution proofs of a block from
-// GET /eth/v1/beacon/execution_proofs/{block_root} (eth-act Lighthouse). Nodes without a
-// proof engine answer 501 (ErrExecutionProofsUnsupported); an unknown block, or a node
-// without the route, answers 404 (ErrExecutionProofsNotFound).
+// GET /eth/v1/beacon/execution_proofs/{block_root}: the signed proof envelopes. Nodes
+// without a proof engine answer 501 (ErrExecutionProofsUnsupported); an unknown block,
+// or a node without the route, answers 404 (ErrExecutionProofsNotFound).
 func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, blockroot []byte) ([]*ExecutionProof, error) {
 	var response struct {
-		Data []lighthouseExecutionProof `json:"data"`
+		Data []executionProofEnvelope `json:"data"`
 	}
 	requrl := fmt.Sprintf("%s/eth/v1/beacon/execution_proofs/0x%x", bc.endpoint, blockroot)
 	if err := bc.getExecutionProofsJSON(ctx, requrl, &response); err != nil {
@@ -497,7 +497,6 @@ func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, block
 		if err != nil || len(signature) != len(proof.Signature) {
 			return nil, fmt.Errorf("invalid proof signature %q", envelope.Signature)
 		}
-		proof.Signed = true
 		proof.ValidatorIndex = validatorIndex
 		copy(proof.Signature[:], signature)
 
@@ -507,34 +506,8 @@ func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, block
 	return proofs, nil
 }
 
-// GetExecutionProofsBySlot loads the EIP-8025 execution proofs pooled for a slot from
-// GET /eth/v1/beacon/pool/execution_proofs?slot= (Lodestar). The pool serves bare proof
-// messages: no signer, and the public input is the new payload request root rather than
-// a beacon block root, so the returned proofs carry neither. A node without the route
-// answers 404 (ErrExecutionProofsNotFound).
-func (bc *BeaconClient) GetExecutionProofsBySlot(ctx context.Context, slot phase0.Slot) ([]*ExecutionProof, error) {
-	var response struct {
-		Data []lodestarExecutionProof `json:"data"`
-	}
-	requrl := fmt.Sprintf("%s/eth/v1/beacon/pool/execution_proofs?slot=%d", bc.endpoint, slot)
-	if err := bc.getExecutionProofsJSON(ctx, requrl, &response); err != nil {
-		return nil, err
-	}
-
-	proofs := make([]*ExecutionProof, 0, len(response.Data))
-	for _, message := range response.Data {
-		proof, err := decodeExecutionProofMessage(message.ProofType, message.ProofData)
-		if err != nil {
-			return nil, err
-		}
-		proofs = append(proofs, proof)
-	}
-
-	return proofs, nil
-}
-
-// getExecutionProofsJSON performs a GET against one of the (non-standard) execution
-// proofs routes and maps the status codes the routes use to typed errors.
+// getExecutionProofsJSON performs a GET against the (non-standard) execution proofs
+// route and maps the status codes it uses to typed errors.
 func (bc *BeaconClient) getExecutionProofsJSON(ctx context.Context, requrl string, returnValue any) error {
 	req, err := nethttp.NewRequestWithContext(ctx, "GET", requrl, nethttp.NoBody)
 	if err != nil {

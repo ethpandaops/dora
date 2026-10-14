@@ -90,7 +90,6 @@ func testRpcProof(proofType uint8, root phase0.Root, size int) *rpc.ExecutionPro
 		ProofType:       proofType,
 		ProofData:       make([]byte, size),
 		BeaconBlockRoot: root,
-		Signed:          true,
 		ValidatorIndex:  uint64(proofType),
 	}
 	proof.Signature[0] = proofType
@@ -106,7 +105,7 @@ func addTestProofs(cache *executionProofCache, root phase0.Root, proofs ...*rpc.
 	defer cache.cacheMutex.Unlock()
 
 	entry := cache.entries[root]
-	cache.addProofsLocked(entry, cache.convertProofs(entry, proofApiByRoot, proofs))
+	cache.addProofsLocked(entry, cache.convertProofs(entry, proofs))
 }
 
 // insertTestUnfinalizedBlock stores a minimal unfinalized block row for a cached block.
