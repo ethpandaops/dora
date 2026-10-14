@@ -121,24 +121,6 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if urlArgs.Has("blob") && pageData.Block != nil {
-		blobIndex, err1 := strconv.ParseUint(urlArgs.Get("blob"), 10, 64)
-		blobData, err2 := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(pageData.Block.BlockRoot), blobIndex)
-		if err1 == nil && err2 == nil && blobData != nil {
-			if int(blobIndex) < len(pageData.Block.Blobs) {
-				blobModel := pageData.Block.Blobs[blobIndex]
-				blobModel.HaveData = true
-				blobModel.Blob = blobData[:]
-				if len(blobModel.Blob) > 512 {
-					blobModel.BlobShort = blobModel.Blob[0:512]
-					blobModel.IsShort = true
-				} else {
-					blobModel.BlobShort = blobModel.Blob
-				}
-			}
-		}
-	}
-
 	template := templates.GetTemplate(slotTemplateFiles...)
 	data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), slotTemplateFiles)
 	data.Data = pageData

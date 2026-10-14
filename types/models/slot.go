@@ -333,10 +333,6 @@ type SlotPageWithdrawal struct {
 type SlotPageBlob struct {
 	Index         uint64 `json:"index"`
 	KzgCommitment []byte `json:"kzg_commitment" ssz-size:"48"`
-	HaveData      bool   `json:"have_data"`
-	IsShort       bool   `json:"is_short"`
-	BlobShort     []byte `json:"blob_short"`
-	Blob          []byte `json:"blob"`
 	KzgProof      []byte `json:"kzg_proof" ssz-size:"48"`
 }
 
