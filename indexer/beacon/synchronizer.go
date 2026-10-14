@@ -31,6 +31,9 @@ type synchronizer struct {
 	stateMutex   sync.Mutex
 	running      bool
 	currentEpoch phase0.Epoch
+	// sync progress before the current run lowered it to re-sync earlier epochs;
+	// restored when the run ends without having synced anything
+	resumeEpoch phase0.Epoch
 
 	cachedSlot   phase0.Slot
 	cachedBlocks map[phase0.Slot]*Block
@@ -81,6 +84,7 @@ func (s *synchronizer) startSync(startEpoch phase0.Epoch) {
 		s.logger.Errorf("cannot start synchronizer: already running")
 		return
 	}
+	s.resumeEpoch = s.currentEpoch
 	if startEpoch < s.currentEpoch {
 		s.currentEpoch = startEpoch
 	}
@@ -130,6 +134,7 @@ func (s *synchronizer) runSync() {
 	s.cachedSlot = 0
 	isComplete := false
 	retryCount := 0
+	syncedEpochs := 0
 
 	s.logger.Infof("synchronization started. head epoch: %v", s.currentEpoch)
 
@@ -176,6 +181,7 @@ func (s *synchronizer) runSync() {
 				s.logger.Errorf("synchronization of epoch %v failed: %v - skipping epoch", syncEpoch, err)
 			}
 			retryCount = 0
+			syncedEpochs++
 			s.stateMutex.Lock()
 			syncEpoch++
 			s.currentEpoch = syncEpoch
@@ -196,6 +202,16 @@ func (s *synchronizer) runSync() {
 	}
 
 	if isComplete {
+		// a run that was started below the stored progress but found nothing to sync
+		// (the indexer's finalization position is not ahead of its start epoch) must not
+		// regress the stored progress, or the next start re-syncs everything above it.
+		s.stateMutex.Lock()
+		if syncedEpochs == 0 && s.currentEpoch < s.resumeEpoch {
+			s.logger.Warnf("synchronization from epoch %v found nothing to sync, keeping sync state at epoch %v", s.currentEpoch, s.resumeEpoch)
+			s.currentEpoch = s.resumeEpoch
+		}
+		s.stateMutex.Unlock()
+
 		s.logger.Infof("synchronization complete. Head epoch: %v", s.currentEpoch)
 		db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			return db.SetExplorerState(s.syncCtx, tx, "indexer.syncstate", &dbtypes.IndexerSyncState{
