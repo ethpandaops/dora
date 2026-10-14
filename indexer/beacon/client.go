@@ -459,6 +459,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	if slot >= finalizedSlot && isNew {
 		c.indexer.blockCache.addBlockToParentMap(block)
 		c.indexer.blockCache.addBlockToExecBlockMap(block)
+		c.indexer.executionProofCache.trackBlock(slot, root)
 
 		// Check for cached execution times and add them to the block
 		blockIndex := block.GetBlockIndex(c.indexer.ctx)

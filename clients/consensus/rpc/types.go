@@ -1,29 +1,54 @@
 package rpc
 
-// ExecutionProof represents a signed cryptographic proof attesting that
-// an execution payload is valid, as returned by the Lighthouse
-// /eth/v1/beacon/execution_proofs/{block_root} endpoint.
+import (
+	"errors"
+
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+)
+
+// ErrExecutionProofsUnsupported is returned when the node has no proof engine (HTTP 501).
+var ErrExecutionProofsUnsupported = errors.New("execution proofs not supported by node")
+
+// ErrExecutionProofsNotFound is returned when the node answers 404, which means the block
+// is unknown to it or, on nodes without the route, that the route does not exist.
+var ErrExecutionProofsNotFound = errors.New("execution proofs not found")
+
+// ExecutionProof is one EIP-8025 execution proof of a block's payload, decoded from a
+// node's execution proofs API.
 type ExecutionProof struct {
-	Message        ExecutionProofMessage `json:"message"`
-	ValidatorIndex string                `json:"validator_index"`
-	Signature      string                `json:"signature"`
+	// ProofType identifies the zkVM+EL combination that produced the proof.
+	ProofType uint8
+	ProofData []byte
+
+	// BeaconBlockRoot is the block whose payload the proof attests. Zero when the node's
+	// API does not bind proofs to a block root (Lodestar's pool API keys them by slot).
+	BeaconBlockRoot phase0.Root
+
+	// Signed is set when the node served the signed envelope; Lodestar's pool API serves
+	// the bare proof message without signer.
+	Signed         bool
+	ValidatorIndex uint64
+	Signature      phase0.BLSSignature
 }
 
-// ExecutionProofMessage is the inner message of an ExecutionProof.
-type ExecutionProofMessage struct {
-	// Which proof type (zkVM+EL combination) this proof belongs to, as a decimal string.
-	ProofType string `json:"proof_type"`
-
-	// Hex-encoded proof bytes (e.g. "0x...").
-	ProofData string `json:"proof_data"`
-
-	// Root of the beacon block whose payload the proof attests.
-	BeaconBlockRoot string `json:"beacon_block_root"`
+// lighthouseExecutionProof is a signed proof envelope as served by
+// GET /eth/v1/beacon/execution_proofs/{block_id} (eth-act Lighthouse). proof_type and
+// validator_index are quoted decimals.
+type lighthouseExecutionProof struct {
+	Message struct {
+		ProofType       string `json:"proof_type"`
+		ProofData       string `json:"proof_data"`
+		BeaconBlockRoot string `json:"beacon_block_root"`
+	} `json:"message"`
+	ValidatorIndex string `json:"validator_index"`
+	Signature      string `json:"signature"`
 }
 
-// ExecutionProofsResponse represents the API response for execution proofs
-type ExecutionProofsResponse struct {
-	Data                []ExecutionProof `json:"data"`
-	ExecutionOptimistic bool             `json:"execution_optimistic"`
-	Finalized           bool             `json:"finalized"`
+// lodestarExecutionProof is a bare proof message as served by
+// GET /eth/v1/beacon/pool/execution_proofs?slot= (Lodestar). The public input is the
+// root of the new payload request the proof is for, not a beacon block root.
+type lodestarExecutionProof struct {
+	ProofType   string `json:"proof_type"`
+	ProofData   string `json:"proof_data"`
+	PublicInput string `json:"public_input"`
 }

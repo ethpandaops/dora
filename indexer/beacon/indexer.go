@@ -40,18 +40,19 @@ type Indexer struct {
 	maxParallelStateCalls uint16
 
 	// caches
-	stateCache         *statecache.StateCache
-	blockCache         *blockCache
-	epochCache         *epochCache
-	forkCache          *forkCache
-	pubkeyCache        *pubkeyCache
-	builderPubkeyCache *pubkeyCache
-	validatorCache     *validatorCache
-	pendingValidators  *pendingValidatorProjector
-	validatorActivity  *validatorActivityCache
-	blockBidCache      *blockBidCache
-	builderCache       *builderCache
-	inclusionListCache *inclusionListCache
+	stateCache          *statecache.StateCache
+	blockCache          *blockCache
+	epochCache          *epochCache
+	forkCache           *forkCache
+	pubkeyCache         *pubkeyCache
+	builderPubkeyCache  *pubkeyCache
+	validatorCache      *validatorCache
+	pendingValidators   *pendingValidatorProjector
+	validatorActivity   *validatorActivityCache
+	blockBidCache       *blockBidCache
+	builderCache        *builderCache
+	inclusionListCache  *inclusionListCache
+	executionProofCache *executionProofCache
 
 	// indexer state
 	clients               []*Client
@@ -131,6 +132,7 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	indexer.blockBidCache = newBlockBidCache(indexer)
 	indexer.builderCache = newBuilderCache(indexer)
 	indexer.inclusionListCache = newInclusionListCache(indexer)
+	indexer.executionProofCache = newExecutionProofCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	badChainRoots := utils.Config.Indexer.BadChainRoots
@@ -447,6 +449,7 @@ func (indexer *Indexer) StartIndexer() {
 
 	// restore block bids from db
 	indexer.blockBidCache.loadFromDB(chainState.CurrentSlot())
+	indexer.executionProofCache.setLiveFromSlot(chainState.CurrentSlot())
 
 	// start indexing for all clients
 	for _, client := range indexer.clients {
@@ -529,6 +532,9 @@ func (indexer *Indexer) runIndexerLoop() {
 			epoch := chainState.EpochOfSlot(currentSlot)
 			slotIndex := chainState.SlotToSlotIndex(currentSlot)
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))
+
+			// request the execution proofs that are due
+			indexer.executionProofCache.processDueFetches(currentSlot)
 
 			// flush old block bids if needed
 			if err := indexer.blockBidCache.checkAndFlush(); err != nil {

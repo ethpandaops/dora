@@ -111,7 +111,6 @@ type SlotPageBlockData struct {
 	BLSChanges                []*SlotPageBLSChange             `json:"bls_changes"`                 // BLSChanges included in this block
 	Withdrawals               []*SlotPageWithdrawal            `json:"withdrawals"`                 // Withdrawals included in this block
 	Blobs                     []*SlotPageBlob                  `json:"blobs"`                       // Blob sidecars included in this block
-	ExecutionProofs           []*SlotPageExecutionProof        `json:"execution_proofs"`            // Execution proofs included in this block
 	Transactions              []*SlotPageTransaction           `json:"transactions"`                // Transactions included in this block
 	DepositRequests           []*SlotPageDepositRequest        `json:"deposit_receipts"`            // DepositRequests included in this block
 	WithdrawalRequests        []*SlotPageWithdrawalRequest     `json:"withdrawal_requests"`         // WithdrawalRequests included in this block
@@ -504,12 +503,25 @@ type SlotPagePtcAggregate struct {
 	VotePercent       float64                `json:"vote_percent"`        // Percentage of committee
 }
 
-type SlotPageExecutionProof struct {
-	ProofId   uint8  `json:"proof_id"`
-	Slot      uint64 `json:"slot"`
-	BlockHash []byte `json:"block_hash"`
-	BlockRoot []byte `json:"block_root"`
-	ProofData []byte `json:"proof_data"`
+// SlotExecutionProofsResponse is the JSON body of the lazy execution proofs tab of
+// the slot page.
+type SlotExecutionProofsResponse struct {
+	Slot      uint64                `json:"slot"`
+	BlockRoot string                `json:"block_root"`
+	Proofs    []*SlotExecutionProof `json:"proofs"`
+}
+
+// SlotExecutionProof is one EIP-8025 execution proof of the block, without the proof
+// bytes (served by DownloadUrl).
+type SlotExecutionProof struct {
+	ProofType      uint8  `json:"proof_type"`
+	ProofName      string `json:"proof_name"`
+	Signed         bool   `json:"signed"`
+	ValidatorIndex uint64 `json:"validator_index"`
+	ValidatorName  string `json:"validator_name"`
+	Signature      string `json:"signature"`
+	Size           uint32 `json:"size"`
+	DownloadUrl    string `json:"download_url"`
 }
 
 // SlotBlockAccessListResponse is the JSON body of the lazy block access list

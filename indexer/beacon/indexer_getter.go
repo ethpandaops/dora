@@ -874,3 +874,14 @@ func (indexer *Indexer) applyBuilderBalanceChanges(block *Block, balances []phas
 		// Gloas onwards, where the payload envelope path above is used instead.
 	}
 }
+
+// GetBlockExecutionProofs returns the execution proofs of a block that the indexer still
+// holds in memory (collected but not flushed to the blockdb yet), in proof type order.
+func (indexer *Indexer) GetBlockExecutionProofs(blockRoot phase0.Root) []*btypes.SlotExecutionProof {
+	return indexer.executionProofCache.getProofs(blockRoot)
+}
+
+// GetBlockExecutionProofCount returns the number of execution proofs known for a block.
+func (indexer *Indexer) GetBlockExecutionProofCount(slot phase0.Slot, blockRoot phase0.Root) uint8 {
+	return indexer.executionProofCache.getProofCount(slot, blockRoot)
+}

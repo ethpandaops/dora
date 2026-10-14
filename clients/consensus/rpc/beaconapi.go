@@ -3,6 +3,7 @@ package rpc
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -463,17 +464,82 @@ func (bc *BeaconClient) GetBlobSidecarsByBlockroot(ctx context.Context, blockroo
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, blockroot []byte) (*ExecutionProofsResponse, error) {
-	// Make a direct HTTP request since this is a custom Lighthouse endpoint
-	// not part of the standard eth2 API
-	url := fmt.Sprintf("%s/eth/v1/beacon/execution_proofs/0x%x", bc.endpoint, blockroot)
-
-	req, err := nethttp.NewRequestWithContext(ctx, "GET", url, nethttp.NoBody)
-	if err != nil {
+// GetExecutionProofsByBlockroot loads the EIP-8025 execution proofs of a block from
+// GET /eth/v1/beacon/execution_proofs/{block_root} (eth-act Lighthouse). Nodes without a
+// proof engine answer 501 (ErrExecutionProofsUnsupported); an unknown block, or a node
+// without the route, answers 404 (ErrExecutionProofsNotFound).
+func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, blockroot []byte) ([]*ExecutionProof, error) {
+	var response struct {
+		Data []lighthouseExecutionProof `json:"data"`
+	}
+	requrl := fmt.Sprintf("%s/eth/v1/beacon/execution_proofs/0x%x", bc.endpoint, blockroot)
+	if err := bc.getExecutionProofsJSON(ctx, requrl, &response); err != nil {
 		return nil, err
 	}
 
-	// Add custom headers
+	proofs := make([]*ExecutionProof, 0, len(response.Data))
+	for _, envelope := range response.Data {
+		proof, err := decodeExecutionProofMessage(envelope.Message.ProofType, envelope.Message.ProofData)
+		if err != nil {
+			return nil, err
+		}
+		root, err := decodeHexBytes(envelope.Message.BeaconBlockRoot)
+		if err != nil || len(root) != len(proof.BeaconBlockRoot) {
+			return nil, fmt.Errorf("invalid beacon block root %q", envelope.Message.BeaconBlockRoot)
+		}
+		copy(proof.BeaconBlockRoot[:], root)
+
+		validatorIndex, err := strconv.ParseUint(envelope.ValidatorIndex, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid validator index %q: %w", envelope.ValidatorIndex, err)
+		}
+		signature, err := decodeHexBytes(envelope.Signature)
+		if err != nil || len(signature) != len(proof.Signature) {
+			return nil, fmt.Errorf("invalid proof signature %q", envelope.Signature)
+		}
+		proof.Signed = true
+		proof.ValidatorIndex = validatorIndex
+		copy(proof.Signature[:], signature)
+
+		proofs = append(proofs, proof)
+	}
+
+	return proofs, nil
+}
+
+// GetExecutionProofsBySlot loads the EIP-8025 execution proofs pooled for a slot from
+// GET /eth/v1/beacon/pool/execution_proofs?slot= (Lodestar). The pool serves bare proof
+// messages: no signer, and the public input is the new payload request root rather than
+// a beacon block root, so the returned proofs carry neither. A node without the route
+// answers 404 (ErrExecutionProofsNotFound).
+func (bc *BeaconClient) GetExecutionProofsBySlot(ctx context.Context, slot phase0.Slot) ([]*ExecutionProof, error) {
+	var response struct {
+		Data []lodestarExecutionProof `json:"data"`
+	}
+	requrl := fmt.Sprintf("%s/eth/v1/beacon/pool/execution_proofs?slot=%d", bc.endpoint, slot)
+	if err := bc.getExecutionProofsJSON(ctx, requrl, &response); err != nil {
+		return nil, err
+	}
+
+	proofs := make([]*ExecutionProof, 0, len(response.Data))
+	for _, message := range response.Data {
+		proof, err := decodeExecutionProofMessage(message.ProofType, message.ProofData)
+		if err != nil {
+			return nil, err
+		}
+		proofs = append(proofs, proof)
+	}
+
+	return proofs, nil
+}
+
+// getExecutionProofsJSON performs a GET against one of the (non-standard) execution
+// proofs routes and maps the status codes the routes use to typed errors.
+func (bc *BeaconClient) getExecutionProofsJSON(ctx context.Context, requrl string, returnValue any) error {
+	req, err := nethttp.NewRequestWithContext(ctx, "GET", requrl, nethttp.NoBody)
+	if err != nil {
+		return err
+	}
 	for headerKey, headerVal := range bc.headers {
 		req.Header.Set(headerKey, headerVal)
 	}
@@ -482,29 +548,48 @@ func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, block
 	client := &nethttp.Client{Timeout: time.Second * 300}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != nethttp.StatusOK {
-		// If endpoint doesn't exist, the block is unknown, or the node runs no proof engine, return empty response
-		if resp.StatusCode == nethttp.StatusNotFound || resp.StatusCode == nethttp.StatusNotImplemented {
-			return &ExecutionProofsResponse{
-				Data:                []ExecutionProof{},
-				ExecutionOptimistic: false,
-				Finalized:           false,
-			}, nil
-		}
+	switch resp.StatusCode {
+	case nethttp.StatusOK:
+	case nethttp.StatusNotFound:
+		return ErrExecutionProofsNotFound
+	case nethttp.StatusNotImplemented:
+		return ErrExecutionProofsUnsupported
+	default:
 		data, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("url: %v, status: %d, error: %s", url, resp.StatusCode, data)
+		return fmt.Errorf("url: %v, status: %d, error: %s", getRedactedURL(requrl), resp.StatusCode, data)
 	}
 
-	var response ExecutionProofsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("error parsing json response: %v", err)
+	if err := json.NewDecoder(resp.Body).Decode(returnValue); err != nil {
+		return fmt.Errorf("error parsing json response: %v", err)
 	}
 
-	return &response, nil
+	return nil
+}
+
+// decodeExecutionProofMessage decodes the proof fields shared by both API shapes.
+func decodeExecutionProofMessage(proofType string, proofData string) (*ExecutionProof, error) {
+	proofTypeNum, err := strconv.ParseUint(proofType, 10, 8)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proof type %q: %w", proofType, err)
+	}
+	data, err := decodeHexBytes(proofData)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proof data: %w", err)
+	}
+
+	return &ExecutionProof{
+		ProofType: uint8(proofTypeNum),
+		ProofData: data,
+	}, nil
+}
+
+// decodeHexBytes decodes a 0x-prefixed hex string.
+func decodeHexBytes(value string) ([]byte, error) {
+	return hex.DecodeString(strings.TrimPrefix(value, "0x"))
 }
 
 func (bc *BeaconClient) GetBlobsByBlockroot(ctx context.Context, blockroot []byte) ([]*deneb.Blob, error) {

@@ -119,6 +119,14 @@ indexer:
   # maximum number of parallel beacon state requests (might cause high memory usage)
   maxParallelValidatorSetRequests: 1
 
+  # collection of EIP-8025 execution proofs from the beacon nodes (requires a blockDb).
+  # the proofs of each block are requested from proof-capable nodes a few slots after
+  # the block and stored with the slot's meta object.
+  #executionProofs:
+  #  disabled: false
+  #  fetchDelaySlots: 2     # slots after a block before its proofs are first requested
+  #  retryIntervalSlots: 2  # slots between two requests for the same block
+
 executionIndexer:
   enabled: false # enable execution data indexing
   retention: 4368h # 4368 hours = 6 months

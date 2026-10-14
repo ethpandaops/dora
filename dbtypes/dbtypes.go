@@ -97,6 +97,7 @@ type Slot struct {
 	BuilderPaymentPercent float32       `db:"builder_payment_percent"` // Gloas: BuilderPaymentWeight as % of the per-slot quorum base (total active balance / slots-per-epoch)
 	IlCount               int16         `db:"il_count"`                // Heze: number of inclusion lists published in this slot
 	IlUnsatisfied         int16         `db:"il_unsatisfied"`          // Heze: transactions of the previous slot's inclusion lists this block's payload left unsatisfied; -1 if not evaluated
+	ProofCount            int16         `db:"proof_count"`             // EIP-8025: number of execution proofs collected for this block
 }
 
 type Epoch struct {

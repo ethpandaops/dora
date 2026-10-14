@@ -1,81 +1,89 @@
 {{ define "block_proofs" }}
-  {{ if gt (len .Block.ExecutionProofs) 0 }}
-    {{ range $i, $proof := .Block.ExecutionProofs }}
-      <div class="card my-2">
-        <div class="card-body px-0 py-1">
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-12 text-center"><b>Execution Proof {{ $proof.ProofId }}</b></div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Type ID">Proof ID:</span></div>
-            <div class="col-md-10">
-              {{ $proof.ProofId }}
-              <span class="text-muted ms-2">
-                {{ if eq $proof.ProofId 1 }}(OpenVM+Ethrex)
-                {{ else if eq $proof.ProofId 2 }}(SP1+Ethrex)
-                {{ else if eq $proof.ProofId 3 }}(Zisk+Ethrex)
-                {{ else if eq $proof.ProofId 4 }}(OpenVM+Reth)
-                {{ else if eq $proof.ProofId 5 }}(SP1+Reth)
-                {{ else if eq $proof.ProofId 6 }}(Zisk+Reth)
-                {{ else if eq $proof.ProofId 7 }}(Zisk+Zesu)
-                {{ else }}(zkVM+EL #{{ $proof.ProofId }})
-                {{ end }}
-              </span>
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Slot Number">Slot:</span></div>
-            <div class="col-md-10">
-              {{ $proof.Slot }}
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Execution Block Hash">Block Hash:</span></div>
-            <div class="col-md-10 text-monospace">
-              0x{{ printf "%x" $proof.BlockHash }}
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.BlockHash }}"></i>
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Beacon Block Root">Block Root:</span></div>
-            <div class="col-md-10 text-monospace">
-              0x{{ printf "%x" $proof.BlockRoot }}
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.BlockRoot }}"></i>
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Data Size">Proof Size:</span></div>
-            <div class="col-md-10">
-              {{ len $proof.ProofData }} bytes
-              {{ if gt (len $proof.ProofData) 1024 }}
-                ({{ printf "%.2f" (div (float64 (len $proof.ProofData)) 1024.0) }} KB)
-              {{ end }}
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Data (truncated)">Proof Data:</span></div>
-            <div class="col-md-10 text-monospace" style="word-break: break-all;">
-              {{ if gt (len $proof.ProofData) 128 }}
-                0x{{ printf "%x" (slice $proof.ProofData 0 128) }}...
-              {{ else }}
-                0x{{ printf "%x" $proof.ProofData }}
-              {{ end }}
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.ProofData }}"></i>
-            </div>
-          </div>
-        </div>
+  <div id="proofsContent" class="px-2 pb-2">
+    <div class="text-center py-4">
+      <div class="spinner-border spinner-border-sm text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
       </div>
-    {{ end }}
-  {{ else }}
-    <div class="card my-2">
-      <div class="card-body px-0 py-1">
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-12 text-center">
-            <p class="text-muted my-3">No execution proofs available for this block.</p>
-            <p class="text-muted small">Execution proofs are cryptographic proofs that validate the execution payload was computed correctly by a specific zkVM+EL combination.</p>
-          </div>
-        </div>
-      </div>
+      <span class="ms-2 text-muted">Loading execution proofs…</span>
     </div>
-  {{ end }}
+  </div>
+  <script type="text/javascript">
+    (function() {
+      var blockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
+      var container = document.getElementById('proofsContent');
+      var loaded = false;
+
+      function escapeHtml(text) {
+        return String(text == null ? '' : text).replace(/[&<>"']/g, function(c) {
+          return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+      }
+      function shortHex(hex, chars) {
+        if (!hex || hex.length <= 2 + 2 * chars) return hex || '';
+        return hex.substring(0, 2 + chars) + '…' + hex.substring(hex.length - chars);
+      }
+      function formatSize(bytes) {
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MiB';
+        if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' KiB';
+        return bytes + ' bytes';
+      }
+      function validatorLabel(index, name) {
+        var label = name ? escapeHtml(name) + ' (' + index + ')' : index;
+        return '<a href="/validator/' + index + '">' + label + '</a>';
+      }
+
+      function render(data) {
+        var proofs = data.proofs || [];
+        if (proofs.length === 0) {
+          container.innerHTML = '<div class="text-center py-4 text-muted">No execution proofs collected for this block.</div>';
+          return;
+        }
+
+        var html = '<div class="table-responsive"><table class="table table-nobr mb-0">';
+        html += '<thead><tr><th>Proof Type</th><th>Prover</th><th>Signature</th><th>Size</th><th></th></tr></thead><tbody>';
+        proofs.forEach(function(proof) {
+          html += '<tr>';
+          html += '<td><span class="badge bg-secondary me-2">' + proof.proof_type + '</span>' + escapeHtml(proof.proof_name) + '</td>';
+          if (proof.signed) {
+            html += '<td>' + validatorLabel(proof.validator_index, proof.validator_name) + '</td>';
+            html += '<td><span class="font-monospace">' + escapeHtml(shortHex(proof.signature, 8)) + '</span>';
+            html += ' <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="' + escapeHtml(proof.signature) + '"></i></td>';
+          } else {
+            html += '<td><span class="text-muted">unsigned</span></td><td><span class="text-muted">-</span></td>';
+          }
+          html += '<td>' + formatSize(proof.size) + '</td>';
+          html += '<td class="text-end"><a class="btn btn-sm btn-primary" href="' + escapeHtml(proof.download_url) + '" rel="nofollow"><i class="fa fa-download me-1"></i>Download</a></td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+        if (window.explorer && window.explorer.initControls) {
+          window.explorer.initControls();
+        }
+      }
+
+      function load() {
+        if (loaded) return;
+        loaded = true;
+
+        fetch('/slot/' + blockRoot + '/proofs')
+          .then(function(r) {
+            if (!r.ok) throw new Error('request failed');
+            return r.json();
+          })
+          .then(render)
+          .catch(function() {
+            loaded = false;
+            container.innerHTML = '<div class="alert alert-danger m-2">Failed to load execution proofs</div>';
+          });
+      }
+
+      var tab = document.getElementById('proofs-tab');
+      if (tab) tab.addEventListener('shown.bs.tab', load);
+      if ((window.location.hash || window.__doraInitialHash || '') === '#proofs') {
+        load();
+      }
+    })();
+  </script>
 {{ end }}

@@ -470,6 +470,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		EthBidValue:           bidValue,
 		IlCount:               dbw.indexer.inclusionListCache.getListCount(block.Slot),
 		IlUnsatisfied:         dbw.indexer.inclusionListCache.getUnsatisfied(block.Slot, block.Root),
+		ProofCount:            int16(dbw.indexer.executionProofCache.getProofCount(block.Slot, block.Root)),
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)

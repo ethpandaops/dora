@@ -143,6 +143,18 @@ type Config struct {
 			Path      string `yaml:"path" envconfig:"INDEXER_STATE_CACHE_PATH"`
 			MaxStates uint   `yaml:"maxStates" envconfig:"INDEXER_STATE_CACHE_MAX_STATES"`
 		} `yaml:"stateCache"`
+
+		// ExecutionProofs configures the collection of EIP-8025 execution proofs from the
+		// beacon nodes into the blockdb meta objects.
+		ExecutionProofs struct {
+			Disabled bool `yaml:"disabled" envconfig:"INDEXER_EXECUTION_PROOFS_DISABLED"`
+			// FetchDelaySlots is the number of slots after a block's slot before its proofs
+			// are requested for the first time (default 2).
+			FetchDelaySlots uint64 `yaml:"fetchDelaySlots" envconfig:"INDEXER_EXECUTION_PROOFS_FETCH_DELAY_SLOTS"`
+			// RetryIntervalSlots is the number of slots between two requests for the proofs
+			// of the same block (default 2).
+			RetryIntervalSlots uint64 `yaml:"retryIntervalSlots" envconfig:"INDEXER_EXECUTION_PROOFS_RETRY_INTERVAL_SLOTS"`
+		} `yaml:"executionProofs"`
 	} `yaml:"indexer"`
 
 	TxSignature struct {
