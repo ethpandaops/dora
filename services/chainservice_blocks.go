@@ -1062,6 +1062,45 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 		}
 	}
 
+	// point lookups can only match a known set of slots, so narrow the cache scan to
+	// those instead of walking the whole unfinalized window per call. A lookup that
+	// cannot match any cached block skips the scan and is left to the db query.
+	skipCacheScan := false
+	narrowCacheRange := func(minSlot, maxSlot phase0.Slot) {
+		if maxSlot < cacheStartSlot {
+			cacheStartSlot = maxSlot
+		}
+		if minSlot > cacheFinalizedSlot {
+			cacheFinalizedSlot = minSlot
+		}
+	}
+	if filter.Slot != nil {
+		narrowCacheRange(phase0.Slot(*filter.Slot), phase0.Slot(*filter.Slot))
+	}
+	if len(filter.BlockRoot) > 0 {
+		if len(filter.BlockRoot) != 32 {
+			skipCacheScan = true
+		} else if block := bs.beaconIndexer.GetBlockByRoot(phase0.Root(filter.BlockRoot)); block != nil {
+			narrowCacheRange(block.Slot, block.Slot)
+		} else {
+			skipCacheScan = true
+		}
+	}
+	if len(filter.BlockUids) > 0 {
+		// the slot is the upper 48 bits of the block uid (see blockCache.createOrGetBlock)
+		minUidSlot, maxUidSlot := phase0.Slot(math.MaxUint64), phase0.Slot(0)
+		for _, blockUid := range filter.BlockUids {
+			uidSlot := phase0.Slot(blockUid >> 16)
+			minUidSlot = min(minUidSlot, uidSlot)
+			maxUidSlot = max(maxUidSlot, uidSlot)
+		}
+		narrowCacheRange(minUidSlot, maxUidSlot)
+	}
+	if skipCacheScan {
+		// start below end: the scan loop does not run
+		cacheStartSlot, cacheFinalizedSlot = 0, 1
+	}
+
 	for slotIdx := int64(cacheStartSlot); slotIdx >= int64(cacheFinalizedSlot); slotIdx-- {
 		slot := phase0.Slot(slotIdx)
 		blocks := bs.beaconIndexer.GetBlocksBySlot(slot)

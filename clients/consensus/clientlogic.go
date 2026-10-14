@@ -378,7 +378,12 @@ func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Roo
 	client.finalizedRoot = finalizedCheckpoints.Finalized.Root
 	client.headMutex.Unlock()
 
-	client.pool.chainState.setFinalizedCheckpoint(finalizedCheckpoints)
+	// a node that is still syncing reports the checkpoint it has reached, not the
+	// chain's - as low as epoch 0 when syncing from genesis. The pool's checkpoint
+	// seeds the indexer's finalization position, so only synced nodes may set it.
+	if !client.isSyncing {
+		client.pool.chainState.setFinalizedCheckpoint(finalizedCheckpoints)
+	}
 	client.checkpointDispatcher.Fire(finalizedCheckpoints)
 
 	return finalizedCheckpoints.Finalized.Root, nil

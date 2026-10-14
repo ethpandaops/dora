@@ -338,17 +338,23 @@ func (cs *ChainService) StartService() error {
 		cs.logger.Warnf("Reset explorer synchronization status to epoch %v as configured! Please remove this setting again.", *utils.Config.Indexer.ResyncFromEpoch)
 	}
 
-	// await beacon pool readiness
+	// await beacon pool readiness. The indexer seeds its finalization position from the
+	// pool's finality checkpoint, so besides the chain specs a finality report from at
+	// least one client is required - without it the indexer would start at epoch 0.
 	lastLog := time.Now()
 	chainState := cs.consensusPool.GetChainState()
 	for {
 		specs := chainState.GetSpecs()
-		if specs != nil {
+		if specs != nil && chainState.HasFinalityCheckpoint() {
 			break
 		}
 
 		if time.Since(lastLog) > 10*time.Second {
-			cs.logger.Warnf("still waiting for chain specs... need at least 1 consensus client to load chain specs from.")
+			if specs == nil {
+				cs.logger.Warnf("still waiting for chain specs... need at least 1 consensus client to load chain specs from.")
+			} else {
+				cs.logger.Warnf("still waiting for finality checkpoint... need at least 1 synced consensus client to load the finality checkpoint from.")
+			}
 			lastLog = time.Now()
 		}
 
