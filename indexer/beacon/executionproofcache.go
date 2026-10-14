@@ -35,6 +35,9 @@ const (
 	// proofApiRecheckEpochs is how long a client that answered the proofs route with
 	// 404/501 is not asked again.
 	proofApiRecheckEpochs = 1
+	// verifierSetupRetryInterval is how long a failed verifier setup is not
+	// retried; the proofs stay unverified meanwhile.
+	verifierSetupRetryInterval = time.Minute
 	// proofItemHeaderSize is the size of the fixed crash copy item header: flags,
 	// proof type, validator index, signature, verification outcome and the
 	// verifier name length; the verifier name and the proof bytes follow.
@@ -59,14 +62,22 @@ type proofFetchEntry struct {
 	root      phase0.Root
 	nextFetch phase0.Slot
 	fetching  bool
+	// verifying is set while the proofs that waited for the block's payload are
+	// verified in the background.
+	verifying bool
 	// preferredClient served proofs for this block before and is asked first.
 	preferredClient string
 	proofs          map[uint8]*btypes.SlotExecutionProof
 	// dirty holds the proof types not written as crash copy yet.
 	dirty map[uint8]bool
 	// unverified holds the proof types whose verification waits for the block's
-	// payload envelope.
+	// payload envelope or the verifiers.
 	unverified map[uint8]bool
+}
+
+// busy tells whether a request or verification of the entry is in flight.
+func (entry *proofFetchEntry) busy() bool {
+	return entry.fetching || entry.verifying
 }
 
 // executionProofCache collects the EIP-8025 execution proofs of recent blocks from the
@@ -89,9 +100,11 @@ type executionProofCache struct {
 	fetchSem      chan struct{}
 
 	// verifiers runs the embedded zkVM verifiers, created on the first proof;
-	// nil when verification is disabled.
+	// nil while verification is disabled or the setup failed (retried after
+	// verifierSetupRetryInterval).
 	verifiers            *verifiers.Verifiers
-	verifiersOnce        sync.Once
+	verifiersMutex       sync.Mutex
+	verifiersRetryAt     time.Time
 	verificationDisabled bool
 	verifierCacheDir     string
 
@@ -127,32 +140,41 @@ func newExecutionProofCache(indexer *Indexer) *executionProofCache {
 }
 
 // getVerifiers returns the zkVM verifiers, created on first use; nil when
-// verification is disabled or the verifiers cannot be set up.
+// verification is disabled or the verifiers cannot be set up right now.
 func (cache *executionProofCache) getVerifiers() *verifiers.Verifiers {
 	if cache.verificationDisabled {
 		return nil
 	}
 
-	cache.verifiersOnce.Do(func() {
-		cacheDir := cache.verifierCacheDir
-		if cacheDir == "" {
-			// a well-known dir: shared by the instances on a host and picked up
-			// again after a restart
-			cacheDir = filepath.Join(os.TempDir(), "dora-verifiers")
-		}
-		proofVerifiers, err := verifiers.New(cache.indexer.ctx, cacheDir)
-		if err != nil {
-			cache.indexer.logger.WithError(err).Warnf("execution proof verification disabled")
-			return
-		}
-		cache.verifiers = proofVerifiers
-	})
+	cache.verifiersMutex.Lock()
+	defer cache.verifiersMutex.Unlock()
+
+	if cache.verifiers != nil || time.Now().Before(cache.verifiersRetryAt) {
+		return cache.verifiers
+	}
+
+	cacheDir := cache.verifierCacheDir
+	if cacheDir == "" {
+		// a well-known dir: shared by the instances on a host and picked up
+		// again after a restart
+		cacheDir = filepath.Join(os.TempDir(), "dora-verifiers")
+	}
+	proofVerifiers, err := verifiers.New(cache.indexer.ctx, cacheDir)
+	if err != nil {
+		cache.verifiersRetryAt = time.Now().Add(verifierSetupRetryInterval)
+		cache.indexer.logger.WithError(err).Warnf("execution proof verifiers not available, retrying in %s", verifierSetupRetryInterval)
+		return nil
+	}
+	cache.verifiers = proofVerifiers
 
 	return cache.verifiers
 }
 
 // close releases the verifiers.
 func (cache *executionProofCache) close() {
+	cache.verifiersMutex.Lock()
+	defer cache.verifiersMutex.Unlock()
+
 	if cache.verifiers != nil {
 		if err := cache.verifiers.Close(cache.indexer.ctx); err != nil {
 			cache.indexer.logger.WithError(err).Warnf("error closing execution proof verifiers")
@@ -223,8 +245,10 @@ func (cache *executionProofCache) slotBounds() (minSlot phase0.Slot, maxSlot pha
 }
 
 // processDueFetches starts the proof requests that are due at the current slot
-// and retries the verifications that waited for a block's payload. Requests
-// run in the background, bounded by the fetch semaphore.
+// and the verifications that waited for a block's payload or the verifiers.
+// Both run in the background, bounded by the fetch semaphore. A request only
+// checks proof types the block does not hold yet and a verification only the
+// held ones, so both may run for the same block.
 func (cache *executionProofCache) processDueFetches(currentSlot phase0.Slot) {
 	if cache.disabled {
 		return
@@ -234,7 +258,8 @@ func (cache *executionProofCache) processDueFetches(currentSlot phase0.Slot) {
 	due := make([]*proofFetchEntry, 0, 8)
 	pending := make([]*proofFetchEntry, 0, 4)
 	for _, entry := range cache.entries {
-		if len(entry.unverified) > 0 && !entry.fetching {
+		if len(entry.unverified) > 0 && !entry.verifying {
+			entry.verifying = true
 			pending = append(pending, entry)
 		}
 		if entry.fetching || entry.nextFetch > currentSlot {
@@ -250,13 +275,28 @@ func (cache *executionProofCache) processDueFetches(currentSlot phase0.Slot) {
 		go cache.fetchEntry(entry)
 	}
 	for _, entry := range pending {
-		cache.verifyPending(entry)
+		go cache.verifyPending(entry)
 	}
 }
 
 // verifyPending verifies the proofs of an entry whose verification waited for
-// the block's payload envelope.
+// the block's payload envelope or the verifiers.
 func (cache *executionProofCache) verifyPending(entry *proofFetchEntry) {
+	defer utils.HandleSubroutinePanic("indexer.beacon.executionProofCache.verifyPending", nil)
+
+	defer func() {
+		cache.cacheMutex.Lock()
+		entry.verifying = false
+		cache.cacheMutex.Unlock()
+	}()
+
+	select {
+	case cache.fetchSem <- struct{}{}:
+	case <-cache.indexer.ctx.Done():
+		return
+	}
+	defer func() { <-cache.fetchSem }()
+
 	cache.cacheMutex.RLock()
 	proofs := make([]*btypes.SlotExecutionProof, 0, len(entry.unverified))
 	for proofType := range entry.unverified {
@@ -274,6 +314,12 @@ func (cache *executionProofCache) verifyPending(entry *proofFetchEntry) {
 func (cache *executionProofCache) fetchEntry(entry *proofFetchEntry) {
 	defer utils.HandleSubroutinePanic("indexer.beacon.executionProofCache.fetchEntry", nil)
 
+	defer func() {
+		cache.cacheMutex.Lock()
+		entry.fetching = false
+		cache.cacheMutex.Unlock()
+	}()
+
 	select {
 	case cache.fetchSem <- struct{}{}:
 	case <-cache.indexer.ctx.Done():
@@ -281,98 +327,156 @@ func (cache *executionProofCache) fetchEntry(entry *proofFetchEntry) {
 	}
 	defer func() { <-cache.fetchSem }()
 
-	defer func() {
-		cache.cacheMutex.Lock()
-		entry.fetching = false
-		cache.cacheMutex.Unlock()
-	}()
-
 	proofs, clientName := cache.loadProofs(entry)
 	if len(proofs) == 0 {
 		return
 	}
-	cache.checkSignatures(entry, proofs)
-	cache.verifyProofs(entry, proofs)
+
+	// a proof type the entry holds already (collected before, or restored from
+	// the crash copy) keeps its proof and verdict: only the first proof of each
+	// new type is checked and added
+	cache.cacheMutex.Lock()
+	entry.preferredClient = clientName
+	fresh := make([]*btypes.SlotExecutionProof, 0, len(proofs))
+	seen := make(map[uint8]bool, len(proofs))
+	for _, proof := range proofs {
+		if entry.proofs[proof.ProofType] == nil && !seen[proof.ProofType] {
+			seen[proof.ProofType] = true
+			fresh = append(fresh, proof)
+		}
+	}
+	cache.cacheMutex.Unlock()
+	if len(fresh) == 0 {
+		return
+	}
+
+	cache.checkSignatures(entry, fresh)
+	cache.verifyProofs(entry, fresh)
 
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	entry.preferredClient = clientName
-	cache.addProofsLocked(entry, proofs)
+	cache.addProofsLocked(entry, fresh)
+}
+
+// proofVerdict is the outcome of verifying one proof, applied to the entry
+// under the lock once the batch is verified.
+type proofVerdict struct {
+	proof      *btypes.SlotExecutionProof
+	status     verifiers.Status
+	generation string
+	// pending is set when the verification could not run yet (the block's
+	// payload envelope is unknown, the verifiers are not available); it is
+	// retried on a later slot tick.
+	pending bool
 }
 
 // verifyProofs verifies proofs with the embedded zkVM verifiers against the
 // public input the block's payload expects and records the outcome on the
 // proofs. The check is done once here; the result is persisted with the proof.
-// A proof of a block whose payload envelope is not known yet stays unverified
-// and is retried on the next slot tick.
+// The verifiers run without the cache lock. A proof whose verification cannot
+// run yet (the block's payload envelope is not known, the verifiers are not
+// available) stays unverified and is retried on a later slot tick.
 func (cache *executionProofCache) verifyProofs(entry *proofFetchEntry, proofs []*btypes.SlotExecutionProof) {
-	proofVerifiers := cache.getVerifiers()
-	if proofVerifiers == nil || len(proofs) == 0 {
+	if cache.verificationDisabled || len(proofs) == 0 {
 		return
 	}
 
-	expected, ok := cache.expectedPublicInput(entry)
+	proofVerifiers := cache.getVerifiers()
+	var expected *executionproof.PublicInput
+	var expectedErr error
+	if proofVerifiers != nil {
+		expected, expectedErr = cache.expectedPublicInput(entry)
+		if expectedErr != nil && !errors.Is(expectedErr, errPayloadPending) {
+			cache.indexer.logger.Debugf("execution proofs of block 0x%x not verifiable: %v", entry.root[:], expectedErr)
+		}
+	}
+
+	verdicts := make([]proofVerdict, 0, len(proofs))
+	for _, proof := range proofs {
+		verdict := proofVerdict{proof: proof}
+		proofType := executionproof.Lookup(proof.ProofType)
+		switch {
+		case proofType == nil:
+			verdict.status = verifiers.StatusUnverifiable
+		case proofVerifiers == nil || errors.Is(expectedErr, errPayloadPending):
+			verdict.pending = true
+		case expectedErr != nil:
+			verdict.status = verifiers.StatusUnverifiable
+		default:
+			result, err := proofVerifiers.Verify(cache.indexer.ctx, proofType.ZkVM, proofType.ProgramVK, proof.ProofData)
+			if err != nil {
+				// the verifier could not run; not a verdict on the proof
+				cache.indexer.logger.WithError(err).Warnf("error verifying execution proof type %d of block 0x%x", proof.ProofType, entry.root[:])
+				verdict.pending = true
+				break
+			}
+			if result.Status == verifiers.StatusValid {
+				// a valid proof of another payload is not a proof of this block
+				if committed, err := executionproof.PublicInputFromPublicValues(proofType.ZkVM, result.PublicValues); err != nil || *committed != *expected {
+					result.Status = verifiers.StatusInvalid
+				}
+			}
+			verdict.status = result.Status
+			verdict.generation = result.Generation
+		}
+		verdicts = append(verdicts, verdict)
+	}
 
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	for _, proof := range proofs {
-		proofType := executionproof.Lookup(proof.ProofType)
-		if proofType == nil {
-			proof.Verification = uint8(verifiers.StatusUnverifiable)
-			delete(entry.unverified, proof.ProofType)
+	for _, verdict := range verdicts {
+		proofType := verdict.proof.ProofType
+		if verdict.pending {
+			entry.unverified[proofType] = true
 			continue
 		}
-		if !ok {
-			entry.unverified[proof.ProofType] = true
-			continue
-		}
-
-		result := proofVerifiers.Verify(cache.indexer.ctx, proofType.ZkVM, proofType.ProgramVK, proof.ProofData)
-		if result.Status == verifiers.StatusValid {
-			// a valid proof of another payload is not a proof of this block
-			if committed, err := executionproof.PublicInputFromPublicValues(proofType.ZkVM, result.PublicValues); err != nil || *committed != *expected {
-				result.Status = verifiers.StatusInvalid
-			}
-		}
-		proof.Verification = uint8(result.Status)
-		proof.Verifier = result.Generation
-		delete(entry.unverified, proof.ProofType)
-		entry.dirty[proof.ProofType] = true
+		verdict.proof.Verification = uint8(verdict.status)
+		verdict.proof.Verifier = verdict.generation
+		delete(entry.unverified, proofType)
+		entry.dirty[proofType] = true
 	}
 }
 
+// errPayloadPending is returned by expectedPublicInput while the block's
+// payload envelope is not known.
+var errPayloadPending = errors.New("payload envelope not known yet")
+
 // expectedPublicInput derives the public input a valid proof of the entry's
-// block commits to. ok is false while the block's payload envelope is unknown.
-func (cache *executionProofCache) expectedPublicInput(entry *proofFetchEntry) (*executionproof.PublicInput, bool) {
+// block commits to. errPayloadPending is returned while the block's payload
+// envelope is unknown; any other error means the block's proofs cannot be
+// verified.
+func (cache *executionProofCache) expectedPublicInput(entry *proofFetchEntry) (*executionproof.PublicInput, error) {
 	block := cache.indexer.blockCache.getBlockByRoot(entry.root)
 	if block == nil {
-		return nil, false
+		return nil, errPayloadPending
 	}
 	body := block.GetBlock(cache.indexer.ctx)
 	envelope := block.GetExecutionPayload(cache.indexer.ctx)
 	if body == nil || envelope == nil {
-		return nil, false
+		return nil, errPayloadPending
 	}
 
+	schemaID, ok := executionproof.SchemaIDForFork(body.Version)
+	if !ok {
+		return nil, fmt.Errorf("no stateless input schema assigned to the %s fork", body.Version)
+	}
 	request, err := executionproof.BlockNewPayloadRequest(body, envelope)
 	if err != nil {
-		cache.indexer.logger.Debugf("execution proofs of block 0x%x not verifiable: %v", entry.root[:], err)
-		return nil, false
+		return nil, err
 	}
 	root, err := request.Root(cache.indexer.dynSsz)
 	if err != nil {
-		cache.indexer.logger.Warnf("new payload request root of block 0x%x: %v", entry.root[:], err)
-		return nil, false
+		return nil, fmt.Errorf("new payload request root: %w", err)
 	}
 
 	return &executionproof.PublicInput{
 		NewPayloadRequestRoot: root,
 		SuccessfulValidation:  true,
 		ChainID:               cache.indexer.consensusPool.GetChainState().GetSpecs().DepositChainId,
-		SchemaID:              executionproof.SchemaID,
-	}, true
+		SchemaID:              schemaID,
+	}, nil
 }
 
 // checkSignatures verifies the prover signatures of the proofs against the
@@ -649,6 +753,11 @@ func (cache *executionProofCache) restoreEntry(entry *dbtypes.UnfinalizedMetadat
 	cached := cache.trackBlockLocked(phase0.Slot(entry.Slot), root)
 	if cached.proofs[proof.ProofType] == nil {
 		cached.proofs[proof.ProofType] = proof
+		// a proof whose verification had not run before the restart is verified
+		// on the next slot tick
+		if proof.Verification == uint8(verifiers.StatusUnknown) && !cache.verificationDisabled {
+			cached.unverified[proof.ProofType] = true
+		}
 	}
 
 	return nil
@@ -659,9 +768,9 @@ func (cache *executionProofCache) restoreEntry(entry *dbtypes.UnfinalizedMetadat
 // proofs of the dropped slots are returned as meta objects by slot if
 // withObjects is set (a blockdb takes them), together with the blocks whose
 // metadata changed and the slots no entry remains for. A block with a request
-// in flight is left for the next flush unless includeFetching is set (shutdown),
-// so the request's result is not lost.
-func (cache *executionProofCache) dropBefore(cutoffSlot phase0.Slot, includeFetching bool, withObjects bool) (map[uint64]*btypes.SlotMeta, []*Block, []uint64) {
+// or verification in flight is left for the next flush unless includeBusy is
+// set (shutdown), so its result is not lost.
+func (cache *executionProofCache) dropBefore(cutoffSlot phase0.Slot, includeBusy bool, withObjects bool) (map[uint64]*btypes.SlotMeta, []*Block, []uint64) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
@@ -672,7 +781,7 @@ func (cache *executionProofCache) dropBefore(cutoffSlot phase0.Slot, includeFetc
 		if entry.slot >= cutoffSlot {
 			continue
 		}
-		if entry.fetching && !includeFetching {
+		if entry.busy() && !includeBusy {
 			droppedSlots[uint64(entry.slot)] = false
 			continue
 		}
@@ -707,12 +816,15 @@ func (cache *executionProofCache) dropBefore(cutoffSlot phase0.Slot, includeFetc
 	return objects, touched, dropped
 }
 
-// sortedProofs returns the proofs of an entry in proof type order.
+// sortedProofs returns copies of the proofs of an entry in proof type order;
+// the copies are read without the lock while verdicts are still recorded on
+// the entry's proofs (the proof bytes are shared, they never change).
 func sortedProofs(proofs map[uint8]*btypes.SlotExecutionProof) []*btypes.SlotExecutionProof {
 	sorted := make([]*btypes.SlotExecutionProof, 0, len(proofs))
 	for proofType := range 256 {
 		if proof := proofs[uint8(proofType)]; proof != nil {
-			sorted = append(sorted, proof)
+			copied := *proof
+			sorted = append(sorted, &copied)
 		}
 	}
 	return sorted

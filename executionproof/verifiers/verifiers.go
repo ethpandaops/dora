@@ -114,11 +114,13 @@ func (v *Verifiers) Close(ctx context.Context) error {
 // Verify verifies a proof of the given zkVM against the program verification
 // key, trying the embedded generations newest first: a proof verifies with the
 // verifier of the release it was made with. The public values of a valid proof
-// are returned for the caller to compare with the expected public input.
-func (v *Verifiers) Verify(ctx context.Context, zkvm executionproof.ZkVM, programVK []byte, proof []byte) *Result {
+// are returned for the caller to compare with the expected public input. An
+// error means a verifier could not be run (compile, instantiation or the
+// context), not a verdict on the proof.
+func (v *Verifiers) Verify(ctx context.Context, zkvm executionproof.ZkVM, programVK []byte, proof []byte) (*Result, error) {
 	kind, ok := kinds[zkvm]
 	if !ok {
-		return &Result{Status: StatusUnverifiable, Reason: fmt.Sprintf("no verifier for %s", zkvm)}
+		return &Result{Status: StatusUnverifiable, Reason: fmt.Sprintf("no verifier for %s", zkvm)}, nil
 	}
 
 	// a proof no generation accepts is reported with the newest one's verdict
@@ -126,20 +128,20 @@ func (v *Verifiers) Verify(ctx context.Context, zkvm executionproof.ZkVM, progra
 	for _, generation := range generations {
 		result, err := v.verifyWith(ctx, generation, kind, programVK, proof)
 		if err != nil {
-			return &Result{Status: StatusUnverifiable, Generation: generation, Reason: err.Error()}
+			return nil, err
 		}
 		if result.Status == StatusValid {
-			return result
+			return result, nil
 		}
 		if newest == nil {
 			newest = result
 		}
 	}
 	if newest == nil {
-		return &Result{Status: StatusUnverifiable, Reason: "no verifier generation embedded"}
+		return &Result{Status: StatusUnverifiable, Reason: "no verifier generation embedded"}, nil
 	}
 
-	return newest
+	return newest, nil
 }
 
 // verifyWith runs one generation's verifier on the proof.

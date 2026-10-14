@@ -5,15 +5,25 @@ import (
 	"fmt"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/version"
 )
 
-const (
-	// SchemaID is the stateless input schema the proofs of the current devnets
-	// commit to: the Amsterdam fork (0x15) at schema revision 1.
-	SchemaID uint16 = 0x1501
-	// PublicInputSize is the size of the serialized public input.
-	PublicInputSize = 43
-)
+// PublicInputSize is the size of the serialized public input.
+const PublicInputSize = 43
+
+// schemaIDs holds the stateless input schema id the proofs of a fork commit
+// to, as the spec assigns it: the EL fork the schema is defined for and its
+// revision. A fork without entry has no schema assigned yet.
+var schemaIDs = map[version.DataVersion]uint16{
+	version.DataVersionGloas: 0x1501, // Amsterdam, revision 1
+}
+
+// SchemaIDForFork returns the stateless input schema id of the proofs of a
+// fork; ok is false for a fork without an assigned schema.
+func SchemaIDForFork(fork version.DataVersion) (uint16, bool) {
+	schemaID, ok := schemaIDs[fork]
+	return schemaID, ok
+}
 
 // PublicInput is what an execution proof commits to: the root of the
 // NewPayloadRequest the guest validated, the outcome, and the chain and schema

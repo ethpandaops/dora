@@ -23,12 +23,14 @@ func TestVerifiersRejectGarbage(t *testing.T) {
 	require.NotEmpty(t, Generations())
 
 	for _, zkvm := range []executionproof.ZkVM{executionproof.ZkVMSP1, executionproof.ZkVMZisk, executionproof.ZkVMOpenVM} {
-		result := verifiers.Verify(ctx, zkvm, executionproof.Lookup(map[executionproof.ZkVM]uint8{executionproof.ZkVMSP1: 2, executionproof.ZkVMZisk: 3, executionproof.ZkVMOpenVM: 1}[zkvm]).ProgramVK, []byte{1, 2, 3})
+		result, err := verifiers.Verify(ctx, zkvm, executionproof.Lookup(map[executionproof.ZkVM]uint8{executionproof.ZkVMSP1: 2, executionproof.ZkVMZisk: 3, executionproof.ZkVMOpenVM: 1}[zkvm]).ProgramVK, []byte{1, 2, 3})
+		require.NoError(t, err)
 		assert.Equal(t, StatusInvalid, result.Status, "%s: %s", zkvm, result.Reason)
 		assert.Equal(t, generations[0], result.Generation)
 	}
 
-	result := verifiers.Verify(ctx, executionproof.ZkVM("other"), nil, []byte{1})
+	result, err := verifiers.Verify(ctx, executionproof.ZkVM("other"), nil, []byte{1})
+	require.NoError(t, err)
 	assert.Equal(t, StatusUnverifiable, result.Status)
 }
 
@@ -61,7 +63,8 @@ func TestVerifiersFixtures(t *testing.T) {
 		proofType := executionproof.Lookup(id)
 
 		start := time.Now()
-		result := verifiers.Verify(ctx, proofType.ZkVM, proofType.ProgramVK, proof)
+		result, err := verifiers.Verify(ctx, proofType.ZkVM, proofType.ProgramVK, proof)
+		require.NoError(t, err)
 		t.Logf("type %d (%s): %s by %s in %s", id, proofType.Name(), result.Status, result.Generation, time.Since(start).Round(time.Millisecond))
 		require.Equal(t, StatusValid, result.Status, result.Reason)
 		assert.Equal(t, expected, hex.EncodeToString(result.PublicValues[:executionproof.PublicInputSize]))
@@ -71,7 +74,8 @@ func TestVerifiersFixtures(t *testing.T) {
 		for other.ZkVM != proofType.ZkVM {
 			other = executionproof.Lookup(other.ID%7 + 1)
 		}
-		result = verifiers.Verify(ctx, proofType.ZkVM, other.ProgramVK, proof)
+		result, err = verifiers.Verify(ctx, proofType.ZkVM, other.ProgramVK, proof)
+		require.NoError(t, err)
 		assert.Equal(t, StatusInvalid, result.Status, "type %d with key of type %d", id, other.ID)
 	}
 }

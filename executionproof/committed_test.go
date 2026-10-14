@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"github.com/ethpandaops/go-eth2-client/spec/version"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,9 @@ func TestDecodeCommitted(t *testing.T) {
 	assert.Equal(t, "68e2250786a622ab175a8149c63d220704e7ed9610a12b7864047510235e7bb7", hex.EncodeToString(expected.NewPayloadRequestRoot[:]))
 	assert.True(t, expected.SuccessfulValidation)
 	assert.Equal(t, uint64(1), expected.ChainID)
-	assert.Equal(t, SchemaID, expected.SchemaID)
+	schemaID, ok := SchemaIDForFork(version.DataVersionGloas)
+	require.True(t, ok)
+	assert.Equal(t, schemaID, expected.SchemaID)
 	assert.Equal(t, mustHex(fixturePublicValues), expected.Marshal())
 
 	tests := []struct {
@@ -94,4 +97,15 @@ func TestProofTypes(t *testing.T) {
 	assert.Nil(t, Lookup(0))
 	assert.Nil(t, Lookup(8))
 	assert.Equal(t, "SP1 + reth", Lookup(5).Name())
+}
+
+func TestSchemaIDForFork(t *testing.T) {
+	schemaID, ok := SchemaIDForFork(version.DataVersionGloas)
+	require.True(t, ok)
+	assert.Equal(t, uint16(0x1501), schemaID)
+
+	_, ok = SchemaIDForFork(version.DataVersionHeze)
+	assert.False(t, ok, "no schema assigned yet")
+	_, ok = SchemaIDForFork(version.DataVersionFulu)
+	assert.False(t, ok, "no execution proofs before gloas")
 }

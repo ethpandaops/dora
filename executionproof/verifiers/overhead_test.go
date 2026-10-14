@@ -46,14 +46,16 @@ func TestVerifiersOverhead(t *testing.T) {
 
 		// cold: compiles every generation it tries, warm: compiled from the disk cache
 		cold := time.Now()
-		result := verifiers.Verify(ctx, proofType.ZkVM, proofType.ProgramVK, proof)
+		result, err := verifiers.Verify(ctx, proofType.ZkVM, proofType.ProgramVK, proof)
 		coldTime := time.Since(cold)
+		require.NoError(t, err)
 		require.Equal(t, StatusValid, result.Status, result.Reason)
 
 		var peak runtime.MemStats
 		warm := time.Now()
 		for range 5 {
-			verifiers.Verify(ctx, proofType.ZkVM, proofType.ProgramVK, proof)
+			_, err := verifiers.Verify(ctx, proofType.ZkVM, proofType.ProgramVK, proof)
+			require.NoError(t, err)
 			var now runtime.MemStats
 			runtime.ReadMemStats(&now)
 			if now.HeapInuse > peak.HeapInuse {

@@ -148,8 +148,15 @@ func (bs *ChainService) expectedExecutionProofPublicInput(ctx context.Context, b
 	if block == nil {
 		return nil, "block not available"
 	}
+	if block.Block == nil {
+		return nil, "block body not available"
+	}
 	if block.Payload == nil {
 		return nil, "execution payload envelope not available"
+	}
+	schemaID, ok := executionproof.SchemaIDForFork(block.Block.Version)
+	if !ok {
+		return nil, fmt.Sprintf("no stateless input schema assigned to the %s fork", block.Block.Version)
 	}
 
 	request, err := executionproof.BlockNewPayloadRequest(block.Block, block.Payload)
@@ -165,6 +172,6 @@ func (bs *ChainService) expectedExecutionProofPublicInput(ctx context.Context, b
 		NewPayloadRequestRoot: root,
 		SuccessfulValidation:  true,
 		ChainID:               chainID,
-		SchemaID:              executionproof.SchemaID,
+		SchemaID:              schemaID,
 	}, ""
 }
