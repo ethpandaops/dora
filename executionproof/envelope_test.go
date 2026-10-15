@@ -1,6 +1,7 @@
 package executionproof
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -50,4 +51,44 @@ func TestEnvelopeSignature(t *testing.T) {
 	valid, err = envelope.VerifySignature(ds, domainType, pubkey, phase0.BLSSignature{}, forkVersion, genesisRoot)
 	require.NoError(t, err)
 	assert.False(t, valid)
+}
+
+func TestSignedEnvelopeEncodings(t *testing.T) {
+	signed := &SignedEnvelope{
+		Message: Envelope{
+			ProofData:       []byte{1, 2, 3},
+			ProofType:       5,
+			BeaconBlockRoot: phase0.Root{0xaa},
+		},
+		ValidatorIndex: 42,
+	}
+	signed.Signature[0] = 0xbb
+
+	// the beacon API JSON form
+	encoded, err := json.Marshal(signed)
+	require.NoError(t, err)
+	var generic map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &generic))
+	message := generic["message"].(map[string]any)
+	assert.Equal(t, "0x010203", message["proof_data"])
+	assert.Equal(t, "5", message["proof_type"])
+	assert.Equal(t, "0xaa00000000000000000000000000000000000000000000000000000000000000", message["beacon_block_root"])
+	assert.Equal(t, "42", generic["validator_index"])
+	assert.Equal(t, "0xbb"+hexZeros(95), generic["signature"])
+
+	// SSZ round trip
+	dynSsz := dynssz.NewDynSsz(nil)
+	data, err := signed.MarshalSSZ(dynSsz)
+	require.NoError(t, err)
+	var decoded SignedEnvelope
+	require.NoError(t, dynSsz.UnmarshalSSZ(&decoded, data))
+	assert.Equal(t, *signed, decoded)
+}
+
+func hexZeros(n int) string {
+	zeros := make([]byte, n*2)
+	for i := range zeros {
+		zeros[i] = '0'
+	}
+	return string(zeros)
 }

@@ -156,8 +156,9 @@ func slotExecutionProofPublicInput(input *executionproof.PublicInput) *models.Sl
 	}
 }
 
-// SlotExecutionProofDownload serves the bytes of one execution proof of a block as
-// file download.
+// SlotExecutionProofDownload serves one execution proof of a block as file
+// download: the signed proof envelope in the beacon API's JSON form (the one
+// POST /eth/v1/beacon/execution_proofs accepts) or, with ?format=ssz, as SSZ.
 func SlotExecutionProofDownload(w http.ResponseWriter, r *http.Request) {
 	if pageError := services.GlobalCallRateLimiter.CheckCallLimit(r, 1); pageError != nil {
 		handlePageError(w, r, pageError)
@@ -177,14 +178,44 @@ func SlotExecutionProofDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	format := r.URL.Query().Get("format")
+	if format != "" && format != "json" && format != "ssz" {
+		http.Error(w, "Invalid format", http.StatusBadRequest)
+		return
+	}
+
 	for _, proof := range services.GlobalBeaconService.GetBlockExecutionProofs(r.Context(), slot, blockRoot, true) {
 		if proof.ProofType != uint8(proofType) || proof.ProofData == nil {
 			continue
 		}
 
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=proof-%d-%x-type%d.bin", slot, blockRoot[:], proof.ProofType))
-		_, _ = w.Write(proof.ProofData)
+		envelope := &executionproof.SignedEnvelope{
+			Message: executionproof.Envelope{
+				ProofData:       proof.ProofData,
+				ProofType:       proof.ProofType,
+				BeaconBlockRoot: blockRoot,
+			},
+			ValidatorIndex: phase0.ValidatorIndex(proof.ValidatorIndex),
+			Signature:      proof.Signature,
+		}
+
+		var data []byte
+		contentType := "application/json"
+		if format == "ssz" {
+			contentType = "application/octet-stream"
+			data, err = envelope.MarshalSSZ(services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ())
+		} else {
+			format = "json"
+			data, err = envelope.MarshalJSON()
+		}
+		if err != nil {
+			http.Error(w, "Proof not encodable", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=proof-%d-%x-type%d.%s", slot, blockRoot[:], proof.ProofType, format))
+		_, _ = w.Write(data)
 		return
 	}
 

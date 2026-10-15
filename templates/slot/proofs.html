@@ -105,7 +105,10 @@
           '<div class="card-header d-flex flex-wrap align-items-center gap-2">' +
             '<span class="badge text-bg-secondary">' + proof.proof_type + '</span><span class="fw-semibold me-2">' + escapeHtml(proof.proof_name) + '</span>' +
             '<span class="me-auto">' + chips + '</span>' +
-            '<a class="btn btn-sm btn-outline-primary" href="' + escapeHtml(proof.download_url) + '" rel="nofollow"><i class="fa fa-download me-1"></i>Raw proof</a>' +
+            '<div class="btn-group btn-group-sm" role="group" aria-label="Download the signed proof envelope">' +
+              '<a class="btn btn-outline-primary" href="' + escapeHtml(proof.download_url) + '" rel="nofollow" title="Signed envelope as beacon API JSON"><i class="fa fa-download me-1"></i>JSON</a>' +
+              '<a class="btn btn-outline-primary" href="' + escapeHtml(proof.download_url) + '?format=ssz" rel="nofollow" title="Signed envelope as SSZ">SSZ</a>' +
+            '</div>' +
           '</div>' +
           '<div class="card-body pb-2"><div class="mb-3">' + badges + '</div>' +
           '<div class="row g-4">' + detailTable('Program', proofRows) + detailTable('Prover', proverRows) + detailTable('Committed public input', inputRows) + '</div>' +

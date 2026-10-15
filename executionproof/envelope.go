@@ -1,6 +1,10 @@
 package executionproof
 
 import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	dynssz "github.com/pk910/dynamic-ssz"
 	blsu "github.com/protolambda/bls12-381-util"
@@ -51,4 +55,44 @@ func (e *Envelope) VerifySignature(dynSsz *dynssz.DynSsz, domainType phase0.Doma
 	}
 
 	return blsu.Verify(blsPubkey, signingRoot[:], blsSignature), nil
+}
+
+// SignedEnvelope is the SignedExecutionProofEnvelope a node serves and
+// accepts: the envelope with the prover's validator index and signature.
+type SignedEnvelope struct {
+	Message        Envelope
+	ValidatorIndex phase0.ValidatorIndex
+	Signature      phase0.BLSSignature `ssz-size:"96"`
+}
+
+// MarshalSSZ returns the SSZ serialization of the signed envelope.
+func (e *SignedEnvelope) MarshalSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
+	return dynSsz.MarshalSSZ(e)
+}
+
+// MarshalJSON encodes the signed envelope in the beacon API's JSON form, the
+// one GET and POST /eth/v1/beacon/execution_proofs use: numbers as decimal
+// strings, bytes as 0x-prefixed hex.
+func (e *SignedEnvelope) MarshalJSON() ([]byte, error) {
+	return json.Marshal(signedEnvelopeJSON{
+		Message: envelopeJSON{
+			ProofData:       fmt.Sprintf("0x%x", e.Message.ProofData),
+			ProofType:       strconv.FormatUint(uint64(e.Message.ProofType), 10),
+			BeaconBlockRoot: fmt.Sprintf("0x%x", e.Message.BeaconBlockRoot[:]),
+		},
+		ValidatorIndex: strconv.FormatUint(uint64(e.ValidatorIndex), 10),
+		Signature:      fmt.Sprintf("0x%x", e.Signature[:]),
+	})
+}
+
+type envelopeJSON struct {
+	ProofData       string `json:"proof_data"`
+	ProofType       string `json:"proof_type"`
+	BeaconBlockRoot string `json:"beacon_block_root"`
+}
+
+type signedEnvelopeJSON struct {
+	Message        envelopeJSON `json:"message"`
+	ValidatorIndex string       `json:"validator_index"`
+	Signature      string       `json:"signature"`
 }
