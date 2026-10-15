@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,15 +8,8 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
 
-// ErrExecutionProofsUnsupported is returned when the node has no proof engine (HTTP 501).
-var ErrExecutionProofsUnsupported = errors.New("execution proofs not supported by node")
-
-// ErrExecutionProofsNotFound is returned when the node answers 404, which means the block
-// is unknown to it or, on nodes without the route, that the route does not exist.
-var ErrExecutionProofsNotFound = errors.New("execution proofs not found")
-
-// ExecutionProof is one EIP-8025 execution proof of a block's payload as served by a
-// node's execution proofs API: the signed proof envelope.
+// ExecutionProof is one EIP-8025 execution proof of a block's payload as a node
+// delivers it on its execution_proof event stream: the signed proof envelope.
 type ExecutionProof struct {
 	// ProofType identifies the zkVM+EL combination that produced the proof.
 	ProofType uint8
@@ -29,9 +21,9 @@ type ExecutionProof struct {
 	Signature      phase0.BLSSignature
 }
 
-// executionProofEnvelope is a signed proof envelope as served by
-// GET /eth/v1/beacon/execution_proofs/{block_id}. validator_index is a quoted
-// decimal; proof_type is a bare number (Lighthouse) or a quoted one.
+// executionProofEnvelope is a signed proof envelope as the execution_proof event
+// carries it. validator_index is a quoted decimal; proof_type is a quoted decimal
+// (Prysm) or a bare number (Lighthouse).
 type executionProofEnvelope struct {
 	Message struct {
 		ProofType       jsonUint8 `json:"proof_type"`

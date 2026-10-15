@@ -84,13 +84,19 @@ func newTestMetadataIndexer(t *testing.T, withBlockDb bool) *Indexer {
 	return indexer
 }
 
-// testRpcProof builds a signed proof of the given type and size as served by a node.
+// testRpcProof builds a signed proof of the given type and size as a node delivers
+// it; the prover is the validator with the type's index.
 func testRpcProof(proofType uint8, root phase0.Root, size int) *rpc.ExecutionProof {
+	return testRpcProofFrom(proofType, uint64(proofType), root, size)
+}
+
+// testRpcProofFrom builds a signed proof of the given type and size from the prover.
+func testRpcProofFrom(proofType uint8, prover uint64, root phase0.Root, size int) *rpc.ExecutionProof {
 	proof := &rpc.ExecutionProof{
 		ProofType:       proofType,
 		ProofData:       make([]byte, size),
 		BeaconBlockRoot: root,
-		ValidatorIndex:  uint64(proofType),
+		ValidatorIndex:  prover,
 	}
 	proof.Signature[0] = proofType
 	for i := range proof.ProofData {
@@ -99,13 +105,16 @@ func testRpcProof(proofType uint8, root phase0.Root, size int) *rpc.ExecutionPro
 	return proof
 }
 
-// addTestProofs merges proofs into the entry of a block as a fetch would.
+// addTestProofs adds checked proofs to the entry of a block.
 func addTestProofs(cache *executionProofCache, root phase0.Root, proofs ...*rpc.ExecutionProof) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	entry := cache.entries[root]
-	cache.addProofsLocked(entry, cache.convertProofs(entry, proofs))
+	converted := make([]*btypes.SlotExecutionProof, 0, len(proofs))
+	for _, proof := range proofs {
+		converted = append(converted, convertProof(proof))
+	}
+	cache.addProofsLocked(cache.entries[root], converted)
 }
 
 // insertTestUnfinalizedBlock stores a minimal unfinalized block row for a cached block.

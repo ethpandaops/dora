@@ -45,6 +45,7 @@ type Client struct {
 	executionPayloadSubscription    *utils.Subscription[*v1.ExecutionPayloadAvailableEvent]
 	executionPayloadBidSubscription *utils.Subscription[*gloas.SignedExecutionPayloadBid]
 	inclusionListSubscription       *utils.Subscription[*v1.InclusionListEvent]
+	executionProofSubscription      *utils.Subscription[*rpc.ExecutionProof]
 
 	headRoot phase0.Root
 }
@@ -94,6 +95,7 @@ func (c *Client) startIndexing() {
 	c.executionPayloadSubscription = c.client.SubscribeExecutionPayloadAvailableEvent(100, true)
 	c.executionPayloadBidSubscription = c.client.SubscribeExecutionPayloadBidEvent(100, true)
 	c.inclusionListSubscription = c.client.SubscribeInclusionListEvent(100, true)
+	c.executionProofSubscription = c.client.SubscribeExecutionProofEvent(100, true)
 
 	go c.startClientLoop()
 }
@@ -204,6 +206,8 @@ func (c *Client) runClientLoop() error {
 			}
 		case inclusionListEvent := <-c.inclusionListSubscription.Channel():
 			c.processInclusionListEvent(inclusionListEvent)
+		case executionProof := <-c.executionProofSubscription.Channel():
+			c.indexer.executionProofCache.addProof(executionProof)
 		}
 	}
 

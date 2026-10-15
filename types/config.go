@@ -146,15 +146,9 @@ type Config struct {
 		} `yaml:"stateCache"`
 
 		// ExecutionProofs configures the collection of EIP-8025 execution proofs from the
-		// beacon nodes into the blockdb meta objects.
+		// beacon nodes' execution_proof event streams into the blockdb meta objects.
 		ExecutionProofs struct {
 			Disabled bool `yaml:"disabled" envconfig:"INDEXER_EXECUTION_PROOFS_DISABLED"`
-			// FetchDelaySlots is the number of slots after a block's slot before its proofs
-			// are requested for the first time (default 2).
-			FetchDelaySlots uint64 `yaml:"fetchDelaySlots" envconfig:"INDEXER_EXECUTION_PROOFS_FETCH_DELAY_SLOTS"`
-			// RetryIntervalSlots is the number of slots between two requests for the proofs
-			// of the same block (default 2).
-			RetryIntervalSlots uint64 `yaml:"retryIntervalSlots" envconfig:"INDEXER_EXECUTION_PROOFS_RETRY_INTERVAL_SLOTS"`
 			// VerificationDisabled turns off verifying the collected proofs with the
 			// embedded zkVM verifiers.
 			VerificationDisabled bool `yaml:"verificationDisabled" envconfig:"INDEXER_EXECUTION_PROOFS_VERIFICATION_DISABLED"`

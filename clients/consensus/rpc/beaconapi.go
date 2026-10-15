@@ -464,86 +464,33 @@ func (bc *BeaconClient) GetBlobSidecarsByBlockroot(ctx context.Context, blockroo
 	return result.Data, nil
 }
 
-// GetExecutionProofsByBlockroot loads the EIP-8025 execution proofs of a block from
-// GET /eth/v1/beacon/execution_proofs/{block_root}: the signed proof envelopes. Nodes
-// without a proof engine answer 501 (ErrExecutionProofsUnsupported); an unknown block,
-// or a node without the route, answers 404 (ErrExecutionProofsNotFound).
-func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, blockroot []byte) ([]*ExecutionProof, error) {
-	var response struct {
-		Data []executionProofEnvelope `json:"data"`
-	}
-	requrl := fmt.Sprintf("%s/eth/v1/beacon/execution_proofs/0x%x", bc.endpoint, blockroot)
-	if err := bc.getExecutionProofsJSON(ctx, requrl, &response); err != nil {
+// decodeExecutionProofEnvelope turns a signed proof envelope as the nodes serialize it
+// into an ExecutionProof.
+func decodeExecutionProofEnvelope(envelope *executionProofEnvelope) (*ExecutionProof, error) {
+	proof, err := decodeExecutionProofMessage(uint8(envelope.Message.ProofType), envelope.Message.ProofData)
+	if err != nil {
 		return nil, err
 	}
-
-	proofs := make([]*ExecutionProof, 0, len(response.Data))
-	for _, envelope := range response.Data {
-		proof, err := decodeExecutionProofMessage(uint8(envelope.Message.ProofType), envelope.Message.ProofData)
-		if err != nil {
-			return nil, err
-		}
-		root, err := decodeHexBytes(envelope.Message.BeaconBlockRoot)
-		if err != nil || len(root) != len(proof.BeaconBlockRoot) {
-			return nil, fmt.Errorf("invalid beacon block root %q", envelope.Message.BeaconBlockRoot)
-		}
-		copy(proof.BeaconBlockRoot[:], root)
-
-		validatorIndex, err := strconv.ParseUint(envelope.ValidatorIndex, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid validator index %q: %w", envelope.ValidatorIndex, err)
-		}
-		signature, err := decodeHexBytes(envelope.Signature)
-		if err != nil || len(signature) != len(proof.Signature) {
-			return nil, fmt.Errorf("invalid proof signature %q", envelope.Signature)
-		}
-		proof.ValidatorIndex = validatorIndex
-		copy(proof.Signature[:], signature)
-
-		proofs = append(proofs, proof)
+	root, err := decodeHexBytes(envelope.Message.BeaconBlockRoot)
+	if err != nil || len(root) != len(proof.BeaconBlockRoot) {
+		return nil, fmt.Errorf("invalid beacon block root %q", envelope.Message.BeaconBlockRoot)
 	}
+	copy(proof.BeaconBlockRoot[:], root)
 
-	return proofs, nil
+	validatorIndex, err := strconv.ParseUint(envelope.ValidatorIndex, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid validator index %q: %w", envelope.ValidatorIndex, err)
+	}
+	signature, err := decodeHexBytes(envelope.Signature)
+	if err != nil || len(signature) != len(proof.Signature) {
+		return nil, fmt.Errorf("invalid proof signature %q", envelope.Signature)
+	}
+	proof.ValidatorIndex = validatorIndex
+	copy(proof.Signature[:], signature)
+
+	return proof, nil
 }
 
-// getExecutionProofsJSON performs a GET against the (non-standard) execution proofs
-// route and maps the status codes it uses to typed errors.
-func (bc *BeaconClient) getExecutionProofsJSON(ctx context.Context, requrl string, returnValue any) error {
-	req, err := nethttp.NewRequestWithContext(ctx, "GET", requrl, nethttp.NoBody)
-	if err != nil {
-		return err
-	}
-	for headerKey, headerVal := range bc.headers {
-		req.Header.Set(headerKey, headerVal)
-	}
-	req.Header.Set("Accept", "application/json")
-
-	client := &nethttp.Client{Timeout: time.Second * 300}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case nethttp.StatusOK:
-	case nethttp.StatusNotFound:
-		return ErrExecutionProofsNotFound
-	case nethttp.StatusNotImplemented:
-		return ErrExecutionProofsUnsupported
-	default:
-		data, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("url: %v, status: %d, error: %s", getRedactedURL(requrl), resp.StatusCode, data)
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(returnValue); err != nil {
-		return fmt.Errorf("error parsing json response: %v", err)
-	}
-
-	return nil
-}
-
-// decodeExecutionProofMessage decodes the proof fields shared by both API shapes.
 func decodeExecutionProofMessage(proofType uint8, proofData string) (*ExecutionProof, error) {
 	data, err := decodeHexBytes(proofData)
 	if err != nil {

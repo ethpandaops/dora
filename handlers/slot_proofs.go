@@ -106,7 +106,7 @@ func buildSlotExecutionProofsData(ctx context.Context, slot phase0.Slot, blockRo
 			Verification:     entry.Verification.String(),
 			Verifier:         entry.Verifier,
 			Size:             proof.DataSize,
-			DownloadUrl:      fmt.Sprintf("/slot/0x%x/proofs/%d", blockRoot[:], proof.ProofType),
+			DownloadUrl:      fmt.Sprintf("/slot/0x%x/proofs/%d/%d", blockRoot[:], proof.ProofType, proof.ValidatorIndex),
 			DecodeError:      entry.DecodeError,
 			PublicInputMatch: entry.PublicInputMatch,
 			ProgramVKMatch:   entry.ProgramVKMatch,
@@ -171,6 +171,11 @@ func SlotExecutionProofDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid proof type", http.StatusBadRequest)
 		return
 	}
+	prover, err := strconv.ParseUint(vars["prover"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid prover index", http.StatusBadRequest)
+		return
+	}
 
 	slot, blockRoot, found := resolveSlotPathBlock(r.Context(), vars["slotOrHash"])
 	if !found {
@@ -185,7 +190,7 @@ func SlotExecutionProofDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, proof := range services.GlobalBeaconService.GetBlockExecutionProofs(r.Context(), slot, blockRoot, true) {
-		if proof.ProofType != uint8(proofType) || proof.ProofData == nil {
+		if proof.ProofType != uint8(proofType) || proof.ValidatorIndex != prover || proof.ProofData == nil {
 			continue
 		}
 
@@ -214,7 +219,7 @@ func SlotExecutionProofDownload(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=proof-%d-%x-type%d.%s", slot, blockRoot[:], proof.ProofType, format))
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=proof-%d-%x-type%d-prover%d.%s", slot, blockRoot[:], proof.ProofType, proof.ValidatorIndex, format))
 		_, _ = w.Write(data)
 		return
 	}

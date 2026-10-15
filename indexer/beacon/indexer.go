@@ -547,8 +547,8 @@ func (indexer *Indexer) runIndexerLoop() {
 			slotIndex := chainState.SlotToSlotIndex(currentSlot)
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))
 
-			// request the execution proofs that are due
-			indexer.executionProofCache.processDueFetches(currentSlot)
+			// verify the execution proofs that waited for a payload, drop stale held ones
+			indexer.executionProofCache.processSlot(currentSlot)
 
 			// write the crash copy of the changed slot metadata
 			indexer.persistUnfinalizedMetadata()

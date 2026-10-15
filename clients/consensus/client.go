@@ -61,6 +61,7 @@ type Client struct {
 	executionPayloadBidDispatcher utils.Dispatcher[*gloas.SignedExecutionPayloadBid]
 	inclusionListDispatcher       utils.Dispatcher[*v1.InclusionListEvent]
 	fastConfirmationDispatcher    utils.Dispatcher[*rpc.FastConfirmationEvent]
+	executionProofDispatcher      utils.Dispatcher[*rpc.ExecutionProof]
 
 	specsMutex   sync.RWMutex
 	specWarnings []string // warnings from incomplete spec checks
@@ -122,6 +123,10 @@ func (client *Client) SubscribeInclusionListEvent(capacity int, blocking bool) *
 
 func (client *Client) SubscribeFastConfirmationEvent(capacity int, blocking bool) *utils.Subscription[*rpc.FastConfirmationEvent] {
 	return client.fastConfirmationDispatcher.Subscribe(capacity, blocking)
+}
+
+func (client *Client) SubscribeExecutionProofEvent(capacity int, blocking bool) *utils.Subscription[*rpc.ExecutionProof] {
+	return client.executionProofDispatcher.Subscribe(capacity, blocking)
 }
 
 func (client *Client) GetPool() *Pool {
