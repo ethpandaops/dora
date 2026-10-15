@@ -369,6 +369,9 @@ func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Roo
 	client.headMutex.Lock()
 	if bytes.Equal(client.justifiedRoot[:], finalizedCheckpoints.Justified.Root[:]) {
 		client.headMutex.Unlock()
+		if !client.isSyncing {
+			client.pool.chainState.setFinalizedCheckpoint(finalizedCheckpoints)
+		}
 		return finalizedCheckpoints.Finalized.Root, nil
 	}
 
