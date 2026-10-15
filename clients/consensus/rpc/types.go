@@ -2,6 +2,9 @@ package rpc
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 )
@@ -27,14 +30,27 @@ type ExecutionProof struct {
 }
 
 // executionProofEnvelope is a signed proof envelope as served by
-// GET /eth/v1/beacon/execution_proofs/{block_id}. proof_type and validator_index are
-// quoted decimals.
+// GET /eth/v1/beacon/execution_proofs/{block_id}. validator_index is a quoted
+// decimal; proof_type is a bare number (Lighthouse) or a quoted one.
 type executionProofEnvelope struct {
 	Message struct {
-		ProofType       string `json:"proof_type"`
-		ProofData       string `json:"proof_data"`
-		BeaconBlockRoot string `json:"beacon_block_root"`
+		ProofType       jsonUint8 `json:"proof_type"`
+		ProofData       string    `json:"proof_data"`
+		BeaconBlockRoot string    `json:"beacon_block_root"`
 	} `json:"message"`
 	ValidatorIndex string `json:"validator_index"`
 	Signature      string `json:"signature"`
+}
+
+// jsonUint8 is a uint8 that decodes from a JSON number or a quoted decimal.
+type jsonUint8 uint8
+
+func (v *jsonUint8) UnmarshalJSON(data []byte) error {
+	text := strings.Trim(string(data), `"`)
+	value, err := strconv.ParseUint(text, 10, 8)
+	if err != nil {
+		return fmt.Errorf("invalid uint8 %s: %w", string(data), err)
+	}
+	*v = jsonUint8(value)
+	return nil
 }

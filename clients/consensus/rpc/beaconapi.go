@@ -479,7 +479,7 @@ func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, block
 
 	proofs := make([]*ExecutionProof, 0, len(response.Data))
 	for _, envelope := range response.Data {
-		proof, err := decodeExecutionProofMessage(envelope.Message.ProofType, envelope.Message.ProofData)
+		proof, err := decodeExecutionProofMessage(uint8(envelope.Message.ProofType), envelope.Message.ProofData)
 		if err != nil {
 			return nil, err
 		}
@@ -544,18 +544,14 @@ func (bc *BeaconClient) getExecutionProofsJSON(ctx context.Context, requrl strin
 }
 
 // decodeExecutionProofMessage decodes the proof fields shared by both API shapes.
-func decodeExecutionProofMessage(proofType string, proofData string) (*ExecutionProof, error) {
-	proofTypeNum, err := strconv.ParseUint(proofType, 10, 8)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proof type %q: %w", proofType, err)
-	}
+func decodeExecutionProofMessage(proofType uint8, proofData string) (*ExecutionProof, error) {
 	data, err := decodeHexBytes(proofData)
 	if err != nil {
 		return nil, fmt.Errorf("invalid proof data: %w", err)
 	}
 
 	return &ExecutionProof{
-		ProofType: uint8(proofTypeNum),
+		ProofType: proofType,
 		ProofData: data,
 	}, nil
 }

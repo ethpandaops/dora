@@ -10,9 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// lighthouseProofsPayload is a GET /eth/v1/beacon/execution_proofs/{block_id} response of
-// the eth-act Lighthouse optional-proofs branch, which quotes proof_type and
-// validator_index.
+// lighthouseProofsPayload is a GET /eth/v1/beacon/execution_proofs/{block_id} response
+// with proof_type quoted as the beacon API quotes numbers; Lighthouse serves it as a
+// bare number (lighthouseBareProofTypePayload).
+const lighthouseBareProofTypePayload = `{"data":[{"message":{"proof_data":"0x010203","proof_type":5,"beacon_block_root":"0xf9b85fb511fa7a8561fac828fc390e61a64804e851da4816d7a62cc4648d3e2e"},"validator_index":"7","signature":"0xb399a174693747e9437ba1d94be3ad3e7556a388a6d3e4e7589cea7310735e04296086a957f9a3652d5e14731561151900f4532f72227b60f06449068d610794e8ee273bd00b3179030242096fb95a17cf0277528c7c6c8ddf5a408fca069ad2"}]}`
+
 const lighthouseProofsPayload = `{"data":[{"message":{"proof_data":"0x010203","proof_type":"5","beacon_block_root":"0xf9b85fb511fa7a8561fac828fc390e61a64804e851da4816d7a62cc4648d3e2e"},"validator_index":"7","signature":"0xb399a174693747e9437ba1d94be3ad3e7556a388a6d3e4e7589cea7310735e04296086a957f9a3652d5e14731561151900f4532f72227b60f06449068d610794e8ee273bd00b3179030242096fb95a17cf0277528c7c6c8ddf5a408fca069ad2"}],"execution_optimistic":false,"finalized":true}`
 
 func TestGetExecutionProofsByBlockroot(t *testing.T) {
@@ -27,6 +29,12 @@ func TestGetExecutionProofsByBlockroot(t *testing.T) {
 			name:   "proofs",
 			status: http.StatusOK,
 			body:   lighthouseProofsPayload,
+			proofs: 1,
+		},
+		{
+			name:   "proofs with bare proof type",
+			status: http.StatusOK,
+			body:   lighthouseBareProofTypePayload,
 			proofs: 1,
 		},
 		{
