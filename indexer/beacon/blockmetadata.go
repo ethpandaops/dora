@@ -165,7 +165,8 @@ func (indexer *Indexer) restoreUnfinalizedMetadata(finalizedSlot phase0.Slot, cu
 		indexer.logger.WithError(err).Errorf("error restoring unfinalized metadata")
 	}
 
-	// the blocks of the window are collected further
+	// the blocks of the window are collected further: proofs published from now on
+	// still arrive, the ones gossiped while the indexer was down are lost
 	indexer.executionProofCache.trackBlocks(indexer.blockCache.getBlocksBySlotRange(windowStart, currentSlot))
 
 	if restored > 0 {

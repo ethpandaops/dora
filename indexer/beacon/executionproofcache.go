@@ -116,6 +116,12 @@ type heldProof struct {
 // are handed to the slot's meta object where a blockdb exists. Every proof is
 // written to the unfinalized_metadata table as crash copy on the slot tick. A
 // proof that arrives before its block is held for a few slots.
+//
+// The event streams deliver live gossip only and no node keeps proofs, so the
+// proofs gossiped while the indexer is down or a stream is disconnected are
+// lost: the affected blocks flush with the proofs that arrived after the gap,
+// as bids and inclusion lists do. Provers publish on their own schedule, so the
+// blocks of the collection window are tracked again after a restart.
 type executionProofCache struct {
 	indexer *Indexer
 
@@ -213,8 +219,8 @@ func (cache *executionProofCache) trackBlock(slot phase0.Slot, root phase0.Root)
 	cache.trackBlockLocked(slot, root)
 }
 
-// trackBlocks registers the given blocks for proof collection (the blocks of the
-// collection window after a restart).
+// trackBlocks registers the given blocks for proof collection: the blocks of the
+// collection window after a restart, whose proofs may still be published.
 func (cache *executionProofCache) trackBlocks(blocks []*Block) {
 	if cache.disabled {
 		return
