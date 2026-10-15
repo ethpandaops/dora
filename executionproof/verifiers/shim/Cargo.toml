@@ -18,9 +18,3 @@ ere-verifier-openvm = { path = "../openvm" }
 # Pinned to the versions in ere's lockfile so the build resolves nothing new.
 getrandom02 = { package = "getrandom", version = "=0.2.17", features = ["custom"] }
 getrandom03 = { package = "getrandom", version = "=0.3.4" }
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"

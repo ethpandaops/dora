@@ -9,6 +9,8 @@ FROM rust:1.98-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a3
 
 ARG ERE_TAG
 RUN test -n "$ERE_TAG"
+# OPT_LEVEL is the rustc optimization level of the module (3, s or z)
+ARG OPT_LEVEL=3
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         clang=1:14.0-55.7~deb12u1 binaryen=108-1 patch=2.7.6-7 git=1:2.39.5-0+deb12u3 ca-certificates \
@@ -18,10 +20,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /src
 RUN git clone --depth 1 --branch "$ERE_TAG" https://github.com/eth-act/ere.git ere
 
-# the shim crate joins the ere workspace next to the verifier crates
+# the shim crate joins the ere workspace next to the verifier crates; the
+# release profile only applies at the workspace root
 COPY shim /src/ere/crates/verifier/wasm
 RUN sed -i 's|    "crates/verifier/zisk",|    "crates/verifier/zisk",\n    "crates/verifier/wasm",|' ere/Cargo.toml \
-    && grep -q 'crates/verifier/wasm' ere/Cargo.toml
+    && grep -q 'crates/verifier/wasm' ere/Cargo.toml \
+    && printf '\n[profile.release]\nopt-level = "%s"\nlto = "fat"\ncodegen-units = 1\npanic = "abort"\n' "$OPT_LEVEL" | sed 's/"3"/3/' >> ere/Cargo.toml
 
 # fetch the sources, then patch the pinned OpenVM checkout for wasm32
 WORKDIR /src/ere
@@ -34,14 +38,20 @@ RUN files="$(find /usr/local/cargo/git/checkouts -path '*/crates/rvr/rvr-state/s
     done
 
 # zstd (OpenVM proof codec) is C and needs clang for the wasm32 target; the
-# verifiers' getrandom backends are the shim's own. The module still declares a
-# few wasm-bindgen host imports through OpenVM's dependencies, which a
-# verification never calls; the Go runtime provides trapping stubs for them.
+# verifiers' getrandom backends are the shim's own. Zisk's dependencies bring
+# wasm-bindgen in, which exports hundreds of descriptor functions; as exports
+# they would keep everything they reach alive, so wasm-metadce reduces the
+# module to what the shim's own exports reach. One wasm-bindgen host import
+# remains on a panic path a verification never takes; the Go runtime provides
+# a trapping stub for it.
 ENV CC_wasm32_unknown_unknown=clang
+COPY metadce.json /src/metadce.json
 RUN RUSTFLAGS='--cfg getrandom_backend="custom"' \
     cargo build --release --target wasm32-unknown-unknown -p ere-verifier-wasm \
     && wasm-opt -Oz --strip-debug --strip-producers \
-        -o /out.wasm target/wasm32-unknown-unknown/release/ere_verifier_wasm.wasm
+        -o /tmp/opt.wasm target/wasm32-unknown-unknown/release/ere_verifier_wasm.wasm \
+    && wasm-metadce /tmp/opt.wasm --graph-file /src/metadce.json -o /tmp/dce.wasm >/dev/null \
+    && wasm-opt -Oz --strip-debug --strip-producers -o /out.wasm /tmp/dce.wasm
 
 FROM scratch AS artifact
 COPY --from=build /out.wasm /ere-verifier.wasm

@@ -23,12 +23,16 @@ made with.
 `shim/` is the crate that exports the verifiers with a C ABI (`ere_verify`),
 `patches/` holds the one change the pinned OpenVM fork needs for wasm32 (its
 executor asserts a 64-bit memory layout at compile time; the verifier links but
-never runs it).
+never runs it). The module is reduced to what the shim's exports reach: the
+release profile (fat LTO, one codegen unit, `panic = "abort"`) is applied at
+the ere workspace root, `wasm-metadce` (`metadce.json` names the roots) drops
+the wasm-bindgen glue that Zisk's dependencies export, `wasm-opt -Oz` shrinks
+the rest and `pack` strips the custom sections before compressing.
 
 The builds are reproducible (pinned toolchain image, packages and dependency
 lockfile); a rebuild of a tag yields the byte-identical module:
 
 | ere release | module | SHA-256 |
 | --- | --- | --- |
-| v0.19.2 | `wasm/ere-v0.19.2.wasm.sz` | `cb3ad262f2e3b60b53d141f9187493d9c06c1664135192b23607e6045f7445e0` |
-| v0.17.2 | `wasm/ere-v0.17.2.wasm.sz` | `05cde6f288f5666f47e74727772a272c78b534d74cf93895a0aed921e18477e4` |
+| v0.19.2 | `wasm/ere-v0.19.2.wasm.sz` | `35ef1470d7901e9c86a340c974de4b6264521ece44ce4b3e0a45c612e59e802b` |
+| v0.17.2 | `wasm/ere-v0.17.2.wasm.sz` | `c3e00aee5827af3ea0ab09c83484574c4a4d4bbd52fdfe41bc9b37418d9d1091` |

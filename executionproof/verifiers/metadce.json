@@ -1,0 +1,6 @@
+[
+  { "name": "ere_verify", "export": "ere_verify", "root": true },
+  { "name": "ere_alloc", "export": "ere_alloc", "root": true },
+  { "name": "ere_out_ptr", "export": "ere_out_ptr", "root": true },
+  { "name": "memory", "export": "memory", "root": true }
+]

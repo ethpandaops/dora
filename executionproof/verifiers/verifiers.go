@@ -79,7 +79,7 @@ var kinds = map[executionproof.ZkVM]uint64{
 type Verifiers struct {
 	runtime wazero.Runtime
 	// stubbed holds the import modules provided so far: the verifiers' wasm
-	// dependencies declare a few host functions (wasm-bindgen glue) that a
+	// dependencies declare a host function (wasm-bindgen glue) that a
 	// verification never calls.
 	stubbed   map[string]bool
 	stubbedMu sync.Mutex

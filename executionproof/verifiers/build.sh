@@ -16,7 +16,7 @@ fi
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$dir/../.." && pwd)"
 out="$dir/wasm/ere-$tag.wasm.sz"
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d -p "${TMPDIR:-/var/tmp}")"
 trap 'rm -rf "$tmp"' EXIT
 
 docker build --build-arg "ERE_TAG=$tag" --target artifact --output "type=local,dest=$tmp" "$dir"
