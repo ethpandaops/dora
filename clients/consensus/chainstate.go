@@ -254,6 +254,17 @@ func (cs *ChainState) GetFastConfirmedBlock() (phase0.Slot, phase0.Root, time.Ti
 	return cs.fastConfirmedSlot, cs.fastConfirmedRoot, cs.lastFastConfirmation
 }
 
+// HasFinalityCheckpoint reports whether any client has reported finality checkpoints yet.
+// GetFinalizedCheckpoint returns epoch 0 both before the first report and on a chain that
+// has not finalized past genesis, so callers that must not act on a missing report (e.g.
+// seeding the indexer's finalization position) check this first.
+func (cs *ChainState) HasFinalityCheckpoint() bool {
+	cs.finalityMutex.RLock()
+	defer cs.finalityMutex.RUnlock()
+
+	return cs.finality != nil
+}
+
 func (cs *ChainState) GetFinalizedCheckpoint() (phase0.Epoch, phase0.Root) {
 	cs.finalityMutex.RLock()
 	defer cs.finalityMutex.RUnlock()

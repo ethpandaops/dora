@@ -65,6 +65,22 @@ func (e FrontendCachePageError) Stack() string {
 // ErrTooManyPageRequests is returned when the concurrency limit is reached.
 var ErrTooManyPageRequests = fmt.Errorf("too many concurrent page requests")
 
+var pageSemaphoreWait = 5 * time.Second
+
+func acquireSemaphore(ctx context.Context, sem chan struct{}) bool {
+	select {
+	case sem <- struct{}{}:
+		return true
+	default:
+	}
+	select {
+	case sem <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // StartFrontendCache is used to start the global frontend cache service
 func StartFrontendCache(logger logrus.FieldLogger) error {
 	if GlobalFrontendCache != nil {
@@ -173,40 +189,6 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 
 		callGoId.Store(routine.Goid())
 
-		// acquire global concurrency semaphore if configured (non-blocking)
-		if fc.concurrencySem != nil {
-			select {
-			case fc.concurrencySem <- struct{}{}:
-				defer func() { <-fc.concurrencySem }()
-			default:
-				select {
-				case errorChan <- ErrTooManyPageRequests:
-				default:
-				}
-				return
-			}
-		}
-
-		// acquire per-page-type concurrency semaphore if configured (non-blocking)
-		if fc.pageTypeSemLimit > 0 {
-			pageType := pageKey
-			if before, _, ok := strings.Cut(pageKey, ":"); ok {
-				pageType = before
-			}
-
-			typeSem := fc.getPageTypeSemaphore(pageType)
-			select {
-			case typeSem <- struct{}{}:
-				defer func() { <-typeSem }()
-			default:
-				select {
-				case errorChan <- ErrTooManyPageRequests:
-				default:
-				}
-				return
-			}
-		}
-
 		// check cache
 		if fc.cachingEnabled && caching && fc.getFrontendCache(pageKey, pageData) == nil {
 			logrus.Debugf("page served from cache: %v", pageKey)
@@ -216,6 +198,37 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 				returnChan <- pageData
 			}
 			return
+		}
+
+		semWaitCtx, semWaitCancel := context.WithTimeout(callCtx, pageSemaphoreWait)
+		defer semWaitCancel()
+
+		if fc.pageTypeSemLimit > 0 {
+			pageType := pageKey
+			if before, _, ok := strings.Cut(pageKey, ":"); ok {
+				pageType = before
+			}
+
+			typeSem := fc.getPageTypeSemaphore(pageType)
+			if !acquireSemaphore(semWaitCtx, typeSem) {
+				select {
+				case errorChan <- ErrTooManyPageRequests:
+				default:
+				}
+				return
+			}
+			defer func() { <-typeSem }()
+		}
+
+		if fc.concurrencySem != nil {
+			if !acquireSemaphore(semWaitCtx, fc.concurrencySem) {
+				select {
+				case errorChan <- ErrTooManyPageRequests:
+				default:
+				}
+				return
+			}
+			defer func() { <-fc.concurrencySem }()
 		}
 
 		// process page call
