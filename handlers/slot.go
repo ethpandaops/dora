@@ -26,7 +26,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/blockdb"
-	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -85,12 +84,18 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if pageError := services.GlobalCallRateLimiter.CheckCallLimit(r, 1); pageError != nil {
+	// a download serializes the whole block, payload or receipts; it costs more
+	// of the visitor's call budget than a page view
+	urlArgs := r.URL.Query()
+	callCost := uint(1)
+	if urlArgs.Has("download") {
+		callCost = 4
+	}
+	if pageError := services.GlobalCallRateLimiter.CheckCallLimit(r, callCost); pageError != nil {
 		handlePageError(w, r, pageError)
 		return
 	}
 
-	urlArgs := r.URL.Query()
 	if urlArgs.Has("download") {
 		if err := handleSlotDownload(r.Context(), w, blockSlot, blockRootHash, urlArgs.Get("download")); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -120,24 +125,6 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 			return // an error has occurred and was processed
 		}
 		return
-	}
-
-	if urlArgs.Has("blob") && pageData.Block != nil {
-		blobIndex, err1 := strconv.ParseUint(urlArgs.Get("blob"), 10, 64)
-		blobData, err2 := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(pageData.Block.BlockRoot), blobIndex)
-		if err1 == nil && err2 == nil && blobData != nil {
-			if int(blobIndex) < len(pageData.Block.Blobs) {
-				blobModel := pageData.Block.Blobs[blobIndex]
-				blobModel.HaveData = true
-				blobModel.Blob = blobData[:]
-				if len(blobModel.Blob) > 512 {
-					blobModel.BlobShort = blobModel.Blob[0:512]
-					blobModel.IsShort = true
-				} else {
-					blobModel.BlobShort = blobModel.Blob
-				}
-			}
-		}
 	}
 
 	template := templates.GetTemplate(slotTemplateFiles...)
@@ -350,6 +337,11 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		if pageData.Block != nil && pageData.InclusionListsEnabled {
 			pageData.Block.InclusionListsUnsatisfied = int64(inclusionListIndex.unsatisfied)
 		}
+		// The execution proofs of the block are loaded lazily; only their count from
+		// the slots index is known here.
+		if pageData.Block != nil {
+			pageData.Block.ExecutionProofsCount = uint64(max(inclusionListIndex.proofCount, 0))
+		}
 
 		// Expose block transactions to the access-list UI via a stable field.
 		if pageData.Block != nil && pageData.Block.Transactions != nil {
@@ -419,14 +411,17 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	return pageData, cacheTimeout
 }
 
-// slotInclusionListIndex holds the inclusion list values of the slots index
-// for a slot page.
+// slotInclusionListIndex holds the per-block index values of the slots table that
+// gate the lazily loaded tabs of a slot page: the inclusion list values and the
+// execution proof count.
 type slotInclusionListIndex struct {
 	// count is the number of inclusion lists published in the slot.
 	count int16
 	// unsatisfied is the number of transactions of the previous slot's lists
 	// that the displayed block left unsatisfied (-1 = not evaluated).
 	unsatisfied int16
+	// proofCount is the number of execution proofs collected for the displayed block.
+	proofCount int16
 }
 
 // getSlotBlocks retrieves all blocks for a given slot and builds the SlotBlocks slice
@@ -496,6 +491,7 @@ func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byt
 		}
 		if isCurrent {
 			inclusionListIndex.unsatisfied = dbBlock.Block.IlUnsatisfied
+			inclusionListIndex.proofCount = dbBlock.Block.ProofCount
 		}
 	}
 
@@ -574,7 +570,14 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	assignmentsMap[epoch] = epochStatsValues
 	assignmentsLoaded[epoch] = true
 
-	attHeadBlocks := make(map[phase0.Root]phase0.Slot)
+	// The head blocks the attestations vote for are resolved in one go.
+	attHeadRoots := make([]phase0.Root, 0, len(attestations))
+	for _, att := range attestations {
+		if att != nil && att.Data != nil {
+			attHeadRoots = append(attHeadRoots, att.Data.BeaconBlockRoot)
+		}
+	}
+	attHeadBlocks := services.GlobalBeaconService.GetBlockSlotsByRoots(ctx, attHeadRoots)
 
 	// Committee membership is loaded on demand via /slot/{slot}/duties; only the
 	// committee indices and aggregation bits are populated here.
@@ -631,15 +634,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		if slot, ok := attHeadBlocks[attData.BeaconBlockRoot]; ok {
 			attPageData.BeaconBlockSlot = uint64(slot)
-		} else {
-			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
-				BlockRoot: attData.BeaconBlockRoot[:],
-			}, 0, 1, 0)
-			if len(beaconBlocks) > 0 {
-				slot := phase0.Slot(beaconBlocks[0].Slot)
-				attHeadBlocks[attData.BeaconBlockRoot] = slot
-				attPageData.BeaconBlockSlot = uint64(slot)
-			}
 		}
 
 		if att.Version >= spec.DataVersionGloas {
@@ -1013,14 +1007,13 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			}
 		}
 
-		// Check if execution data exists in blockdb for receipt downloads
+		// Receipt downloads need the block's execution data object. Whether it was
+		// written is recorded in the block's el_blocks row (data_status), which is
+		// reset when the object is cleaned up, so no object store lookup per page.
 		if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
-			hasExecData, _ := blockdb.GlobalBlockDb.HasExecData(
-				ctx,
-				uint64(blockData.Header.Message.Slot),
-				blockData.Root[:],
-			)
-			pageData.ExecutionData.HasExecData = hasExecData
+			if elBlock, err := db.GetElBlock(ctx, blockUid); err == nil {
+				pageData.ExecutionData.HasExecData = elBlock.DataStatus != 0
+			}
 		}
 	}
 
@@ -1158,9 +1151,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			pageData.Withdrawals[i] = wd
 		}
 	}
-
-	// Fetch execution proofs for this block
-	getSlotPageExecutionProofs(pageData, blockData.Root, uint64(blockData.Header.Message.Slot))
 
 	// Load execution payload bids for ePBS (gloas+) blocks
 	if blockData.Block.Version >= spec.DataVersionGloas {
@@ -1499,55 +1489,6 @@ func getSlotPageBuilderExits(ctx context.Context, pageData *models.SlotPageBlock
 	}
 
 	pageData.BuilderExitRequestsCount = uint64(len(pageData.BuilderExitRequests))
-}
-
-func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot phase0.Root, slot uint64) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Use the first ready beacon client that returns proofs. A client without a proof engine returns an empty list.
-	proofsResponse := &rpc.ExecutionProofsResponse{}
-	for _, client := range services.GlobalBeaconService.GetBeaconIndexer().GetReadyClients(false) {
-		response, err := client.GetClient().GetRPCClient().GetExecutionProofsByBlockroot(ctx, blockRoot[:])
-		if err != nil {
-			logrus.WithError(err).WithField("blockRoot", fmt.Sprintf("0x%x", blockRoot)).WithField("client", client.GetClient().GetName()).Info("Error fetching execution proofs")
-			continue
-		}
-		if len(response.Data) > 0 {
-			proofsResponse = response
-			break
-		}
-	}
-
-	// Block hash is sourced from the execution payload on the page itself,
-	// since the Lighthouse execution_proofs response does not include it.
-	var blockHash []byte
-	if pageData.ExecutionData != nil {
-		blockHash = pageData.ExecutionData.BlockHash
-	}
-
-	pageData.ExecutionProofs = make([]*models.SlotPageExecutionProof, 0, len(proofsResponse.Data))
-	for _, proof := range proofsResponse.Data {
-		proofType, err := strconv.ParseUint(proof.Message.ProofType, 10, 8)
-		if err != nil {
-			logrus.WithError(err).WithField("proofType", proof.Message.ProofType).Warn("Error decoding proof type")
-			continue
-		}
-		proofData, err := hex.DecodeString(strings.TrimPrefix(proof.Message.ProofData, "0x"))
-		if err != nil {
-			logrus.WithError(err).WithField("proofType", proof.Message.ProofType).Warn("Error decoding proof data")
-			continue
-		}
-
-		pageData.ExecutionProofs = append(pageData.ExecutionProofs, &models.SlotPageExecutionProof{
-			ProofId:   uint8(proofType),
-			Slot:      slot,
-			BlockHash: blockHash,
-			BlockRoot: blockRoot[:],
-			ProofData: proofData,
-		})
-	}
-	pageData.ExecutionProofsCount = uint64(len(pageData.ExecutionProofs))
 }
 
 func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, blockSlot phase0.Slot) {

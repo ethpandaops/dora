@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
@@ -37,21 +38,26 @@ type Indexer struct {
 	blockCompression      bool
 	inMemoryEpochs        uint16
 	activityHistoryLength uint16
+	metadataHistoryLength uint16
+	// metadataCutoff is the slot before which the metadata caches dropped their
+	// slots: the index values of earlier blocks are in the block metadata.
+	metadataCutoff        atomic.Uint64
 	maxParallelStateCalls uint16
 
 	// caches
-	stateCache         *statecache.StateCache
-	blockCache         *blockCache
-	epochCache         *epochCache
-	forkCache          *forkCache
-	pubkeyCache        *pubkeyCache
-	builderPubkeyCache *pubkeyCache
-	validatorCache     *validatorCache
-	pendingValidators  *pendingValidatorProjector
-	validatorActivity  *validatorActivityCache
-	blockBidCache      *blockBidCache
-	builderCache       *builderCache
-	inclusionListCache *inclusionListCache
+	stateCache          *statecache.StateCache
+	blockCache          *blockCache
+	epochCache          *epochCache
+	forkCache           *forkCache
+	pubkeyCache         *pubkeyCache
+	builderPubkeyCache  *pubkeyCache
+	validatorCache      *validatorCache
+	pendingValidators   *pendingValidatorProjector
+	validatorActivity   *validatorActivityCache
+	blockBidCache       *blockBidCache
+	builderCache        *builderCache
+	inclusionListCache  *inclusionListCache
+	executionProofCache *executionProofCache
 
 	// indexer state
 	clients               []*Client
@@ -90,6 +96,10 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	if activityHistoryLength == 0 {
 		activityHistoryLength = 6
 	}
+	metadataHistoryLength := utils.Config.Indexer.MetadataHistoryLength
+	if metadataHistoryLength == 0 {
+		metadataHistoryLength = 6
+	}
 	maxParallelStateCalls := uint16(utils.Config.Indexer.MaxParallelValidatorSetRequests)
 	if maxParallelStateCalls < 2 {
 		maxParallelStateCalls = 2
@@ -109,6 +119,7 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 		blockCompression:      blockCompression,
 		inMemoryEpochs:        inMemoryEpochs,
 		activityHistoryLength: activityHistoryLength,
+		metadataHistoryLength: metadataHistoryLength,
 		maxParallelStateCalls: maxParallelStateCalls,
 
 		clients:              make([]*Client, 0),
@@ -131,6 +142,7 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	indexer.blockBidCache = newBlockBidCache(indexer)
 	indexer.builderCache = newBuilderCache(indexer)
 	indexer.inclusionListCache = newInclusionListCache(indexer)
+	indexer.executionProofCache = newExecutionProofCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	badChainRoots := utils.Config.Indexer.BadChainRoots
@@ -382,6 +394,9 @@ func (indexer *Indexer) StartIndexer() {
 		if err != nil {
 			indexer.logger.Warnf("failed restoring execution times for block %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
 		}
+		if err := block.restoreMetadata(dbBlock.Metadata); err != nil {
+			indexer.logger.Warnf("failed restoring metadata for block %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
+		}
 
 		if dbBlock.HeaderVer != 1 {
 			indexer.logger.Warnf("failed unmarshal unfinalized block header %v [%x] from db: unsupported header version", dbBlock.Slot, dbBlock.Root)
@@ -447,6 +462,7 @@ func (indexer *Indexer) StartIndexer() {
 
 	// restore block bids from db
 	indexer.blockBidCache.loadFromDB(chainState.CurrentSlot())
+	indexer.restoreUnfinalizedMetadata(finalizedSlot, chainState.CurrentSlot())
 
 	// start indexing for all clients
 	for _, client := range indexer.clients {
@@ -488,6 +504,7 @@ func (indexer *Indexer) StopIndexer() {
 		indexer.logger.WithError(err).Errorf("error flushing block bids on shutdown")
 	}
 
+	indexer.executionProofCache.close()
 	indexer.pubkeyCache.Close()
 	// builderPubkeyCache shares pubkeyCache's store, so it is closed by the line above.
 	indexer.stateCache.Close()
@@ -530,9 +547,20 @@ func (indexer *Indexer) runIndexerLoop() {
 			slotIndex := chainState.SlotToSlotIndex(currentSlot)
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))
 
+			// verify the execution proofs that waited for a payload, drop stale held ones
+			indexer.executionProofCache.processSlot(currentSlot)
+
+			// write the crash copy of the changed slot metadata
+			indexer.persistUnfinalizedMetadata()
+
 			// flush old block bids if needed
 			if err := indexer.blockBidCache.checkAndFlush(); err != nil {
 				indexer.logger.WithError(err).Errorf("failed flushing block bids")
+			}
+
+			// drop the slot metadata rows beyond their retention on epoch start
+			if slotIndex == 0 {
+				indexer.cleanupUnfinalizedMetadata(currentSlot)
 			}
 
 			// precalc next canonical duties on epoch start

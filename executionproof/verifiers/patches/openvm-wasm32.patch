@@ -1,0 +1,13 @@
+The OpenVM RISC-V executor state asserts its 64-bit memory layout at compile
+time. The verifier never runs the executor but links its crate; on wasm32 the
+layout differs, so the asserts are limited to 64-bit targets.
+--- a/crates/rvr/rvr-state/src/checkpoint_preflight.rs
++++ b/crates/rvr/rvr-state/src/checkpoint_preflight.rs
+@@ -79,6 +79,7 @@
+     }
+ }
+ 
++#[cfg(target_pointer_width = "64")]
+ const _: () = {
+     assert!(size_of::<RvrCheckpoint>() == 264);
+     assert!(align_of::<RvrCheckpoint>() == 8);

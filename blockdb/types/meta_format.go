@@ -2,8 +2,10 @@
 //
 // One object stores the gossip-side meta data of a single slot: all execution
 // payload bids of the slot together with their gossip observations (which
-// clients saw each bid and when), and the inclusion lists published in the
-// slot together with their evaluation (see inclusionlists_format.go). The object is self-sufficient (full bid fields,
+// clients saw each bid and when), the inclusion lists published in the
+// slot together with their evaluation (see inclusionlists_format.go) and the
+// execution proofs of the slot's blocks (see executionproofs_format.go). The
+// object is self-sufficient (full bid fields,
 // not just key tuples), so historic bid data could be served from the blockdb
 // alone without the relational block_bids table. Clients are identified by
 // name via a per-object client table, so objects stay decodable across client
@@ -99,6 +101,8 @@ const (
 	MetaSectionInclusionEvals     uint16 = 5 // inclusion list evaluations per target block
 	MetaSectionInclusionCommittee uint16 = 6 // inclusion list committee members
 	MetaSectionInclusionTxHashes  uint16 = 7 // inclusion list transaction hash table
+	MetaSectionExecutionProofs    uint16 = 8 // execution proof index records
+	MetaSectionExecutionProofData uint16 = 9 // execution proof bytes
 )
 
 const (
@@ -126,6 +130,11 @@ const (
 	SlotMetaFlagInclusionLists SlotMetaFlags = 1 << 1
 	// SlotMetaFlagInclusionTxs selects the raw inclusion list transactions.
 	SlotMetaFlagInclusionTxs SlotMetaFlags = 1 << 2
+	// SlotMetaFlagExecutionProofs selects the execution proof index (signer,
+	// type and size per proof, without the proof bytes).
+	SlotMetaFlagExecutionProofs SlotMetaFlags = 1 << 3
+	// SlotMetaFlagExecutionProofData selects the execution proof bytes.
+	SlotMetaFlagExecutionProofData SlotMetaFlags = 1 << 4
 	// SlotMetaFlagAll selects everything, including sections of unknown type.
 	// Objects that are written back must be loaded with it.
 	SlotMetaFlagAll SlotMetaFlags = 0xff
@@ -143,6 +152,10 @@ func (f SlotMetaFlags) wantsSection(sectionType uint16) bool {
 		return f&SlotMetaFlagInclusionLists != 0
 	case MetaSectionInclusionTxs:
 		return f&SlotMetaFlagInclusionTxs != 0
+	case MetaSectionExecutionProofs:
+		return f&(SlotMetaFlagExecutionProofs|SlotMetaFlagExecutionProofData) != 0
+	case MetaSectionExecutionProofData:
+		return f&SlotMetaFlagExecutionProofData != 0
 	default:
 		return f == SlotMetaFlagAll
 	}
@@ -168,6 +181,10 @@ type SlotMeta struct {
 	// their evaluations against the blocks of the following slot. Nil if the
 	// slot has none.
 	InclusionLists *SlotInclusionLists
+
+	// ExecutionProofs holds the execution proofs of the slot's blocks. Nil if the
+	// slot has none.
+	ExecutionProofs []*SlotExecutionProof
 
 	// Extra holds sections of a type this build does not know. They are
 	// re-emitted unchanged on encode.
@@ -318,7 +335,7 @@ func EncodeSlotMeta(s *SlotMeta) ([]byte, error) {
 		return nil, fmt.Errorf("too many bids: %d", len(s.Bids))
 	}
 
-	sections := make([]*SlotMetaSection, 0, 7+len(s.Extra))
+	sections := make([]*SlotMetaSection, 0, 9+len(s.Extra))
 	sections = append(sections, &SlotMetaSection{
 		Type: MetaSectionClients,
 		Data: encodeClientsSection(s.Clients),
@@ -330,9 +347,9 @@ func EncodeSlotMeta(s *SlotMeta) ([]byte, error) {
 	}
 	sections = append(sections, &SlotMetaSection{Type: MetaSectionBids, Data: bidsData})
 
-	// The large raw transaction section goes last, so the sections before it
-	// stay within reach of a prefix read.
-	var txSection *SlotMetaSection
+	// The large raw transaction and proof data sections go last, so the
+	// sections before them stay within reach of a prefix read.
+	var txSection, proofDataSection *SlotMetaSection
 	if s.InclusionLists != nil {
 		var ilSections []*SlotMetaSection
 		ilSections, txSection, err = encodeInclusionListSections(s.InclusionLists, len(s.Clients))
@@ -341,10 +358,21 @@ func EncodeSlotMeta(s *SlotMeta) ([]byte, error) {
 		}
 		sections = append(sections, ilSections...)
 	}
+	if len(s.ExecutionProofs) > 0 {
+		var proofSection *SlotMetaSection
+		proofSection, proofDataSection, err = encodeExecutionProofSections(s.ExecutionProofs)
+		if err != nil {
+			return nil, err
+		}
+		sections = append(sections, proofSection)
+	}
 
 	sections = append(sections, s.Extra...)
 	if txSection != nil {
 		sections = append(sections, txSection)
+	}
+	if proofDataSection != nil {
+		sections = append(sections, proofDataSection)
 	}
 	if len(sections) > 0xffff {
 		return nil, fmt.Errorf("too many sections: %d", len(sections))
@@ -643,9 +671,14 @@ func decodeSlotMetaSections(slot uint64, sections []*SlotMetaSection) (*SlotMeta
 	s.Bids = []*SlotMetaBid{}
 
 	var ilSections []*SlotMetaSection
+	var proofSection, proofDataSection *SlotMetaSection
 	for _, section := range sections {
 		switch section.Type {
 		case MetaSectionClients:
+		case MetaSectionExecutionProofs:
+			proofSection = section
+		case MetaSectionExecutionProofData:
+			proofDataSection = section
 		case MetaSectionBids:
 			payload, err := section.payload()
 			if err != nil {
@@ -674,6 +707,14 @@ func decodeSlotMetaSections(slot uint64, sections []*SlotMetaSection) (*SlotMeta
 			return nil, err
 		}
 		s.InclusionLists = lists
+	}
+
+	if proofSection != nil {
+		proofs, err := decodeExecutionProofSections(proofSection, proofDataSection)
+		if err != nil {
+			return nil, err
+		}
+		s.ExecutionProofs = proofs
 	}
 
 	return s, nil
@@ -786,9 +827,9 @@ func readBidRecord(data []byte, pos int, slot uint64, clientCount int, maskLen i
 }
 
 // MergeSlotMeta merges two meta objects for the same slot, unifying their
-// client tables, bid lists and inclusion lists. Observations keep the earliest
-// first-seen offset per client; for bids present in both objects the bid
-// fields of the second (newer) object win. Sections of unknown type are kept,
+// client tables, bid lists, inclusion lists and execution proofs. Observations
+// keep the earliest first-seen offset per client; for bids and proofs present in
+// both objects those of the second (newer) object win. Sections of unknown type are kept,
 // those of the newer object replacing same-typed ones of the older. Either
 // argument may be nil.
 func MergeSlotMeta(a, b *SlotMeta) *SlotMeta {
@@ -857,6 +898,7 @@ func MergeSlotMeta(a, b *SlotMeta) *SlotMeta {
 	merged.InclusionLists = mergeSlotInclusionLists(
 		a.InclusionLists, a.Clients, b.InclusionLists, b.Clients, clientIdx, len(merged.Clients),
 	)
+	merged.ExecutionProofs = mergeSlotExecutionProofs(a.ExecutionProofs, b.ExecutionProofs)
 
 	extraIdx := make(map[uint16]int, len(a.Extra)+len(b.Extra))
 	for _, src := range []*SlotMeta{a, b} {

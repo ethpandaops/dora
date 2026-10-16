@@ -1,81 +1,167 @@
 {{ define "block_proofs" }}
-  {{ if gt (len .Block.ExecutionProofs) 0 }}
-    {{ range $i, $proof := .Block.ExecutionProofs }}
-      <div class="card my-2">
-        <div class="card-body px-0 py-1">
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-12 text-center"><b>Execution Proof {{ $proof.ProofId }}</b></div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Type ID">Proof ID:</span></div>
-            <div class="col-md-10">
-              {{ $proof.ProofId }}
-              <span class="text-muted ms-2">
-                {{ if eq $proof.ProofId 1 }}(OpenVM+Ethrex)
-                {{ else if eq $proof.ProofId 2 }}(SP1+Ethrex)
-                {{ else if eq $proof.ProofId 3 }}(Zisk+Ethrex)
-                {{ else if eq $proof.ProofId 4 }}(OpenVM+Reth)
-                {{ else if eq $proof.ProofId 5 }}(SP1+Reth)
-                {{ else if eq $proof.ProofId 6 }}(Zisk+Reth)
-                {{ else if eq $proof.ProofId 7 }}(Zisk+Zesu)
-                {{ else }}(zkVM+EL #{{ $proof.ProofId }})
-                {{ end }}
-              </span>
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Slot Number">Slot:</span></div>
-            <div class="col-md-10">
-              {{ $proof.Slot }}
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Execution Block Hash">Block Hash:</span></div>
-            <div class="col-md-10 text-monospace">
-              0x{{ printf "%x" $proof.BlockHash }}
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.BlockHash }}"></i>
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Beacon Block Root">Block Root:</span></div>
-            <div class="col-md-10 text-monospace">
-              0x{{ printf "%x" $proof.BlockRoot }}
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.BlockRoot }}"></i>
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Data Size">Proof Size:</span></div>
-            <div class="col-md-10">
-              {{ len $proof.ProofData }} bytes
-              {{ if gt (len $proof.ProofData) 1024 }}
-                ({{ printf "%.2f" (div (float64 (len $proof.ProofData)) 1024.0) }} KB)
-              {{ end }}
-            </div>
-          </div>
-          <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Data (truncated)">Proof Data:</span></div>
-            <div class="col-md-10 text-monospace" style="word-break: break-all;">
-              {{ if gt (len $proof.ProofData) 128 }}
-                0x{{ printf "%x" (slice $proof.ProofData 0 128) }}...
-              {{ else }}
-                0x{{ printf "%x" $proof.ProofData }}
-              {{ end }}
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.ProofData }}"></i>
-            </div>
-          </div>
-        </div>
+  <div id="proofsContent" class="px-2 pb-2">
+    <div class="text-center py-4">
+      <div class="spinner-border spinner-border-sm text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
       </div>
-    {{ end }}
-  {{ else }}
-    <div class="card my-2">
-      <div class="card-body px-0 py-1">
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-12 text-center">
-            <p class="text-muted my-3">No execution proofs available for this block.</p>
-            <p class="text-muted small">Execution proofs are cryptographic proofs that validate the execution payload was computed correctly by a specific zkVM+EL combination.</p>
-          </div>
-        </div>
-      </div>
+      <span class="ms-2 text-muted">Loading execution proofs…</span>
     </div>
-  {{ end }}
+  </div>
+  <script type="text/javascript">
+    (function() {
+      var blockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
+      var container = document.getElementById('proofsContent');
+      var loaded = false;
+
+      function escapeHtml(text) {
+        return String(text == null ? '' : text).replace(/[&<>"']/g, function(c) {
+          return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+      }
+      function shortHex(hex, chars) {
+        if (!hex || hex.length <= 2 + 2 * chars) return hex || '';
+        return hex.substring(0, 2 + chars) + '…' + hex.substring(hex.length - chars);
+      }
+      function formatSize(bytes) {
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MiB';
+        if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' KiB';
+        return bytes + ' bytes';
+      }
+      // a shortened hex value with its copy control, optionally led by a mark; kept on one line
+      function hexCell(hex, chars, mark) {
+        if (!hex) return '<span class="text-body-secondary">-</span>';
+        return '<span class="text-nowrap">' + (mark || '') + '<span class="font-monospace">' + escapeHtml(shortHex(hex, chars)) + '</span>' +
+          ' <i class="fa fa-copy text-body-secondary p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="' + escapeHtml(hex) + '"></i></span>';
+      }
+      // a check that is true, false or unknown (null)
+      function checkBadge(value, okText, failText, unknownText) {
+        if (value === true) return '<span class="badge rounded-pill text-bg-success me-1"><i class="fa fa-check me-1"></i>' + escapeHtml(okText) + '</span>';
+        if (value === false) return '<span class="badge rounded-pill text-bg-danger me-1"><i class="fa fa-times me-1"></i>' + escapeHtml(failText) + '</span>';
+        return unknownText ? '<span class="badge rounded-pill text-bg-secondary me-1">' + escapeHtml(unknownText) + '</span>' : '';
+      }
+      function chip(text, title) {
+        return '<span class="badge rounded-pill text-bg-light border text-body-secondary fw-normal me-1"' + (title ? ' data-bs-toggle="tooltip" title="' + escapeHtml(title) + '"' : '') + '>' + escapeHtml(text) + '</span>';
+      }
+      function validatorLabel(index, name) {
+        var label = name ? escapeHtml(name) + ' (' + index + ')' : index;
+        return '<a href="/validator/' + index + '">' + label + '</a>';
+      }
+      function row(label, value) {
+        return '<tr><td class="text-nowrap text-body-secondary ps-0" style="width: 110px">' + label + '</td><td>' + value + '</td></tr>';
+      }
+      function detailTable(title, rows) {
+        return '<div class="col-lg-4 col-md-6"><div class="small text-uppercase text-body-secondary fw-semibold mb-1">' + title + '</div>' +
+          '<table class="table table-sm table-borderless mb-0"><tbody>' + rows + '</tbody></table></div>';
+      }
+      function zkvmName(zkvm) {
+        return {openvm: 'OpenVM', sp1: 'SP1', zisk: 'Zisk'}[zkvm] || zkvm || '-';
+      }
+
+      function renderProof(data, proof) {
+        var committed = proof.committed_public_input;
+
+        var badges = '';
+        if (proof.verification === 'valid') {
+          badges += '<span class="badge rounded-pill text-bg-success me-1" data-bs-toggle="tooltip" title="Verified with the ere ' + escapeHtml(proof.verifier) + ' verifier"><i class="fa fa-shield-halved me-1"></i>zk proof valid</span>';
+        } else if (proof.verification === 'invalid') {
+          badges += '<span class="badge rounded-pill text-bg-danger me-1" data-bs-toggle="tooltip" title="Rejected by the ere ' + escapeHtml(proof.verifier) + ' verifier"><i class="fa fa-shield-halved me-1"></i>zk proof invalid</span>';
+        } else if (proof.verification === 'unverifiable') {
+          badges += '<span class="badge rounded-pill text-bg-secondary me-1">no verifier for this proof</span>';
+        } else {
+          badges += '<span class="badge rounded-pill text-bg-secondary me-1">zk proof not verified</span>';
+        }
+        badges += checkBadge(proof.signature_valid, 'prover signature', 'prover signature invalid', '');
+        badges += checkBadge(proof.public_input_match, 'commits to this payload', 'commits to another payload', 'committed payload unknown');
+        if (proof.program_vk_match !== null) {
+          badges += checkBadge(proof.program_vk_match, 'known guest program', 'unknown guest program', '');
+        }
+
+        var chips = chip(zkvmName(proof.zkvm) + (proof.sdk_version ? ' ' + proof.sdk_version : ''), 'Proof system');
+        if (proof.proof_mode) chips += chip(proof.proof_mode, 'Proof mode');
+        chips += chip(formatSize(proof.size), 'Proof size');
+
+        var proofRows = row('Guest program', escapeHtml(proof.guest || '-'));
+        proofRows += row('Program key', hexCell(proof.program_vk, 6));
+        if (proof.committed_program_vk) {
+          proofRows += row('Key in proof', hexCell(proof.committed_program_vk, 6,
+            proof.program_vk_match === false ? '<i class="fa fa-triangle-exclamation text-danger me-1" data-bs-toggle="tooltip" title="Not the registered key of this proof type"></i>' : ''));
+        }
+        var proverRows = row('Prover', validatorLabel(proof.validator_index, proof.validator_name) +
+          (proof.prover_active ? '' : ' <span class="badge text-bg-danger">not active</span>'));
+        proverRows += row('Signature', hexCell(proof.signature, 6));
+
+        var inputRows;
+        if (committed) {
+          var rootMark = proof.public_input_match === true ? '<i class="fa fa-check text-success me-1" data-bs-toggle="tooltip" title="Matches the payload request root of this block"></i>'
+            : proof.public_input_match === false ? '<i class="fa fa-triangle-exclamation text-danger me-1" data-bs-toggle="tooltip" title="Differs from the payload request root of this block"></i>' : '';
+          inputRows = row('Payload request', hexCell(committed.new_payload_request_root, 6, rootMark));
+          inputRows += row('Chain / schema', 'chain ' + committed.chain_id + ' · schema 0x' + committed.schema_id.toString(16) +
+            (committed.successful_validation ? '' : ' <span class="badge text-bg-danger">validation failed</span>'));
+        } else {
+          inputRows = row('Public input', '<span class="text-danger">' + escapeHtml(proof.decode_error || 'not readable') + '</span>');
+        }
+
+        return '<div class="card mb-3">' +
+          '<div class="card-header d-flex flex-wrap align-items-center gap-2">' +
+            '<span class="badge text-bg-secondary">' + proof.proof_type + '</span><span class="fw-semibold me-2">' + escapeHtml(proof.proof_name) + '</span>' +
+            '<span class="me-auto">' + chips + '</span>' +
+            '<div class="btn-group btn-group-sm" role="group" aria-label="Download the signed proof envelope">' +
+              '<a class="btn btn-outline-primary" href="' + escapeHtml(proof.download_url) + '" rel="nofollow" title="Signed envelope as beacon API JSON"><i class="fa fa-download me-1"></i>JSON</a>' +
+              '<a class="btn btn-outline-primary" href="' + escapeHtml(proof.download_url) + '?format=ssz" rel="nofollow" title="Signed envelope as SSZ">SSZ</a>' +
+            '</div>' +
+          '</div>' +
+          '<div class="card-body pb-2"><div class="mb-3">' + badges + '</div>' +
+          '<div class="row g-4">' + detailTable('Program', proofRows) + detailTable('Prover', proverRows) + detailTable('Committed public input', inputRows) + '</div>' +
+          '</div></div>';
+      }
+
+      function render(data) {
+        var proofs = data.proofs || [];
+        if (proofs.length === 0) {
+          container.innerHTML = '<div class="text-center py-4 text-body-secondary">No execution proofs collected for this block.</div>';
+          return;
+        }
+
+        var html = '';
+        if (data.expected_public_input) {
+          var expected = data.expected_public_input;
+          html += '<div class="d-flex flex-wrap align-items-center gap-3 small py-2 mb-2 border-bottom">' +
+            '<span class="text-body-secondary">Payload request root of this block</span>' + hexCell(expected.new_payload_request_root, 12) +
+            '<span class="text-body-secondary">chain ' + expected.chain_id + ' · schema 0x' + expected.schema_id.toString(16) + '</span>' +
+            '<span class="ms-auto text-body-secondary">public input</span>' + hexCell(expected.raw, 8) +
+            '</div>';
+        } else if (data.expected_public_input_error) {
+          html += '<div class="alert alert-warning py-2">Expected public input not available: ' + escapeHtml(data.expected_public_input_error) + '</div>';
+        }
+        proofs.forEach(function(proof) { html += renderProof(data, proof); });
+        container.innerHTML = html;
+
+        if (window.explorer && window.explorer.initControls) {
+          window.explorer.initControls();
+        }
+      }
+
+      function load() {
+        if (loaded) return;
+        loaded = true;
+
+        fetch('/slot/' + blockRoot + '/proofs')
+          .then(function(r) {
+            if (!r.ok) throw new Error('request failed');
+            return r.json();
+          })
+          .then(render)
+          .catch(function() {
+            loaded = false;
+            container.innerHTML = '<div class="alert alert-danger m-2">Failed to load execution proofs</div>';
+          });
+      }
+
+      var tab = document.getElementById('proofs-tab');
+      if (tab) tab.addEventListener('shown.bs.tab', load);
+      if ((window.location.hash || window.__doraInitialHash || '') === '#proofs') {
+        load();
+      }
+    })();
+  </script>
 {{ end }}

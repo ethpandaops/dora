@@ -104,6 +104,10 @@ indexer:
   # number of epochs to keep validator activity history for (high memory usage for large validator sets)
   activityHistoryLength: 6
 
+  # number of epochs to keep unfinalized slot metadata (inclusion lists, execution proofs)
+  # in the database when no blockdb is configured to persist it
+  metadataHistoryLength: 6
+
   # disable synchronizing historic data
   disableSynchronizer: false
 
@@ -118,6 +122,15 @@ indexer:
 
   # maximum number of parallel beacon state requests (might cause high memory usage)
   maxParallelValidatorSetRequests: 1
+
+  # collection of EIP-8025 execution proofs from the beacon nodes' execution_proof
+  # event streams (requires a blockDb). the proofs are verified and stored with the
+  # slot's meta object. the streams deliver live gossip only: proofs published while
+  # the explorer is down are not collected.
+  #executionProofs:
+  #  disabled: false
+  #  verificationDisabled: false  # verify the proofs with the embedded zkVM verifiers
+  #  verifierCacheDir: ""         # compiled verifier cache kept across restarts (default: dora-verifiers in the temp dir)
 
 executionIndexer:
   enabled: false # enable execution data indexing

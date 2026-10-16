@@ -153,7 +153,8 @@ var inclusionListStatusInfo = map[uint8][2]string{
 
 // GetSlotInclusionLists returns the inclusion lists published in the given
 // slot with their committee, observations and evaluations, from the live
-// cache for recent slots and the blockdb meta object otherwise. The raw
+// cache for recent slots and the blockdb meta object otherwise (the
+// unfinalized_metadata row where no blockdb takes the objects over). The raw
 // transactions are only loaded if withTransactions is set. Returns nil if no
 // lists are known for the slot.
 func (bs *ChainService) GetSlotInclusionLists(ctx context.Context, slot phase0.Slot, withTransactions bool) *btypes.SlotMeta {
@@ -161,13 +162,13 @@ func (bs *ChainService) GetSlotInclusionLists(ctx context.Context, slot phase0.S
 		return cached
 	}
 
-	if !blockdb.GlobalBlockDb.SupportsSlotMeta() {
-		return nil
-	}
-
 	flags := btypes.SlotMetaFlagInclusionLists
 	if withTransactions {
 		flags |= btypes.SlotMetaFlagInclusionTxs
+	}
+
+	if !blockdb.GlobalBlockDb.SupportsSlotMeta() {
+		return bs.beaconIndexer.GetUnfinalizedSlotInclusionLists(ctx, slot)
 	}
 
 	stored, err := blockdb.GlobalBlockDb.GetSlotMeta(ctx, uint64(slot), flags)
