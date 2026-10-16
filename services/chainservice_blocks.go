@@ -1507,7 +1507,7 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 					blockRootsCachedId = append(blockRootsCachedId, cachedStart+uint64(cidx))
 				}
 			} else {
-				assignedBlock.IlCount = bs.beaconIndexer.GetInclusionListCount(phase0.Slot(block.slot))
+				assignedBlock.IlCount = max(bs.beaconIndexer.GetInclusionListCount(phase0.Slot(block.slot)), 0)
 			}
 			resBlocks = append(resBlocks, &assignedBlock)
 			resIdx++
@@ -1632,4 +1632,30 @@ func (bs *ChainService) GetHighestElBlockNumber(ctx context.Context, overrideFor
 	}
 
 	return 0
+}
+
+// GetBlockSlotsByRoots resolves the slots of the blocks with the given roots:
+// from the cache for unfinalized blocks, with one query for the rest. Roots of
+// unknown blocks are left out.
+func (bs *ChainService) GetBlockSlotsByRoots(ctx context.Context, roots []phase0.Root) map[phase0.Root]phase0.Slot {
+	slots := make(map[phase0.Root]phase0.Slot, len(roots))
+	dbRoots := make([][]byte, 0, len(roots))
+	for _, root := range roots {
+		if _, ok := slots[root]; ok {
+			continue
+		}
+		if block := bs.beaconIndexer.GetBlockByRoot(root); block != nil {
+			slots[root] = block.Slot
+			continue
+		}
+		dbRoots = append(dbRoots, root[:])
+	}
+
+	if len(dbRoots) > 0 {
+		for root, dbBlock := range db.GetSlotsByRoots(ctx, dbRoots) {
+			slots[root] = phase0.Slot(dbBlock.Slot)
+		}
+	}
+
+	return slots
 }

@@ -29,6 +29,7 @@ const (
 	StreamExecutionPayloadBidEvent uint16 = 0x10
 	StreamInclusionListEvent       uint16 = 0x20
 	StreamFastConfirmationEvent    uint16 = 0x40
+	StreamExecutionProofEvent      uint16 = 0x80
 )
 
 type BeaconStreamEvent struct {
@@ -186,6 +187,11 @@ func (bs *BeaconStream) ensureAncillaryStreams(events uint16) {
 	// own stream that silently gives up if the node rejects the topic
 	fastConfirmationEvents := events & StreamFastConfirmationEvent
 	bs.startAncillaryStream(fastConfirmationEvents)
+
+	// the execution_proof topic is only known to nodes that collect EIP-8025 proofs,
+	// so it gets its own stream as well
+	proofEvents := events & StreamExecutionProofEvent
+	bs.startAncillaryStream(proofEvents)
 }
 
 func (bs *BeaconStream) startAncillaryStream(events uint16) {
@@ -206,7 +212,7 @@ func (bs *BeaconStream) startAncillaryStream(events uint16) {
 
 func (bs *BeaconStream) runAncillaryStream(events uint16) {
 	// streams carrying only optional topics give up when the node rejects the topic
-	optional := events&StreamFastConfirmationEvent == events
+	optional := events&^(StreamFastConfirmationEvent|StreamExecutionProofEvent) == 0
 
 	stream := bs.subscribeStream(bs.client.endpoint, events, optional)
 	if stream == nil {
@@ -228,6 +234,8 @@ func (bs *BeaconStream) runAncillaryStream(events uint16) {
 				bs.processInclusionListEvent(evt)
 			case "fast_confirmation":
 				bs.processFastConfirmationEvent(evt)
+			case "execution_proof":
+				bs.processExecutionProofEvent(evt)
 			}
 		case <-stream.Ready:
 		case err := <-stream.Errors:
@@ -343,6 +351,16 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16, optional
 		}
 
 		fmt.Fprintf(&topics, "fast_confirmation")
+
+		topicsCount++
+	}
+
+	if events&StreamExecutionProofEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "execution_proof")
 
 		topicsCount++
 	}
@@ -517,4 +535,27 @@ func getRedactedURL(requrl string) string {
 	}
 
 	return logurl
+}
+
+func (bs *BeaconStream) processExecutionProofEvent(evt eventstream.StreamEvent) {
+	parsed, err := parseExecutionProofEvent([]byte(evt.Data()))
+	if err != nil {
+		bs.logger.Warnf("beacon block stream failed to decode execution_proof event: %v", err)
+		return
+	}
+
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamExecutionProofEvent,
+		Data:  parsed,
+	}
+}
+
+// parseExecutionProofEvent decodes the execution_proof event: a signed proof envelope.
+func parseExecutionProofEvent(data []byte) (*ExecutionProof, error) {
+	var envelope executionProofEnvelope
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, err
+	}
+
+	return decodeExecutionProofEnvelope(&envelope)
 }

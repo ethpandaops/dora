@@ -166,6 +166,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/swaggo/files v1.0.1 // indirect
+	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/thomaso-mirodin/intmath v0.0.0-20160323211736-5dc6d854e46e // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/wealdtech/go-bytesutil v1.2.1 // indirect

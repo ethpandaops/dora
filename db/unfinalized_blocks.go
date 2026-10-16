@@ -13,16 +13,16 @@ func InsertUnfinalizedBlock(ctx context.Context, tx *sqlx.Tx, block *dbtypes.Unf
 	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_blocks (
-				root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+				root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid, metadata
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE INTO unfinalized_blocks (
-				root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+				root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid, metadata
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 	}),
 		block.Root, block.Slot, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ, block.PayloadVer, block.PayloadSSZ, block.Status, block.ForkId, block.RecvDelay,
-		block.MinExecTime, block.MaxExecTime, block.ExecTimes, block.BlockUid,
+		block.MinExecTime, block.MaxExecTime, block.ExecTimes, block.BlockUid, block.Metadata,
 	)
 	if err != nil {
 		return err
@@ -96,6 +96,15 @@ func UpdateUnfinalizedBlockPayload(ctx context.Context, tx *sqlx.Tx, root []byte
 	return nil
 }
 
+// UpdateUnfinalizedBlockMetadata stores the aggregated slot metadata of a block.
+func UpdateUnfinalizedBlockMetadata(ctx context.Context, tx *sqlx.Tx, root []byte, metadata []byte) error {
+	_, err := tx.ExecContext(ctx, `UPDATE unfinalized_blocks SET metadata = $1 WHERE root = $2`, metadata, root)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func UpdateUnfinalizedBlockExecutionTimes(ctx context.Context, tx *sqlx.Tx, root []byte, minExecTime uint32, maxExecTime uint32, execTimes []byte) error {
 	_, err := tx.ExecContext(ctx, `UPDATE unfinalized_blocks SET min_exec_time = $1, max_exec_time = $2, exec_times = $3 WHERE root = $4`, minExecTime, maxExecTime, execTimes, root)
 	if err != nil {
@@ -147,7 +156,7 @@ func StreamUnfinalizedBlocks(ctx context.Context, slot uint64, cb func(block *db
 	var sql strings.Builder
 	args := []any{slot}
 
-	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid FROM unfinalized_blocks WHERE slot >= $1`)
+	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid, metadata FROM unfinalized_blocks WHERE slot >= $1`)
 
 	rows, err := ReaderDb.QueryContext(ctx, sql.String(), args...)
 	if err != nil {
@@ -159,7 +168,7 @@ func StreamUnfinalizedBlocks(ctx context.Context, slot uint64, cb func(block *db
 		block := dbtypes.UnfinalizedBlock{}
 		err := rows.Scan(
 			&block.Root, &block.Slot, &block.HeaderVer, &block.HeaderSSZ, &block.BlockVer, &block.BlockSSZ, &block.PayloadVer, &block.PayloadSSZ, &block.Status, &block.ForkId, &block.RecvDelay,
-			&block.MinExecTime, &block.MaxExecTime, &block.ExecTimes, &block.BlockUid,
+			&block.MinExecTime, &block.MaxExecTime, &block.ExecTimes, &block.BlockUid, &block.Metadata,
 		)
 		if err != nil {
 			logger.Errorf("Error while scanning unfinalized block: %v", err)
@@ -187,7 +196,7 @@ func GetUnfinalizedBlock(ctx context.Context, root []byte, withHeader bool, with
 		fmt.Fprint(&sql, `, payload_ver, payload_ssz`)
 	}
 
-	fmt.Fprint(&sql, `, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid`)
+	fmt.Fprint(&sql, `, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid, metadata`)
 
 	fmt.Fprint(&sql, ` FROM unfinalized_blocks WHERE root = $1`)
 

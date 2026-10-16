@@ -802,3 +802,58 @@ func mergeSlotInclusionLists(
 
 	return merged
 }
+
+// EncodeInclusionListFragment encodes a self-contained inclusion list object
+// (an evaluation with its own transaction and list tables, without
+// observations) as a standalone blob: the section count, then type, flags,
+// length and data per section.
+func EncodeInclusionListFragment(s *SlotInclusionLists) ([]byte, error) {
+	sections, txSection, err := encodeInclusionListSections(s, 0)
+	if err != nil {
+		return nil, err
+	}
+	if txSection != nil {
+		sections = append(sections, txSection)
+	}
+
+	var buf bytes.Buffer
+	_ = binary.Write(&buf, binary.BigEndian, uint16(len(sections)))
+	for _, section := range sections {
+		_ = binary.Write(&buf, binary.BigEndian, section.Type)
+		_ = binary.Write(&buf, binary.BigEndian, section.Flags)
+		_ = binary.Write(&buf, binary.BigEndian, uint32(len(section.Data)))
+		buf.Write(section.Data)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// DecodeInclusionListFragment decodes a blob written by EncodeInclusionListFragment.
+func DecodeInclusionListFragment(data []byte) (*SlotInclusionLists, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf("inclusion list fragment too short")
+	}
+	count := int(binary.BigEndian.Uint16(data[0:2]))
+	pos := 2
+
+	sections := make([]*SlotMetaSection, 0, count)
+	for range count {
+		if pos+8 > len(data) {
+			return nil, fmt.Errorf("inclusion list fragment section header out of range")
+		}
+		section := &SlotMetaSection{
+			Type:  binary.BigEndian.Uint16(data[pos : pos+2]),
+			Flags: binary.BigEndian.Uint16(data[pos+2 : pos+4]),
+		}
+		length := int(binary.BigEndian.Uint32(data[pos+4 : pos+8]))
+		pos += 8
+		if pos+length > len(data) {
+			return nil, fmt.Errorf("inclusion list fragment section out of range")
+		}
+		section.Data = data[pos : pos+length]
+		pos += length
+		sections = append(sections, section)
+	}
+
+	return decodeInclusionListSections(sections, 0)
+}

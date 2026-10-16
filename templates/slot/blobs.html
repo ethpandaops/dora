@@ -12,31 +12,13 @@
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgCommitment }}"></i>
           </div>
         </div>
-        {{ if $blob.HaveData }}
+        <div class="blobloader-container" data-blob-idx="{{ $blob.Index }}">
           <div class="row border-bottom p-1 mx-0">
-            <div class="col-md-2">
-              <span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob Data">Data:</span>
-              <div class="btn-group btn-group-sm ms-2" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-sm blob-view-toggle active" data-mode="hex" data-blob-idx="{{ $blob.Index }}">Hex</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm blob-view-toggle" data-mode="ascii" data-blob-idx="{{ $blob.Index }}">ASCII</button>
-              </div>
-            </div>
-            <div class="col-md-10">
-              <div class="blob-data-container" data-blob-idx="{{ $blob.Index }}" data-blob-hex="{{ printf "%x" $blob.Blob }}">
-                <pre class="blob-data-view text-monospace mb-0" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; background: var(--bs-tertiary-bg); padding: 0.5rem; border-radius: 0.25rem;">0x{{ printf "%x" $blob.BlobShort }}{{- if $blob.IsShort -}}...{{ end }}</pre>
-              </div>
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.Blob }}"></i>
+            <div class="col text-center">
+              <button type="button" class="btn btn-primary blobloader-button">Load Blob Data</button>
             </div>
           </div>
-        {{ else }}
-          <div class="blobloader-container" data-blob-idx="{{ $blob.Index }}">
-            <div class="row border-bottom p-1 mx-0">
-              <div class="col text-center">
-                <a class="btn btn-primary blobloader-button" href="?blob={{ $blob.Index }}#blobSidecars" role="button">Load Blob Data</a>
-              </div>
-            </div>
-          </div>
-        {{ end }}
+        </div>
       </div>
     </div>
   {{ end }}

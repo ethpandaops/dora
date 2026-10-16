@@ -129,6 +129,7 @@ type Config struct {
 
 		InMemoryEpochs                  uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
 		ActivityHistoryLength           uint16 `yaml:"activityHistoryLength" envconfig:"INDEXER_ACTIVITY_HISTORY_LENGTH"`
+		MetadataHistoryLength           uint16 `yaml:"metadataHistoryLength" envconfig:"INDEXER_METADATA_HISTORY_LENGTH"`
 		DisableSynchronizer             bool   `yaml:"disableSynchronizer" envconfig:"INDEXER_DISABLE_SYNCHRONIZER"`
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
@@ -143,6 +144,18 @@ type Config struct {
 			Path      string `yaml:"path" envconfig:"INDEXER_STATE_CACHE_PATH"`
 			MaxStates uint   `yaml:"maxStates" envconfig:"INDEXER_STATE_CACHE_MAX_STATES"`
 		} `yaml:"stateCache"`
+
+		// ExecutionProofs configures the collection of EIP-8025 execution proofs from the
+		// beacon nodes' execution_proof event streams into the blockdb meta objects.
+		ExecutionProofs struct {
+			Disabled bool `yaml:"disabled" envconfig:"INDEXER_EXECUTION_PROOFS_DISABLED"`
+			// VerificationDisabled turns off verifying the collected proofs with the
+			// embedded zkVM verifiers.
+			VerificationDisabled bool `yaml:"verificationDisabled" envconfig:"INDEXER_EXECUTION_PROOFS_VERIFICATION_DISABLED"`
+			// VerifierCacheDir keeps the compiled verifier modules across restarts
+			// (default: dora-verifiers in the temp dir, shared by the instances on a host).
+			VerifierCacheDir string `yaml:"verifierCacheDir" envconfig:"INDEXER_EXECUTION_PROOFS_VERIFIER_CACHE_DIR"`
+		} `yaml:"executionProofs"`
 	} `yaml:"indexer"`
 
 	TxSignature struct {

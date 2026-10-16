@@ -111,7 +111,6 @@ type SlotPageBlockData struct {
 	BLSChanges                []*SlotPageBLSChange             `json:"bls_changes"`                 // BLSChanges included in this block
 	Withdrawals               []*SlotPageWithdrawal            `json:"withdrawals"`                 // Withdrawals included in this block
 	Blobs                     []*SlotPageBlob                  `json:"blobs"`                       // Blob sidecars included in this block
-	ExecutionProofs           []*SlotPageExecutionProof        `json:"execution_proofs"`            // Execution proofs included in this block
 	Transactions              []*SlotPageTransaction           `json:"transactions"`                // Transactions included in this block
 	DepositRequests           []*SlotPageDepositRequest        `json:"deposit_receipts"`            // DepositRequests included in this block
 	WithdrawalRequests        []*SlotPageWithdrawalRequest     `json:"withdrawal_requests"`         // WithdrawalRequests included in this block
@@ -334,10 +333,6 @@ type SlotPageWithdrawal struct {
 type SlotPageBlob struct {
 	Index         uint64 `json:"index"`
 	KzgCommitment []byte `json:"kzg_commitment" ssz-size:"48"`
-	HaveData      bool   `json:"have_data"`
-	IsShort       bool   `json:"is_short"`
-	BlobShort     []byte `json:"blob_short"`
-	Blob          []byte `json:"blob"`
 	KzgProof      []byte `json:"kzg_proof" ssz-size:"48"`
 }
 
@@ -504,12 +499,70 @@ type SlotPagePtcAggregate struct {
 	VotePercent       float64                `json:"vote_percent"`        // Percentage of committee
 }
 
-type SlotPageExecutionProof struct {
-	ProofId   uint8  `json:"proof_id"`
+// SlotExecutionProofsResponse is the JSON body of the lazy execution proofs tab of
+// the slot page: the proofs of the block with what they commit to, and the public
+// input the block expects a valid proof to commit to, which a verifier compares
+// the proof's public values against.
+type SlotExecutionProofsResponse struct {
 	Slot      uint64 `json:"slot"`
-	BlockHash []byte `json:"block_hash"`
-	BlockRoot []byte `json:"block_root"`
-	ProofData []byte `json:"proof_data"`
+	BlockRoot string `json:"block_root"`
+	// ExpectedPublicInput is derived from the block's payload envelope; nil if
+	// it is not available (ExpectedPublicInputError says why).
+	ExpectedPublicInput      *SlotExecutionProofPublicInput `json:"expected_public_input"`
+	ExpectedPublicInputError string                         `json:"expected_public_input_error,omitempty"`
+	Proofs                   []*SlotExecutionProof          `json:"proofs"`
+}
+
+// SlotExecutionProofPublicInput is the public input of an execution proof: the
+// root of the validated NewPayloadRequest, the outcome, the chain and the input
+// schema. Raw is its 43-byte SSZ serialization, the form the zkVM guests reveal.
+type SlotExecutionProofPublicInput struct {
+	NewPayloadRequestRoot string `json:"new_payload_request_root"`
+	SuccessfulValidation  bool   `json:"successful_validation"`
+	ChainID               uint64 `json:"chain_id"`
+	SchemaID              uint16 `json:"schema_id"`
+	Raw                   string `json:"raw"`
+}
+
+// SlotExecutionProof is one EIP-8025 execution proof of the block, without the proof
+// bytes (served by DownloadUrl), with what the explorer can tell about it short of
+// verifying the zero knowledge proof.
+type SlotExecutionProof struct {
+	ProofType uint8  `json:"proof_type"`
+	ProofName string `json:"proof_name"`
+	// Guest and ZkVM identify the program and proof system of the proof type;
+	// ProgramVK is the registered verification key of the program, in the
+	// encoding the zkVM's verifier takes.
+	Guest     string `json:"guest"`
+	ZkVM      string `json:"zkvm"`
+	ProgramVK string `json:"program_vk"`
+	// Verification is the outcome of verifying the proof with the explorer's
+	// embedded zkVM verifiers when it was collected: valid, invalid,
+	// unverifiable (no verifier for the zkVM) or unknown; Verifier is the
+	// verifier release that produced it.
+	Verification string `json:"verification"`
+	Verifier     string `json:"verifier,omitempty"`
+	// The prover that signed the proof envelope; the signature was checked
+	// against the block's validator set when the proof was collected.
+	ValidatorIndex uint64 `json:"validator_index"`
+	ValidatorName  string `json:"validator_name"`
+	Signature      string `json:"signature"`
+	SignatureValid bool   `json:"signature_valid"`
+	ProverActive   bool   `json:"prover_active"`
+	Size           uint32 `json:"size"`
+	DownloadUrl    string `json:"download_url"`
+	// The values read from the proof bytes: the public input it commits to, and
+	// the zkVM-specific metadata around it (nil/empty where the zkVM has none).
+	ProofMode            string                         `json:"proof_mode,omitempty"`
+	SdkVersion           string                         `json:"sdk_version,omitempty"`
+	CommittedPublicInput *SlotExecutionProofPublicInput `json:"committed_public_input"`
+	CommittedProgramVK   string                         `json:"committed_program_vk,omitempty"`
+	DecodeError          string                         `json:"decode_error,omitempty"`
+	// PublicInputMatch tells whether the committed public input is the expected
+	// one, ProgramVKMatch whether the key the proof carries is the registered
+	// one; nil where unknown.
+	PublicInputMatch *bool `json:"public_input_match"`
+	ProgramVKMatch   *bool `json:"program_vk_match"`
 }
 
 // SlotBlockAccessListResponse is the JSON body of the lazy block access list
