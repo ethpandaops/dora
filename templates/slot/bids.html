@@ -70,7 +70,9 @@
                    data-block-hash="0x{{ printf "%x" $bid.BlockHash }}"
                    data-builder-index="{{ $bid.BuilderIndex }}"
                    data-parent-root="0x{{ printf "%x" $bid.ParentRoot }}"
-                   data-parent-hash="0x{{ printf "%x" $bid.ParentHash }}">{{ $bid.SeenCount }}/{{ $bid.SeenTotal }} <i class="fas fa-caret-down"></i></a>
+                   data-parent-hash="0x{{ printf "%x" $bid.ParentHash }}"
+                   data-seen-count="{{ $bid.SeenCount }}"
+                   data-seen-total="{{ $bid.SeenTotal }}">{{ $bid.SeenCount }}/{{ $bid.SeenTotal }} <i class="fas fa-caret-down"></i></a>
               {{ else }}
                 <span class="text-muted" data-bs-toggle="tooltip" title="No gossip observation data for this bid">-</span>
               {{ end }}
@@ -149,7 +151,14 @@
         }
 
         // renderContent builds the popover title and body for one bid's observations.
-        function renderContent(clients, bid) {
+        function renderContent(clients, bid, seenCount, seenTotal) {
+          if ((!bid || !bid.seen || !bid.seen.length) && seenCount > 0) {
+            return {
+              title: 'Seen by ' + seenCount + ' of ' + seenTotal + ' clients',
+              html: '<div class="text-muted">Per-client observation details are no longer available for this slot.</div>'
+            };
+          }
+
           var obs = bid && bid.seen ? bid.seen.slice() : [];
           obs.sort(function(a, b) { return a.time - b.time; });
 
@@ -252,7 +261,8 @@
                   b.parent_root === btn.dataset.parentRoot &&
                   b.parent_hash === btn.dataset.parentHash;
               });
-              var content = renderContent(data.clients || [], bid);
+              var content = renderContent(data.clients || [], bid,
+                parseInt(btn.dataset.seenCount, 10) || 0, parseInt(btn.dataset.seenTotal, 10) || 0);
               // target this popover's own tip: a previously opened popover may
               // still be fading out in the DOM, so a global selector can hit it
               var header = popover.tip ? popover.tip.querySelector('.popover-header') : null;
