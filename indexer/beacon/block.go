@@ -411,6 +411,10 @@ func (block *Block) EnsureHeader(loadHeader func() (*phase0.SignedBeaconBlockHea
 		return err
 	}
 
+	if header == nil {
+		return fmt.Errorf("block header not available")
+	}
+
 	block.header = header
 	close(block.headerChan)
 
@@ -453,6 +457,12 @@ func (block *Block) EnsureBlock(loadBlock func() (*all.SignedBeaconBlock, error)
 	blockBody, err := loadBlock()
 	if err != nil {
 		return false, err
+	}
+
+	if blockBody == nil {
+		// a missing body (e.g. 404 from a load balanced client) must not be treated as a loaded block,
+		// otherwise fork detection runs on a block that can never be persisted
+		return false, fmt.Errorf("block body not available")
 	}
 
 	block.setBlockIndex(blockBody, nil)
