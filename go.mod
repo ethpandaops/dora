@@ -6,12 +6,12 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/allegro/bigcache/v3 v3.2.0
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/ethereum/go-ethereum v1.17.7
+	github.com/ethereum/go-ethereum v1.17.8
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260807105509-b0a20c27b6e7
 	github.com/ethpandaops/go-eth2-client v0.1.11-0.20261009114947-aa18b63c346c
 	github.com/ethpandaops/spamoor v1.2.5-0.20260925130528-570d240766f6
-	github.com/ethpandaops/xatu v1.24.1
+	github.com/ethpandaops/xatu v1.25.0
 	github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -26,7 +26,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.3.3-0.20261006152142-f2782e31a876
+	github.com/pk910/dynamic-ssz v1.4.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
@@ -43,9 +43,9 @@ require (
 	github.com/tdewolff/minify v2.3.6+incompatible
 	github.com/timandy/routine v1.1.6
 	github.com/urfave/negroni v1.0.0
-	golang.org/x/crypto v0.57.0
+	golang.org/x/crypto v0.58.0
 	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa
-	golang.org/x/text v0.42.0
+	golang.org/x/text v0.43.0
 	golang.org/x/time v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -59,7 +59,7 @@ require (
 	github.com/OffchainLabs/go-bitfield v0.0.0-20260504143531-5cbb6d0f5f2e // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/VictoriaMetrics/fastcache v1.13.0 // indirect
-	github.com/andybalholm/brotli v1.2.3 // indirect
+	github.com/andybalholm/brotli v1.2.6 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/chuckpreslar/emission v0.0.0-20170206194824-a7ddd980baf9 // indirect
 	github.com/cockroachdb/errors v1.12.0 // indirect
@@ -137,7 +137,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.29 // indirect
 	github.com/pingcap/errors v0.11.5-0.20250318082626-8f80e5cb09ec // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
-	github.com/pion/dtls/v3 v3.1.4 // indirect
+	github.com/pion/dtls/v3 v3.1.5 // indirect
 	github.com/pion/ice/v4 v4.0.10 // indirect
 	github.com/pion/interceptor v0.1.40 // indirect
 	github.com/pion/logging v0.2.4 // indirect
@@ -148,9 +148,9 @@ require (
 	github.com/pion/sctp v1.8.39 // indirect
 	github.com/pion/sdp/v3 v3.0.18 // indirect
 	github.com/pion/srtp/v3 v3.0.7 // indirect
-	github.com/pion/stun/v3 v3.1.5 // indirect
+	github.com/pion/stun/v3 v3.1.7 // indirect
 	github.com/pion/transport/v3 v3.0.7 // indirect
-	github.com/pion/transport/v4 v4.0.2 // indirect
+	github.com/pion/transport/v4 v4.1.0 // indirect
 	github.com/pion/turn/v4 v4.1.1 // indirect
 	github.com/pion/webrtc/v4 v4.1.4 // indirect
 	github.com/pk910/hashtree-bindings v0.2.6 // indirect
@@ -178,8 +178,8 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
-	golang.org/x/tools v0.49.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260924152758-ed294f943157 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a // indirect
@@ -189,7 +189,7 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
+	github.com/ClickHouse/clickhouse-go/v2 v2.49.0
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -250,9 +250,9 @@ require (
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/Knetic/govaluate.v3 v3.0.0
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
