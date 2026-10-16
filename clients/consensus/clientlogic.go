@@ -367,7 +367,9 @@ func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Roo
 	client.lastFinalityUpdateEpoch = client.pool.chainState.CurrentEpoch()
 
 	client.headMutex.Lock()
-	if bytes.Equal(client.justifiedRoot[:], finalizedCheckpoints.Justified.Root[:]) {
+	// before the first justification the reported roots are zero, like the unset justifiedRoot,
+	// so an unchanged root must not skip seeding the pool's checkpoint while it is still unset.
+	if bytes.Equal(client.justifiedRoot[:], finalizedCheckpoints.Justified.Root[:]) && client.pool.chainState.HasFinalityCheckpoint() {
 		client.headMutex.Unlock()
 		return finalizedCheckpoints.Finalized.Root, nil
 	}

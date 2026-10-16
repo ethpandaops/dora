@@ -193,7 +193,7 @@
                   <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
                     <a tab-index="1" aria-controls="tpg_next" class="page-link" href="{{ .NextPageLink }}"><i class="fas fa-chevron-right"></i></a>
                   </li>
-                  <li class="last paginate_button page-item {{ if or (eq .LastPageIndex 0) (le .NextPageIndex .LastPageIndex) }}disabled{{ end }}" id="tpg_last">
+                  <li class="last paginate_button page-item {{ if or (eq .LastPageIndex 0) (eq .NextPageIndex 0) }}disabled{{ end }}" id="tpg_last">
                     <a tab-index="1" aria-controls="tpg_last" class="page-link" href="{{ .LastPageLink }}">Last</a>
                   </li>
                 </ul>
