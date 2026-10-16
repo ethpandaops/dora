@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"math"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -151,12 +153,43 @@ func (cs *ChainState) computeMajoritySpecs() (*ChainSpec, error) {
 		return nil, nil
 	}
 
+	// A fork that is scheduled on some clients wins over clients reporting it unscheduled,
+	// as those are most likely running a release that predates the fork schedule. Values
+	// bound to such a fork are therefore only taken from clients that have it scheduled.
+	forkEpochKeys := specForkEpochKeys()
+	scheduledForks := make(map[string]map[*Client]bool, 8)
+
+	for client, clientSpec := range cs.clientSpecs {
+		for key, value := range clientSpec {
+			// fork epoch fields are bound to their own fork
+			if forkEpochKeys[key] != key {
+				continue
+			}
+
+			if epoch, ok := value.(uint64); !ok || epoch == math.MaxUint64 {
+				continue
+			}
+
+			if scheduledForks[key] == nil {
+				scheduledForks[key] = make(map[*Client]bool, len(cs.clientSpecs))
+			}
+
+			scheduledForks[key][client] = true
+		}
+	}
+
 	// Build a map of spec key -> value -> count
 	valueCounts := make(map[string]map[string]int)
 	valueStore := make(map[string]map[string]interface{})
 
-	for _, clientSpec := range cs.clientSpecs {
+	for client, clientSpec := range cs.clientSpecs {
 		for key, value := range clientSpec {
+			if forkKey, ok := forkEpochKeys[key]; ok {
+				if scheduled := scheduledForks[forkKey]; len(scheduled) > 0 && !scheduled[client] {
+					continue
+				}
+			}
+
 			if valueCounts[key] == nil {
 				valueCounts[key] = make(map[string]int)
 				valueStore[key] = make(map[string]interface{})
@@ -197,6 +230,39 @@ func (cs *ChainState) computeMajoritySpecs() (*ChainSpec, error) {
 
 	return majoritySpec, nil
 }
+
+// specForkEpochKeys maps each fork bound spec key to the spec key of its fork epoch, as
+// declared by the check-if-fork tags of the ChainSpec structs. Fork epoch keys map to
+// themselves.
+var specForkEpochKeys = sync.OnceValue(func() map[string]string {
+	configType := reflect.TypeFor[ChainSpecConfig]()
+	specTypes := []reflect.Type{
+		configType,
+		reflect.TypeFor[ChainSpecPreset](),
+		reflect.TypeFor[ChainSpecDomainTypes](),
+	}
+
+	yamlKey := func(field reflect.StructField) string {
+		return strings.Split(field.Tag.Get("yaml"), ",")[0]
+	}
+
+	forkEpochKeys := make(map[string]string, 128)
+
+	for _, specType := range specTypes {
+		for i := 0; i < specType.NumField(); i++ {
+			field := specType.Field(i)
+
+			forkField, ok := configType.FieldByName(field.Tag.Get("check-if-fork"))
+			if !ok {
+				continue
+			}
+
+			forkEpochKeys[yamlKey(field)] = yamlKey(forkField)
+		}
+	}
+
+	return forkEpochKeys
+})
 
 // updateWallclock applies the slot timings of the current specs to the wallclock.
 func (cs *ChainState) updateWallclock() error {
