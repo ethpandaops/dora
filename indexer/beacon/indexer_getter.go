@@ -708,10 +708,25 @@ func (indexer *Indexer) GetBlockBidsForSlot(slot phase0.Slot) []*dbtypes.BlockBi
 	}
 
 	for _, bid := range db.GetBidsForSlot(indexer.ctx, uint64(slot)) {
-		if cached := cachedBids[makeBidCacheKey(bid)]; cached != nil {
+		key := makeBidCacheKey(bid)
+		if cached := cachedBids[key]; cached != nil {
 			mergeBidSeenCounters(cached, bid)
 			continue
 		}
+		cachedBids[key] = bid
+		bids = append(bids, bid)
+	}
+
+	for _, block := range indexer.blockCache.getBlocksBySlot(slot) {
+		bid := getBlockBid(block.GetBlock(indexer.ctx))
+		if bid == nil {
+			continue
+		}
+		key := makeBidCacheKey(bid)
+		if cachedBids[key] != nil {
+			continue
+		}
+		cachedBids[key] = bid
 		bids = append(bids, bid)
 	}
 
