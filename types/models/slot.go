@@ -439,6 +439,7 @@ type SlotPageBid struct {
 	BuilderName  string `json:"builder_name"`
 	BuilderURL   string `json:"builder_url"`
 	IsSelfBuilt  bool   `json:"is_self_built"`
+	ValueUnknown bool   `json:"value_unknown"`
 	Slot         uint64 `json:"slot"`
 	Value        uint64 `json:"value"`
 	ElPayment    uint64 `json:"el_payment"`

@@ -1531,6 +1531,12 @@ func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, bl
 			SeenCount:    bid.SeenCount,
 			SeenTotal:    bid.SeenTotal,
 		}
+		if bidData.IsSelfBuilt {
+			fees, ok := getSlotPagePayloadPriorityFees(pageData, bid.BlockHash)
+			bidData.Value = fees
+			bidData.TotalValue = fees + bid.ElPayment
+			bidData.ValueUnknown = !ok
+		}
 		bidData.ClassLabel, bidData.ClassColor, bidData.ClassTitle = describeBidClass(bid)
 		bidData.SeenColor = seenBadgeColor(bid.SeenCount, bid.SeenTotal)
 		if !bidData.IsSelfBuilt {
@@ -1550,6 +1556,28 @@ func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, bl
 	})
 
 	pageData.BidsCount = uint64(len(pageData.Bids))
+}
+
+func getSlotPagePayloadPriorityFees(pageData *models.SlotPageBlockData, blockHash []byte) (uint64, bool) {
+	if pageData.ExecutionData == nil || !bytes.Equal(pageData.ExecutionData.BlockHash, blockHash) {
+		return 0, false
+	}
+	if len(pageData.Transactions) == 0 {
+		return 0, true
+	}
+	if !pageData.TransactionsIndexed {
+		return 0, false
+	}
+
+	baseFee := float64(pageData.ExecutionData.BaseFeePerGas) / 1e9
+	fees := 0.0
+	for _, tx := range pageData.Transactions {
+		if !tx.HasElData {
+			return 0, false
+		}
+		fees += float64(tx.GasUsed) * (tx.EffGasPrice - baseFee)
+	}
+	return uint64(math.Round(fees)), true
 }
 
 // seenBadgeColor derives the badge color for a bid's gossip visibility:
