@@ -367,7 +367,9 @@ func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Roo
 	client.lastFinalityUpdateEpoch = client.pool.chainState.CurrentEpoch()
 
 	client.headMutex.Lock()
-	if bytes.Equal(client.justifiedRoot[:], finalizedCheckpoints.Justified.Root[:]) {
+	// before the first justification the reported roots are zero, like the unset justifiedRoot,
+	// so an unchanged root must not skip seeding the pool's checkpoint while it is still unset.
+	if bytes.Equal(client.justifiedRoot[:], finalizedCheckpoints.Justified.Root[:]) && client.pool.chainState.HasFinalityCheckpoint() {
 		client.headMutex.Unlock()
 		return finalizedCheckpoints.Finalized.Root, nil
 	}
@@ -378,7 +380,12 @@ func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Roo
 	client.finalizedRoot = finalizedCheckpoints.Finalized.Root
 	client.headMutex.Unlock()
 
-	client.pool.chainState.setFinalizedCheckpoint(finalizedCheckpoints)
+	// a node that is still syncing reports the checkpoint it has reached, not the
+	// chain's - as low as epoch 0 when syncing from genesis. The pool's checkpoint
+	// seeds the indexer's finalization position, so only synced nodes may set it.
+	if !client.isSyncing {
+		client.pool.chainState.setFinalizedCheckpoint(finalizedCheckpoints)
+	}
 	client.checkpointDispatcher.Fire(finalizedCheckpoints)
 
 	return finalizedCheckpoints.Finalized.Root, nil
