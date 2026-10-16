@@ -7,3 +7,4 @@ check-filename = false
 
 [default.extend-words]
 CoSE = "CoSE"
+groth = "groth" # Groth16 proof system

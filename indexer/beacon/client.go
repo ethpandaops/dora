@@ -45,6 +45,7 @@ type Client struct {
 	executionPayloadSubscription    *utils.Subscription[*v1.ExecutionPayloadAvailableEvent]
 	executionPayloadBidSubscription *utils.Subscription[*gloas.SignedExecutionPayloadBid]
 	inclusionListSubscription       *utils.Subscription[*v1.InclusionListEvent]
+	executionProofSubscription      *utils.Subscription[*rpc.ExecutionProof]
 
 	headRoot phase0.Root
 }
@@ -94,6 +95,7 @@ func (c *Client) startIndexing() {
 	c.executionPayloadSubscription = c.client.SubscribeExecutionPayloadAvailableEvent(100, true)
 	c.executionPayloadBidSubscription = c.client.SubscribeExecutionPayloadBidEvent(100, true)
 	c.inclusionListSubscription = c.client.SubscribeInclusionListEvent(100, true)
+	c.executionProofSubscription = c.client.SubscribeExecutionProofEvent(100, true)
 
 	go c.startClientLoop()
 }
@@ -204,6 +206,8 @@ func (c *Client) runClientLoop() error {
 			}
 		case inclusionListEvent := <-c.inclusionListSubscription.Channel():
 			c.processInclusionListEvent(inclusionListEvent)
+		case executionProof := <-c.executionProofSubscription.Channel():
+			c.indexer.executionProofCache.addProof(executionProof)
 		}
 	}
 
@@ -459,6 +463,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	if slot >= finalizedSlot && isNew {
 		c.indexer.blockCache.addBlockToParentMap(block)
 		c.indexer.blockCache.addBlockToExecBlockMap(block)
+		c.indexer.executionProofCache.trackBlock(slot, root)
 
 		// Check for cached execution times and add them to the block
 		blockIndex := block.GetBlockIndex(c.indexer.ctx)

@@ -105,6 +105,9 @@ func (client *Client) buildEventStreamMask() uint16 {
 
 	if chainState.IsEip7732Enabled(currentEpoch + 1) {
 		events |= rpc.StreamExecutionPayloadEvent | rpc.StreamExecutionPayloadBidEvent
+		// only nodes collecting EIP-8025 proofs know the topic; it has its own
+		// stream that gives up on rejection
+		events |= rpc.StreamExecutionProofEvent
 	}
 
 	if chainState.IsEip7805Enabled(currentEpoch + 1) {
@@ -181,6 +184,9 @@ func (client *Client) runClientLogic() error {
 
 			case rpc.StreamFastConfirmationEvent:
 				client.processFastConfirmationEvent(evt.Data.(*rpc.FastConfirmationEvent))
+
+			case rpc.StreamExecutionProofEvent:
+				client.executionProofDispatcher.Fire(evt.Data.(*rpc.ExecutionProof))
 			}
 
 			// fire through stream dispatcher first to preserve SSE ordering

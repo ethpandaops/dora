@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -567,9 +568,24 @@ func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*InclusionLi
 }
 
 // GetInclusionListCount returns the number of inclusion lists published in
-// the given slot.
+// the given slot without a block.
 func (indexer *Indexer) GetInclusionListCount(slot phase0.Slot) int16 {
-	return indexer.inclusionListCache.getListCount(slot)
+	return indexer.inclusionListCache.getSlotListCount(slot)
+}
+
+// GetUnfinalizedSlotInclusionLists assembles the inclusion lists of a slot that
+// left the cache from their unfinalized_metadata items, where no blockdb took
+// them over. Returns nil if there are none.
+func (indexer *Indexer) GetUnfinalizedSlotInclusionLists(ctx context.Context, slot phase0.Slot) *btypes.SlotMeta {
+	return indexer.inclusionListCache.loadStoredSlotObject(ctx, slot)
+}
+
+// GetUnfinalizedExecutionProofs returns the execution proofs of a block that
+// left the cache from their unfinalized_metadata items, where no blockdb took
+// them over, in proof type order. The proof bytes are only included if withData
+// is set.
+func (indexer *Indexer) GetUnfinalizedExecutionProofs(ctx context.Context, slot phase0.Slot, blockRoot phase0.Root, withData bool) []*btypes.SlotExecutionProof {
+	return indexer.executionProofCache.loadStoredProofs(ctx, slot, blockRoot, withData)
 }
 
 // GetInclusionListSlots returns the slots the inclusion list cache holds lists for.
@@ -873,4 +889,10 @@ func (indexer *Indexer) applyBuilderBalanceChanges(block *Block, balances []phas
 		// No builder deposit requests pre-EIP-7732: builders (EIP-8282) only exist from
 		// Gloas onwards, where the payload envelope path above is used instead.
 	}
+}
+
+// GetBlockExecutionProofs returns the execution proofs of a block that the indexer still
+// holds in memory (collected but not flushed to the blockdb yet), in proof type order.
+func (indexer *Indexer) GetBlockExecutionProofs(blockRoot phase0.Root) []*btypes.SlotExecutionProof {
+	return indexer.executionProofCache.getProofs(blockRoot)
 }

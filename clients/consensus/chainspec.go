@@ -262,6 +262,7 @@ type ChainSpecDomainTypes struct {
 	DomainPtcAttester                 phase0.DomainType `yaml:"DOMAIN_PTC_ATTESTER" check-if-fork:"GloasForkEpoch"`
 	DomainProposerPreferences         phase0.DomainType `yaml:"DOMAIN_PROPOSER_PREFERENCES" check-if-fork:"GloasForkEpoch"`
 	DomainBuilderDeposit              phase0.DomainType `yaml:"DOMAIN_BUILDER_DEPOSIT" check-if-fork:"GloasForkEpoch"`
+	DomainExecutionProof              phase0.DomainType `yaml:"DOMAIN_EXECUTION_PROOF" check-severity:"warning"`
 }
 
 type ChainSpec struct {
@@ -293,6 +294,10 @@ func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 	err = yaml.Unmarshal(valuesYaml, &chain.ChainSpecDomainTypes)
 	if err != nil {
 		return err
+	}
+
+	if chain.DomainExecutionProof == (phase0.DomainType{}) {
+		chain.DomainExecutionProof = phase0.DomainType{0x0f, 0x00, 0x00, 0x00}
 	}
 
 	if chain.SlotDurationMs == 0 {

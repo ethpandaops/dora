@@ -2,12 +2,9 @@ package handlers
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -15,7 +12,6 @@ import (
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
-	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types/models"
 	"github.com/ethpandaops/dora/utils"
@@ -32,26 +28,11 @@ import (
 func SlotBlockAccessList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	vars := mux.Vars(r)
-	slotOrHash := strings.ReplaceAll(vars["slotOrHash"], "0x", "")
-	blockFilter := &dbtypes.BlockFilter{WithOrphaned: 1}
-	if blockRoot, err := hex.DecodeString(slotOrHash); err == nil && len(slotOrHash) == 64 {
-		blockFilter.BlockRoot = blockRoot
-	} else {
-		blockSlot, err := strconv.ParseUint(vars["slotOrHash"], 10, 64)
-		if err != nil || blockSlot >= 2147483648 { // block slot must be lower then max int4
-			http.Error(w, "Invalid slot", http.StatusBadRequest)
-			return
-		}
-		blockFilter.Slot = &blockSlot
-	}
-
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), blockFilter, 0, 1, 0)
-	if len(dbBlocks) == 0 || dbBlocks[0].Block == nil || len(dbBlocks[0].Block.Root) != 32 {
+	_, blockRoot, found := resolveSlotPathBlock(r.Context(), mux.Vars(r)["slotOrHash"])
+	if !found {
 		http.Error(w, "Block not found", http.StatusNotFound)
 		return
 	}
-	blockRoot := phase0.Root(dbBlocks[0].Block.Root)
 
 	cacheKey := fmt.Sprintf("slotbal:%x", blockRoot[:])
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotBlockAccessListResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
