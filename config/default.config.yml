@@ -51,6 +51,10 @@ frontend:
   validatorNamesYaml: ""
   validatorNamesInventory: ""
 
+  # file to load builder names from (same key syntax as validator names)
+  builderNamesYaml: ""
+  builderNamesRefreshInterval: 5m
+
   buildoorOverviewUrl: ""
   buildoorUrls: []
   buildoorRefreshInterval: 5m
