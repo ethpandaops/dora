@@ -384,8 +384,15 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 	pageData.FirstGroup = startIdx
 	pageData.LastGroup = endIdx
 
-	if endIdx <= groupCount {
+	if endIdx < groupCount {
 		pageData.NextPageIndex = pageIdx + 1
+	}
+
+	// PrevPageIndex is the 1-based number of the previous page (0 = none), while the
+	// page links use the 0-based page index
+	var prevPageIdx uint64
+	if pageIdx > 0 {
+		prevPageIdx = pageIdx - 1
 	}
 
 	sortingArg := ""
@@ -395,7 +402,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 	pageData.ViewPageLink = fmt.Sprintf("/validators/activity?%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.FirstPageLink = fmt.Sprintf("/validators/activity?%v%v&c=%v", filterArgs.Encode(), sortingArg, pageData.PageSize)
-	pageData.PrevPageLink = fmt.Sprintf("/validators/activity?%v%v&c=%v&s=%v", filterArgs.Encode(), sortingArg, pageData.PageSize, pageData.PrevPageIndex)
+	pageData.PrevPageLink = fmt.Sprintf("/validators/activity?%v%v&c=%v&s=%v", filterArgs.Encode(), sortingArg, pageData.PageSize, prevPageIdx)
 	pageData.NextPageLink = fmt.Sprintf("/validators/activity?%v%v&c=%v&s=%v", filterArgs.Encode(), sortingArg, pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/validators/activity?%v%v&c=%v&s=%v", filterArgs.Encode(), sortingArg, pageData.PageSize, pageData.LastPageIndex)
 
