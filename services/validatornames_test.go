@@ -14,6 +14,7 @@ import (
 // names published, mirroring what the loaders and the resolver produce.
 func newTestValidatorNames(names map[uint64]string, resolved map[uint64]string) *ValidatorNames {
 	vn := &ValidatorNames{
+		namesByPubkey:        make(map[phase0.BLSPubKey]*validatorNameEntry),
 		namesByWithdrawal:    make(map[common.Address]*validatorNameEntry),
 		namesByDepositOrigin: make(map[common.Address]*validatorNameEntry),
 		namesByDepositTarget: make(map[common.Address]*validatorNameEntry),

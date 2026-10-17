@@ -181,6 +181,16 @@ func GetBuilderDepositTxsFiltered(ctx context.Context, offset uint64, limit uint
 		fmt.Fprintf(&sql, " %v public_key = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
+	if len(filter.Address) > 0 {
+		args = append(args, filter.Address)
+		fmt.Fprintf(&sql, " %v tx_sender = $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if len(filter.TargetAddress) > 0 {
+		args = append(args, filter.TargetAddress)
+		fmt.Fprintf(&sql, " %v tx_target = $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
 	if filter.MinIndex > 0 {
 		args = append(args, filter.MinIndex)
 		fmt.Fprintf(&sql, " %v builder_index >= $%v", filterOp, len(args))

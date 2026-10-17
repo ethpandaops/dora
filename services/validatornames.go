@@ -49,6 +49,7 @@ type ValidatorNames struct {
 	updaterRunning        bool
 	namesMutex            sync.RWMutex
 	nameRanges            []validatorNameRange // index-based names, sorted & disjoint
+	namesByPubkey         map[phase0.BLSPubKey]*validatorNameEntry
 	namesByWithdrawal     map[common.Address]*validatorNameEntry
 	namesByDepositOrigin  map[common.Address]*validatorNameEntry
 	namesByDepositTarget  map[common.Address]*validatorNameEntry
@@ -203,6 +204,10 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	logger_vn.Debugf("resolve validator names")
 
 	vn.namesMutex.RLock()
+	var namesByPubkeyCopy map[phase0.BLSPubKey]*validatorNameEntry
+	if vn.namesByPubkey != nil {
+		namesByPubkeyCopy = maps.Clone(vn.namesByPubkey)
+	}
 	var namesByWithdrawalCopy map[common.Address]*validatorNameEntry
 	if vn.namesByWithdrawal != nil {
 		namesByWithdrawalCopy = maps.Clone(vn.namesByWithdrawal)
@@ -289,6 +294,18 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 		}
 	}
 
+	// resolve names by pubkey; applied last so a pubkey name wins over address based names
+	for pubkey, name := range namesByPubkeyCopy {
+		if name == nil {
+			continue
+		}
+
+		validatorIndex, found := vn.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
+		if found {
+			addResolved(uint64(validatorIndex), name)
+		}
+	}
+
 	if !hasUpdates {
 		// check for removed names
 		for index := range resolvedNamesByIndexCopy {
@@ -314,7 +331,7 @@ func (vn *ValidatorNames) publishNameIndex() {
 	index := &validatorNameIndex{
 		ranges:     vn.nameRanges,
 		resolved:   vn.resolvedNamesByIndex,
-		extraCount: uint64(len(vn.namesByWithdrawal)),
+		extraCount: uint64(len(vn.namesByWithdrawal) + len(vn.namesByPubkey)),
 	}
 	for _, nameRange := range vn.nameRanges {
 		index.nameCount += nameRange.endIndex - nameRange.startIndex + 1
@@ -728,6 +745,7 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 		// reload never blanks the names in between.
 		vn.namesMutex.Lock()
 		vn.nameRanges = nil
+		vn.namesByPubkey = make(map[phase0.BLSPubKey]*validatorNameEntry)
 		vn.namesByWithdrawal = make(map[common.Address]*validatorNameEntry)
 		vn.namesByDepositOrigin = make(map[common.Address]*validatorNameEntry)
 		vn.namesByDepositTarget = make(map[common.Address]*validatorNameEntry)
@@ -812,6 +830,67 @@ func (vn *ValidatorNames) loadFromInternalYaml(fileName string) error {
 	return nil
 }
 
+// nameKeyKind identifies the selector of a names list key. Validator and builder names
+// share the key syntax.
+type nameKeyKind uint8
+
+const (
+	nameKeyRange nameKeyKind = iota
+	nameKeyPubkey
+	nameKeyWithdrawal
+	nameKeyDepositOrigin
+	nameKeyDepositTarget
+)
+
+type nameKey struct {
+	kind       nameKeyKind
+	startIndex uint64 // nameKeyRange
+	endIndex   uint64 // nameKeyRange, inclusive
+	pubkey     phase0.BLSPubKey
+	address    common.Address
+}
+
+// parseNameKey parses a names list key: an index ("123"), an index range ("100-199"),
+// or a "<selector>:<value>" key with the selectors pubkey, withdrawal, depositor /
+// deposit_origin and deposit_target.
+func parseNameKey(key string) (*nameKey, error) {
+	if selector, value, found := strings.Cut(key, ":"); found {
+		switch selector {
+		case "pubkey":
+			pubkey, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))
+			if err != nil || len(pubkey) != len(phase0.BLSPubKey{}) {
+				return nil, fmt.Errorf("invalid pubkey: %v", value)
+			}
+			return &nameKey{kind: nameKeyPubkey, pubkey: phase0.BLSPubKey(pubkey)}, nil
+		case "withdrawal":
+			return &nameKey{kind: nameKeyWithdrawal, address: common.HexToAddress(value)}, nil
+		case "depositor", "deposit_origin":
+			return &nameKey{kind: nameKeyDepositOrigin, address: common.HexToAddress(value)}, nil
+		case "deposit_target":
+			return &nameKey{kind: nameKeyDepositTarget, address: common.HexToAddress(value)}, nil
+		default:
+			return nil, fmt.Errorf("unsupported selector: %v", selector)
+		}
+	}
+
+	rangeParts := strings.Split(key, "-")
+	minIdx, err := strconv.ParseUint(rangeParts[0], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid index: %v", key)
+	}
+	maxIdx := minIdx
+	if len(rangeParts) > 1 {
+		maxIdx, err = strconv.ParseUint(rangeParts[1], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid index range: %v", key)
+		}
+	}
+	if maxIdx < minIdx || maxIdx-minIdx >= maxValidatorNameRangeSize {
+		return nil, fmt.Errorf("invalid index range bounds: %v", key)
+	}
+	return &nameKey{kind: nameKeyRange, startIndex: minIdx, endIndex: maxIdx}, nil
+}
+
 func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 	vn.namesMutex.Lock()
 	defer vn.namesMutex.Unlock()
@@ -819,50 +898,36 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 	ranges := make([]validatorNameRange, 0, len(vn.nameRanges)+len(names))
 	ranges = append(ranges, vn.nameRanges...)
 	for idxStr, name := range names {
-		rangeParts := strings.Split(idxStr, ":")
+		key, err := parseNameKey(idxStr)
+		if err != nil {
+			logger_vn.Warnf("invalid validator name key %v: %v", idxStr, err)
+			continue
+		}
+
 		nameEntry := &validatorNameEntry{
 			name: name,
 		}
 
-		if len(rangeParts) > 1 {
-			switch rangeParts[0] {
-			case "withdrawal":
-				withdrawal := common.HexToAddress(rangeParts[1])
-				vn.namesByWithdrawal[withdrawal] = nameEntry
-				nameCount++
-			case "depositor", "deposit_origin":
-				depositor := common.HexToAddress(rangeParts[1])
-				vn.namesByDepositOrigin[depositor] = nameEntry
-				nameCount++
-			case "deposit_target":
-				target := common.HexToAddress(rangeParts[1])
-				vn.namesByDepositTarget[target] = nameEntry
-				nameCount++
-			}
-
-		} else {
-			rangeParts = strings.Split(idxStr, "-")
-			minIdx, err := strconv.ParseUint(rangeParts[0], 10, 64)
-			if err != nil {
-				continue
-			}
-			maxIdx := minIdx
-			if len(rangeParts) > 1 {
-				maxIdx, err = strconv.ParseUint(rangeParts[1], 10, 64)
-				if err != nil {
-					continue
-				}
-			}
-			if maxIdx < minIdx || maxIdx-minIdx >= maxValidatorNameRangeSize {
-				logger_vn.Warnf("invalid validator name range bounds: %v", idxStr)
-				continue
-			}
+		switch key.kind {
+		case nameKeyPubkey:
+			vn.namesByPubkey[key.pubkey] = nameEntry
+			nameCount++
+		case nameKeyWithdrawal:
+			vn.namesByWithdrawal[key.address] = nameEntry
+			nameCount++
+		case nameKeyDepositOrigin:
+			vn.namesByDepositOrigin[key.address] = nameEntry
+			nameCount++
+		case nameKeyDepositTarget:
+			vn.namesByDepositTarget[key.address] = nameEntry
+			nameCount++
+		case nameKeyRange:
 			ranges = append(ranges, validatorNameRange{
-				startIndex: minIdx,
-				endIndex:   maxIdx,
+				startIndex: key.startIndex,
+				endIndex:   key.endIndex,
 				name:       name,
 			})
-			nameCount += int(maxIdx - minIdx + 1)
+			nameCount += int(key.endIndex - key.startIndex + 1)
 		}
 	}
 	vn.nameRanges = normalizeNameRanges(ranges)

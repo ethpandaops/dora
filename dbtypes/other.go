@@ -219,13 +219,15 @@ type BuilderDepositFilter struct {
 }
 
 type BuilderDepositTxFilter struct {
-	MinDequeue uint64
-	MaxDequeue uint64
-	PublicKey  []byte
-	MinIndex   uint64
-	MaxIndex   uint64
-	MinAmount  *uint64
-	MaxAmount  *uint64
+	MinDequeue    uint64
+	MaxDequeue    uint64
+	PublicKey     []byte
+	Address       []byte
+	TargetAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
+	MinAmount     *uint64
+	MaxAmount     *uint64
 }
 
 type BuilderExitFilter struct {
