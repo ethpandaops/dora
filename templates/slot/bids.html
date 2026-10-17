@@ -58,9 +58,19 @@
             </td>
             <td>{{ ethAddressLink $bid.FeeRecipient }}</td>
             <td>{{ formatAddCommas $bid.GasLimit }}</td>
-            <td>{{ formatEthFromGwei $bid.Value }}</td>
-            <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
-            <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+            {{ if $bid.ValueUnknown }}
+              <td></td>
+              <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
+              <td></td>
+            {{ else if $bid.IsSelfBuilt }}
+              <td><span data-bs-toggle="tooltip" title="Priority fees paid to the fee recipient by the self-built payload">{{ formatEthFromGwei $bid.Value }}</span></td>
+              <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
+              <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+            {{ else }}
+              <td>{{ formatEthFromGwei $bid.Value }}</td>
+              <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
+              <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+            {{ end }}
             {{ if $.Block.HasGossipBids }}
             <td>
               {{ if $bid.IsSelfBuilt }}
