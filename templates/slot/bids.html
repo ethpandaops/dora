@@ -11,8 +11,6 @@
           <th class="border-0">Fee Recipient</th>
           <th class="border-0">Gas Limit</th>
           <th class="border-0">Value</th>
-          <th class="border-0">EL Payment</th>
-          <th class="border-0">Total</th>
           {{ if .Block.HasGossipBids }}<th class="border-0">Seen by</th>{{ end }}
         </tr>
       </thead>
@@ -57,10 +55,16 @@
               </div>
             </td>
             <td>{{ ethAddressLink $bid.FeeRecipient }}</td>
-            <td>{{ formatAddCommas $bid.GasLimit }}</td>
-            <td>{{ formatEthFromGwei $bid.Value }}</td>
-            <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
-            <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+            <td><span data-bs-toggle="tooltip" title="{{ formatAddCommas $bid.GasLimit }} gas">{{ formatFloat (div (float64 $bid.GasLimit) 1000000) 2 }} M</span></td>
+            <td>
+              {{ if $bid.ElPaymentUnknown }}
+                <span class="text-muted" data-bs-toggle="tooltip" title="Self-built: the proposer earns the payload's priority fees, which are not indexed yet">-</span>
+              {{ else if $bid.IsSelfBuilt }}
+                <strong data-bs-toggle="tooltip" data-bs-html="true" title="Bid value: 0 ETH (self-built)<br>Payload priority fees: {{ formatEthFromGwei $bid.ElPayment }}">{{ formatEthFromGwei $bid.TotalValue }}</strong>
+              {{ else }}
+                <strong data-bs-toggle="tooltip" data-bs-html="true" title="Bid value: {{ formatEthFromGwei $bid.Value }}<br>EL payment: {{ formatEthFromGwei $bid.ElPayment }}">{{ formatEthFromGwei $bid.TotalValue }}</strong>
+              {{ end }}
+            </td>
             {{ if $.Block.HasGossipBids }}
             <td>
               {{ if $bid.IsSelfBuilt }}

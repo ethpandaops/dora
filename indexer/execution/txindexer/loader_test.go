@@ -557,3 +557,67 @@ func TestUndecodedTransactionsSpotsAFrameTxWithoutFrames(t *testing.T) {
 		})
 	}
 }
+
+// The fee recipient earns what each transaction paid above the base fee: the tip of a
+// dynamic-fee transaction capped by its fee cap, the price above the base fee of a legacy
+// one. Both come out of the receipt's effective gas price, so a tip cap that the fee cap
+// does not leave room for must not be counted in full.
+func TestCalculateTotalPriorityFeesUsesEffectivePriceAboveBaseFee(t *testing.T) {
+	baseFee := big.NewInt(10)
+	indexer := &TxIndexer{}
+
+	legacyTx := txtypes.NewTx(&txtypes.LegacyTx{Nonce: 0, Gas: 21000, GasPrice: big.NewInt(15)})
+	tippedTx := txtypes.NewTx(&txtypes.DynamicFeeTx{Nonce: 1, Gas: 21000, GasFeeCap: big.NewInt(30), GasTipCap: big.NewInt(5)})
+	cappedTx := txtypes.NewTx(&txtypes.DynamicFeeTx{Nonce: 2, Gas: 21000, GasFeeCap: big.NewInt(12), GasTipCap: big.NewInt(100)})
+	unreceiptedTx := txtypes.NewTx(&txtypes.LegacyTx{Nonce: 3, Gas: 21000, GasPrice: big.NewInt(99)})
+
+	tests := []struct {
+		name     string
+		txs      []*txtypes.Transaction
+		receipts []*txtypes.Receipt
+		want     int64
+	}{
+		{
+			name:     "legacy pays its price above the base fee",
+			txs:      []*txtypes.Transaction{legacyTx},
+			receipts: []*txtypes.Receipt{{TxHash: legacyTx.Hash(), GasUsed: 21000, EffectiveGasPrice: big.NewInt(15)}},
+			want:     5 * 21000,
+		},
+		{
+			name:     "dynamic fee pays its tip",
+			txs:      []*txtypes.Transaction{tippedTx},
+			receipts: []*txtypes.Receipt{{TxHash: tippedTx.Hash(), GasUsed: 21000, EffectiveGasPrice: big.NewInt(15)}},
+			want:     5 * 21000,
+		},
+		{
+			name:     "tip is capped by the fee cap",
+			txs:      []*txtypes.Transaction{cappedTx},
+			receipts: []*txtypes.Receipt{{TxHash: cappedTx.Hash(), GasUsed: 21000, EffectiveGasPrice: big.NewInt(12)}},
+			want:     2 * 21000,
+		},
+		{
+			name: "receipts pair by hash, not position",
+			txs:  []*txtypes.Transaction{legacyTx, tippedTx},
+			receipts: []*txtypes.Receipt{
+				{TxHash: tippedTx.Hash(), GasUsed: 30000, EffectiveGasPrice: big.NewInt(15)},
+				{TxHash: legacyTx.Hash(), GasUsed: 21000, EffectiveGasPrice: big.NewInt(15)},
+			},
+			want: 5*30000 + 5*21000,
+		},
+		{
+			name:     "a transaction without receipt or effective price counts nothing",
+			txs:      []*txtypes.Transaction{unreceiptedTx, legacyTx},
+			receipts: []*txtypes.Receipt{{TxHash: legacyTx.Hash(), GasUsed: 21000}},
+			want:     0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := indexer.calculateTotalPriorityFees(tt.txs, tt.receipts, baseFee)
+			if got.Int64() != tt.want {
+				t.Errorf("priority fees = %d, want %d", got.Int64(), tt.want)
+			}
+		})
+	}
+}
