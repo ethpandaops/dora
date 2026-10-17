@@ -1525,11 +1525,13 @@ func getSlotPageBids(ctx context.Context, pageData *models.SlotPageBlockData, bl
 			ElPayment:    bid.ElPayment,
 			TotalValue:   bid.Value + bid.ElPayment,
 			IsWinning:    isWinningBid(bid),
-			ParentSlot:   bid.ParentSlot,
-			ParentKnown:  bid.ParentKnown,
-			IsParentBid:  bid.ParentClass == services.BidParentClassParent,
-			SeenCount:    bid.SeenCount,
-			SeenTotal:    bid.SeenTotal,
+
+			ElPaymentUnknown: bid.ElPaymentUnknown,
+			ParentSlot:       bid.ParentSlot,
+			ParentKnown:      bid.ParentKnown,
+			IsParentBid:      bid.ParentClass == services.BidParentClassParent,
+			SeenCount:        bid.SeenCount,
+			SeenTotal:        bid.SeenTotal,
 		}
 		bidData.ClassLabel, bidData.ClassColor, bidData.ClassTitle = describeBidClass(bid)
 		bidData.SeenColor = seenBadgeColor(bid.SeenCount, bid.SeenTotal)

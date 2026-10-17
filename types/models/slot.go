@@ -444,6 +444,9 @@ type SlotPageBid struct {
 	ElPayment    uint64 `json:"el_payment"`
 	TotalValue   uint64 `json:"total_value"`
 	IsWinning    bool   `json:"is_winning"`
+	// ElPaymentUnknown: self-built bid whose payload fees (shown as its EL payment) are not
+	// indexed, so the value is not known rather than 0.
+	ElPaymentUnknown bool `json:"el_payment_unknown"`
 
 	// Bid target classification: which parent tuple (parent_block_root, parent_block_hash)
 	// the bid builds on, relative to the displayed block's parent chain.
