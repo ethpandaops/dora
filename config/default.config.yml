@@ -38,6 +38,8 @@ api:
 frontend:
   enabled: true # Enable or disable to web frontend
   debug: false
+  pprof: false # expose go pprof (/debug/pprof, protected by pprofKey) and cache stats (/debug/cache)
+  pprofKey: "" # pre-shared key for the pprof pages, randomly generated & logged on startup if empty
   minimize: false # minimize html templates
 
   # Name of the site, displayed in the title tag

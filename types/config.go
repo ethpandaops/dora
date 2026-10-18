@@ -33,7 +33,10 @@ type Config struct {
 		Enabled bool `yaml:"enabled" envconfig:"FRONTEND_ENABLED"`
 		Debug   bool `yaml:"debug" envconfig:"FRONTEND_DEBUG"`
 		Pprof   bool `yaml:"pprof" envconfig:"FRONTEND_PPROF"`
-		Minify  bool `yaml:"minify" envconfig:"FRONTEND_MINIFY"`
+		// PprofKey is the pre-shared key that protects the /debug/pprof pages.
+		// A random key is generated and logged on startup if unset.
+		PprofKey string `yaml:"pprofKey" envconfig:"FRONTEND_PPROF_KEY"`
+		Minify   bool   `yaml:"minify" envconfig:"FRONTEND_MINIFY"`
 
 		SiteDomain      string `yaml:"siteDomain" envconfig:"FRONTEND_SITE_DOMAIN"`
 		SiteLogo        string `yaml:"siteLogo" envconfig:"FRONTEND_SITE_LOGO"`
