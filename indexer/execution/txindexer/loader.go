@@ -17,6 +17,7 @@ import (
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/sirupsen/logrus"
 )
@@ -26,14 +27,16 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 	var transactions []*txtypes.Transaction
 	var blockNumber uint64
 	var blockHash common.Hash
+	var baseFee *big.Int
 
 	// Try to extract transactions from beacon block if available
 	if ref.Block != nil {
-		txs, bn, bh := t.extractTransactionsFromBeaconBlock(ref.Block)
+		txs, bn, bh, bf := t.extractTransactionsFromBeaconBlock(ref.Block)
 		if txs != nil {
 			transactions = txs
 			blockNumber = bn
 			blockHash = bh
+			baseFee = bf
 		}
 	}
 
@@ -65,7 +68,7 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 
 		// Fetch transactions if not already available from beacon block
 		if transactions == nil {
-			txs, bn, bh, coinbase, wdt, err := t.fetchBlockTransactions(ctx, rpcClient, ref.BlockHash)
+			txs, bn, bh, bf, coinbase, wdt, err := t.fetchBlockTransactions(ctx, rpcClient, ref.BlockHash)
 			if err != nil {
 				lastErr = fmt.Errorf("fetch transactions from %s: %w", client.GetName(), err)
 				t.logger.WithError(err).WithFields(logrus.Fields{
@@ -84,6 +87,7 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 			transactions = txs
 			blockNumber = bn
 			blockHash = bh
+			baseFee = bf
 			feeRecipient = coinbase
 			withdrawals = wdt
 		}
@@ -101,7 +105,7 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 		}
 
 		// Extract additional data from beacon block if available
-		totalPriorityFees := t.calculateTotalPriorityFees(transactions, receipts)
+		totalPriorityFees := t.calculateTotalPriorityFees(transactions, receipts, baseFee)
 
 		data := &blockData{
 			BlockNumber:       blockNumber,
@@ -268,10 +272,14 @@ func (t *TxIndexer) getClientsForBlock(ref *BlockRef) []*execution.Client {
 // This is the path a block is expected to take: the payload carries the transactions as the
 // chain itself encodes them, while an EL client describes them in a JSON shape it chooses,
 // which for a type the client renders incompletely loses what the transaction is made of.
-func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*txtypes.Transaction, uint64, common.Hash) {
+func (t *TxIndexer) beaconBlockPayload(block *beacon.Block) *all.ExecutionPayload {
+	if block == nil {
+		return nil
+	}
+
 	beaconBlock := block.GetBlock(t.ctx)
 	if beaconBlock == nil || beaconBlock.Message == nil || beaconBlock.Message.Body == nil {
-		return nil, 0, common.Hash{}
+		return nil
 	}
 
 	// Up to Gloas the payload is part of the block body. From Gloas on the body commits to
@@ -284,13 +292,33 @@ func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*
 		}
 	}
 
+	return payload
+}
+
+// payloadBaseFee returns the payload's base fee per gas in wei. Bellatrix and Capella
+// payloads carry it as little-endian bytes, later forks as a uint256.
+func payloadBaseFee(payload *all.ExecutionPayload) *big.Int {
+	if payload.BaseFeePerGas != nil {
+		return payload.BaseFeePerGas.ToBig()
+	}
+
+	baseFee := make([]byte, len(payload.BaseFeePerGasLE))
+	for i, b := range payload.BaseFeePerGasLE {
+		baseFee[len(baseFee)-1-i] = b
+	}
+
+	return new(big.Int).SetBytes(baseFee)
+}
+
+func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*txtypes.Transaction, uint64, common.Hash, *big.Int) {
+	payload := t.beaconBlockPayload(block)
 	if payload == nil {
 		t.logger.WithFields(logrus.Fields{
 			"slot": block.Slot,
 			"root": fmt.Sprintf("%x", block.Root[:]),
 		}).Debug("beacon block carries no execution payload, falling back to EL client")
 
-		return nil, 0, common.Hash{}
+		return nil, 0, common.Hash{}, nil
 	}
 
 	transactions := make([]*txtypes.Transaction, 0, len(payload.Transactions))
@@ -306,13 +334,13 @@ func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*
 				"txIndex":     idx,
 			}).Debug("cannot decode transaction from beacon block, falling back to EL client")
 
-			return nil, 0, common.Hash{}
+			return nil, 0, common.Hash{}, nil
 		}
 
 		transactions = append(transactions, tx)
 	}
 
-	return transactions, payload.BlockNumber, common.Hash(payload.BlockHash)
+	return transactions, payload.BlockNumber, common.Hash(payload.BlockHash), payloadBaseFee(payload)
 }
 
 // fetchBlockTransactions fetches transactions from an EL client using raw JSON parsing
@@ -321,10 +349,10 @@ func (t *TxIndexer) fetchBlockTransactions(
 	ctx context.Context,
 	rpcClient *exerpc.ExecutionClient,
 	blockHash []byte,
-) ([]*txtypes.Transaction, uint64, common.Hash, common.Address, []WithdrawalData, error) {
+) ([]*txtypes.Transaction, uint64, common.Hash, *big.Int, common.Address, []WithdrawalData, error) {
 	ethClient := rpcClient.GetEthClient()
 	if ethClient == nil {
-		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("ethclient not available")
+		return nil, 0, common.Hash{}, nil, common.Address{}, nil, fmt.Errorf("ethclient not available")
 	}
 
 	hash := common.BytesToHash(blockHash)
@@ -333,12 +361,12 @@ func (t *TxIndexer) fetchBlockTransactions(
 	var raw json.RawMessage
 	err := ethClient.Client().CallContext(ctx, &raw, "eth_getBlockByHash", hash, true)
 	if err != nil {
-		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("eth_getBlockByHash failed: %w", err)
+		return nil, 0, common.Hash{}, nil, common.Address{}, nil, fmt.Errorf("eth_getBlockByHash failed: %w", err)
 	}
 
 	// Check if block exists
 	if len(raw) == 0 || string(raw) == "null" {
-		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block not found")
+		return nil, 0, common.Hash{}, nil, common.Address{}, nil, fmt.Errorf("block not found")
 	}
 
 	// Parse header fields and transactions in a single pass to avoid
@@ -347,25 +375,26 @@ func (t *TxIndexer) fetchBlockTransactions(
 		Number       *hexutil.Big        `json:"number"`
 		Hash         common.Hash         `json:"hash"`
 		GasLimit     *hexutil.Big        `json:"gasLimit"`
+		BaseFee      *hexutil.Big        `json:"baseFeePerGas"`
 		Coinbase     common.Address      `json:"miner"`
 		Withdrawals  []*types.Withdrawal `json:"withdrawals"`
 		Transactions []json.RawMessage   `json:"transactions"`
 	}
 	if err := json.Unmarshal(raw, &block); err != nil {
-		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("unmarshal block: %w", err)
+		return nil, 0, common.Hash{}, nil, common.Address{}, nil, fmt.Errorf("unmarshal block: %w", err)
 	}
 
 	// Free the raw JSON now that we've parsed what we need.
 	raw = nil
 
 	if block.Number == nil {
-		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block number is nil")
+		return nil, 0, common.Hash{}, nil, common.Address{}, nil, fmt.Errorf("block number is nil")
 	}
 
 	// A client may answer a request for a block it does not know with
 	// another block, such as the canonical one at the same height.
 	if block.Hash != hash {
-		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block is %s, not %s", block.Hash.Hex(), hash.Hex())
+		return nil, 0, common.Hash{}, nil, common.Address{}, nil, fmt.Errorf("block is %s, not %s", block.Hash.Hex(), hash.Hex())
 	}
 
 	transactions := make([]*txtypes.Transaction, 0, len(block.Transactions))
@@ -416,7 +445,12 @@ func (t *TxIndexer) fetchBlockTransactions(
 		})
 	}
 
-	return transactions, block.Number.ToInt().Uint64(), block.Hash, block.Coinbase, withdrawals, nil
+	var baseFee *big.Int
+	if block.BaseFee != nil {
+		baseFee = block.BaseFee.ToInt()
+	}
+
+	return transactions, block.Number.ToInt().Uint64(), block.Hash, baseFee, block.Coinbase, withdrawals, nil
 }
 
 // decodeBlockTransaction rebuilds a transaction from one entry of an eth_getBlockBy*
@@ -495,20 +529,11 @@ func (t *TxIndexer) fetchBlockReceipts(
 
 // extractBeaconBlockData extracts fee recipient and withdrawals from beacon block.
 func (t *TxIndexer) extractBeaconBlockData(block *beacon.Block) (common.Address, []WithdrawalData) {
-	if block == nil {
-		return common.Address{}, nil
-	}
-
-	beaconBlock := block.GetBlock(t.ctx)
-	if beaconBlock == nil || beaconBlock.Message == nil || beaconBlock.Message.Body == nil {
-		return common.Address{}, nil
-	}
-
 	var feeRecipient common.Address
 	var withdrawals []WithdrawalData
 
 	// Extract fee recipient from execution payload
-	if payload := beaconBlock.Message.Body.ExecutionPayload; payload != nil {
+	if payload := t.beaconBlockPayload(block); payload != nil {
 		feeRecipient = common.Address(payload.FeeRecipient)
 
 		if len(payload.Withdrawals) > 0 {
@@ -527,38 +552,35 @@ func (t *TxIndexer) extractBeaconBlockData(block *beacon.Block) (common.Address,
 	return feeRecipient, withdrawals
 }
 
-// calculateTotalPriorityFees calculates the total priority fees paid in the block.
-func (t *TxIndexer) calculateTotalPriorityFees(transactions []*txtypes.Transaction, receipts []*txtypes.Receipt) *big.Int {
-	if len(transactions) != len(receipts) {
-		return big.NewInt(0)
+// calculateTotalPriorityFees sums the priority fees the block's transactions paid to
+// the fee recipient: (effective gas price - base fee) x gas used per transaction, which
+// is the tip of a dynamic-fee transaction capped by its fee cap and the price above the
+// base fee of a legacy one. Receipts are matched by hash; a transaction without its
+// receipt or a receipt without its effective gas price contributes nothing.
+func (t *TxIndexer) calculateTotalPriorityFees(transactions []*txtypes.Transaction, receipts []*txtypes.Receipt, baseFee *big.Int) *big.Int {
+	receiptMap := make(map[common.Hash]*txtypes.Receipt, len(receipts))
+	for _, receipt := range receipts {
+		receiptMap[receipt.TxHash] = receipt
 	}
 
-	totalPriorityFees := big.NewInt(0)
+	if baseFee == nil {
+		baseFee = new(big.Int)
+	}
 
-	for i, tx := range transactions {
-		receipt := receipts[i]
-		if receipt.TxHash != tx.Hash() {
-			// Receipts and transactions don't match, skip calculation
+	totalPriorityFees := new(big.Int)
+	for _, tx := range transactions {
+		receipt := receiptMap[tx.Hash()]
+		if receipt == nil || receipt.EffectiveGasPrice == nil {
 			continue
 		}
 
-		// Calculate priority fee = min(tip, gasFeeCap - baseFee) * gasUsed
-		// For legacy transactions, priority fee = 0
-		if tx.GasTipCap() != nil && tx.GasFeeCap() != nil {
-			// EIP-1559+ transaction
-			tipCap := tx.GasTipCap()
-
-			// Priority fee per gas = min(tipCap, gasFeeCap - baseFee)
-			// Since we don't have baseFee here, we use the effective gas price from receipt
-			// effectiveGasPrice = baseFee + min(tipCap, gasFeeCap - baseFee)
-			// So: priorityFeePerGas = effectiveGasPrice - baseFee
-			// But without baseFee, we approximate with tipCap (which is the max priority fee)
-			priorityFeePerGas := new(big.Int).Set(tipCap)
-
-			// Total priority fee for this transaction
-			txPriorityFee := new(big.Int).Mul(priorityFeePerGas, big.NewInt(int64(receipt.GasUsed)))
-			totalPriorityFees.Add(totalPriorityFees, txPriorityFee)
+		priorityFeePerGas := new(big.Int).Sub(receipt.EffectiveGasPrice, baseFee)
+		if priorityFeePerGas.Sign() <= 0 {
+			continue
 		}
+
+		txPriorityFee := priorityFeePerGas.Mul(priorityFeePerGas, new(big.Int).SetUint64(receipt.GasUsed))
+		totalPriorityFees.Add(totalPriorityFees, txPriorityFee)
 	}
 
 	return totalPriorityFees

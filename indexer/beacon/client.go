@@ -465,6 +465,13 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		c.indexer.blockCache.addBlockToExecBlockMap(block)
 		c.indexer.executionProofCache.trackBlock(slot, root)
 
+		// The bid committed in the block body is a bid of its slot like the gossiped ones,
+		// but not a gossip observation: a self-built bid is never gossiped at all, and a
+		// builder bid may have reached the proposer without passing our clients.
+		if blockBid := getBlockBid(block.GetBlock(c.indexer.ctx)); blockBid != nil {
+			c.indexer.blockBidCache.AddBid(blockBid, "", 0)
+		}
+
 		// Check for cached execution times and add them to the block
 		blockIndex := block.GetBlockIndex(c.indexer.ctx)
 		if blockIndex != nil && !bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {

@@ -3,12 +3,15 @@ package services
 import (
 	"bytes"
 	"context"
+	"math/big"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/blockdb"
 	btypes "github.com/ethpandaops/dora/blockdb/types"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // BidParentClass classifies which chain position an execution payload bid targets,
@@ -69,6 +72,9 @@ type ClassifiedBlockBid struct {
 	// ElParentUnrevealed indicates the bid's parent hash matches a committed payload hash
 	// that was never revealed on the reference chain - such a bid can never become valid.
 	ElParentUnrevealed bool
+	// ElPaymentUnknown indicates a self-built bid whose payload fees are not available: the
+	// execution indexer is disabled or has not indexed the payload yet. ElPayment is 0 then.
+	ElPaymentUnknown bool
 }
 
 // GetSlotBidSeen returns which clients observed each execution payload bid of
@@ -100,20 +106,21 @@ func (bs *ChainService) GetSlotBidsClassified(ctx context.Context, slot phase0.S
 		return []*ClassifiedBlockBid{}
 	}
 
-	// Load all blocks (canonical + orphaned) in the window preceding the bid slot to
-	// resolve the bids' parent roots and payload hashes against.
-	firstSlot := uint64(0)
-	if uint64(slot) > 0 {
-		firstSlot = uint64(slot) - 1
-	}
-	ctxBlocks := bs.GetDbBlocksForSlots(ctx, firstSlot, bidClassifyWindow, false, true)
+	// Load all blocks (canonical + orphaned) of the bid slot and the window preceding it:
+	// the window resolves the bids' parent roots and payload hashes, the slot's own blocks
+	// are the ones a self-built bid's payload was revealed in.
+	ctxBlocks := bs.GetDbBlocksForSlots(ctx, uint64(slot), bidClassifyWindow+1, false, true)
 
 	blockByRoot := make(map[phase0.Root]*dbtypes.Slot, len(ctxBlocks))
+	slotBlocks := make([]*dbtypes.Slot, 0, 1)
 	for _, block := range ctxBlocks {
 		if len(block.Root) != 32 {
 			continue
 		}
 		blockByRoot[phase0.Root(block.Root)] = block
+		if block.Slot == uint64(slot) {
+			slotBlocks = append(slotBlocks, block)
+		}
 	}
 
 	// Walk the reference block's parent chain; index = reorg depth (0 = parent).
@@ -184,8 +191,47 @@ func (bs *ChainService) GetSlotBidsClassified(ctx context.Context, slot phase0.S
 			classifiedBid.ElParentUnrevealed = targetBlock.PayloadStatus == dbtypes.PayloadStatusMissing
 		}
 
+		if bid.BuilderIndex < 0 {
+			bs.resolveSelfBuiltPayment(ctx, classifiedBid, slotBlocks)
+		}
+
 		classifiedBids = append(classifiedBids, classifiedBid)
 	}
 
 	return classifiedBids
+}
+
+// resolveSelfBuiltPayment fills in what the proposer earned from a self-built bid. The bid
+// itself carries no value (the spec requires 0): the proposer gets the payload's priority
+// fees through its fee recipient, which is an execution layer payment like the one the
+// bid field describes. The execution indexer sums the fees per indexed block, so the bid
+// shows them as its EL payment once the payload is indexed and is marked unknown before.
+func (bs *ChainService) resolveSelfBuiltPayment(ctx context.Context, bid *ClassifiedBlockBid, slotBlocks []*dbtypes.Slot) {
+	bid.ElPaymentUnknown = true
+
+	if !utils.Config.ExecutionIndexer.Enabled {
+		return
+	}
+
+	for _, block := range slotBlocks {
+		if !bytes.Equal(block.EthBlockHash, bid.BlockHash) {
+			continue
+		}
+
+		elBlock, err := db.GetElBlock(ctx, block.BlockUid)
+		if err != nil || elBlock == nil {
+			return
+		}
+
+		bid.ElPaymentUnknown = false
+		if len(elBlock.FeeAmountRaw) > 0 {
+			feesGwei := new(big.Int).SetBytes(elBlock.FeeAmountRaw)
+			feesGwei.Div(feesGwei, big.NewInt(1_000_000_000))
+			if feesGwei.IsUint64() {
+				bid.ElPayment = feesGwei.Uint64()
+			}
+		}
+
+		return
+	}
 }
