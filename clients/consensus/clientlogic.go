@@ -377,6 +377,9 @@ func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Roo
 	// so an unchanged root must not skip seeding the pool's checkpoint while it is still unset.
 	if bytes.Equal(client.justifiedRoot[:], finalizedCheckpoints.Justified.Root[:]) && client.pool.chainState.HasFinalityCheckpoint() {
 		client.headMutex.Unlock()
+		if !client.isSyncing {
+			client.pool.chainState.setFinalizedCheckpoint(finalizedCheckpoints)
+		}
 		return finalizedCheckpoints.Finalized.Root, nil
 	}
 
