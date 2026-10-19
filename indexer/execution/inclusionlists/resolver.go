@@ -220,7 +220,7 @@ func (r *Resolver) resolveTarget(ctx context.Context, slot phase0.Slot, block *b
 
 	specs := chainState.GetSpecs()
 	if specs.InclusionListDueBPS > 0 {
-		input.dueMs = int32(specs.SlotDurationMs * specs.InclusionListDueBPS / 10000)
+		input.dueMs = int32(uint64(chainState.GetSlotDuration(slot).Milliseconds()) * specs.InclusionListDueBPS / 10000)
 	}
 	input.dependentRoot, input.hasDependentRoot = beaconIndexer.GetShufflingDependentRoot(block, chainState.EpochOfSlot(slot))
 
