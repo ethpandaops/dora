@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -57,6 +58,104 @@ type Block struct {
 	processedActivity     uint8
 	blockResults          [][]uint8
 	blockResultsMutex     sync.Mutex
+	metadataMutex         sync.RWMutex
+	metadata              *BlockMetadata // aggregated slot metadata, nil while the block's slots are still collected
+}
+
+// BlockMetadata holds the index values of a block that are aggregated from the
+// slot metadata (inclusion lists, execution proofs) rather than from the block
+// itself. The metadata caches set them when they drop the slots the block
+// depends on; the values are persisted with the unfinalized block.
+type BlockMetadata struct {
+	// IlCount is the number of inclusion lists published in the block's slot.
+	IlCount int16
+	// IlUnsatisfied is the number of transactions of the previous slot's
+	// inclusion lists the block left unsatisfied; -1 if lists exist but were
+	// not evaluated against the block.
+	IlUnsatisfied int16
+	// ProofCount is the number of execution proofs collected for the block.
+	ProofCount int16
+}
+
+const (
+	blockMetadataVersion = 1
+	blockMetadataSize    = 7
+)
+
+// encode packs the metadata as version byte followed by the values as little
+// endian int16.
+func (metadata *BlockMetadata) encode() []byte {
+	buf := make([]byte, blockMetadataSize)
+	buf[0] = blockMetadataVersion
+	binary.LittleEndian.PutUint16(buf[1:3], uint16(metadata.IlCount))
+	binary.LittleEndian.PutUint16(buf[3:5], uint16(metadata.IlUnsatisfied))
+	binary.LittleEndian.PutUint16(buf[5:7], uint16(metadata.ProofCount))
+	return buf
+}
+
+// decodeBlockMetadata unpacks metadata written by encode.
+func decodeBlockMetadata(data []byte) (*BlockMetadata, error) {
+	if len(data) < blockMetadataSize || data[0] != blockMetadataVersion {
+		return nil, fmt.Errorf("unsupported block metadata encoding (%d bytes)", len(data))
+	}
+	return &BlockMetadata{
+		IlCount:       int16(binary.LittleEndian.Uint16(data[1:3])),
+		IlUnsatisfied: int16(binary.LittleEndian.Uint16(data[3:5])),
+		ProofCount:    int16(binary.LittleEndian.Uint16(data[5:7])),
+	}, nil
+}
+
+// GetMetadata returns a copy of the block's aggregated slot metadata, or nil if
+// the block's slots are still being collected.
+func (block *Block) GetMetadata() *BlockMetadata {
+	block.metadataMutex.RLock()
+	defer block.metadataMutex.RUnlock()
+
+	if block.metadata == nil {
+		return nil
+	}
+	metadata := *block.metadata
+	return &metadata
+}
+
+// updateMetadata applies an update to the block's aggregated slot metadata,
+// creating it on first use.
+func (block *Block) updateMetadata(update func(metadata *BlockMetadata)) {
+	block.metadataMutex.Lock()
+	defer block.metadataMutex.Unlock()
+
+	if block.metadata == nil {
+		block.metadata = &BlockMetadata{}
+	}
+	update(block.metadata)
+}
+
+// restoreMetadata sets the metadata from its stored encoding (nil for none).
+func (block *Block) restoreMetadata(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	metadata, err := decodeBlockMetadata(data)
+	if err != nil {
+		return err
+	}
+
+	block.metadataMutex.Lock()
+	defer block.metadataMutex.Unlock()
+
+	block.metadata = metadata
+	return nil
+}
+
+// encodedMetadata returns the stored encoding of the metadata, nil for none.
+func (block *Block) encodedMetadata() []byte {
+	block.metadataMutex.RLock()
+	defer block.metadataMutex.RUnlock()
+
+	if block.metadata == nil {
+		return nil
+	}
+	return block.metadata.encode()
 }
 
 // BlockBodyIndex holds important block properties that are used as index for cache lookups.
@@ -564,6 +663,7 @@ func (block *Block) buildUnfinalizedBlock(ctx context.Context, compress bool) (*
 		MaxExecTime: uint32(block.maxExecutionTime),
 		ExecTimes:   execTimesSSZ,
 		BlockUid:    block.BlockUID,
+		Metadata:    block.encodedMetadata(),
 	}
 
 	if block.executionPayload != nil {
@@ -717,6 +817,18 @@ func (block *Block) GetDbBlock(indexer *Indexer, isCanonical bool) *dbtypes.Slot
 
 	if !isCanonical {
 		dbBlock.Status = dbtypes.Orphaned
+	}
+
+	// an unknown slot metadata value only tells the slots upsert to keep the
+	// stored one; for display it is nothing
+	if dbBlock.IlCount == dbtypes.MetadataUnknown {
+		dbBlock.IlCount = 0
+	}
+	if dbBlock.IlUnsatisfied == dbtypes.MetadataUnknown {
+		dbBlock.IlUnsatisfied = 0
+	}
+	if dbBlock.ProofCount == dbtypes.MetadataUnknown {
+		dbBlock.ProofCount = 0
 	}
 
 	return dbBlock

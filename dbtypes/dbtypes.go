@@ -97,6 +97,7 @@ type Slot struct {
 	BuilderPaymentPercent float32       `db:"builder_payment_percent"` // Gloas: BuilderPaymentWeight as % of the per-slot quorum base (total active balance / slots-per-epoch)
 	IlCount               int16         `db:"il_count"`                // Heze: number of inclusion lists published in this slot
 	IlUnsatisfied         int16         `db:"il_unsatisfied"`          // Heze: transactions of the previous slot's inclusion lists this block's payload left unsatisfied; -1 if not evaluated
+	ProofCount            int16         `db:"proof_count"`             // EIP-8025: number of execution proofs collected for this block
 }
 
 type Epoch struct {
@@ -172,6 +173,7 @@ type UnfinalizedBlock struct {
 	MaxExecTime uint32                 `db:"max_exec_time"`
 	ExecTimes   []byte                 `db:"exec_times"`
 	BlockUid    uint64                 `db:"block_uid"`
+	Metadata    []byte                 `db:"metadata"` // aggregated slot metadata of the block, nil until its slot left the metadata caches
 }
 
 type UnfinalizedEpoch struct {
@@ -247,6 +249,39 @@ type UnfinalizedDuty struct {
 	DependentRoot []byte `db:"dependent_root"`
 	DutiesSSZ     []byte `db:"duties"`
 }
+
+// UnfinalizedMetadataKind identifies what an unfinalized_metadata row holds.
+type UnfinalizedMetadataKind uint8
+
+const (
+	// UnfinalizedMetadataInclusionList is one inclusion list with its gossip
+	// observations; key = validator index (8 bytes) + signature.
+	UnfinalizedMetadataInclusionList UnfinalizedMetadataKind = 1
+	// UnfinalizedMetadataExecutionProof is one execution proof; key = block
+	// root + proof type.
+	UnfinalizedMetadataExecutionProof UnfinalizedMetadataKind = 2
+	// UnfinalizedMetadataInclusionListEval is the evaluation of the slot's
+	// inclusion lists against one block of the following slot; key = block root.
+	UnfinalizedMetadataInclusionListEval UnfinalizedMetadataKind = 3
+	// UnfinalizedMetadataSlotListCount is the inclusion list count of a slot
+	// without a block, which has no block metadata to carry it; key empty.
+	UnfinalizedMetadataSlotListCount UnfinalizedMetadataKind = 4
+)
+
+// UnfinalizedMetadata is the crash copy of one item of the slot metadata
+// (inclusion lists, execution proofs) while the item's slot is still being
+// collected, and the store of the items where no blockdb takes them over.
+type UnfinalizedMetadata struct {
+	Slot uint64                  `db:"slot"`
+	Kind UnfinalizedMetadataKind `db:"kind"`
+	Key  []byte                  `db:"key"`
+	Data []byte                  `db:"data"`
+}
+
+// MetadataUnknown is the index value of a block whose slot metadata (inclusion
+// list count, verdict, execution proof count) the writer cannot know: a block
+// rebuilt by the synchronizer. The slots upsert keeps the stored value for it.
+const MetadataUnknown int16 = -2
 
 type Blob struct {
 	Commitment []byte  `db:"commitment"`

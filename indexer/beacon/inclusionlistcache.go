@@ -1,18 +1,20 @@
 package beacon
 
 import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"fmt"
 	"sync"
-	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
-	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/spamoor/txtypes"
 
-	"github.com/ethpandaops/dora/blockdb"
 	btypes "github.com/ethpandaops/dora/blockdb/types"
-	"github.com/ethpandaops/dora/utils"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 )
 
 // cachedInclusionList is an inclusion list with its per-client gossip observations.
@@ -20,6 +22,9 @@ type cachedInclusionList struct {
 	list *v1.SignedInclusionList
 	// seen maps observer client name -> first-seen offset (ms from slot start).
 	seen map[string]int32
+	// dirty is set when the list or its observations changed since the last
+	// crash copy.
+	dirty bool
 }
 
 // InclusionListObservation is a cached inclusion list with the time it was
@@ -32,17 +37,13 @@ type InclusionListObservation struct {
 	HasSeen   bool
 }
 
-// inclusionListUnsatisfied is the remembered verdict of a flushed slot's lists
-// against one block of the following slot.
-type inclusionListUnsatisfied struct {
-	slot  phase0.Slot // slot of the lists
-	count int16
-}
-
 // inclusionListCache caches the inclusion lists (EIP-7805) of recent slots
 // with their gossip observations and their evaluations against the blocks of
-// the following slot. The lists are persisted to the blockdb as part of the
-// per-slot meta object, driven by the bid cache flush.
+// the following slot, for the bid cache's flush window. When a slot leaves the
+// cache its list count and verdicts are written into the metadata of the
+// blocks they concern, and its lists are handed to the slot's meta object where
+// a blockdb exists. Every list and evaluation is written to the
+// unfinalized_metadata table as crash copy on the slot tick.
 type inclusionListCache struct {
 	indexer    *Indexer
 	cacheMutex sync.RWMutex
@@ -52,30 +53,25 @@ type inclusionListCache struct {
 	// evaluation is a self-contained fragment with its own transaction and
 	// list tables.
 	evals map[phase0.Slot]map[phase0.Root]*btypes.SlotInclusionLists
-	// listCounts and unsatisfied hold the index values of slots that left the
-	// cache, until the blocks they belong to are persisted.
-	listCounts  map[phase0.Slot]int16
-	unsatisfied map[phase0.Root]*inclusionListUnsatisfied
-	// liveFromSlot is the first slot the cache has complete knowledge of
-	// (observed live or restored), once liveKnown is set. Earlier slots are
-	// resolved from the blockdb.
-	liveFromSlot phase0.Slot
-	liveKnown    bool
+	// dirtyEvals holds the evaluations not written as crash copy yet.
+	dirtyEvals map[phase0.Slot]map[phase0.Root]bool
+	// missedListCounts holds the list counts of dropped slots without a cached
+	// block, which have no block metadata to carry them; a slot is dropped once
+	// it is finalized.
+	missedListCounts map[phase0.Slot]int16
+	dirtyMissed      map[phase0.Slot]bool
 }
 
 // newInclusionListCache creates a new instance of inclusionListCache.
 func newInclusionListCache(indexer *Indexer) *inclusionListCache {
-	cache := &inclusionListCache{
-		indexer:     indexer,
-		lists:       make(map[phase0.Slot][]*cachedInclusionList, 32),
-		evals:       make(map[phase0.Slot]map[phase0.Root]*btypes.SlotInclusionLists, 32),
-		listCounts:  make(map[phase0.Slot]int16, 128),
-		unsatisfied: make(map[phase0.Root]*inclusionListUnsatisfied, 128),
+	return &inclusionListCache{
+		indexer:          indexer,
+		lists:            make(map[phase0.Slot][]*cachedInclusionList, 32),
+		evals:            make(map[phase0.Slot]map[phase0.Root]*btypes.SlotInclusionLists, 32),
+		dirtyEvals:       make(map[phase0.Slot]map[phase0.Root]bool, 32),
+		missedListCounts: make(map[phase0.Slot]int16, 8),
+		dirtyMissed:      make(map[phase0.Slot]bool, 8),
 	}
-
-	go cache.cleanupLoop()
-
-	return cache
 }
 
 // addInclusionList adds the given inclusion list to the cache. seenClient
@@ -108,8 +104,9 @@ func (cache *inclusionListCache) addInclusionListLocked(inclusionList *v1.Signed
 	}
 
 	cached := &cachedInclusionList{
-		list: inclusionList,
-		seen: make(map[string]int32, 8),
+		list:  inclusionList,
+		seen:  make(map[string]int32, 8),
+		dirty: true,
 	}
 	cache.lists[slot] = append(cache.lists[slot], cached)
 
@@ -123,6 +120,7 @@ func (cached *cachedInclusionList) recordSeen(client string, offset int32) {
 	}
 	if existing, ok := cached.seen[client]; !ok || offset < existing {
 		cached.seen[client] = offset
+		cached.dirty = true
 	}
 }
 
@@ -189,6 +187,17 @@ func (cache *inclusionListCache) setEvaluation(slot phase0.Slot, fragment *btype
 		return
 	}
 
+	cache.setEvaluationLocked(slot, fragment)
+	dirty := cache.dirtyEvals[slot]
+	if dirty == nil {
+		dirty = make(map[phase0.Root]bool, 1)
+		cache.dirtyEvals[slot] = dirty
+	}
+	dirty[phase0.Root(fragment.Evals[0].BlockRoot)] = true
+}
+
+// setEvaluationLocked stores an evaluation fragment. Caller must hold the write lock.
+func (cache *inclusionListCache) setEvaluationLocked(slot phase0.Slot, fragment *btypes.SlotInclusionLists) {
 	evals := cache.evals[slot]
 	if evals == nil {
 		evals = make(map[phase0.Root]*btypes.SlotInclusionLists, 1)
@@ -212,13 +221,12 @@ func (cache *inclusionListCache) getSlotObject(slot phase0.Slot) *btypes.SlotMet
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
-	return cache.buildSlotObjectLocked(slot)
+	return cache.buildSlotObject(slot, cache.lists[slot], cache.evals[slot])
 }
 
-// buildSlotObjectLocked assembles the meta object of a slot from the cache.
-// Caller must hold at least the read lock.
-func (cache *inclusionListCache) buildSlotObjectLocked(slot phase0.Slot) *btypes.SlotMeta {
-	lists := cache.lists[slot]
+// buildSlotObject assembles the meta object of a slot from the given lists and
+// evaluations. Returns nil without lists.
+func (cache *inclusionListCache) buildSlotObject(slot phase0.Slot, lists []*cachedInclusionList, evals map[phase0.Root]*btypes.SlotInclusionLists) *btypes.SlotMeta {
 	if len(lists) == 0 {
 		return nil
 	}
@@ -297,7 +305,7 @@ func (cache *inclusionListCache) buildSlotObjectLocked(slot phase0.Slot) *btypes
 
 	// Each evaluation carries its own tables; merging aligns them with the
 	// slot's tables.
-	for _, fragment := range cache.evals[slot] {
+	for _, fragment := range evals {
 		obj = btypes.MergeSlotMeta(obj, &btypes.SlotMeta{
 			Slot:           uint64(slot),
 			Bids:           []*btypes.SlotMetaBid{},
@@ -308,138 +316,302 @@ func (cache *inclusionListCache) buildSlotObjectLocked(slot phase0.Slot) *btypes
 	return obj
 }
 
-// restoreSlotObject restores the inclusion lists, observations and
-// evaluations of a stored meta object into the cache.
-func (cache *inclusionListCache) restoreSlotObject(obj *btypes.SlotMeta) {
-	if obj == nil || obj.InclusionLists == nil || len(obj.InclusionLists.Lists) == 0 {
-		return
+// inclusionListItemKey returns the crash copy key of a list: validator index
+// and signature, so an equivocating member's lists are kept apart.
+func inclusionListItemKey(list *v1.SignedInclusionList) []byte {
+	key := make([]byte, 8+len(list.Signature))
+	binary.BigEndian.PutUint64(key[0:8], uint64(list.Message.ValidatorIndex))
+	copy(key[8:], list.Signature[:])
+	return key
+}
+
+// encodeInclusionListItem encodes a cached list as crash copy: the SSZ of the
+// signed list, then its observations as client name and offset.
+func (cache *inclusionListCache) encodeInclusionListItem(cached *cachedInclusionList) ([]byte, error) {
+	listSSZ, err := cache.indexer.dynSsz.MarshalSSZ(cached.list)
+	if err != nil {
+		return nil, err
+	}
+	if len(cached.seen) > 0xffff {
+		return nil, fmt.Errorf("too many observations: %d", len(cached.seen))
 	}
 
-	stored := obj.InclusionLists
-	if len(stored.Transactions) != len(stored.TxHashes) {
-		return
+	var buf bytes.Buffer
+	_ = binary.Write(&buf, binary.BigEndian, uint32(len(listSSZ)))
+	buf.Write(listSSZ)
+	_ = binary.Write(&buf, binary.BigEndian, uint16(len(cached.seen)))
+	for name, offset := range cached.seen {
+		if len(name) > 0xff {
+			name = name[:0xff]
+		}
+		buf.WriteByte(uint8(len(name)))
+		buf.WriteString(name)
+		_ = binary.Write(&buf, binary.BigEndian, offset)
 	}
 
+	return buf.Bytes(), nil
+}
+
+// decodeInclusionListItem decodes a crash copy written by encodeInclusionListItem.
+func (cache *inclusionListCache) decodeInclusionListItem(data []byte) (*v1.SignedInclusionList, map[string]int32, error) {
+	if len(data) < 4 {
+		return nil, nil, fmt.Errorf("inclusion list item too short")
+	}
+	listLen := int(binary.BigEndian.Uint32(data[0:4]))
+	pos := 4
+	if pos+listLen+2 > len(data) {
+		return nil, nil, fmt.Errorf("inclusion list item out of range")
+	}
+
+	list := &v1.SignedInclusionList{}
+	if err := cache.indexer.dynSsz.UnmarshalSSZ(list, data[pos:pos+listLen]); err != nil {
+		return nil, nil, err
+	}
+	if list.Message == nil {
+		return nil, nil, fmt.Errorf("inclusion list item without message")
+	}
+	pos += listLen
+
+	count := int(binary.BigEndian.Uint16(data[pos : pos+2]))
+	pos += 2
+	seen := make(map[string]int32, count)
+	for range count {
+		if pos+1 > len(data) {
+			return nil, nil, fmt.Errorf("inclusion list observation out of range")
+		}
+		nameLen := int(data[pos])
+		pos++
+		if pos+nameLen+4 > len(data) {
+			return nil, nil, fmt.Errorf("inclusion list observation out of range")
+		}
+		name := string(data[pos : pos+nameLen])
+		pos += nameLen
+		seen[name] = int32(binary.BigEndian.Uint32(data[pos : pos+4]))
+		pos += 4
+	}
+
+	return list, seen, nil
+}
+
+// collectDirtyEntries returns the crash copies of the lists, evaluations and
+// missed slot counts that changed since the last call and clears their marks.
+func (cache *inclusionListCache) collectDirtyEntries() []*dbtypes.UnfinalizedMetadata {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	slot := phase0.Slot(obj.Slot)
-
-	for _, entry := range stored.Lists {
-		list := &v1.SignedInclusionList{
-			Message: &v1.InclusionList{
-				Slot:           slot,
-				ValidatorIndex: phase0.ValidatorIndex(entry.ValidatorIndex),
-				DependentRoot:  entry.DependentRoot,
-				Transactions:   make([]bellatrix.Transaction, 0, len(entry.TxRefs)),
-			},
-			Signature: entry.Signature,
-		}
-		for _, ref := range entry.TxRefs {
-			if int(ref) < len(stored.Transactions) {
-				list.Message.Transactions = append(list.Message.Transactions, stored.Transactions[ref])
+	entries := make([]*dbtypes.UnfinalizedMetadata, 0, 16)
+	for slot, lists := range cache.lists {
+		for _, cached := range lists {
+			if !cached.dirty {
+				continue
 			}
-		}
+			cached.dirty = false
 
-		cached := cache.addInclusionListLocked(list)
-		for clientIdx, offset := range entry.SeenByClientIndex() {
-			if clientIdx < len(obj.Clients) {
-				cached.recordSeen(obj.Clients[clientIdx], offset)
+			data, err := cache.encodeInclusionListItem(cached)
+			if err != nil {
+				cache.indexer.logger.Warnf("error encoding inclusion list of slot %d: %v", slot, err)
+				continue
 			}
-		}
-	}
-
-	for _, eval := range stored.Evals {
-		evals := cache.evals[slot]
-		if evals == nil {
-			evals = make(map[phase0.Root]*btypes.SlotInclusionLists, 1)
-			cache.evals[slot] = evals
-		}
-		if evals[phase0.Root(eval.BlockRoot)] != nil {
-			continue
-		}
-
-		lists := make([]*btypes.SlotInclusionList, 0, len(stored.Lists))
-		for _, entry := range stored.Lists {
-			lists = append(lists, &btypes.SlotInclusionList{
-				ValidatorIndex: entry.ValidatorIndex,
-				DependentRoot:  entry.DependentRoot,
-				Signature:      entry.Signature,
-				TxRefs:         entry.TxRefs,
+			entries = append(entries, &dbtypes.UnfinalizedMetadata{
+				Slot: uint64(slot),
+				Kind: dbtypes.UnfinalizedMetadataInclusionList,
+				Key:  inclusionListItemKey(cached.list),
+				Data: data,
 			})
 		}
-		evals[phase0.Root(eval.BlockRoot)] = &btypes.SlotInclusionLists{
-			TxHashes:     stored.TxHashes,
-			Transactions: stored.Transactions,
-			Lists:        lists,
-			Evals:        []*btypes.SlotInclusionListEval{eval},
+	}
+	for slot, roots := range cache.dirtyEvals {
+		delete(cache.dirtyEvals, slot)
+		for root := range roots {
+			fragment := cache.evals[slot][root]
+			if fragment == nil {
+				continue
+			}
+			data, err := btypes.EncodeInclusionListFragment(fragment)
+			if err != nil {
+				cache.indexer.logger.Warnf("error encoding inclusion list evaluation of slot %d: %v", slot, err)
+				continue
+			}
+			entries = append(entries, &dbtypes.UnfinalizedMetadata{
+				Slot: uint64(slot),
+				Kind: dbtypes.UnfinalizedMetadataInclusionListEval,
+				Key:  root[:],
+				Data: data,
+			})
+		}
+	}
+	for slot := range cache.dirtyMissed {
+		delete(cache.dirtyMissed, slot)
+		count, ok := cache.missedListCounts[slot]
+		if !ok {
+			continue
+		}
+		data := make([]byte, 2)
+		binary.BigEndian.PutUint16(data, uint16(count))
+		entries = append(entries, &dbtypes.UnfinalizedMetadata{
+			Slot: uint64(slot),
+			Kind: dbtypes.UnfinalizedMetadataSlotListCount,
+			Key:  []byte{},
+			Data: data,
+		})
+	}
+
+	return entries
+}
+
+// markDirtyEntries re-marks entries whose crash copy failed to write.
+func (cache *inclusionListCache) markDirtyEntries(entries []*dbtypes.UnfinalizedMetadata) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	for _, entry := range entries {
+		slot := phase0.Slot(entry.Slot)
+		switch entry.Kind {
+		case dbtypes.UnfinalizedMetadataInclusionList:
+			for _, cached := range cache.lists[slot] {
+				if bytes.Equal(inclusionListItemKey(cached.list), entry.Key) {
+					cached.dirty = true
+				}
+			}
+		case dbtypes.UnfinalizedMetadataInclusionListEval:
+			if len(entry.Key) == 32 && cache.evals[slot][phase0.Root(entry.Key)] != nil {
+				if cache.dirtyEvals[slot] == nil {
+					cache.dirtyEvals[slot] = make(map[phase0.Root]bool, 1)
+				}
+				cache.dirtyEvals[slot][phase0.Root(entry.Key)] = true
+			}
+		case dbtypes.UnfinalizedMetadataSlotListCount:
+			if _, ok := cache.missedListCounts[slot]; ok {
+				cache.dirtyMissed[slot] = true
+			}
 		}
 	}
 }
 
-// collectFlushObjects removes all slots before cutoffSlot from the cache and
-// returns their meta objects by slot. The index values of the removed slots
-// stay available through getListCount and getUnsatisfied.
-func (cache *inclusionListCache) collectFlushObjects(cutoffSlot phase0.Slot) map[uint64]*btypes.SlotMeta {
+// restoreEntry restores a crash copy into the cache. The lists of a slot
+// restore before their evaluations (stream order), so the evaluation finds
+// its slot.
+func (cache *inclusionListCache) restoreEntry(entry *dbtypes.UnfinalizedMetadata) error {
+	slot := phase0.Slot(entry.Slot)
+
+	switch entry.Kind {
+	case dbtypes.UnfinalizedMetadataInclusionList:
+		list, seen, err := cache.decodeInclusionListItem(entry.Data)
+		if err != nil {
+			return err
+		}
+		if list.Message.Slot != slot {
+			return fmt.Errorf("inclusion list slot mismatch: %d != %d", list.Message.Slot, slot)
+		}
+
+		cache.cacheMutex.Lock()
+		defer cache.cacheMutex.Unlock()
+
+		cached := cache.addInclusionListLocked(list)
+		for name, offset := range seen {
+			cached.recordSeen(name, offset)
+		}
+		cached.dirty = false
+
+	case dbtypes.UnfinalizedMetadataInclusionListEval:
+		fragment, err := btypes.DecodeInclusionListFragment(entry.Data)
+		if err != nil {
+			return err
+		}
+		if len(fragment.Evals) != 1 {
+			return fmt.Errorf("inclusion list evaluation item with %d evaluations", len(fragment.Evals))
+		}
+
+		cache.cacheMutex.Lock()
+		defer cache.cacheMutex.Unlock()
+
+		if len(cache.lists[slot]) > 0 {
+			cache.setEvaluationLocked(slot, fragment)
+		}
+
+	case dbtypes.UnfinalizedMetadataSlotListCount:
+		if len(entry.Data) != 2 {
+			return fmt.Errorf("invalid slot list count item")
+		}
+
+		cache.cacheMutex.Lock()
+		defer cache.cacheMutex.Unlock()
+
+		cache.missedListCounts[slot] = int16(binary.BigEndian.Uint16(entry.Data))
+	}
+
+	return nil
+}
+
+// dropBefore removes all slots before cutoffSlot from the cache. The list
+// count of each slot is written into the metadata of the slot's cached blocks
+// (or kept for a slot without one), the verdicts into the metadata of the
+// cached blocks of the following slot. The meta objects of the dropped slots
+// are returned by slot if withObjects is set (a blockdb takes them), together
+// with the blocks whose metadata changed and the dropped slots.
+func (cache *inclusionListCache) dropBefore(cutoffSlot phase0.Slot, withObjects bool) (map[uint64]*btypes.SlotMeta, []*Block, []uint64) {
+	finalizedSlot := cache.indexer.consensusPool.GetChainState().GetFinalizedSlot()
+
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
 	objects := make(map[uint64]*btypes.SlotMeta, 8)
-	for slot := range cache.lists {
+	touched := make([]*Block, 0, 8)
+	dropped := make([]uint64, 0, 8)
+	for slot, lists := range cache.lists {
 		if slot >= cutoffSlot {
 			continue
 		}
+		evals := cache.evals[slot]
 
-		if obj := cache.buildSlotObjectLocked(slot); obj != nil {
-			objects[uint64(slot)] = obj
-			cache.rememberIndexLocked(obj)
+		count := int16(min(len(lists), 0x7fff))
+		blocks := cache.indexer.blockCache.getBlocksBySlot(slot)
+		for _, block := range blocks {
+			block.updateMetadata(func(metadata *BlockMetadata) { metadata.IlCount = count })
+		}
+		if len(blocks) == 0 {
+			cache.missedListCounts[slot] = count
+			cache.dirtyMissed[slot] = true
+		}
+		touched = append(touched, blocks...)
+
+		for _, block := range cache.indexer.blockCache.getBlocksBySlot(slot + 1) {
+			unsatisfied := inclusionListUnsatisfiedCount(evals[block.Root], block.Root)
+			block.updateMetadata(func(metadata *BlockMetadata) { metadata.IlUnsatisfied = unsatisfied })
+			touched = append(touched, block)
+		}
+
+		if withObjects {
+			if obj := cache.buildSlotObject(slot, lists, evals); obj != nil {
+				objects[uint64(slot)] = obj
+			}
 		}
 
 		delete(cache.lists, slot)
 		delete(cache.evals, slot)
+		delete(cache.dirtyEvals, slot)
+		dropped = append(dropped, uint64(slot))
 	}
 
-	return objects
-}
-
-// rememberIndexLocked keeps the index values of a slot's object: its list
-// count and the verdict for every known block of the following slot. Caller
-// must hold the write lock.
-func (cache *inclusionListCache) rememberIndexLocked(obj *btypes.SlotMeta) {
-	slot := phase0.Slot(obj.Slot)
-	cache.listCounts[slot] = inclusionListCount(obj.InclusionLists)
-
-	for _, block := range cache.indexer.blockCache.getBlocksBySlot(slot + 1) {
-		cache.unsatisfied[block.Root] = &inclusionListUnsatisfied{
-			slot:  slot,
-			count: inclusionListUnsatisfiedCount(obj.InclusionLists, block.Root),
+	for slot := range cache.missedListCounts {
+		if slot < finalizedSlot {
+			delete(cache.missedListCounts, slot)
+			delete(cache.dirtyMissed, slot)
 		}
 	}
-	for _, eval := range obj.InclusionLists.Evals {
-		cache.unsatisfied[phase0.Root(eval.BlockRoot)] = &inclusionListUnsatisfied{
-			slot:  slot,
-			count: inclusionListUnsatisfiedCount(obj.InclusionLists, eval.BlockRoot),
-		}
-	}
-}
 
-// inclusionListCount returns the number of lists as stored in the slots index.
-func inclusionListCount(lists *btypes.SlotInclusionLists) int16 {
-	if lists == nil {
-		return 0
-	}
-	return int16(min(len(lists.Lists), 0x7fff))
+	return objects, touched, dropped
 }
 
 // inclusionListUnsatisfiedCount returns the number of transactions of the
-// given lists the block left unsatisfied: 0 without lists, -1 if the lists
-// have not been (fully) evaluated against the block.
-func inclusionListUnsatisfiedCount(lists *btypes.SlotInclusionLists, blockRoot [32]byte) int16 {
-	if lists == nil || len(lists.Lists) == 0 {
-		return 0
+// given evaluation fragment the block left unsatisfied: -1 if lists exist but
+// were not (fully) evaluated against the block.
+func inclusionListUnsatisfiedCount(fragment *btypes.SlotInclusionLists, blockRoot phase0.Root) int16 {
+	if fragment == nil {
+		return -1
 	}
 
-	eval := lists.GetEval(blockRoot)
+	eval := fragment.GetEval(blockRoot)
 	if eval == nil {
 		return -1
 	}
@@ -452,33 +624,13 @@ func inclusionListUnsatisfiedCount(lists *btypes.SlotInclusionLists, blockRoot [
 	return int16(min(unsatisfied, 0x7fff))
 }
 
-// loadStoredLists loads the inclusion lists of a slot that precedes the
-// cache's knowledge from the blockdb, without their raw transactions. Returns
-// nil if the slot is covered by the cache or nothing is stored.
-func (cache *inclusionListCache) loadStoredLists(slot phase0.Slot, isLive bool) *btypes.SlotInclusionLists {
-	chainState := cache.indexer.consensusPool.GetChainState()
-	if isLive || !chainState.IsEip7805Enabled(chainState.EpochOfSlot(slot)) || !blockdb.GlobalBlockDb.SupportsSlotMeta() {
-		return nil
-	}
-
-	stored, err := blockdb.GlobalBlockDb.GetSlotMeta(cache.indexer.ctx, uint64(slot), btypes.SlotMetaFlagInclusionLists)
-	if err != nil {
-		cache.indexer.logger.Warnf("error loading meta object for slot %d: %v", slot, err)
-		return nil
-	}
-	if stored == nil {
-		return nil
-	}
-
-	return stored.InclusionLists
-}
-
-// getListCount returns the number of inclusion lists published in the slot.
-func (cache *inclusionListCache) getListCount(slot phase0.Slot) int16 {
+// getSlotListCount returns the number of inclusion lists published in a slot
+// without a block: from the cache while the slot is collected and from the
+// count kept at the drop afterwards. A slot the cache never held is unknown.
+func (cache *inclusionListCache) getSlotListCount(slot phase0.Slot) int16 {
 	cache.cacheMutex.RLock()
 	cached := len(cache.lists[slot])
-	count, known := cache.listCounts[slot]
-	isLive := cache.liveKnown && slot >= cache.liveFromSlot
+	count, known := cache.missedListCounts[slot]
 	cache.cacheMutex.RUnlock()
 
 	if cached > 0 {
@@ -487,73 +639,46 @@ func (cache *inclusionListCache) getListCount(slot phase0.Slot) int16 {
 	if known {
 		return count
 	}
-
-	count = inclusionListCount(cache.loadStoredLists(slot, isLive))
-	if !isLive {
-		cache.cacheMutex.Lock()
-		cache.listCounts[slot] = count
-		cache.cacheMutex.Unlock()
-	}
-
-	return count
-}
-
-// getUnsatisfied returns the number of transactions from the inclusion lists
-// of the previous slot that the given block left unsatisfied: 0 without lists,
-// -1 if the lists have not been (fully) evaluated against the block.
-func (cache *inclusionListCache) getUnsatisfied(blockSlot phase0.Slot, blockRoot phase0.Root) int16 {
-	if blockSlot == 0 {
+	if uint64(slot) >= cache.indexer.metadataCutoff.Load() {
 		return 0
 	}
-	slot := blockSlot - 1
+
+	return dbtypes.MetadataUnknown
+}
+
+// getBlockListCount returns the number of inclusion lists published in the
+// block's slot.
+func (cache *inclusionListCache) getBlockListCount(block *Block) int16 {
+	cache.cacheMutex.RLock()
+	cached := len(cache.lists[block.Slot])
+	cache.cacheMutex.RUnlock()
+
+	if cached > 0 {
+		return int16(min(cached, 0x7fff))
+	}
+
+	return cache.indexer.blockMetadataValue(block, func(metadata *BlockMetadata) int16 { return metadata.IlCount })
+}
+
+// getBlockUnsatisfied returns the number of transactions from the inclusion
+// lists of the previous slot that the given block left unsatisfied: 0 without
+// lists, -1 if the lists have not been (fully) evaluated against the block.
+func (cache *inclusionListCache) getBlockUnsatisfied(block *Block) int16 {
+	if block.Slot == 0 {
+		return 0
+	}
+	slot := block.Slot - 1
 
 	cache.cacheMutex.RLock()
 	cached := len(cache.lists[slot]) > 0
-	fragment := cache.evals[slot][blockRoot]
-	entry := cache.unsatisfied[blockRoot]
-	isLive := cache.liveKnown && slot >= cache.liveFromSlot
+	fragment := cache.evals[slot][block.Root]
 	cache.cacheMutex.RUnlock()
 
 	if cached {
-		if fragment == nil {
-			return -1
-		}
-		// The fragment holds exactly the evaluation against this block.
-		return inclusionListUnsatisfiedCount(fragment, blockRoot)
-	}
-	if entry != nil {
-		return entry.count
+		return inclusionListUnsatisfiedCount(fragment, block.Root)
 	}
 
-	// A flushed live slot is fully remembered; a block that is not is one
-	// that appeared after its lists were flushed and was never evaluated.
-	cache.cacheMutex.RLock()
-	count, known := cache.listCounts[slot]
-	cache.cacheMutex.RUnlock()
-	if known && isLive {
-		if count > 0 {
-			return -1
-		}
-		return 0
-	}
-
-	unsatisfied := inclusionListUnsatisfiedCount(cache.loadStoredLists(slot, isLive), blockRoot)
-	if !isLive {
-		cache.cacheMutex.Lock()
-		cache.unsatisfied[blockRoot] = &inclusionListUnsatisfied{slot: slot, count: unsatisfied}
-		cache.cacheMutex.Unlock()
-	}
-
-	return unsatisfied
-}
-
-// setLiveFromSlot sets the first slot the cache has complete knowledge of.
-func (cache *inclusionListCache) setLiveFromSlot(slot phase0.Slot) {
-	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-
-	cache.liveFromSlot = slot
-	cache.liveKnown = true
+	return cache.indexer.blockMetadataValue(block, func(metadata *BlockMetadata) int16 { return metadata.IlUnsatisfied })
 }
 
 // slotBounds returns the lowest and highest slot in the cache (0, 0 if empty).
@@ -573,58 +698,32 @@ func (cache *inclusionListCache) slotBounds() (minSlot phase0.Slot, maxSlot phas
 	return minSlot, maxSlot
 }
 
-// cleanupLoop periodically cleans up old entries from the cache.
-func (cache *inclusionListCache) cleanupLoop() {
-	defer utils.HandleSubroutinePanic("indexer.beacon.inclusionListCache.cleanupLoop", func() {
-		cache.cleanupLoop()
+// loadStoredSlotObject assembles the meta object of a slot that left the cache
+// from its unfinalized_metadata items, where no blockdb took them over. Returns
+// nil if there are none.
+func (cache *inclusionListCache) loadStoredSlotObject(ctx context.Context, slot phase0.Slot) *btypes.SlotMeta {
+	lists := make([]*cachedInclusionList, 0, 16)
+	err := db.StreamUnfinalizedSlotMetadata(ctx, uint64(slot), dbtypes.UnfinalizedMetadataInclusionList, func(entry *dbtypes.UnfinalizedMetadata) {
+		list, seen, err := cache.decodeInclusionListItem(entry.Data)
+		if err != nil {
+			cache.indexer.logger.Warnf("error decoding stored inclusion list of slot %d: %v", slot, err)
+			return
+		}
+		lists = append(lists, &cachedInclusionList{list: list, seen: seen})
+	})
+	if err != nil || len(lists) == 0 {
+		return nil
+	}
+
+	evals := make(map[phase0.Root]*btypes.SlotInclusionLists, 2)
+	_ = db.StreamUnfinalizedSlotMetadata(ctx, uint64(slot), dbtypes.UnfinalizedMetadataInclusionListEval, func(entry *dbtypes.UnfinalizedMetadata) {
+		fragment, err := btypes.DecodeInclusionListFragment(entry.Data)
+		if err != nil || len(fragment.Evals) != 1 {
+			cache.indexer.logger.Warnf("error decoding stored inclusion list evaluation of slot %d: %v", slot, err)
+			return
+		}
+		evals[phase0.Root(fragment.Evals[0].BlockRoot)] = fragment
 	})
 
-	for {
-		time.Sleep(30 * time.Minute)
-		cache.cleanupCache()
-	}
-}
-
-// cleanupCache removes the remembered index values of finalized slots and,
-// where the lists cannot be persisted to the blockdb, the lists older than the
-// activity history length.
-func (cache *inclusionListCache) cleanupCache() {
-	chainState := cache.indexer.consensusPool.GetChainState()
-	finalizedSlot := chainState.GetFinalizedSlot()
-
-	// The index values are read when a block is persisted on finalization, so
-	// they are kept some epochs beyond it.
-	retention := phase0.Slot(2 * chainState.GetSpecs().SlotsPerEpoch)
-
-	var cutOffEpoch phase0.Epoch
-	if currentEpoch := chainState.CurrentEpoch(); currentEpoch > phase0.Epoch(cache.indexer.activityHistoryLength) {
-		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.activityHistoryLength)
-	}
-
-	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-
-	for slot := range cache.listCounts {
-		if slot+retention < finalizedSlot {
-			delete(cache.listCounts, slot)
-		}
-	}
-	for root, entry := range cache.unsatisfied {
-		if entry.slot+retention < finalizedSlot {
-			delete(cache.unsatisfied, root)
-		}
-	}
-
-	deleted := 0
-	if !blockdb.GlobalBlockDb.SupportsSlotMeta() {
-		for slot, lists := range cache.lists {
-			if chainState.EpochOfSlot(slot) < cutOffEpoch {
-				deleted += len(lists)
-				delete(cache.lists, slot)
-				delete(cache.evals, slot)
-			}
-		}
-	}
-
-	cache.indexer.logger.Infof("cleaned up inclusion list cache, deleted %d entries", deleted)
+	return cache.buildSlotObject(slot, lists, evals)
 }

@@ -4576,7 +4576,12 @@
                     "type": "boolean"
                 },
                 "el_payment": {
+                    "description": "ElPayment is the bid's execution layer payment in Gwei. For a self-built bid it is\nthe payload's priority fees earned by the proposer's fee recipient, taken from the\nexecution indexer (the bid message itself carries 0).",
                     "type": "integer"
+                },
+                "el_payment_unknown": {
+                    "description": "ElPaymentUnknown: self-built bid whose payload fees are not indexed (execution\nindexer disabled or payload not indexed yet); ElPayment and TotalValue are 0 then.",
+                    "type": "boolean"
                 },
                 "fee_recipient": {
                     "type": "string"
@@ -4625,6 +4630,7 @@
                     "type": "integer"
                 },
                 "value": {
+                    "description": "Value is the bid's consensus layer value in Gwei (what the builder pays the proposer\nfrom its builder balance); always 0 for self-built bids.",
                     "type": "integer"
                 }
             }

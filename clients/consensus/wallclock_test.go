@@ -19,8 +19,8 @@ func newWallclockTestSpecs(slotsPerEpoch uint64, slotDurationMs uint64) *ChainSp
 
 func newWallclockForkTestSpecs(slotsPerEpoch uint64, slotDurationMs uint64, forkEpoch uint64, forkSlotDurationMs uint64) *ChainSpec {
 	specs := newWallclockTestSpecs(slotsPerEpoch, slotDurationMs)
-	specs.Eip8198ForkEpoch = &forkEpoch
-	specs.SlotDurationMsEip8198 = forkSlotDurationMs
+	specs.HezeForkEpoch = &forkEpoch
+	specs.SlotDurationMsHeze = forkSlotDurationMs
 
 	return specs
 }
@@ -35,12 +35,12 @@ func TestWallclockScheduleSegments(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "no eip8198 fork",
+			name:     "no heze fork",
 			specs:    newWallclockTestSpecs(32, 12000),
 			segments: []wallclockSegment{{duration: 12 * time.Second}},
 		},
 		{
-			name:  "eip8198 fork scheduled",
+			name:  "heze fork scheduled",
 			specs: newWallclockForkTestSpecs(4, 12000, 2, 10000),
 			segments: []wallclockSegment{
 				{duration: 12 * time.Second},
@@ -48,22 +48,22 @@ func TestWallclockScheduleSegments(t *testing.T) {
 			},
 		},
 		{
-			name:     "eip8198 fork at genesis",
+			name:     "heze fork at genesis",
 			specs:    newWallclockForkTestSpecs(4, 12000, 0, 10000),
 			segments: []wallclockSegment{{duration: 10 * time.Second}},
 		},
 		{
-			name:     "eip8198 fork at far future epoch",
+			name:     "heze fork at far future epoch",
 			specs:    newWallclockForkTestSpecs(4, 12000, math.MaxUint64, 10000),
 			segments: []wallclockSegment{{duration: 12 * time.Second}},
 		},
 		{
-			name:     "eip8198 fork without slot duration",
+			name:     "heze fork without slot duration",
 			specs:    newWallclockForkTestSpecs(4, 12000, 2, 0),
 			segments: []wallclockSegment{{duration: 12 * time.Second}},
 		},
 		{
-			name:     "eip8198 fork without duration change",
+			name:     "heze fork without duration change",
 			specs:    newWallclockForkTestSpecs(4, 12000, 2, 12000),
 			segments: []wallclockSegment{{duration: 12 * time.Second}},
 		},

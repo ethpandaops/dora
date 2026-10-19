@@ -7,6 +7,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"io/fs"
 	"net"
@@ -55,6 +57,15 @@ func main() {
 		"version": utils.BuildVersion,
 		"release": utils.BuildRelease,
 	}).Printf("starting")
+
+	if cfg.Frontend.Enabled && cfg.Frontend.Pprof && cfg.Frontend.PprofKey == "" {
+		keyBytes := make([]byte, 32)
+		if _, err := rand.Read(keyBytes); err != nil {
+			logger.Fatalf("error generating pprof key: %v", err)
+		}
+		cfg.Frontend.PprofKey = hex.EncodeToString(keyBytes)
+		logger.Warnf("pprof enabled without pprofKey, generated debug key for /debug/pprof: %v", cfg.Frontend.PprofKey)
+	}
 
 	db.MustInitDB(&cfg.Database)
 	err = db.ApplyEmbeddedDbSchema(-2)
@@ -228,6 +239,8 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/slot/{slotOrHash}/duties", handlers.SlotDuties).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/bidseen", handlers.SlotBidSeen).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/inclusionlists", handlers.SlotInclusionLists).Methods("GET")
+	router.HandleFunc("/slot/{slotOrHash}/proofs", handlers.SlotExecutionProofs).Methods("GET")
+	router.HandleFunc("/slot/{slotOrHash}/proofs/{type}/{prover}", handlers.SlotExecutionProofDownload).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/arrival", handlers.SlotArrival).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}/waves", handlers.SlotWaves).Methods("GET")
 	router.HandleFunc("/slot/{root}/blob/{index}", handlers.SlotBlob).Methods("GET")
@@ -281,8 +294,10 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/builder/{idxOrPubKey}", handlers.BuilderDetail).Methods("GET")
 
 	if utils.Config.Frontend.Pprof {
-		// add pprof handler
-		router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
+		// pprof exposes process internals (a heap dump contains RPC credentials
+		// and keys), so it needs the pre-shared pprof key.
+		// no trailing slash: net/http redirects /debug/pprof to the /debug/pprof/ index
+		router.PathPrefix("/debug/pprof").Handler(handlers.DebugAuth(http.DefaultServeMux))
 		router.HandleFunc("/debug/cache", handlers.DebugPage).Methods("GET")
 	}
 

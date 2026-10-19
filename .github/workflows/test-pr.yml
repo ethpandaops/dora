@@ -18,3 +18,18 @@ jobs:
     name: "Run code checks"
     uses: ./.github/workflows/_shared-check.yaml
 
+
+  check_go_version:
+    name: "Check docker go version"
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Check Dockerfile go version satisfies go.mod
+      run: |
+        required=$(awk '/^go /{print $2}' go.mod)
+        image=$(sed -nE 's/^FROM golang:([0-9.]+).*/\1/p' Dockerfile)
+        echo "go.mod requires go $required, Dockerfile uses golang:$image"
+        if [ -z "$image" ] || [ "$(printf '%s\n' "$required" "$image" | sort -V | head -1)" != "$required" ]; then
+          echo "::error file=Dockerfile::golang:$image is older than the go $required required by go.mod"
+          exit 1
+        fi

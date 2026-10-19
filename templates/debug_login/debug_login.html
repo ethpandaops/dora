@@ -1,0 +1,65 @@
+{{ define "page" }}
+<div class="container mt-2">
+  <div class="d-md-flex py-2 justify-content-md-between">
+    <h1 class="h4 mb-1 mb-md-0">
+      <i class="fas fa-bug mx-2"></i> Debug
+    </h1>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+        <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Debug</li>
+      </ol>
+    </nav>
+  </div>
+
+  <div class="card mx-auto mt-3" style="max-width: 560px;">
+    <div class="card-body">
+      <h5 class="card-title"><i class="fas fa-lock me-2"></i> Debug key required</h5>
+      <p class="text-muted">
+        The pprof profiling pages expose process internals and are protected by the
+        <code>pprofKey</code> from the explorer configuration. If no key is configured, the generated key is printed in the
+        explorer logs on startup.
+      </p>
+      {{ if .Rejected }}
+      <div class="alert alert-danger small" role="alert">
+        <i class="fas fa-exclamation-triangle me-1"></i> The stored debug key was rejected. Please enter the current key.
+      </div>
+      {{ end }}
+      <form id="debug-login-form">
+        <div class="mb-3">
+          <label for="debug-key" class="form-label">Debug key</label>
+          <input type="password" class="form-control" id="debug-key" autocomplete="off" autofocus required>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-sign-in-alt me-1"></i> Unlock
+        </button>
+      </form>
+      <p class="text-muted small mt-3 mb-0">
+        For tools, send the key as <code>Authorization: Bearer &lt;key&gt;</code> header instead.
+      </p>
+    </div>
+  </div>
+</div>
+{{ end }}
+
+{{ define "js" }}
+<script type="text/javascript">
+$(document).ready(function() {
+  // The entered key is stored as a cookie scoped to /debug/pprof (so it is not
+  // sent along with regular page loads) and the page is reloaded; the server
+  // then either serves the profile or shows this prompt again with an error.
+  document.getElementById("debug-login-form").addEventListener("submit", function(e) {
+    e.preventDefault();
+    var key = document.getElementById("debug-key").value.trim();
+    if (!key) {
+      return;
+    }
+    var secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = {{ .CookieName }} + "=" + encodeURIComponent(key) + "; Path=/debug/pprof; Max-Age=3600; SameSite=Strict" + secure;
+    window.location.reload();
+  });
+});
+</script>
+{{ end }}
+{{ define "css" }}
+{{ end }}

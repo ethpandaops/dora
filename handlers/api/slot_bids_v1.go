@@ -38,10 +38,18 @@ type APISlotBid struct {
 	BuilderName  string `json:"builder_name,omitempty"`
 	IsSelfBuilt  bool   `json:"is_self_built"`
 	Slot         uint64 `json:"slot"`
-	Value        uint64 `json:"value"`
-	ElPayment    uint64 `json:"el_payment"`
-	TotalValue   uint64 `json:"total_value"`
-	IsWinning    bool   `json:"is_winning"`
+	// Value is the bid's consensus layer value in Gwei (what the builder pays the proposer
+	// from its builder balance); always 0 for self-built bids.
+	Value uint64 `json:"value"`
+	// ElPayment is the bid's execution layer payment in Gwei. For a self-built bid it is
+	// the payload's priority fees earned by the proposer's fee recipient, taken from the
+	// execution indexer (the bid message itself carries 0).
+	ElPayment uint64 `json:"el_payment"`
+	// ElPaymentUnknown: self-built bid whose payload fees are not indexed (execution
+	// indexer disabled or payload not indexed yet); ElPayment and TotalValue are 0 then.
+	ElPaymentUnknown bool   `json:"el_payment_unknown,omitempty"`
+	TotalValue       uint64 `json:"total_value"`
+	IsWinning        bool   `json:"is_winning"`
 
 	// Bid target classification relative to the slot's actual block parent chain.
 	// ParentClass: "parent" (targets the block's actual beacon parent), "reorg" (targets a
@@ -128,6 +136,7 @@ func APISlotBidsV1(w http.ResponseWriter, r *http.Request) {
 			Slot:               bid.Slot,
 			Value:              bid.Value,
 			ElPayment:          bid.ElPayment,
+			ElPaymentUnknown:   bid.ElPaymentUnknown,
 			TotalValue:         bid.Value + bid.ElPayment,
 			IsWinning:          isWinning,
 			ParentClass:        bid.ParentClass.String(),

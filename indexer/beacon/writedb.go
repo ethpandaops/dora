@@ -87,7 +87,7 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 			Slot:     uint64(slot),
 			Proposer: uint64(proposer),
 			Status:   dbtypes.Missing,
-			IlCount:  dbw.indexer.inclusionListCache.getListCount(slot),
+			IlCount:  dbw.indexer.inclusionListCache.getSlotListCount(slot),
 		}
 
 		err := db.InsertMissingSlot(dbw.indexer.ctx, tx, missedSlot)
@@ -187,6 +187,30 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 	err = dbw.persistBlockWithdrawals(tx, block, orphaned, overrideForkId, sim)
 	if err != nil {
 		return err
+	}
+
+	// insert the committed execution payload bid (gloas)
+	err = dbw.persistBlockBid(tx, block)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// persistBlockBid writes the execution payload bid committed in the block body to the
+// bids table. The bid cache only takes bids of recent slots, so blocks persisted long
+// after their slot (finalization, sync) write their bid directly; the upsert keeps the
+// gossip observation counters of a row the cache flushed earlier.
+func (dbw *dbWriter) persistBlockBid(tx *sqlx.Tx, block *Block) error {
+	blockBid := getBlockBid(block.GetBlock(dbw.indexer.ctx))
+	if blockBid == nil {
+		return nil
+	}
+
+	err := db.InsertBids([]*dbtypes.BlockBid{blockBid}, tx)
+	if err != nil {
+		return fmt.Errorf("error inserting block bid: %v", err)
 	}
 
 	return nil
@@ -429,15 +453,6 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		bidValue = blockIndex.BidValue
 	}
 
-	// Extract execution payload bid from Gloas/Heze blocks and add to bid cache.
-	// This ensures bids are persisted even when syncing from blocks (not just SSE events).
-	// A bid extracted from a block body is not a gossip observation, so no
-	// observer client is recorded.
-	blockBid := getBlockBid(blockBody)
-	if blockBid != nil {
-		dbw.indexer.blockBidCache.AddBid(blockBid, "", 0)
-	}
-
 	// Post-Gloas the blob commitments come from the bid, but the blobs themselves only
 	// propagate alongside the payload - a missed-payload block carries no blobs.
 	// Orphaned payloads were revealed, so their blobs remain counted.
@@ -468,8 +483,9 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		BlockUid:              block.BlockUID,
 		BuilderIndex:          builderIndexInt64,
 		EthBidValue:           bidValue,
-		IlCount:               dbw.indexer.inclusionListCache.getListCount(block.Slot),
-		IlUnsatisfied:         dbw.indexer.inclusionListCache.getUnsatisfied(block.Slot, block.Root),
+		IlCount:               dbw.indexer.inclusionListCache.getBlockListCount(block),
+		IlUnsatisfied:         dbw.indexer.inclusionListCache.getBlockUnsatisfied(block),
+		ProofCount:            dbw.indexer.executionProofCache.getBlockProofCount(block),
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)
@@ -575,11 +591,13 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	// commits to an execution payload bid that references the execution block hash (plus parent hash,
 	// fee recipient and gas limit), so populate those from the bid - a missed-payload block must show
 	// its committed block hash, not nothing. The block number stays unset (the bid does not carry it).
-	if payloadStatus == dbtypes.PayloadStatusMissing && blockBid != nil && len(dbBlock.EthBlockHash) == 0 {
-		dbBlock.EthBlockHash = blockBid.BlockHash
-		dbBlock.EthBlockParentHash = blockBid.ParentHash
-		dbBlock.EthFeeRecipient = blockBid.FeeRecipient
-		dbBlock.EthGasLimit = blockBid.GasLimit
+	if payloadStatus == dbtypes.PayloadStatusMissing && len(dbBlock.EthBlockHash) == 0 {
+		if blockBid := getBlockBid(blockBody); blockBid != nil {
+			dbBlock.EthBlockHash = blockBid.BlockHash
+			dbBlock.EthBlockParentHash = blockBid.ParentHash
+			dbBlock.EthFeeRecipient = blockBid.FeeRecipient
+			dbBlock.EthGasLimit = blockBid.GasLimit
+		}
 	}
 
 	// Gloas builder-payment quorum weight for this slot (same-slot attester balance), resolved by

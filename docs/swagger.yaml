@@ -1191,7 +1191,16 @@ definitions:
           never revealed - such a bid can never become valid.
         type: boolean
       el_payment:
+        description: |-
+          ElPayment is the bid's execution layer payment in Gwei. For a self-built bid it is
+          the payload's priority fees earned by the proposer's fee recipient, taken from the
+          execution indexer (the bid message itself carries 0).
         type: integer
+      el_payment_unknown:
+        description: |-
+          ElPaymentUnknown: self-built bid whose payload fees are not indexed (execution
+          indexer disabled or payload not indexed yet); ElPayment and TotalValue are 0 then.
+        type: boolean
       fee_recipient:
         type: string
       gas_limit:
@@ -1235,6 +1244,9 @@ definitions:
       total_value:
         type: integer
       value:
+        description: |-
+          Value is the bid's consensus layer value in Gwei (what the builder pays the proposer
+          from its builder balance); always 0 for self-built bids.
         type: integer
     type: object
   api.APISlotBidsData:

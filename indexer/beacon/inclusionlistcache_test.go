@@ -1,38 +1,17 @@
 package beacon
 
 import (
-	"context"
 	"testing"
 
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
-	"github.com/sirupsen/logrus"
-	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	btypes "github.com/ethpandaops/dora/blockdb/types"
-	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/dbtypes"
 )
-
-// newTestInclusionListCache builds an inclusion list cache on a minimal indexer.
-func newTestInclusionListCache(t *testing.T) *inclusionListCache {
-	t.Helper()
-
-	logger, _ := test.NewNullLogger()
-	indexer := &Indexer{
-		ctx:           context.Background(),
-		logger:        logrus.NewEntry(logger),
-		consensusPool: consensus.NewPool(context.Background(), logrus.NewEntry(logger)),
-	}
-	indexer.blockCache = newBlockCache(indexer)
-
-	cache := newInclusionListCache(indexer)
-	cache.setLiveFromSlot(0)
-
-	return cache
-}
 
 // testInclusionList builds a signed inclusion list for the given slot.
 func testInclusionList(slot phase0.Slot, validator phase0.ValidatorIndex, signature byte, txs ...[]byte) *v1.SignedInclusionList {
@@ -53,11 +32,14 @@ func testInclusionList(slot phase0.Slot, validator phase0.ValidatorIndex, signat
 }
 
 func TestInclusionListCache(t *testing.T) {
-	cache := newTestInclusionListCache(t)
+	indexer := newTestMetadataIndexer(t, true)
+	cache := indexer.inclusionListCache
 
 	const slot = phase0.Slot(100)
 	txA, txB, txC := []byte{0xf0, 0x01}, []byte{0xf0, 0x02}, []byte{0xf0, 0x03}
 	targetRoot := phase0.Root{0x77}
+	blockBefore, _ := indexer.blockCache.createOrGetBlock(phase0.Root{0x66}, slot)
+	targetBlock, _ := indexer.blockCache.createOrGetBlock(targetRoot, slot+1)
 
 	// The same list reported by two clients is one list with two
 	// observations; a different list of the same member is kept as well.
@@ -75,12 +57,13 @@ func TestInclusionListCache(t *testing.T) {
 	assert.True(t, observations[0].HasSeen)
 	assert.Equal(t, int32(2100), observations[0].FirstSeen)
 
-	assert.Equal(t, int16(3), cache.getListCount(slot))
-	assert.Equal(t, int16(0), cache.getListCount(slot+5))
+	assert.Equal(t, int16(3), cache.getBlockListCount(blockBefore))
+	assert.Equal(t, int16(3), cache.getSlotListCount(slot))
+	assert.Equal(t, int16(0), cache.getSlotListCount(slot+5))
 	// Lists exist but have not been evaluated against the block.
-	assert.Equal(t, int16(-1), cache.getUnsatisfied(slot+1, targetRoot))
+	assert.Equal(t, int16(-1), cache.getBlockUnsatisfied(targetBlock))
 	// No lists were published in the slot before.
-	assert.Equal(t, int16(0), cache.getUnsatisfied(slot, targetRoot))
+	assert.Equal(t, int16(0), cache.getBlockUnsatisfied(blockBefore))
 
 	// The evaluation carries its own tables in another order.
 	assert.Nil(t, cache.getEvaluation(slot, targetRoot))
@@ -102,7 +85,7 @@ func TestInclusionListCache(t *testing.T) {
 		}},
 	})
 	require.NotNil(t, cache.getEvaluation(slot, targetRoot))
-	assert.Equal(t, int16(1), cache.getUnsatisfied(slot+1, targetRoot))
+	assert.Equal(t, int16(1), cache.getBlockUnsatisfied(targetBlock))
 
 	obj := cache.getSlotObject(slot)
 	require.NotNil(t, obj)
@@ -130,32 +113,61 @@ func TestInclusionListCache(t *testing.T) {
 	// The object survives the encoding it is persisted with.
 	data, err := btypes.EncodeSlotMeta(obj)
 	require.NoError(t, err)
-	stored, err := btypes.DecodeSlotMeta(data)
+	_, err = btypes.DecodeSlotMeta(data)
 	require.NoError(t, err)
 
-	// Flushing removes the slot but keeps its index values.
-	flushed := cache.collectFlushObjects(slot + 1)
-	require.Len(t, flushed, 1)
-	require.NotNil(t, flushed[uint64(slot)])
-	assert.Empty(t, cache.getInclusionLists(slot))
-	assert.Nil(t, cache.getSlotObject(slot))
-	assert.Equal(t, int16(3), cache.getListCount(slot))
-	assert.Equal(t, int16(1), cache.getUnsatisfied(slot+1, targetRoot))
-	// A block that was not known when the slot was flushed is not evaluated.
-	assert.Equal(t, int16(-1), cache.getUnsatisfied(slot+1, phase0.Root{0x99}))
-	assert.Equal(t, []phase0.Slot{slot + 1}, cache.getSlots())
+	// Every list and the evaluation are offered as crash copy once; a further
+	// observation offers the list again.
+	entries := cache.collectDirtyEntries()
+	require.Len(t, entries, 5)
+	assert.Empty(t, cache.collectDirtyEntries())
+	cache.addInclusionList(testInclusionList(slot, 12, 2, txC), "client-c", 9500)
+	require.Len(t, cache.collectDirtyEntries(), 1)
+	cache.addInclusionList(testInclusionList(slot, 12, 2, txC), "client-c", 9600)
+	assert.Empty(t, cache.collectDirtyEntries(), "a later observation of a seen client changes nothing")
 
-	// Restoring the stored object brings lists, observations and the
-	// evaluation back.
-	cache.restoreSlotObject(stored)
-	restored := cache.getSlotObject(slot)
+	// The copies restore the lists, observations and the evaluation elsewhere.
+	other := newTestMetadataIndexer(t, true).inclusionListCache
+	for _, entry := range entries {
+		require.NoError(t, other.restoreEntry(entry))
+	}
+	restored := other.getSlotObject(slot)
 	require.NotNil(t, restored)
 	require.Len(t, restored.InclusionLists.Lists, 3)
 	first, ok = restored.InclusionLists.Lists[0].FirstSeen()
 	assert.True(t, ok)
 	assert.Equal(t, int32(2100), first)
 	assert.Equal(t, [][]byte{txA, txB, txC}, restored.InclusionLists.Transactions)
-	assert.Equal(t, int16(1), cache.getUnsatisfied(slot+1, targetRoot))
 	require.NotNil(t, restored.InclusionLists.GetEval(targetRoot))
 	assert.Equal(t, btypes.ILTxStatusUnsatisfied, restored.InclusionLists.GetEval(targetRoot).Txs[1].Status)
+	assert.Empty(t, other.collectDirtyEntries(), "restored items are not written again")
+
+	// Dropping the slot writes its index values into the blocks and returns its object.
+	objects, touched, dropped := cache.dropBefore(slot+1, true)
+	require.Len(t, objects, 1)
+	require.NotNil(t, objects[uint64(slot)])
+	assert.Len(t, objects[uint64(slot)].InclusionLists.Lists, 3)
+	assert.ElementsMatch(t, []*Block{blockBefore, targetBlock}, touched)
+	assert.Equal(t, []uint64{uint64(slot)}, dropped)
+	assert.Empty(t, cache.getInclusionLists(slot))
+	assert.Nil(t, cache.getSlotObject(slot))
+	indexer.metadataCutoff.Store(uint64(slot + 1))
+	assert.Equal(t, int16(3), cache.getBlockListCount(blockBefore))
+	assert.Equal(t, int16(3), blockBefore.GetMetadata().IlCount)
+	assert.Equal(t, int16(1), cache.getBlockUnsatisfied(targetBlock))
+	assert.Equal(t, int16(1), targetBlock.GetMetadata().IlUnsatisfied)
+	assert.Equal(t, []phase0.Slot{slot + 1}, cache.getSlots())
+	// A slot with a cached block keeps no separate count.
+	assert.Empty(t, cache.missedListCounts)
+	assert.Equal(t, dbtypes.MetadataUnknown, cache.getSlotListCount(slot))
+
+	// The lists of a slot without a block keep their count after the drop.
+	cache.addInclusionList(testInclusionList(slot+2, 14, 1, txA), "client-a", 100)
+	_, _, dropped = cache.dropBefore(slot+3, false)
+	assert.ElementsMatch(t, []uint64{uint64(slot + 1), uint64(slot + 2)}, dropped)
+	assert.Equal(t, int16(1), cache.getSlotListCount(slot+2))
+	assert.Equal(t, int16(1), cache.getBlockListCount(targetBlock))
+	entries = cache.collectDirtyEntries()
+	require.Len(t, entries, 1, "the slot count; the dropped list is not copied anymore")
+	assert.Equal(t, dbtypes.UnfinalizedMetadataSlotListCount, entries[0].Kind)
 }

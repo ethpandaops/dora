@@ -105,6 +105,9 @@ func (client *Client) buildEventStreamMask() uint16 {
 
 	if chainState.IsEip7732Enabled(currentEpoch + 1) {
 		events |= rpc.StreamExecutionPayloadEvent | rpc.StreamExecutionPayloadBidEvent
+		// only nodes collecting EIP-8025 proofs know the topic; it has its own
+		// stream that gives up on rejection
+		events |= rpc.StreamExecutionProofEvent
 	}
 
 	if chainState.IsEip7805Enabled(currentEpoch + 1) {
@@ -181,6 +184,9 @@ func (client *Client) runClientLogic() error {
 
 			case rpc.StreamFastConfirmationEvent:
 				client.processFastConfirmationEvent(evt.Data.(*rpc.FastConfirmationEvent))
+
+			case rpc.StreamExecutionProofEvent:
+				client.executionProofDispatcher.Fire(evt.Data.(*rpc.ExecutionProof))
 			}
 
 			// fire through stream dispatcher first to preserve SSE ordering
@@ -371,6 +377,9 @@ func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Roo
 	// so an unchanged root must not skip seeding the pool's checkpoint while it is still unset.
 	if bytes.Equal(client.justifiedRoot[:], finalizedCheckpoints.Justified.Root[:]) && client.pool.chainState.HasFinalityCheckpoint() {
 		client.headMutex.Unlock()
+		if !client.isSyncing {
+			client.pool.chainState.setFinalizedCheckpoint(finalizedCheckpoints)
+		}
 		return finalizedCheckpoints.Finalized.Root, nil
 	}
 
