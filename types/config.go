@@ -53,6 +53,9 @@ type Config struct {
 		ValidatorNamesRefreshInterval time.Duration `yaml:"validatorNamesRefreshInterval" envconfig:"FRONTEND_VALIDATOR_REFRESH_INTERVAL"`
 		ValidatorNamesResolveInterval time.Duration `yaml:"validatorNamesResolveInterval" envconfig:"FRONTEND_VALIDATOR_RESOLVE_INTERVAL"`
 
+		BuilderNamesYaml            string        `yaml:"builderNamesYaml" envconfig:"FRONTEND_BUILDER_NAMES_YAML"`
+		BuilderNamesRefreshInterval time.Duration `yaml:"builderNamesRefreshInterval" envconfig:"FRONTEND_BUILDER_NAMES_REFRESH_INTERVAL"`
+
 		BuildoorOverviewUrl     string        `yaml:"buildoorOverviewUrl" envconfig:"FRONTEND_BUILDOOR_OVERVIEW_URL"`
 		BuildoorUrls            []string      `yaml:"buildoorUrls" envconfig:"FRONTEND_BUILDOOR_URLS"`
 		BuildoorRefreshInterval time.Duration `yaml:"buildoorRefreshInterval" envconfig:"FRONTEND_BUILDOOR_REFRESH_INTERVAL"`

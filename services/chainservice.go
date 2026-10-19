@@ -40,6 +40,7 @@ type ChainService struct {
 	executionPool         *execution.Pool
 	beaconIndexer         *beacon.Indexer
 	validatorNames        *ValidatorNames
+	builderNames          *BuilderNames
 	buildoorInventory     *BuildoorInventory
 	depositIndexer        *syscontracts.DepositIndexer
 	consolidationIndexer  *syscontracts.ConsolidationIndexer
@@ -70,6 +71,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	beaconIndexer := beacon.NewIndexer(ctx, logger.WithField("service", "cl-indexer"), consensusPool)
 	chainState := consensusPool.GetChainState()
 	validatorNames := NewValidatorNames(ctx, beaconIndexer, chainState)
+	builderNames := NewBuilderNames(ctx, beaconIndexer, chainState)
 	buildoorInventory := NewBuildoorInventory(ctx)
 	mevRelayIndexer := mevrelay.NewMevIndexer(ctx, logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 	snooperManager := snooper.NewSnooperManager(ctx, logger.WithField("service", "snooper-manager"), beaconIndexer)
@@ -85,6 +87,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 		executionPool:     executionPool,
 		beaconIndexer:     beaconIndexer,
 		validatorNames:    validatorNames,
+		builderNames:      builderNames,
 		buildoorInventory: buildoorInventory,
 		mevRelayIndexer:   mevRelayIndexer,
 		snooperManager:    snooperManager,
@@ -378,6 +381,7 @@ func (cs *ChainService) StartService() error {
 		cs.validatorNames.StartUpdater()
 	}()
 
+	cs.builderNames.StartUpdater()
 	cs.buildoorInventory.StartUpdater()
 
 	// start chain indexer
@@ -590,9 +594,7 @@ func (bs *ChainService) isCanonicalForkId(forkId uint64, canonicalForkIds []uint
 
 func (bs *ChainService) GetValidatorName(index uint64) string {
 	if index&BuilderIndexFlag != 0 {
-		if name := bs.buildoorInventory.GetBuilderName(index); name != "" {
-			return name
-		}
+		return bs.GetBuilderName(index)
 	}
 	return bs.validatorNames.GetValidatorName(index)
 }
@@ -601,9 +603,7 @@ func (bs *ChainService) GetValidatorName(index uint64) string {
 // Identical to GetValidatorName on networks without name history.
 func (bs *ChainService) GetValidatorNameAt(index uint64, slot phase0.Slot) string {
 	if index&BuilderIndexFlag != 0 {
-		if name := bs.buildoorInventory.GetBuilderName(index); name != "" {
-			return name
-		}
+		return bs.GetBuilderName(index)
 	}
 	return bs.validatorNames.GetValidatorNameAt(index, slot)
 }
@@ -612,11 +612,24 @@ func (bs *ChainService) GetValidatorNameAt(index uint64, slot phase0.Slot) strin
 // time. Used for rows that only carry an execution layer block time instead of a slot.
 func (bs *ChainService) GetValidatorNameAtTime(index uint64, ts int64) string {
 	if index&BuilderIndexFlag != 0 {
-		if name := bs.buildoorInventory.GetBuilderName(index); name != "" {
-			return name
-		}
+		return bs.GetBuilderName(index)
 	}
 	return bs.validatorNames.GetValidatorNameAtTime(index, ts)
+}
+
+// GetBuilderName returns the name of the builder currently occupying the given index. The
+// configured builder names take precedence over the names reported by buildoor instances.
+func (bs *ChainService) GetBuilderName(builderIndex uint64) string {
+	if name := bs.builderNames.GetBuilderName(builderIndex); name != "" {
+		return name
+	}
+	return bs.buildoorInventory.GetBuilderName(builderIndex)
+}
+
+// GetBuilderNameByPubkey returns the configured name of the builder with the given pubkey,
+// including builders whose index has been reused since.
+func (bs *ChainService) GetBuilderNameByPubkey(pubkey phase0.BLSPubKey) string {
+	return bs.builderNames.GetBuilderNameByPubkey(pubkey)
 }
 
 func (bs *ChainService) GetBuilderURL(builderIndex uint64) string {

@@ -198,8 +198,6 @@ func buildBuilderPageData(ctx context.Context, builder *gloas.Builder, builderIn
 	pageData := &models.BuilderPageData{
 		CurrentEpoch:     uint64(currentEpoch),
 		Index:            builderIndex,
-		Name:             services.GlobalBeaconService.GetValidatorName(builderIndex | services.BuilderIndexFlag),
-		BuildoorURL:      services.GlobalBeaconService.GetBuilderURL(builderIndex),
 		PublicKey:        builder.PublicKey[:],
 		Balance:          uint64(builder.Balance),
 		ExecutionAddress: builder.ExecutionAddress[:],
@@ -208,6 +206,15 @@ func buildBuilderPageData(ctx context.Context, builder *gloas.Builder, builderIn
 		IsSuperseded:     superseded,
 		TabView:          tabView,
 		GloasIsActive:    specs.GloasForkEpoch != nil && uint64(currentEpoch) >= *specs.GloasForkEpoch,
+	}
+
+	// Index-keyed names and buildoor links belong to the current occupant of the index, so a
+	// superseded builder is only named by its pubkey.
+	if superseded {
+		pageData.Name = services.GlobalBeaconService.GetBuilderNameByPubkey(builder.PublicKey)
+	} else {
+		pageData.Name = services.GlobalBeaconService.GetBuilderName(builderIndex)
+		pageData.BuildoorURL = services.GlobalBeaconService.GetBuilderURL(builderIndex)
 	}
 
 	// Canonical URL segment: superseded builders no longer own their index (it was reused), so they
