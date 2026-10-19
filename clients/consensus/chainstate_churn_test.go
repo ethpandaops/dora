@@ -70,3 +70,40 @@ func TestChurnLimitsWithoutSpecs(t *testing.T) {
 		t.Errorf("GetExitChurnLimit() without specs = %d, want 0", got)
 	}
 }
+
+func TestChurnLimitsScaleWithHezeSlotDuration(t *testing.T) {
+	cs := newChurnTestChainState()
+	hezeForkEpoch := uint64(200)
+	cs.specs.HezeForkEpoch = &hezeForkEpoch
+	cs.specs.SlotDurationMs = 12000
+	cs.specs.SlotDurationMsHeze = 10000
+	cs.specs.ConsolidationChurnLimitQuotient = 65536
+
+	const preHeze, postHeze = phase0.Epoch(199), phase0.Epoch(200)
+
+	tests := []struct {
+		name              string
+		epoch             phase0.Epoch
+		wantActivation    uint64
+		wantExit          uint64
+		wantConsolidation uint64
+	}{
+		{"pre-heze", preHeze, 256 * gwei, 1068 * gwei, 534 * gwei},
+		{"heze", postHeze, 213 * gwei, 890 * gwei, 445 * gwei},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			totalActiveBalance := 35_000_000 * gwei
+			if got := cs.GetActivationChurnLimit(tt.epoch, totalActiveBalance); got != tt.wantActivation {
+				t.Errorf("GetActivationChurnLimit() = %d, want %d", got/gwei, tt.wantActivation/gwei)
+			}
+			if got := cs.GetExitChurnLimit(tt.epoch, totalActiveBalance); got != tt.wantExit {
+				t.Errorf("GetExitChurnLimit() = %d, want %d", got/gwei, tt.wantExit/gwei)
+			}
+			if got := cs.GetConsolidationChurnLimit(tt.epoch, totalActiveBalance); got != tt.wantConsolidation {
+				t.Errorf("GetConsolidationChurnLimit() = %d, want %d", got/gwei, tt.wantConsolidation/gwei)
+			}
+		})
+	}
+}
