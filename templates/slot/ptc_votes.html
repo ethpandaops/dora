@@ -123,7 +123,7 @@
             ptcPromise = fetch('/slot/' + votedSlot + '/duties?ptc=1&block_root=' + pageBlockRoot)
               .then(function(r) { return r.json(); })
               .then(function(data) {
-                if (data.names) { ptcNames = data.names; }
+                if (data.names) { ptcNames = {}; data.names.forEach(function(n) { ptcNames[n.index] = n.name; }); }
                 return data.validators || [];
               });
             return ptcPromise;

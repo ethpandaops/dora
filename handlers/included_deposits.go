@@ -157,9 +157,7 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 	if withValid != 0 {
 		filterArgs.Add("f.valid", fmt.Sprintf("%v", withValid))
 	}
-	credTypeSet := make(map[uint8]bool, len(credTypes))
 	for _, t := range credTypes {
-		credTypeSet[t] = true
 		filterArgs.Add("f.cred", fmt.Sprintf("%v", t))
 	}
 
@@ -173,7 +171,7 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 		FilterWithOrphaned:  withOrphaned,
 		FilterAddress:       address,
 		FilterWithValid:     withValid,
-		FilterCredTypes:     credTypeSet,
+		FilterCredTypes:     credTypes,
 	}
 	cacheTimeout := 5 * time.Minute
 	logrus.Debugf("included_deposits page called: %v:%v [%v,%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, credTypes)

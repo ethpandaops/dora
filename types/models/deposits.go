@@ -68,7 +68,7 @@ type DepositsPageDataIncludedDeposit struct {
 	EstimatedTime         time.Time                                 `json:"estimated_time"`
 	DepositorAddress      []byte                                    `json:"depositor_address" ssz-size:"20"`
 	HasTransaction        bool                                      `json:"has_transaction"`
-	TransactionDetails    *DepositsPageDataIncludedDepositTxDetails `json:"tx_details"`
+	TransactionDetails    *DepositsPageDataIncludedDepositTxDetails `json:"tx_details" ssz-type:"optional"`
 	InvalidSignature      bool                                      `json:"invalid_signature"`
 	ValidatorExists       bool                                      `json:"validator_exists"`
 	ValidatorIndex        uint64                                    `json:"validator_index"`
@@ -100,7 +100,7 @@ type DepositsPageDataQueuedDeposit struct {
 	UpcheckMaximum        uint8                                   `json:"upcheck_max"`
 	HasTransaction        bool                                    `json:"has_transaction"`
 	TransactionHash       []byte                                  `json:"tx_hash" ssz-size:"32"`
-	TransactionDetails    *DepositsPageDataQueuedDepositTxDetails `json:"tx_details"`
+	TransactionDetails    *DepositsPageDataQueuedDepositTxDetails `json:"tx_details" ssz-type:"optional"`
 	ValidatorExists       bool                                    `json:"validator_exists"`
 	ValidatorIndex        uint64                                  `json:"validator_index"`
 	ProjectedIndex        bool                                    `json:"projected_index"`

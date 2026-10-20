@@ -228,7 +228,7 @@
         .then(function(resp) { return resp.json(); })
         .then(function(data) {
           if (data.names) {
-            Object.keys(data.names).forEach(function(k) { validatorNames[k] = data.names[k]; });
+            data.names.forEach(function(n) { validatorNames[n.index] = n.name; });
           }
           self.validators(data.validators || []);
           self.validatorsLoaded(true);

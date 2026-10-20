@@ -11,7 +11,7 @@ type TokensPageData struct {
 	FirstItem  uint64 `json:"first_item"`
 	LastItem   uint64 `json:"last_item"`
 
-	Pager *PagerData `json:"pager"`
+	Pager *PagerData `json:"pager" ssz-type:"optional"`
 
 	EnsNameData
 }
