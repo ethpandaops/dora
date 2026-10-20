@@ -28,6 +28,7 @@ func TestCachedPageValuesSszCompatible(t *testing.T) {
 	}{
 		{name: "address_balances", value: &AddressBalancesResponse{}},
 		{name: "search_resolver", value: &searchResolverResult{}},
+		{name: "search_ahead", value: &searchAheadCached{}},
 		{name: "slot_inclusionlists", value: &services.SlotInclusionListsView{}},
 		{name: "block_redirect", value: &[]byte{}},
 		{name: "submit_deposit_deposits", value: &models.SubmitDepositPageDataDeposits{}},
@@ -49,4 +50,29 @@ func TestCachedPageValuesSszCompatible(t *testing.T) {
 			require.Equal(t, 1, stats.SSZCompatTypes)
 		})
 	}
+}
+
+// TestSearchAheadCachedRoundTrip checks that a search-ahead result survives
+// the frontend cache: a cache hit must serve the same entries as the build.
+func TestSearchAheadCachedRoundTrip(t *testing.T) {
+	utils.Config = &types.Config{}
+
+	tieredCache, err := cache.NewTieredCache(1, "", "test", logrus.New())
+	require.NoError(t, err)
+
+	in := &searchAheadCached{
+		Slots: []*models.SearchAheadSlotsResult{{Slot: "42", Orphaned: true}},
+	}
+	require.NoError(t, tieredCache.Set("search_ahead:slots:42", in, time.Hour))
+
+	out := &searchAheadCached{}
+	_, err = tieredCache.Get("search_ahead:slots:42", out)
+	require.NoError(t, err)
+
+	slots, ok := out.result("slots").([]*models.SearchAheadSlotsResult)
+	require.True(t, ok)
+	require.Len(t, slots, 1)
+	require.Equal(t, "42", slots[0].Slot)
+	require.True(t, slots[0].Orphaned)
+	require.Empty(t, out.Epochs)
 }

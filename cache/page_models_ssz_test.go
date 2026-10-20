@@ -202,31 +202,35 @@ func hasSszOptionalTag(tag reflect.StructTag) bool {
 func exportedStructNames(t *testing.T, dir string) map[string]struct{} {
 	t.Helper()
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, filepath.Clean(dir), func(info os.FileInfo) bool {
-		return !strings.HasSuffix(info.Name(), "_test.go")
-	}, parser.SkipObjectResolution)
-	require.NoError(t, err, "parse %s", dir)
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err, "read %s", dir)
 
+	fset := token.NewFileSet()
 	names := make(map[string]struct{}, 256)
 
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Files {
-			for _, decl := range file.Decls {
-				genDecl, ok := decl.(*ast.GenDecl)
-				if !ok || genDecl.Tok != token.TYPE {
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+		require.NoError(t, err, "parse %s", name)
+
+		for _, decl := range file.Decls {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if !ok || genDecl.Tok != token.TYPE {
+				continue
+			}
+
+			for _, spec := range genDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok || !typeSpec.Name.IsExported() {
 					continue
 				}
 
-				for _, spec := range genDecl.Specs {
-					typeSpec, ok := spec.(*ast.TypeSpec)
-					if !ok || !typeSpec.Name.IsExported() {
-						continue
-					}
-
-					if _, ok := typeSpec.Type.(*ast.StructType); ok {
-						names[typeSpec.Name.Name] = struct{}{}
-					}
+				if _, ok := typeSpec.Type.(*ast.StructType); ok {
+					names[typeSpec.Name.Name] = struct{}{}
 				}
 			}
 		}
