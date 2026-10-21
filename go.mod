@@ -1,6 +1,6 @@
 module github.com/ethpandaops/dora
 
-go 1.26.8
+go 1.26.10
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
