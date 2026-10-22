@@ -101,6 +101,7 @@ executionapi:
   depositDeployBlock: 0 # el block number from where to crawl the deposit contract (should be <=, but close to the deposit contract deployment block)
   electraDeployBlock: 0 # el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
   genesisConfig: "" # path or URL to genesis.json file in geth format
+  pbtMigrationProgress: false # poll debug_migrationProgress and show the binary trie (EIP-8347) migration state on the execution clients page
 
 # indexer keeps track of the latest epochs in memory.
 indexer:

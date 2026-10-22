@@ -18,6 +18,9 @@ type ClientConfig struct {
 	Name      string
 	Headers   map[string]string
 	SshConfig *sshtunnel.SshConfig
+
+	// PollPbtMigration enables periodic debug_migrationProgress polling (binary trie migration).
+	PollPbtMigration bool
 }
 
 type Client struct {
@@ -46,6 +49,11 @@ type Client struct {
 	didFetchPeers      bool
 	ethConfig          *rpc.EthConfig
 	configWarnings     []string // warnings from eth_config checks
+	pbtMutex           sync.RWMutex
+	pbtProgress        *rpc.PbtMigrationProgress
+	pbtUpdated         time.Time
+	pbtError           error
+	lastPbtPoll        time.Time
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
@@ -96,6 +104,14 @@ func (client *Client) GetNodeInfo() *p2p.NodeInfo {
 
 func (client *Client) GetEthConfig() *rpc.EthConfig {
 	return client.ethConfig
+}
+
+// GetPbtMigrationProgress returns the last debug_migrationProgress result, its update time
+// and the error of the last poll (nil progress if polling is disabled or never succeeded).
+func (client *Client) GetPbtMigrationProgress() (*rpc.PbtMigrationProgress, time.Time, error) {
+	client.pbtMutex.RLock()
+	defer client.pbtMutex.RUnlock()
+	return client.pbtProgress, client.pbtUpdated, client.pbtError
 }
 
 func (client *Client) GetEndpointConfig() *ClientConfig {

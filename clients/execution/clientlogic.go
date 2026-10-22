@@ -155,6 +155,41 @@ func (client *Client) updateNodeMetadata(ctx context.Context) error {
 	return nil
 }
 
+// pbtPollTimeout returns the time until the next debug_migrationProgress poll. Clients
+// without the method are polled at the metadata interval instead of every 30 seconds.
+func (client *Client) pbtPollTimeout() time.Duration {
+	interval := 30 * time.Second
+	client.pbtMutex.RLock()
+	if client.pbtError != nil && strings.Contains(strings.ToLower(client.pbtError.Error()), "not found") {
+		interval = 5 * time.Minute
+	}
+	client.pbtMutex.RUnlock()
+
+	elapsed := time.Since(client.lastPbtPoll)
+	if elapsed > interval {
+		return 0
+	}
+	return interval - elapsed
+}
+
+func (client *Client) updatePbtMigration(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	client.lastPbtPoll = time.Now()
+	progress, err := client.rpcClient.GetPbtMigrationProgress(ctx)
+
+	client.pbtMutex.Lock()
+	defer client.pbtMutex.Unlock()
+	client.pbtError = err
+	if err != nil {
+		client.logger.Debugf("could not get debug_migrationProgress: %v", err)
+		return
+	}
+	client.pbtProgress = progress
+	client.pbtUpdated = client.lastPbtPoll
+}
+
 func (client *Client) runClientLogic() error {
 	// get latest header
 	err := client.pollClientHead()
@@ -210,9 +245,17 @@ func (client *Client) runClientLogic() error {
 			metadataRefreshTimeout = 5*time.Minute - metadataRefreshTimeout
 		}
 
+		// a nil channel never fires, so polling stays off unless configured
+		var pbtTimer <-chan time.Time
+		if client.endpointConfig.PollPbtMigration {
+			pbtTimer = time.After(client.pbtPollTimeout())
+		}
+
 		select {
 		case <-client.clientCtx.Done():
 			return nil
+		case <-pbtTimer:
+			client.updatePbtMigration(client.clientCtx)
 		case <-time.After(pollTimeout):
 			client.lastFilterPoll = time.Now()
 
