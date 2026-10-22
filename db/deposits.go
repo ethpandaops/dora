@@ -109,17 +109,6 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT
-			deposits.deposit_index, deposits.slot_number, deposits.slot_index, deposits.slot_root, deposits.orphaned, deposits.publickey, deposits.withdrawalcredentials, deposits.amount, deposits.fork_id`)
-
-	if txFilter != nil {
-		fmt.Fprint(&sql, `,
-			deposit_txs.block_number, deposit_txs.block_time, deposit_txs.block_root, deposit_txs.valid_signature, deposit_txs.tx_hash, deposit_txs.tx_sender, deposit_txs.tx_target
-		`)
-	}
-
-	fmt.Fprint(&sql, `
 		FROM deposits
 	`)
 
@@ -175,7 +164,13 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 	if txFilter != nil {
 		switch txFilter.WithValid {
 		case 0:
-			fmt.Fprintf(&sql, " %v deposit_txs.valid_signature IN (1, 2)", filterOp)
+			// Nearly every deposit has a valid signature, so this predicate is applied as a
+			// semi-join instead of through the LEFT JOIN: the planner estimates the two-column
+			// join at a handful of rows and then refuses the index-driven page plan, while the
+			// semi-join is estimated from the predicate's selectivity. The selective predicates
+			// (invalid only, sender / target address) stay on the join, as the planner drives
+			// those from the deposit_txs indexes.
+			fmt.Fprintf(&sql, " %v EXISTS (SELECT 1 FROM deposit_txs valid_txs WHERE valid_txs.deposit_index = deposits.deposit_index AND valid_txs.publickey = deposits.publickey AND valid_txs.valid_signature IN (1, 2))", filterOp)
 			filterOp = "AND"
 		case 2:
 			fmt.Fprintf(&sql, " %v deposit_txs.valid_signature = 0", filterOp)
@@ -224,44 +219,31 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 		}
 	}
 
-	args = append(args, limit)
-	fmt.Fprintf(&sql, `) 
-	SELECT 
-		0 AS deposit_index, 
-		count(*) AS slot_number, 
-		0 AS slot_index, 
-		null AS slot_root,
-		false AS orphaned,
-		null AS publickey, 
-		null AS withdrawalcredentials,
-		0 AS amount,
-		0 AS fork_id`)
+	fromClause := sql.String()
+	filterArgs := len(args)
+
+	// The page is fetched on its own so the ordering can be served from the slot_number index;
+	// the count runs separately via countFilteredRows.
+	sql.Reset()
+	fmt.Fprint(&sql, `
+	SELECT
+		deposits.deposit_index, deposits.slot_number, deposits.slot_index, deposits.slot_root, deposits.orphaned, deposits.publickey, deposits.withdrawalcredentials, deposits.amount, deposits.fork_id`)
 
 	if txFilter != nil {
 		fmt.Fprint(&sql, `,
-			0 AS block_number,
-			0 AS block_time,
-			null AS block_root,
-			0 AS valid_signature,
-			null AS tx_hash,
-			null AS tx_sender,
-			null AS tx_target
-		`)
+		deposit_txs.block_number, deposit_txs.block_time, deposit_txs.block_root, deposit_txs.valid_signature, deposit_txs.tx_hash, deposit_txs.tx_sender, deposit_txs.tx_target`)
 	}
 
+	args = append(args, limit)
 	fmt.Fprintf(&sql, `
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY slot_number DESC, deposit_index DESC 
-	LIMIT $%v 
-	`, len(args))
+	%v
+	ORDER BY deposits.slot_number DESC NULLS LAST, deposits.deposit_index DESC NULLS LAST
+	LIMIT $%v`, fromClause, len(args))
 
 	if offset > 0 {
 		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
+		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprintf(&sql, ") AS t1")
 
 	deposits := []*dbtypes.DepositWithTx{}
 	err := ReaderDb.SelectContext(ctx, &deposits, sql.String(), args...)
@@ -270,5 +252,11 @@ func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canon
 		return nil, 0, err
 	}
 
-	return deposits[1:], deposits[0].SlotNumber, nil
+	count, err := countFilteredRows(ctx, fromClause, args[:filterArgs], offset, len(deposits), limit)
+	if err != nil {
+		logger.Errorf("Error while counting filtered deposits: %v", err)
+		return nil, 0, err
+	}
+
+	return deposits, count, nil
 }

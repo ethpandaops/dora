@@ -459,59 +459,53 @@ func (q *IndexedDepositQueue) EstimateAppendedDepositEpoch(amount phase0.Gwei) p
 	return queueEpoch
 }
 
-// depositQueueIndexCache memoizes the EL deposit index resolution of pending-deposit queue
-// snapshots. Resolving costs a db round trip covering every slot present in the queue, while
-// the snapshot itself only changes once per epoch — without the cache every page render (and
-// every page of a paginated render) would repeat it. It also keeps a paginated walk
-// consistent, as all pages then resolve against the same snapshot.
-type depositQueueIndexCache struct {
+// depositQueueCache memoizes per-snapshot results of the pending-deposit queue resolution
+// (the EL deposit indexes and the anchor deposit), keyed by the block root the snapshot was
+// taken at. Resolving costs db round trips, while the snapshot itself only changes once per
+// epoch — without the cache every page render (and every page of a paginated render) would
+// repeat them. It also keeps a paginated walk consistent, as all pages then resolve against
+// the same snapshot.
+type depositQueueCache[T any] struct {
 	mutex   sync.Mutex
-	entries map[phase0.Root]*resolvedDepositQueueIndexes
+	entries map[phase0.Root]*T
 	order   []phase0.Root
 }
 
-// resolvedDepositQueueIndexes is one snapshot's resolution result, keyed by the block root
-// the snapshot was taken at.
+// resolvedDepositQueueIndexes is one snapshot's resolution result.
 type resolvedDepositQueueIndexes struct {
 	queueLen  int
 	indexes   []*uint64
 	postponed []bool
 }
 
-// depositQueueIndexCacheSize is the number of queue snapshots kept. A handful covers the
+// depositQueueCacheSize is the number of queue snapshots kept. A handful covers the
 // canonical chain plus the sibling forks that are live at any moment.
-const depositQueueIndexCacheSize = 4
+const depositQueueCacheSize = 4
 
-func (c *depositQueueIndexCache) get(root phase0.Root, queueLen int) *resolvedDepositQueueIndexes {
+func (c *depositQueueCache[T]) get(root phase0.Root) *T {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	cached := c.entries[root]
-	if cached == nil || cached.queueLen != queueLen {
-		// A different length means the snapshot advanced under the same root; recompute.
-		return nil
-	}
-
-	return cached
+	return c.entries[root]
 }
 
-func (c *depositQueueIndexCache) put(root phase0.Root, resolved *resolvedDepositQueueIndexes) {
+func (c *depositQueueCache[T]) put(root phase0.Root, value *T) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	if c.entries == nil {
-		c.entries = make(map[phase0.Root]*resolvedDepositQueueIndexes, depositQueueIndexCacheSize)
+		c.entries = make(map[phase0.Root]*T, depositQueueCacheSize)
 	}
 
 	if _, exists := c.entries[root]; !exists {
 		c.order = append(c.order, root)
-		for len(c.order) > depositQueueIndexCacheSize {
+		for len(c.order) > depositQueueCacheSize {
 			delete(c.entries, c.order[0])
 			c.order = c.order[1:]
 		}
 	}
 
-	c.entries[root] = resolved
+	c.entries[root] = value
 }
 
 func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *beacon.Block) *IndexedDepositQueue {
@@ -532,7 +526,15 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	}
 	// The anchor (most recent included deposit) is resolved unconditionally — even for an empty
 	// queue — so callers can tell already-applied deposits from deposits included after the snapshot.
-	lastIncludedDeposit := bs.getRecentIncludedDeposits(ctx, queueBlockRoot)
+	// It is fixed for a given snapshot root, so it is cached per root; without the cache every
+	// caller re-runs the block cache walk and, when no deposit is in the cache, a db query.
+	lastIncludedDeposit := bs.depositQueueAnchors.get(queueBlockRoot)
+	if lastIncludedDeposit == nil {
+		lastIncludedDeposit = bs.getRecentIncludedDeposits(ctx, queueBlockRoot)
+		if lastIncludedDeposit != nil && lastIncludedDeposit.Index != nil {
+			bs.depositQueueAnchors.put(queueBlockRoot, lastIncludedDeposit)
+		}
+	}
 	if lastIncludedDeposit != nil && lastIncludedDeposit.Index != nil {
 		anchorIndex := *lastIncludedDeposit.Index
 		indexedQueue.LastIncludedDepositIndex = &anchorIndex
@@ -541,7 +543,11 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	// The churn-simulation residual below is still populated for an empty queue (so the
 	// safety estimate for a newly appended deposit works), hence no early return here.
 	if len(queue) > 0 {
-		resolved := bs.depositQueueIndexes.get(queueBlockRoot, len(queue))
+		resolved := bs.depositQueueIndexes.get(queueBlockRoot)
+		if resolved != nil && resolved.queueLen != len(queue) {
+			// A different length means the snapshot advanced under the same root; recompute.
+			resolved = nil
+		}
 		if resolved == nil {
 			// The positional (anchor + backward count) shortcut is only valid while the queue is
 			// a contiguous suffix of the deposit stream. Gloas breaks that for good, so from the
