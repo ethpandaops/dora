@@ -235,9 +235,10 @@ func (cs *ChainService) StartService() error {
 		}
 
 		endpointConfig := &execution.ClientConfig{
-			URL:     processedEndpoint.Url,
-			Name:    processedEndpoint.Name,
-			Headers: processedEndpoint.Headers,
+			URL:              processedEndpoint.Url,
+			Name:             processedEndpoint.Name,
+			Headers:          processedEndpoint.Headers,
+			PollPbtMigration: utils.Config.ExecutionApi.PbtMigrationProgress,
 		}
 
 		if processedEndpoint.Ssh != nil {

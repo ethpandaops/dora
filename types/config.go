@@ -127,6 +127,9 @@ type Config struct {
 		ElectraDeployBlock int    `yaml:"electraDeployBlock" envconfig:"EXECUTIONAPI_ELECTRA_DEPLOY_BLOCK"` // el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
 		GloasDeployBlock   int    `yaml:"gloasDeployBlock" envconfig:"EXECUTIONAPI_GLOAS_DEPLOY_BLOCK"`     // el block number from where to crawl the gloas builder system contracts (should be <=, but close to gloas fork activation block)
 		GenesisConfig      string `yaml:"genesisConfig" envconfig:"EXECUTIONAPI_GENESIS_CONFIG"`            // path or URL to genesis.json file in geth format
+
+		// Poll debug_migrationProgress on every execution client and show the binary trie (EIP-8347 PBT) migration state on the execution clients page.
+		PbtMigrationProgress bool `yaml:"pbtMigrationProgress" envconfig:"EXECUTIONAPI_PBT_MIGRATION_PROGRESS"`
 	} `yaml:"executionapi"`
 
 	Indexer struct {

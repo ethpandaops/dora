@@ -101,6 +101,12 @@
                     <a href="/clients/execution?o=status-d" class="sort-link {{ if eq .Sorting "status-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
                   </div>
                 </th>
+                {{ if .ShowPbtMigration }}
+                <th>
+                  PBT migration
+                  <i class="fa fa-info-circle text-muted" data-bs-toggle="tooltip" data-bs-placement="top" title="Binary trie (EIP-8347) migration state from debug_migrationProgress: phase, binary cursor and its lag behind the execution head, shadow root."></i>
+                </th>
+                {{ end }}
                 <th>
                   Version
                   <div class="col-sorting">
@@ -160,6 +166,47 @@
                         <i class="fas fa-exclamation-triangle"></i>
                       </span>
                     </td>
+                    {{ if $root.ShowPbtMigration }}
+                    <td style="font-size: 0.8rem; vertical-align: middle;">
+                      {{ with $client.PbtMigration }}
+                        {{ if .Available }}
+                          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort .LastUpdate }}{{ if .PollError }}, last poll error: {{ .PollError }}{{ end }}&#10;{{ .Raw }}">
+                          {{ if eq .Phase "running" }}
+                            <span class="badge rounded-pill text-bg-success">{{ .Phase }}</span>
+                          {{ else if or (eq .Phase "importing") (eq .Phase "migrating") (eq .Phase "converting") }}
+                            <span class="badge rounded-pill text-bg-warning">{{ .Phase }}</span>
+                          {{ else if or (eq .Phase "importFailed") (eq .Phase "failed") (ne .BinaryError "") }}
+                            <span class="badge rounded-pill text-bg-danger">{{ if .Phase }}{{ .Phase }}{{ else }}error{{ end }}</span>
+                          {{ else if .Phase }}
+                            <span class="badge rounded-pill text-bg-secondary">{{ .Phase }}</span>
+                          {{ end }}
+                          {{ if .Mode }}<span class="badge rounded-pill text-bg-info">{{ .Mode }}</span>{{ end }}
+                          {{ if .HasShadowStopped }}{{ if .ShadowStopped }}<span class="badge rounded-pill text-bg-danger">shadow stopped</span>{{ end }}{{ end }}
+                          </span>
+                          {{ if .HasBinary }}
+                            <div>
+                              bin {{ if .BinaryPhase }}{{ .BinaryPhase }}{{ end }}
+                              {{ if gt .BinaryCursor 0 }}
+                                @ {{ formatAddCommas .BinaryCursor }}
+                                {{ if gt .BinaryLag 0 }}<span class="text-warning">(-{{ formatAddCommas .BinaryLag }})</span>{{ end }}
+                              {{ end }}
+                            </div>
+                            {{ if .BinaryShadowRoot }}
+                              <div class="text-monospace">
+                                <span class="text-truncate d-inline-block align-bottom" style="max-width: 120px">{{ .BinaryShadowRoot }}</span>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy shadow root" data-clipboard-text="{{ .BinaryShadowRoot }}"></i>
+                              </div>
+                            {{ end }}
+                            {{ if .BinaryError }}<div class="text-danger text-truncate" style="max-width: 200px" title="{{ .BinaryError }}">{{ .BinaryError }}</div>{{ end }}
+                          {{ end }}
+                        {{ else if .PollError }}
+                          <span class="text-muted" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ .PollError }}">n/a</span>
+                        {{ else }}
+                          <span class="text-muted">-</span>
+                        {{ end }}
+                      {{ end }}
+                    </td>
+                    {{ end }}
                     <td>
                       <span class="text-truncate d-inline-block" style="max-width: 300px">{{ $client.Version }}</span>
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
@@ -180,7 +227,7 @@
                     </td>
                   </tr>
                   <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
-                    <td colspan="8" style="padding: 10px 0;" class="peer-details-container" data-peerid="{{ $client.PeerID }}">
+                    <td colspan="{{ if $root.ShowPbtMigration }}9{{ else }}8{{ end }}" style="padding: 10px 0;" class="peer-details-container" data-peerid="{{ $client.PeerID }}">
 
                     </td>
                   </tr>

@@ -193,6 +193,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		PeerMap:                buildELPeerMapData(parseEnodeRecord),
 		ShowSensitivePeerInfos: utils.Config.Frontend.ShowSensitivePeerInfos,
 		Nodes:                  []*models.ClientsELPageDataNode{},
+		ShowPbtMigration:       utils.Config.ExecutionApi.PbtMigrationProgress,
 	}
 
 	// getEnrValues decodes an "enr:..." record into a sorted key/value list.
@@ -366,6 +367,10 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			resClient.LastError = lastError.Error()
 		}
 
+		if pageData.ShowPbtMigration {
+			resClient.PbtMigration = buildPbtMigration(client, uint64(lastHeadSlot))
+		}
+
 		pageData.Clients = append(pageData.Clients, resClient)
 		pageData.Nodes = append(pageData.Nodes, resNode)
 	}
@@ -525,6 +530,42 @@ func convertEthConfigFork(fork *execrpc.EthConfigFork) *models.EthConfigObject {
 	})
 
 	return obj
+}
+
+// buildPbtMigration converts the client's last debug_migrationProgress result into the
+// page model; headNumber is the client's execution head, used for the cursor lag.
+func buildPbtMigration(client *execution.Client, headNumber uint64) *models.ClientELPageDataPbtMigration {
+	progress, updated, pollErr := client.GetPbtMigrationProgress()
+	result := &models.ClientELPageDataPbtMigration{
+		LastUpdate: updated,
+	}
+	if pollErr != nil {
+		result.PollError = pollErr.Error()
+	}
+	if progress == nil {
+		return result
+	}
+
+	result.Available = true
+	result.Phase = progress.Phase
+	result.Mode = progress.Mode
+	result.Raw = string(progress.Raw)
+	if progress.ShadowStopped != nil {
+		result.HasShadowStopped = true
+		result.ShadowStopped = *progress.ShadowStopped
+	}
+	if progress.Binary != nil {
+		result.HasBinary = true
+		result.BinaryPhase = progress.Binary.Phase
+		result.BinaryCursor = uint64(progress.Binary.Cursor)
+		result.BinaryCursorHash = progress.Binary.CursorHash
+		result.BinaryShadowRoot = progress.Binary.ShadowRoot
+		result.BinaryError = progress.Binary.Error
+		if result.BinaryCursor > 0 && headNumber > result.BinaryCursor {
+			result.BinaryLag = headNumber - result.BinaryCursor
+		}
+	}
+	return result
 }
 
 // buildPeerProtocols converts the loosely typed sub-protocol metadata map from

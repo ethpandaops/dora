@@ -14,24 +14,46 @@ type ClientsELPageData struct {
 	Sorting                string                      `json:"sorting"`
 	IsDefaultSorting       bool                        `json:"is_default_sorting"`
 	ExpectedEthConfig      *ClientELPageDataForkConfig `json:"expected_eth_config"`
+	ShowPbtMigration       bool                        `json:"show_pbt_migration"`
 }
 
 type ClientsELPageDataClient struct {
-	Index                int32                       `json:"index"`
-	Name                 string                      `json:"name"`
-	Version              string                      `json:"version"`
-	HeadSlot             uint64                      `json:"head_slot"`
-	HeadRoot             []byte                      `json:"head_root"`
-	Status               string                      `json:"status"`
-	LastRefresh          time.Time                   `json:"refresh"`
-	LastError            string                      `json:"error"`
-	PeerCount            uint32                      `json:"peer_count"`
-	DidFetchPeers        bool                        `json:"peers_fetched"`
-	PeersInboundCounter  uint32                      `json:"peers_inbound_counter"`
-	PeersOutboundCounter uint32                      `json:"peers_outbound_counter"`
-	PeerID               string                      `json:"peer_id"`
-	ConfigWarnings       []string                    `json:"config_warnings"`
-	ClientConfig         *ClientELPageDataForkConfig `json:"client_config"`
+	Index                int32                         `json:"index"`
+	Name                 string                        `json:"name"`
+	Version              string                        `json:"version"`
+	HeadSlot             uint64                        `json:"head_slot"`
+	HeadRoot             []byte                        `json:"head_root"`
+	Status               string                        `json:"status"`
+	LastRefresh          time.Time                     `json:"refresh"`
+	LastError            string                        `json:"error"`
+	PeerCount            uint32                        `json:"peer_count"`
+	DidFetchPeers        bool                          `json:"peers_fetched"`
+	PeersInboundCounter  uint32                        `json:"peers_inbound_counter"`
+	PeersOutboundCounter uint32                        `json:"peers_outbound_counter"`
+	PeerID               string                        `json:"peer_id"`
+	ConfigWarnings       []string                      `json:"config_warnings"`
+	ClientConfig         *ClientELPageDataForkConfig   `json:"client_config"`
+	PbtMigration         *ClientELPageDataPbtMigration `json:"pbt_migration"`
+}
+
+// ClientELPageDataPbtMigration is the binary trie (EIP-8347) migration state reported by
+// debug_migrationProgress. Only set when executionapi.pbtMigrationProgress is enabled.
+type ClientELPageDataPbtMigration struct {
+	Available        bool      `json:"available"` // a debug_migrationProgress result was received
+	PollError        string    `json:"poll_error"`
+	LastUpdate       time.Time `json:"last_update"`
+	Phase            string    `json:"phase"`
+	HasBinary        bool      `json:"has_binary"`
+	BinaryPhase      string    `json:"binary_phase"`
+	BinaryCursor     uint64    `json:"binary_cursor"`
+	BinaryCursorHash string    `json:"binary_cursor_hash"`
+	BinaryShadowRoot string    `json:"binary_shadow_root"`
+	BinaryError      string    `json:"binary_error"`
+	BinaryLag        uint64    `json:"binary_lag"` // execution head minus binary cursor
+	Mode             string    `json:"mode"`
+	HasShadowStopped bool      `json:"has_shadow_stopped"`
+	ShadowStopped    bool      `json:"shadow_stopped"`
+	Raw              string    `json:"raw"`
 }
 
 type ClientsELPageDataNode struct {
