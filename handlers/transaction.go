@@ -1791,13 +1791,13 @@ func applyCalldataCosts(pageData *models.TransactionPageData) {
 	if len(data) == 0 {
 		return
 	}
-	z := 0
+	z := uint64(0)
 	for _, b := range data {
 		if b == 0 {
 			z++
 		}
 	}
-	nz := len(data) - z
+	nz := uint64(len(data)) - z
 	total := uint64(len(data))
 
 	tokens := nz*4 + z
@@ -1805,9 +1805,9 @@ func applyCalldataCosts(pageData *models.TransactionPageData) {
 	pageData.CalldataNonZeroBytes = nz
 	pageData.CalldataPragueTokens = tokens
 	// Standard intrinsic (pre-Prague): TX_BASE + 4×zero + 16×nonzero
-	pageData.CalldataStandardGas = 21000 + uint64(z)*4 + uint64(nz)*16
+	pageData.CalldataStandardGas = 21000 + z*4 + nz*16
 	// EIP-7623 floor (Prague+): tokens = 4×nonzero + zero; floor = TX_BASE + tokens×10
-	pageData.CalldataPragueFloor = 21000 + uint64(tokens)*10
+	pageData.CalldataPragueFloor = 21000 + tokens*10
 	// EIP-7976 floor (Amsterdam+): flat 64 gas per byte regardless of zero/nonzero
 	pageData.CalldataAmsterdamFloor = 21000 + total*64
 }
@@ -2098,7 +2098,7 @@ func buildFramesFromEnvelope(pageData *models.TransactionPageData, frameTx *txty
 	pageData.Frames = frames
 	pageData.FrameCount = uint64(len(frames))
 	pageData.FrameShape = frameShapeLabel(frameTx)
-	pageData.FrameValidationCount = validationLen
+	pageData.FrameValidationCount = uint64(validationLen)
 
 	// The envelope declares the frames; what each of them did is on the receipt, which is
 	// overlaid separately and may not have been kept.
@@ -2121,7 +2121,7 @@ func applyFrameResults(pageData *models.TransactionPageData, results []bdbtypes.
 		pageData.Frames = append(pageData.Frames, &models.TransactionPageDataFrame{
 			Index:            uint32(index),
 			ModeName:         "Unknown",
-			BatchIndex:       index,
+			BatchIndex:       uint64(index),
 			BatchSize:        1,
 			BatchFailedIndex: -1,
 		})
@@ -2202,7 +2202,7 @@ func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
 		frame.StatusText = frameStatusText(frame.Status, true)
 
 		if idx, ok := undoneBy[i]; ok {
-			frame.BatchFailedIndex = int(idx)
+			frame.BatchFailedIndex = int64(idx)
 		}
 	}
 }
@@ -2704,8 +2704,8 @@ func assignFrameBatches(frames []*models.TransactionPageDataFrame) {
 
 		size := i + 1 - batchStart
 		for _, member := range frames[batchStart : i+1] {
-			member.BatchIndex = batchIndex
-			member.BatchSize = size
+			member.BatchIndex = uint64(batchIndex)
+			member.BatchSize = uint64(size)
 		}
 
 		frames[batchStart].IsBatchStart = true

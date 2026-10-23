@@ -192,10 +192,47 @@ func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchR
 	return searchResolverResult{}, cacheTimeout
 }
 
-// searchAheadCached wraps the JSON result and an optional error for cache/demux.
+// searchAheadCached is the cached result of one search-ahead query. Only the
+// slice of the queried type is set; the result slices are typed per search
+// type so the value is SSZ cacheable. Err carries a build failure so it is
+// cached and demuxed like a result.
 type searchAheadCached struct {
-	Data interface{} `json:"-"`
-	Err  string      `json:"-"`
+	Epochs         []models.SearchAheadEpochsResult        `json:"epochs"`
+	Slots          []*models.SearchAheadSlotsResult        `json:"slots"`
+	ExecBlocks     []*models.SearchAheadExecBlocksResult   `json:"execblocks"`
+	Graffiti       []models.SearchAheadGraffitiResult      `json:"graffiti"`
+	ValidatorNames []models.SearchAheadValidatorNameResult `json:"valname"`
+	Validators     []models.SearchAheadValidatorResult     `json:"validator"`
+	Addresses      []models.SearchAheadAddressResult       `json:"addresses"`
+	Ens            []models.SearchAheadEnsResult           `json:"ens"`
+	Transactions   []models.SearchAheadTransactionResult   `json:"transactions"`
+	Err            string                                  `json:"err"`
+}
+
+// result returns the result slice for searchType as the search-ahead response body.
+func (c *searchAheadCached) result(searchType string) any {
+	switch searchType {
+	case "epochs":
+		return c.Epochs
+	case "slots":
+		return c.Slots
+	case "execblocks":
+		return c.ExecBlocks
+	case "graffiti":
+		return c.Graffiti
+	case "valname":
+		return c.ValidatorNames
+	case "validator":
+		return c.Validators
+	case "addresses":
+		return c.Addresses
+	case "ens":
+		return c.Ens
+	case "transactions":
+		return c.Transactions
+	default:
+		return nil
+	}
 }
 
 // SearchAhead handles responses for the frontend search boxes
@@ -254,7 +291,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}
-	if err := json.NewEncoder(w).Encode(res.Data); err != nil {
+	if err := json.NewEncoder(w).Encode(res.result(searchType)); err != nil {
 		logrus.WithError(err).Error("error encoding searchAhead")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
@@ -262,7 +299,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 
 func buildSearchAheadResult(ctx context.Context, searchType, search string) (*searchAheadCached, time.Duration) {
 	cacheTimeout := 30 * time.Second
-	var result interface{}
+	out := &searchAheadCached{}
 	var err error
 
 	indexer := services.GlobalBeaconService.GetBeaconIndexer()
@@ -281,7 +318,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 					Epoch: fmt.Sprintf("%v", entry.Epoch),
 				}
 			}
-			result = model
+			out.Epochs = model
 		}
 	case "slots":
 		if len(search) == 0 {
@@ -302,7 +339,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 			}
 			if cachedBlock != nil {
 				header := cachedBlock.GetHeader()
-				result = &[]models.SearchAheadSlotsResult{
+				out.Slots = []*models.SearchAheadSlotsResult{
 					{
 						Slot:     fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:     phase0.Root(cachedBlock.Root),
@@ -320,7 +357,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 					return &searchAheadCached{Err: err.Error()}, cacheTimeout
 				}
 				if len(*dbres) > 0 {
-					result = &[]models.SearchAheadSlotsResult{
+					out.Slots = []*models.SearchAheadSlotsResult{
 						{
 							Slot:     fmt.Sprintf("%v", (*dbres)[0].Slot),
 							Root:     phase0.Root((*dbres)[0].Root),
@@ -344,7 +381,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 						Orphaned: !indexer.IsCanonicalBlock(cachedBlock, nil),
 					})
 				}
-				result = res
+				out.Slots = res
 			} else {
 				dbres := &dbtypes.SearchAheadSlotsResult{}
 				err = db.ReaderDb.SelectContext(ctx, dbres, `
@@ -353,15 +390,15 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				WHERE slot = $1 AND status != 0
 				ORDER BY slot LIMIT 10`, blockNumber)
 				if err == nil {
-					model := make([]models.SearchAheadSlotsResult, len(*dbres))
+					model := make([]*models.SearchAheadSlotsResult, len(*dbres))
 					for idx, entry := range *dbres {
-						model[idx] = models.SearchAheadSlotsResult{
+						model[idx] = &models.SearchAheadSlotsResult{
 							Slot:     fmt.Sprintf("%v", entry.Slot),
 							Root:     phase0.Root(entry.Root),
 							Orphaned: entry.Status == dbtypes.Orphaned,
 						}
 					}
-					result = model
+					out.Slots = model
 				}
 			}
 		}
@@ -392,7 +429,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 						Orphaned:   !indexer.IsCanonicalBlock(cachedBlock, nil),
 					}
 				}
-				result = res
+				out.ExecBlocks = res
 			} else {
 				dbres := &dbtypes.SearchAheadExecBlocksResult{}
 				err = db.ReaderDb.SelectContext(ctx, dbres, `
@@ -404,7 +441,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 					return &searchAheadCached{Err: err.Error()}, cacheTimeout
 				}
 				if len(*dbres) > 0 {
-					result = &[]models.SearchAheadExecBlocksResult{
+					out.ExecBlocks = []*models.SearchAheadExecBlocksResult{
 						{
 							Slot:       fmt.Sprintf("%v", (*dbres)[0].Slot),
 							Root:       phase0.Root((*dbres)[0].Root),
@@ -431,7 +468,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 						Orphaned:   !indexer.IsCanonicalBlock(cachedBlock, nil),
 					})
 				}
-				result = res
+				out.ExecBlocks = res
 			} else {
 				dbres := &dbtypes.SearchAheadExecBlocksResult{}
 				err = db.ReaderDb.SelectContext(ctx, dbres, `
@@ -440,9 +477,9 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				WHERE slot < $1 AND eth_block_number = $2
 				ORDER BY slot LIMIT 10`, minSlotIdx, blockNumber)
 				if err == nil {
-					model := make([]models.SearchAheadExecBlocksResult, len(*dbres))
+					model := make([]*models.SearchAheadExecBlocksResult, len(*dbres))
 					for idx, entry := range *dbres {
-						model[idx] = models.SearchAheadExecBlocksResult{
+						model[idx] = &models.SearchAheadExecBlocksResult{
 							Slot:       fmt.Sprintf("%v", entry.Slot),
 							Root:       phase0.Root(entry.Root),
 							ExecHash:   phase0.Hash32(entry.ExecHash),
@@ -450,7 +487,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 							Orphaned:   entry.Status == dbtypes.Orphaned,
 						}
 					}
-					result = model
+					out.ExecBlocks = model
 				}
 			}
 		}
@@ -480,7 +517,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 					Count:    fmt.Sprintf("%v", entry.Count),
 				}
 			}
-			result = model
+			out.Graffiti = model
 		}
 	case "valname":
 		var names dbtypes.SearchAheadValidatorNameResult
@@ -493,7 +530,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 					Count: fmt.Sprintf("%v", entry.Count),
 				}
 			}
-			result = model
+			out.ValidatorNames = model
 		}
 	case "validator":
 		if len(search) == 0 {
@@ -507,7 +544,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 		if validatorIndex, convertErr := strconv.ParseUint(search, 10, 64); convertErr == nil {
 			validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), false)
 			if validator != nil {
-				result = &[]models.SearchAheadValidatorResult{
+				out.Validators = []models.SearchAheadValidatorResult{
 					{
 						Index:  fmt.Sprintf("%v", validatorIndex),
 						Pubkey: fmt.Sprintf("0x%x", validator.Validator.PublicKey),
@@ -541,7 +578,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 						Name:   services.GlobalBeaconService.GetValidatorName(entry.Index),
 					}
 				}
-				result = model
+				out.Validators = model
 			}
 		}
 	case "addresses":
@@ -557,7 +594,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 			if err == nil && len(addressBytes) == 20 {
 				// Try to get from DB first
 				account, _ := db.GetElAccountByAddress(ctx, addressBytes)
-				result = &[]models.SearchAheadAddressResult{
+				out.Addresses = []models.SearchAheadAddressResult{
 					{
 						Address:    fmt.Sprintf("0x%x", addressBytes),
 						IsContract: account != nil && account.IsContract,
@@ -591,7 +628,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 						HasData:    true,
 					}
 				}
-				result = model
+				out.Addresses = model
 			}
 		}
 	case "ens":
@@ -638,7 +675,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 			results[i].HasData = account != nil && account.ID > 0
 		}
 		if len(results) > 0 {
-			result = &results
+			out.Ens = results
 		}
 	case "transactions":
 		if len(search) == 0 {
@@ -655,7 +692,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				if err == nil && len(txs) > 0 {
 					// Use the first (canonical) transaction
 					tx := txs[0]
-					result = &[]models.SearchAheadTransactionResult{
+					out.Transactions = []models.SearchAheadTransactionResult{
 						{
 							TxHash:          fmt.Sprintf("0x%x", txHashBytes),
 							BlockNumber:     tx.BlockNumber,
@@ -675,7 +712,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 					if lerr == nil && len(uids) > 0 {
 						txs, terr := db.GetElTransactionsByTxUids(ctx, uids)
 						if terr == nil {
-							result = buildTxSearchAheadResults(txs)
+							out.Transactions = buildTxSearchAheadResults(txs)
 						}
 					}
 				}
@@ -686,7 +723,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 	if err != nil {
 		return &searchAheadCached{Err: err.Error()}, cacheTimeout
 	}
-	return &searchAheadCached{Data: result}, cacheTimeout
+	return out, cacheTimeout
 }
 
 // txHashPrefixBounds converts a hex hash prefix (no 0x, up to 20 chars) into the

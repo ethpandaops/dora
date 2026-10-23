@@ -870,7 +870,7 @@ func calculateTxHashRowspans(transfers []*models.AddressPageDataTokenTransfer) {
 		rowspan := i - groupStart + 1
 
 		// Set rowspan on first row of group, 0 on subsequent rows
-		transfers[groupStart].TxHashRowspan = rowspan
+		transfers[groupStart].TxHashRowspan = uint64(rowspan)
 		for j := groupStart + 1; j <= i; j++ {
 			transfers[j].TxHashRowspan = 0
 		}

@@ -12,7 +12,7 @@ type TransferRow struct {
 	BlockTime      time.Time `json:"block_time"`
 	MethodName     string    `json:"method_name"`
 	MethodID       []byte    `json:"method_id"`
-	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 render the tx/block/age cells with rowspan; 0 skip
+	TxHashRowspan  uint64    `json:"tx_hash_rowspan"` // >0 render the tx/block/age cells with rowspan; 0 skip
 	FromAddr       []byte    `json:"from_addr"`
 	FromIsContract bool      `json:"from_is_contract"`
 	ToAddr         []byte    `json:"to_addr"`
@@ -31,9 +31,9 @@ type TransferRow struct {
 type TransfersPageData struct {
 	Transfers []*TransferRow   `json:"transfers"`
 	PageSize  uint64           `json:"page_size"`
-	Filter    *TransfersFilter `json:"filter"`
-	Pager     *PagerData       `json:"pager"`
-	DataRange *ElDataRangeInfo `json:"data_range"`
+	Filter    *TransfersFilter `json:"filter" ssz-type:"optional"`
+	Pager     *PagerData       `json:"pager" ssz-type:"optional"`
+	DataRange *ElDataRangeInfo `json:"data_range" ssz-type:"optional"`
 
 	// Columns toggled via the column selector "d" bitmask. Hash, From and To
 	// are always shown.

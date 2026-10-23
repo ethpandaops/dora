@@ -1,10 +1,9 @@
 package models
 
 // The per-series arrival fields are optional: a node that reported gossip but
-// no block event must render as an em dash, not as 0ms. SSZ has no optionals
-// and round-trips a nil pointer back as a pointer to zero, so the count fields
-// below are deliberately plain int, which keeps the whole model on the page
-// cache's JSON path. cache.TestNilPointerFidelityThroughCache guards this.
+// no block event must render as an em dash, not as 0ms. The page cache stores
+// this model as SSZ, so every such pointer carries ssz-type:"optional" to keep
+// nil distinct from zero. cache.TestNilPointerFidelityThroughCache guards this.
 //
 // SlotArrivalResponse is the JSON payload returned by the lazy block
 // propagation tab on the slot page, built from Xatu observations. Nodes merge
@@ -14,12 +13,12 @@ type SlotArrivalResponse struct {
 	// Settled is false while the Xatu ingest pipeline may still be receiving
 	// events for this slot; such responses are cached for one slot only.
 	Settled          bool                    `json:"settled"`
-	Observations     int                     `json:"observations"`
-	P2PObservations  int                     `json:"p2p_observations"`
-	HeadObservations int                     `json:"head_observations"`
-	NPObservations   int                     `json:"np_observations"`
-	PLObservations   int                     `json:"pl_observations"`
-	Stats            *SlotArrivalStats       `json:"stats,omitempty"`
+	Observations     uint64                  `json:"observations"`
+	P2PObservations  uint64                  `json:"p2p_observations"`
+	HeadObservations uint64                  `json:"head_observations"`
+	NPObservations   uint64                  `json:"np_observations"`
+	PLObservations   uint64                  `json:"pl_observations"`
+	Stats            *SlotArrivalStats       `json:"stats,omitempty" ssz-type:"optional"`
 	Nodes            []*SlotArrivalNode      `json:"nodes,omitempty"`
 	Continents       []*SlotArrivalContinent `json:"continents,omitempty"`
 	Groups           []*SlotArrivalGroup     `json:"groups,omitempty"`
@@ -28,7 +27,7 @@ type SlotArrivalResponse struct {
 // SlotArrivalStats summarizes block propagation across observing nodes, using
 // each node's earliest observation from either series.
 type SlotArrivalStats struct {
-	UniqueNodes int    `json:"unique_nodes"`
+	UniqueNodes uint64 `json:"unique_nodes"`
 	MinMs       uint32 `json:"min_ms"`
 	P50Ms       uint32 `json:"p50_ms"`
 	P90Ms       uint32 `json:"p90_ms"`
@@ -36,7 +35,7 @@ type SlotArrivalStats struct {
 	// LateNodes counts nodes whose earliest observation came more than a full
 	// slot after slot start (syncing or stalled nodes); they are excluded
 	// from the timing stats.
-	LateNodes int `json:"late_nodes"`
+	LateNodes uint64 `json:"late_nodes"`
 }
 
 // SlotArrivalNode is one observing node with its earliest observation per
@@ -51,15 +50,15 @@ type SlotArrivalNode struct {
 	Country        string  `json:"country,omitempty"`
 	CountryCode    string  `json:"country_code,omitempty"`
 	MinMs          uint32  `json:"min_ms"`
-	APIMs          *uint32 `json:"api_ms,omitempty"`
-	P2PMs          *uint32 `json:"p2p_ms,omitempty"`
-	HeadMs         *uint32 `json:"head_ms,omitempty"`
-	NPMs           *uint32 `json:"np_ms,omitempty"`
-	PLMs           *uint32 `json:"pl_ms,omitempty"`
-	NPDurMs        *uint32 `json:"np_dur_ms,omitempty"`
+	APIMs          *uint32 `json:"api_ms,omitempty" ssz-type:"optional"`
+	P2PMs          *uint32 `json:"p2p_ms,omitempty" ssz-type:"optional"`
+	HeadMs         *uint32 `json:"head_ms,omitempty" ssz-type:"optional"`
+	NPMs           *uint32 `json:"np_ms,omitempty" ssz-type:"optional"`
+	PLMs           *uint32 `json:"pl_ms,omitempty" ssz-type:"optional"`
+	NPDurMs        *uint32 `json:"np_dur_ms,omitempty" ssz-type:"optional"`
 	NPStatus       string  `json:"np_status,omitempty"`
 	Late           bool    `json:"late,omitempty"`
-	Observations   int     `json:"observations"`
+	Observations   uint64  `json:"observations"`
 }
 
 // SlotArrivalContinent aggregates per-continent arrival stats for the two
@@ -69,18 +68,18 @@ type SlotArrivalNode struct {
 // with the gloas payload gossip schema).
 type SlotArrivalContinent struct {
 	Code      string  `json:"code"`
-	Nodes     int     `json:"nodes"`
-	HeadMinMs *uint32 `json:"head_min_ms,omitempty"`
-	HeadP50Ms *uint32 `json:"head_p50_ms,omitempty"`
-	HeadP90Ms *uint32 `json:"head_p90_ms,omitempty"`
-	PlMinMs   *uint32 `json:"pl_min_ms,omitempty"`
-	PlP50Ms   *uint32 `json:"pl_p50_ms,omitempty"`
-	PlP90Ms   *uint32 `json:"pl_p90_ms,omitempty"`
+	Nodes     uint64  `json:"nodes"`
+	HeadMinMs *uint32 `json:"head_min_ms,omitempty" ssz-type:"optional"`
+	HeadP50Ms *uint32 `json:"head_p50_ms,omitempty" ssz-type:"optional"`
+	HeadP90Ms *uint32 `json:"head_p90_ms,omitempty" ssz-type:"optional"`
+	PlMinMs   *uint32 `json:"pl_min_ms,omitempty" ssz-type:"optional"`
+	PlP50Ms   *uint32 `json:"pl_p50_ms,omitempty" ssz-type:"optional"`
+	PlP90Ms   *uint32 `json:"pl_p90_ms,omitempty" ssz-type:"optional"`
 }
 
 // SlotArrivalGroup aggregates earliest observations per node group.
 type SlotArrivalGroup struct {
 	Name  string `json:"name"`
-	Nodes int    `json:"nodes"`
+	Nodes uint64 `json:"nodes"`
 	P50Ms uint32 `json:"p50_ms"`
 }

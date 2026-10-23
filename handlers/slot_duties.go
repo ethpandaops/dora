@@ -112,10 +112,10 @@ func buildSlotDutiesData(ctx context.Context, slot phase0.Slot, isPtc bool, comm
 	cs := services.GlobalBeaconService
 	chainState := cs.GetChainState()
 
-	result := &models.SlotDutiesResponse{Validators: []uint64{}, Names: make(map[uint64]string)}
+	result := &models.SlotDutiesResponse{Validators: []uint64{}, Names: make([]*models.SlotDutyName, 0)}
 	addName := func(idx uint64) {
 		if name := cs.GetValidatorNameAt(idx, slot); name != "" {
-			result.Names[idx] = name
+			result.Names = append(result.Names, &models.SlotDutyName{Index: idx, Name: name})
 		}
 	}
 

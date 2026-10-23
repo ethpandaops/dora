@@ -78,7 +78,7 @@ func buildSlotBidSeenData(ctx context.Context, slot phase0.Slot) (*models.SlotBi
 			}
 			for clientIdx, seenTime := range entry.SeenByClientIndex() {
 				bid.Seen = append(bid.Seen, &models.SlotBidSeenObservation{
-					Client: clientIdx,
+					Client: uint32(clientIdx), //nolint:gosec // index into the small Clients list
 					Time:   seenTime,
 				})
 			}

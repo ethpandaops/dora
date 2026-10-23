@@ -455,7 +455,7 @@ func calculateTransferRowspans(transfers []*models.TransferRow) {
 		for groupStart > 0 && bytes.Equal(transfers[groupStart-1].TxHash, currentTxHash) {
 			groupStart--
 		}
-		transfers[groupStart].TxHashRowspan = i - groupStart + 1
+		transfers[groupStart].TxHashRowspan = uint64(i - groupStart + 1)
 		for j := groupStart + 1; j <= i; j++ {
 			transfers[j].TxHashRowspan = 0
 		}
