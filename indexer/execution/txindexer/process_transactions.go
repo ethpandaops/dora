@@ -545,6 +545,7 @@ func (ctx *txProcessingContext) processTransaction(
 
 	if len(callTrace) > 0 {
 		if isFrameTx {
+			callTrace = frameTraceRoots(result.frames, from, callTrace)
 			framesTraced = correlateFrameTrace(result.frames, callTrace)
 		}
 
