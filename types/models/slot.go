@@ -98,30 +98,30 @@ type SlotPageBlockData struct {
 	TargetCommitteeSize  uint64 `json:"target_committee_size"`
 	MaxCommitteesPerSlot uint64 `json:"max_committees_per_slot"`
 
-	PayloadHeader          *SlotPagePayloadHeader `json:"payload_header"`
-	ExecutionData          *SlotPageExecutionData `json:"execution_data"`
-	Sizes                  *SlotPageBlockSizes    `json:"sizes,omitempty"`
+	PayloadHeader          *SlotPagePayloadHeader `json:"payload_header" ssz-type:"optional"`
+	ExecutionData          *SlotPageExecutionData `json:"execution_data" ssz-type:"optional"`
+	Sizes                  *SlotPageBlockSizes    `json:"sizes,omitempty" ssz-type:"optional"`
 	PayloadDataUnavailable bool                   `json:"payload_data_unavailable"`
 
-	Attestations              []*SlotPageAttestation           `json:"attestations"`                // Attestations included in this block
-	Deposits                  []*SlotPageDeposit               `json:"deposits"`                    // Deposits included in this block
-	VoluntaryExits            []*SlotPageVoluntaryExit         `json:"voluntary_exits"`             // Voluntary Exits included in this block
-	AttesterSlashings         []*SlotPageAttesterSlashing      `json:"attester_slashings"`          // Attester Slashings included in this block
-	ProposerSlashings         []*SlotPageProposerSlashing      `json:"proposer_slashings"`          // Proposer Slashings included in this block
-	BLSChanges                []*SlotPageBLSChange             `json:"bls_changes"`                 // BLSChanges included in this block
-	Withdrawals               []*SlotPageWithdrawal            `json:"withdrawals"`                 // Withdrawals included in this block
-	Blobs                     []*SlotPageBlob                  `json:"blobs"`                       // Blob sidecars included in this block
-	Transactions              []*SlotPageTransaction           `json:"transactions"`                // Transactions included in this block
-	DepositRequests           []*SlotPageDepositRequest        `json:"deposit_receipts"`            // DepositRequests included in this block
-	WithdrawalRequests        []*SlotPageWithdrawalRequest     `json:"withdrawal_requests"`         // WithdrawalRequests included in this block
-	ConsolidationRequests     []*SlotPageConsolidationRequest  `json:"consolidation_requests"`      // ConsolidationRequests included in this block
-	BuilderDepositRequests    []*SlotPageBuilderDepositRequest `json:"builder_deposit_requests"`    // Builder deposit requests processed by this block (Gloas)
-	BuilderExitRequests       []*SlotPageBuilderExitRequest    `json:"builder_exit_requests"`       // Builder exit requests processed by this block (Gloas)
-	Bids                      []*SlotPageBid                   `json:"bids"`                        // Execution payload bids for this block (ePBS)
-	HasGossipBids             bool                             `json:"has_gossip_bids"`             // At least one bid came from an external builder (self-built bids are not gossiped)
-	PtcVotes                  *SlotPagePtcVotes                `json:"ptc_votes"`                   // PTC votes included in this block (for previous slot)
-	BuilderPayment            *SlotPageBuilderPayment          `json:"builder_payment"`             // Gloas builder-payment vote quorum for this slot
-	InclusionListsUnsatisfied int64                            `json:"inclusion_lists_unsatisfied"` // Transactions of the previous slot's inclusion lists this block's payload left unsatisfied (-1 = not evaluated)
+	Attestations              []*SlotPageAttestation           `json:"attestations"`                        // Attestations included in this block
+	Deposits                  []*SlotPageDeposit               `json:"deposits"`                            // Deposits included in this block
+	VoluntaryExits            []*SlotPageVoluntaryExit         `json:"voluntary_exits"`                     // Voluntary Exits included in this block
+	AttesterSlashings         []*SlotPageAttesterSlashing      `json:"attester_slashings"`                  // Attester Slashings included in this block
+	ProposerSlashings         []*SlotPageProposerSlashing      `json:"proposer_slashings"`                  // Proposer Slashings included in this block
+	BLSChanges                []*SlotPageBLSChange             `json:"bls_changes"`                         // BLSChanges included in this block
+	Withdrawals               []*SlotPageWithdrawal            `json:"withdrawals"`                         // Withdrawals included in this block
+	Blobs                     []*SlotPageBlob                  `json:"blobs"`                               // Blob sidecars included in this block
+	Transactions              []*SlotPageTransaction           `json:"transactions"`                        // Transactions included in this block
+	DepositRequests           []*SlotPageDepositRequest        `json:"deposit_receipts"`                    // DepositRequests included in this block
+	WithdrawalRequests        []*SlotPageWithdrawalRequest     `json:"withdrawal_requests"`                 // WithdrawalRequests included in this block
+	ConsolidationRequests     []*SlotPageConsolidationRequest  `json:"consolidation_requests"`              // ConsolidationRequests included in this block
+	BuilderDepositRequests    []*SlotPageBuilderDepositRequest `json:"builder_deposit_requests"`            // Builder deposit requests processed by this block (Gloas)
+	BuilderExitRequests       []*SlotPageBuilderExitRequest    `json:"builder_exit_requests"`               // Builder exit requests processed by this block (Gloas)
+	Bids                      []*SlotPageBid                   `json:"bids"`                                // Execution payload bids for this block (ePBS)
+	HasGossipBids             bool                             `json:"has_gossip_bids"`                     // At least one bid came from an external builder (self-built bids are not gossiped)
+	PtcVotes                  *SlotPagePtcVotes                `json:"ptc_votes" ssz-type:"optional"`       // PTC votes included in this block (for previous slot)
+	BuilderPayment            *SlotPageBuilderPayment          `json:"builder_payment" ssz-type:"optional"` // Gloas builder-payment vote quorum for this slot
+	InclusionListsUnsatisfied int64                            `json:"inclusion_lists_unsatisfied"`         // Transactions of the previous slot's inclusion lists this block's payload left unsatisfied (-1 = not evaluated)
 }
 
 // SlotPageBlockSizes holds the encoded sizes of the block and its payload against their
@@ -170,14 +170,14 @@ type SlotPageExecutionData struct {
 	// served by /slot/{slotOrHash}/bal and rendered client-side, since a block can touch
 	// tens of thousands of addresses.
 	BlockAccessListHash []byte              `json:"block_access_list_hash,omitempty"`
-	BALSummary          *SlotPageBALSummary `json:"bal_summary,omitempty"`
+	BALSummary          *SlotPageBALSummary `json:"bal_summary,omitempty" ssz-type:"optional"`
 
 	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
 	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).
 	// Only set when EL indexing has enriched all tx receipts; nil otherwise.
-	SumTxGasUsed        *uint64 `json:"sum_tx_gas_used,omitempty"`
-	BlockGasDelta       *uint64 `json:"block_gas_delta,omitempty"`        // absolute value of block.gasUsed - sum(receipt.gasUsed)
-	BlockGasDeltaExcess bool    `json:"block_gas_delta_excess,omitempty"` // true = block > sum (regular dominates), false = block < sum (state dominates)
+	SumTxGasUsed        *uint64 `json:"sum_tx_gas_used,omitempty" ssz-type:"optional"`
+	BlockGasDelta       *uint64 `json:"block_gas_delta,omitempty" ssz-type:"optional"` // absolute value of block.gasUsed - sum(receipt.gasUsed)
+	BlockGasDeltaExcess bool    `json:"block_gas_delta_excess,omitempty"`              // true = block > sum (regular dominates), false = block < sum (state dominates)
 }
 
 type SlotPageValidatorName struct {
@@ -202,11 +202,17 @@ type SlotPagePayloadHeader struct {
 
 // SlotDutiesResponse is the JSON payload returned by the lazy duties endpoint
 // (/slot/{slot}/duties). Validators holds the resolved global validator indices
-// for the requested attester committees or the PTC, and Names maps each index to
-// its known name.
+// for the requested attester committees or the PTC, and Names lists the known
+// names of those validators.
 type SlotDutiesResponse struct {
-	Validators []uint64          `json:"validators"`
-	Names      map[uint64]string `json:"names"`
+	Validators []uint64        `json:"validators"`
+	Names      []*SlotDutyName `json:"names"`
+}
+
+// SlotDutyName is the known name of one validator in a SlotDutiesResponse.
+type SlotDutyName struct {
+	Index uint64 `json:"index"`
+	Name  string `json:"name"`
 }
 
 // SlotBidSeenResponse is the JSON payload returned by the lazy bid observation
@@ -230,7 +236,7 @@ type SlotBidSeenBid struct {
 // SlotBidSeenObservation is one client's first sighting of a bid.
 type SlotBidSeenObservation struct {
 	// Client is an index into SlotBidSeenResponse.Clients.
-	Client int `json:"client"`
+	Client uint32 `json:"client"`
 	// Time is the first-seen offset in ms from the bid's slot start.
 	Time int32 `json:"time"`
 }
@@ -244,7 +250,7 @@ type SlotPageAttestation struct {
 	Validators         []uint64 `json:"validators"`
 	IncludedValidators []uint64 `json:"included_validators"`
 
-	PayloadStatus *uint64 `json:"payload_status,omitempty"`
+	PayloadStatus *uint64 `json:"payload_status,omitempty" ssz-type:"optional"`
 
 	Signature []byte `json:"signature" ssz-size:"96"`
 
@@ -511,7 +517,7 @@ type SlotExecutionProofsResponse struct {
 	BlockRoot string `json:"block_root"`
 	// ExpectedPublicInput is derived from the block's payload envelope; nil if
 	// it is not available (ExpectedPublicInputError says why).
-	ExpectedPublicInput      *SlotExecutionProofPublicInput `json:"expected_public_input"`
+	ExpectedPublicInput      *SlotExecutionProofPublicInput `json:"expected_public_input" ssz-type:"optional"`
 	ExpectedPublicInputError string                         `json:"expected_public_input_error,omitempty"`
 	Proofs                   []*SlotExecutionProof          `json:"proofs"`
 }
@@ -558,14 +564,14 @@ type SlotExecutionProof struct {
 	// the zkVM-specific metadata around it (nil/empty where the zkVM has none).
 	ProofMode            string                         `json:"proof_mode,omitempty"`
 	SdkVersion           string                         `json:"sdk_version,omitempty"`
-	CommittedPublicInput *SlotExecutionProofPublicInput `json:"committed_public_input"`
+	CommittedPublicInput *SlotExecutionProofPublicInput `json:"committed_public_input" ssz-type:"optional"`
 	CommittedProgramVK   string                         `json:"committed_program_vk,omitempty"`
 	DecodeError          string                         `json:"decode_error,omitempty"`
 	// PublicInputMatch tells whether the committed public input is the expected
 	// one, ProgramVKMatch whether the key the proof carries is the registered
 	// one; nil where unknown.
-	PublicInputMatch *bool `json:"public_input_match"`
-	ProgramVKMatch   *bool `json:"program_vk_match"`
+	PublicInputMatch *bool `json:"public_input_match" ssz-type:"optional"`
+	ProgramVKMatch   *bool `json:"program_vk_match" ssz-type:"optional"`
 }
 
 // SlotBlockAccessListResponse is the JSON body of the lazy block access list

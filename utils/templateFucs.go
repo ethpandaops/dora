@@ -108,6 +108,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"gtf":          func(i, j float64) bool { return i > j },
 		"ltf":          func(i, j float64) bool { return i < j },
 		"inlist":       checkInList,
+		"inUint8List":  checkInUint8List,
 		"round": func(i float64, n int) float64 {
 			return math.Round(i*math.Pow10(n)) / math.Pow10(n)
 		},
@@ -208,6 +209,19 @@ func checkInList(item, list string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// checkInUint8List reports whether item is contained in list. It is used by
+// templates to render multi-select filters whose selected values are stored
+// as a uint8 slice in the page model.
+func checkInUint8List(list []uint8, item uint64) bool {
+	for _, v := range list {
+		if uint64(v) == item {
+			return true
+		}
+	}
+
 	return false
 }
 

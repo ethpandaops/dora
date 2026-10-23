@@ -106,16 +106,16 @@ func TestCbtMaxPageSizeIsTheCeiling(t *testing.T) {
 func TestAssembleWaveRootsMergesTheTail(t *testing.T) {
 	roots := map[string]*waveRoot{}
 
-	for i := 0; i < maxWaveRoots+3; i++ {
+	for i := uint64(0); i < maxWaveRoots+3; i++ {
 		root := fmt.Sprintf("0x%064d", i)
 		roots[root] = &waveRoot{
 			root:    root,
 			count:   100 - i,
-			buckets: map[uint32]int{4000: 100 - i},
+			buckets: map[uint32]uint64{4000: 100 - i},
 		}
 	}
 
-	total := 0
+	total := uint64(0)
 	for _, root := range roots {
 		total += root.count
 	}
@@ -140,7 +140,7 @@ func TestAssembleWaveRootsMergesTheTail(t *testing.T) {
 		t.Errorf("viewed root not marked: %+v", wave.Roots[1])
 	}
 
-	sum := 0
+	sum := uint64(0)
 	for _, root := range wave.Roots {
 		sum += root.Count
 	}

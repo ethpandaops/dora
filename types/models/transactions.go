@@ -15,9 +15,9 @@ type ElDataRangeInfo struct {
 type TransactionsPageData struct {
 	Transactions []*TransactionsPageDataTransaction `json:"transactions"`
 	PageSize     uint64                             `json:"page_size"`
-	Filter       *TransactionsFilter                `json:"filter"`
-	Pager        *PagerData                         `json:"pager"`
-	DataRange    *ElDataRangeInfo                   `json:"data_range"`
+	Filter       *TransactionsFilter                `json:"filter" ssz-type:"optional"`
+	Pager        *PagerData                         `json:"pager" ssz-type:"optional"`
+	DataRange    *ElDataRangeInfo                   `json:"data_range" ssz-type:"optional"`
 
 	// Columns toggled via the column selector "d" bitmask. Hash, From and To
 	// are always shown; everything below is selectable.
@@ -73,7 +73,7 @@ type TransactionsPageDataTransaction struct {
 	// IsMultiTarget marks a transaction that addresses several recipients rather than
 	// one, so a missing recipient is not a contract creation.
 	IsMultiTarget bool    `json:"is_multi_target"`
-	FrameCount    int     `json:"frame_count"`
+	FrameCount    uint64  `json:"frame_count"`
 	IsCreate      bool    `json:"is_create"`
 	Nonce         uint64  `json:"nonce"`
 	Amount        float64 `json:"amount"`

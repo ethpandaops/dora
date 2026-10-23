@@ -251,10 +251,7 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		}
 	}(callIdx)
 
-	callTimeout := utils.Config.Frontend.PageCallTimeout
-	if callTimeout == 0 {
-		callTimeout = 30 * time.Second
-	}
+	callTimeout := PageCallTimeout()
 
 	select {
 	case returnValue := <-returnChan:
@@ -270,6 +267,17 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 			stack: fc.extractPageCallStack(goid),
 		}
 	}
+}
+
+// defaultPageCallTimeout bounds a page render when no pageCallTimeout is configured.
+const defaultPageCallTimeout = 30 * time.Second
+
+// PageCallTimeout returns the configured page render timeout or its default.
+func PageCallTimeout() time.Duration {
+	if utils.Config.Frontend.PageCallTimeout > 0 {
+		return utils.Config.Frontend.PageCallTimeout
+	}
+	return defaultPageCallTimeout
 }
 
 func (fc *FrontendCacheService) getPageTypeSemaphore(pageType string) chan struct{} {

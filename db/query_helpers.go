@@ -16,10 +16,16 @@ package db
 // rather than reusing a lower number after a higher one.
 
 import (
+	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v4"
+
+	"github.com/ethpandaops/dora/dbtypes"
 )
 
 func appendDollarPlaceholders(sql *strings.Builder, start, count int, separator string) {
@@ -47,6 +53,80 @@ func appendUint64ListPlaceholders(sql *strings.Builder, args *[]any, values []ui
 		*args = append(*args, value)
 	}
 	appendDollarPlaceholders(sql, start, len(values), separator)
+}
+
+// PostgreSQL row counts are taken from the planner estimate instead of an exact count(*) when
+// counting would be expensive: an exact count has to scan the whole filtered set, which takes
+// tens of seconds on multi-million-row tables and is repeated for every page view. The planner
+// estimate is only trusted for large sets, as small estimates are regularly off by orders of
+// magnitude (multi-column joins in particular), so a small estimated set is still counted
+// exactly unless even that scan is too expensive.
+const (
+	// countExactCostLimit is the planner cost up to which a count is always exact.
+	countExactCostLimit = 10000
+	// countEstimateMinRows is the planner row estimate below which the estimate is not trusted.
+	countEstimateMinRows = 10000
+	// countSmallSetCostLimit is the planner cost up to which a small estimated set is counted
+	// exactly instead of showing the untrusted estimate.
+	countSmallSetCostLimit = 100000
+)
+
+// countFilteredRows returns the total number of rows matched by fromClause (the FROM/JOIN/WHERE
+// part of a query) for a page query that returned fetched rows at offset with the given limit.
+// A page that is not full ends the result set, so the total is known without a count query;
+// an empty page at a non-zero offset only says the set is smaller, so it is still counted.
+// On PostgreSQL the planner is asked first and its row estimate is used when the exact count
+// would be expensive; the exact count is used otherwise and always on SQLite.
+func countFilteredRows(ctx context.Context, fromClause string, args []any, offset uint64, fetched int, limit uint32) (uint64, error) {
+	// fetchedEnd is the number of rows the page proves to exist; the count never reports less.
+	fetchedEnd := uint64(0)
+	if fetched > 0 {
+		fetchedEnd = offset + uint64(fetched)
+	}
+	if uint32(fetched) < limit && (fetched > 0 || offset == 0) {
+		return fetchedEnd, nil
+	}
+
+	if DbEngine == dbtypes.DBEnginePgsql {
+		// The simple protocol inlines the arguments, so the planner estimates with the actual
+		// values instead of a generic plan for the prepared statement.
+		explainArgs := append([]any{pgx.QuerySimpleProtocol(true)}, args...)
+
+		var planJson string
+		err := ReaderDb.GetContext(ctx, &planJson, "EXPLAIN (FORMAT JSON) SELECT 1 "+fromClause, explainArgs...)
+		if err != nil {
+			return 0, err
+		}
+
+		var plans []struct {
+			Plan struct {
+				TotalCost float64 `json:"Total Cost"`
+				PlanRows  float64 `json:"Plan Rows"`
+			} `json:"Plan"`
+		}
+		if err := json.Unmarshal([]byte(planJson), &plans); err != nil {
+			return 0, fmt.Errorf("failed to parse query plan: %w", err)
+		}
+
+		if len(plans) > 0 && plans[0].Plan.TotalCost > countExactCostLimit &&
+			(plans[0].Plan.PlanRows >= countEstimateMinRows || plans[0].Plan.TotalCost > countSmallSetCostLimit) {
+			count := uint64(plans[0].Plan.PlanRows)
+			if count < fetchedEnd {
+				count = fetchedEnd
+			}
+			return count, nil
+		}
+	}
+
+	var count uint64
+	err := ReaderDb.GetContext(ctx, &count, "SELECT count(*) "+fromClause, args...)
+	if err != nil {
+		return 0, err
+	}
+	if count < fetchedEnd {
+		count = fetchedEnd
+	}
+	return count, nil
 }
 
 func appendWithOrphanedFilter(sql *strings.Builder, args *[]any, filterOp *string, withOrphaned uint8, canonicalForkIds []uint64, column string) {

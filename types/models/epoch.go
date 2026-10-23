@@ -74,9 +74,8 @@ type EpochPageDataSlot struct {
 	Graffiti              []byte    `json:"graffiti"`
 	BlockRoot             []byte    `json:"block_root" ssz-size:"32"`
 	// ArrivalNodes is the number of nodes behind the arrival figures, and zero
-	// when there is no data for the slot. This page model is cached as SSZ,
-	// which has no optionals, so a pointer would come back as a pointer to
-	// zero and render as a real 0ms measurement.
+	// when there is no data for the slot; it is the presence signal for the
+	// plain-valued figures below.
 	ArrivalNodes uint32 `json:"arrival_nodes"`
 	ArrivalMinMs uint32 `json:"arrival_min_ms"`
 	ArrivalP90Ms uint32 `json:"arrival_p90_ms"`

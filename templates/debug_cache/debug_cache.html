@@ -674,6 +674,7 @@
       <tbody>
         <tr><td class="text-muted" style="width:200px;">Total Objects</td><td>{{ formatNumber .TotalCount }}</td></tr>
         <tr><td class="text-muted">Total Size</td><td>{{ formatByteSize .TotalSize }}</td></tr>
+        <tr><td class="text-muted">Snapshot Time</td><td>{{ .UpdatedAt.Format "2006-01-02 15:04:05 UTC" }}</td></tr>
       </tbody>
     </table>
 
@@ -732,6 +733,9 @@
     </table>
     {{ end }}
     {{ end }}
+    {{ else }}
+    <h5 class="card-title mb-3"><i class="fa fa-folder-open me-1"></i> Stored Objects</h5>
+    <p class="text-muted">Stored object stats are being computed in the background, reload the page in a moment.</p>
     {{ end }}
 
     {{ with .TxHashIndex }}{{ if .Enabled }}

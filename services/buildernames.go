@@ -35,6 +35,11 @@ type BuilderNames struct {
 	chainState     *consensus.ChainState
 	updaterRunning bool
 
+	// refreshInterval and namesYaml are copied from the config when the updater starts, so
+	// the updater goroutine never reads the global config.
+	refreshInterval time.Duration
+	namesYaml       string
+
 	// nameIndex holds the published name assignment. It is immutable once published, so
 	// lookups need no locking.
 	nameIndex atomic.Pointer[builderNameIndex]
@@ -68,9 +73,11 @@ func (bn *BuilderNames) StartUpdater() {
 	if bn.updaterRunning {
 		return
 	}
-	if utils.Config.Frontend.BuilderNamesRefreshInterval <= 0 {
-		utils.Config.Frontend.BuilderNamesRefreshInterval = 5 * time.Minute
+	bn.refreshInterval = utils.Config.Frontend.BuilderNamesRefreshInterval
+	if bn.refreshInterval <= 0 {
+		bn.refreshInterval = 5 * time.Minute
 	}
+	bn.namesYaml = utils.Config.Frontend.BuilderNamesYaml
 
 	bn.updaterRunning = true
 	go bn.runUpdaterLoop()
@@ -80,7 +87,7 @@ func (bn *BuilderNames) runUpdaterLoop() {
 	defer utils.HandleSubroutinePanic("BuilderNames.runUpdaterLoop", bn.runUpdaterLoop)
 
 	for {
-		delay := utils.Config.Frontend.BuilderNamesRefreshInterval
+		delay := bn.refreshInterval
 		if err := bn.refresh(); err != nil {
 			logger_bn.WithError(err).Warn("builder names refresh failed, retrying in 30 sec")
 			delay = 30 * time.Second
@@ -113,7 +120,7 @@ func (bn *BuilderNames) getDefaultBuilderNames() string {
 // refresh reloads the names list and resolves it against the current builder set. The
 // previously published names stay live when either step fails.
 func (bn *BuilderNames) refresh() error {
-	builderNamesYaml := utils.Config.Frontend.BuilderNamesYaml
+	builderNamesYaml := bn.namesYaml
 	if builderNamesYaml == "" {
 		builderNamesYaml = bn.getDefaultBuilderNames()
 	}

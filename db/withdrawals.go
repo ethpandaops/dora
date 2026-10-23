@@ -82,14 +82,14 @@ func GetWithdrawalsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtypes.
 	return withdrawals, nil
 }
 
+// maxWithdrawalFilterSlot bounds the slot filters of GetWithdrawalsFiltered.
+const maxWithdrawalFilterSlot = (1 << 46) - 1
+
 func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.WithdrawalFilter) ([]*dbtypes.Withdrawal, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
 	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT
-			block_uid, block_idx, type, orphaned, fork_id, validator, account_id, ref_slot, amount
 		FROM withdrawals
 	`)
 
@@ -137,14 +137,17 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 		fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
+	// The slot window is expressed as a block_uid range (slot is the upper 48 bits), so it is
+	// served from the block_uid index and the planner can estimate it. Slots are clamped so the
+	// shifted bound stays within the signed 64-bit column.
 	if filter.MinSlot != nil {
-		args = append(args, *filter.MinSlot)
-		fmt.Fprintf(&sql, " %v block_uid >> 16 >= $%v", filterOp, len(args))
+		args = append(args, min(*filter.MinSlot, maxWithdrawalFilterSlot)<<16)
+		fmt.Fprintf(&sql, " %v block_uid >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxSlot != nil {
-		args = append(args, *filter.MaxSlot)
-		fmt.Fprintf(&sql, " %v block_uid >> 16 <= $%v", filterOp, len(args))
+		args = append(args, (min(*filter.MaxSlot, maxWithdrawalFilterSlot)<<16)|0xffff)
+		fmt.Fprintf(&sql, " %v block_uid <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.WithOrphaned == 0 {
@@ -164,31 +167,24 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 		filterOp = "AND"
 	}
 
-	fmt.Fprint(&sql, ")")
+	fromClause := sql.String()
+	filterArgs := len(args)
 
+	// The page is fetched on its own so the ordering can be served from the block_uid index;
+	// the count runs separately via countFilteredRows.
+	sql.Reset()
 	args = append(args, limit)
 	fmt.Fprintf(&sql, `
 	SELECT
-		count(*) AS block_uid,
-		0 AS block_idx,
-		0 AS type,
-		false AS orphaned,
-		0 AS fork_id,
-		0 AS validator,
-		0 AS account_id,
-		null AS ref_slot,
-		0 AS amount
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC, block_idx ASC
-	LIMIT $%v`, len(args))
+		block_uid, block_idx, type, orphaned, fork_id, validator, account_id, ref_slot, amount
+	%v
+	ORDER BY block_uid DESC NULLS LAST, block_idx ASC
+	LIMIT $%v`, fromClause, len(args))
 
 	if offset > 0 {
 		args = append(args, offset)
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprint(&sql, ") AS t1")
 
 	withdrawals := []*dbtypes.Withdrawal{}
 	err := ReaderDb.SelectContext(ctx, &withdrawals, sql.String(), args...)
@@ -197,12 +193,13 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 		return nil, 0, err
 	}
 
-	if len(withdrawals) == 0 {
-		return []*dbtypes.Withdrawal{}, 0, nil
+	count, err := countFilteredRows(ctx, fromClause, args[:filterArgs], offset, len(withdrawals), limit)
+	if err != nil {
+		logger.Errorf("Error while counting filtered withdrawals: %v", err)
+		return nil, 0, err
 	}
 
-	count := withdrawals[0].BlockUid
-	return withdrawals[1:], count, nil
+	return withdrawals, count, nil
 }
 
 // MaxAccountWithdrawalCount is the maximum count returned for address withdrawal queries.

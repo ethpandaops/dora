@@ -74,7 +74,7 @@
                     <select name="f.relays" aria-controls="relay" multiple="multiple" class="filter-multiselect" data-valuefield="relayFilterField">
                       {{ $filterRelaysList := .FilterRelays }}
                       {{ range $i, $option := .FilterRelayOpts }}
-                        <option value="{{ $option.Index }}" {{ if (index $filterRelaysList $option.Index) }}selected{{ end }}>{{ $option.Name }}</option>
+                        <option value="{{ $option.Index }}" {{ if inUint8List $filterRelaysList $option.Index }}selected{{ end }}>{{ $option.Name }}</option>
                       {{ end }}
                     </select>
                   </div>
@@ -86,9 +86,9 @@
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <input type="hidden" id="proposedFilterField" />
                     <select name="f.proposed" aria-controls="proposed" multiple="multiple" class="filter-multiselect" data-valuefield="proposedFilterField">
-                      <option value="0" {{ if (index .FilterProposed 0) }}selected{{ end }}>Missed</option>
-                      <option value="1" {{ if (index .FilterProposed 1) }}selected{{ end }}>Proposed</option>
-                      <option value="2" {{ if (index .FilterProposed 2) }}selected{{ end }}>Orphaned</option>
+                      <option value="0" {{ if inUint8List .FilterProposed 0 }}selected{{ end }}>Missed</option>
+                      <option value="1" {{ if inUint8List .FilterProposed 1 }}selected{{ end }}>Proposed</option>
+                      <option value="2" {{ if inUint8List .FilterProposed 2 }}selected{{ end }}>Orphaned</option>
                     </select>
                   </div>
                 </div>
@@ -224,9 +224,9 @@
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
                   <input type="hidden" name="f">
-                  {{ range $key, $value := .UrlParams }}
-                    {{ if ne $key "p" }}
-                      <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                  {{ range $param := .UrlParams }}
+                    {{ if ne $param.Key "p" }}
+                      <input type="hidden" name="{{ $param.Key }}" value="{{ $param.Value }}">
                     {{ end }}
                   {{ end }}
                   <div class="input-group" style="width: 120px;">

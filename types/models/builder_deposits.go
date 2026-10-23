@@ -73,7 +73,7 @@ type BuilderDepositsPageDataDeposit struct {
 	Result                uint8                            `json:"result"`
 	HasTransaction        bool                             `json:"has_transaction"`
 	TransactionHash       []byte                           `json:"tx_hash" ssz-size:"32"`
-	TransactionDetails    *BuilderPageDataDepositTxDetails `json:"tx_details"`
+	TransactionDetails    *BuilderPageDataDepositTxDetails `json:"tx_details" ssz-type:"optional"`
 	TransactionOrphaned   bool                             `json:"tx_orphaned"`
 	BlockNumber           uint64                           `json:"block_number"`
 
