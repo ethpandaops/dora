@@ -293,8 +293,13 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 		cacheTimeout = 12 * time.Second
 	}
 	if epochArrival != nil {
+		arrivalBySlot := make(map[uint64]*models.EpochArrivalSlot, len(epochArrival.Slots))
+		for _, entry := range epochArrival.Slots {
+			arrivalBySlot[entry.Slot] = entry
+		}
+
 		for _, slotData := range pageData.Slots {
-			if entry, ok := epochArrival.Slots[slotData.Slot]; ok && entry.Nodes > 0 {
+			if entry := arrivalBySlot[slotData.Slot]; entry != nil && entry.Nodes > 0 {
 				slotData.ArrivalNodes = entry.Nodes
 				slotData.ArrivalMinMs = entry.MinMs
 				slotData.ArrivalP90Ms = entry.P90Ms

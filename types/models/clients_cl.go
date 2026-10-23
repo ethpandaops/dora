@@ -8,11 +8,11 @@ import (
 type ClientsCLPageData struct {
 	Clients                []*ClientsCLPageDataClient `json:"clients"`
 	ClientCount            uint64                     `json:"client_count"`
-	PeerMap                *ClientCLPageDataPeerMap   `json:"peer_map"`
+	PeerMap                *ClientCLPageDataPeerMap   `json:"peer_map" ssz-type:"optional"`
 	ShowSensitivePeerInfos bool                       `json:"show_sensitive_peer_infos"`
 	ShowPeerDASInfos       bool                       `json:"show_peer_das_infos"`
 	ShowSafeSlotColumn     bool                       `json:"show_safe_slot_column"`
-	PeerDASInfos           *ClientCLPagePeerDAS       `json:"peer_das"`
+	PeerDASInfos           *ClientCLPagePeerDAS       `json:"peer_das" ssz-type:"optional"`
 
 	// DAS Guardian configuration
 	DisableDasGuardianCheck   bool                         `json:"disable_das_guardian_check"`
@@ -122,8 +122,8 @@ type ClientCLPageDataNode struct {
 	ENRKeyValues      []*ClientCLPageDataNodeENRValue `json:"enr_kv"`
 	MetadataKeyValues []*ClientCLPageDataNodeENRValue `json:"metadata_kv"`
 	Peers             []*ClientCLPageDataNodePeers    `json:"peers,omitempty"` // only relevant for internal peers; omitted from the nodes list response
-	PeerDAS           *ClientCLPageDataNodePeerDAS    `json:"peer_das"`
-	Metadata          *ClientCLPageDataNodeMetadata   `json:"metadata,omitempty"`
+	PeerDAS           *ClientCLPageDataNodePeerDAS    `json:"peer_das" ssz-type:"optional"`
+	Metadata          *ClientCLPageDataNodeMetadata   `json:"metadata,omitempty" ssz-type:"optional"`
 	ClientSpecs       []*ClientCLPageDataSpecValue    `json:"client_specs"`
 }
 

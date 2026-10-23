@@ -11,9 +11,9 @@ type MevBlocksPageData struct {
 	FilterMinIndex      uint64                    `json:"filter_mini"`
 	FilterMaxIndex      uint64                    `json:"filter_maxi"`
 	FilterValidatorName string                    `json:"filter_vname"`
-	FilterRelays        map[uint8]bool            `json:"filter_relays"`
+	FilterRelays        []uint8                   `json:"filter_relays"`
 	FilterRelayOpts     []*MevBlocksPageDataRelay `json:"filter_relay_opts"`
-	FilterProposed      map[uint8]bool            `json:"filter_proposed"`
+	FilterProposed      []uint8                   `json:"filter_proposed"`
 
 	MevBlocks  []*MevBlocksPageDataBlock `json:"exits"`
 	BlockCount uint64                    `json:"block_count"`
@@ -33,7 +33,7 @@ type MevBlocksPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 
 	EnsNameData
 }

@@ -13,8 +13,8 @@ type TokenPageData struct {
 
 	Transfers []*TransferRow   `json:"transfers"`
 	PageSize  uint64           `json:"page_size"`
-	Filter    *TransfersFilter `json:"filter"`
-	Pager     *PagerData       `json:"pager"`
+	Filter    *TransfersFilter `json:"filter" ssz-type:"optional"`
+	Pager     *PagerData       `json:"pager" ssz-type:"optional"`
 
 	// Columns toggled via the "d" bitmask (Token/TokenType are fixed here so are
 	// always omitted). Hash, From and To are always shown.
