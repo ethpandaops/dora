@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -106,6 +107,7 @@ type S3DebugData struct {
 
 // BlockDbStoredData holds aggregate stats from the DB about data stored in blockdb.
 type BlockDbStoredData struct {
+	UpdatedAt        time.Time
 	BeaconBlockCount int64
 	BeaconBlockSize  int64
 	ExecDataCount    int64
@@ -274,6 +276,20 @@ type RecentBlockStatsEntry struct {
 
 var startTime = time.Now()
 
+// blockDbStoredDataRefreshInterval is how long a stored-data snapshot is served before a page
+// view triggers a new background computation.
+const blockDbStoredDataRefreshInterval = 10 * time.Minute
+
+// blockDbStoredDataCache holds the last stored-data snapshot. Computing it aggregates the
+// slots/el_blocks tables and scans every key of the local pebble store, which takes longer
+// than the HTTP write timeout on large deployments, so the page serves the last snapshot
+// and refreshes it in the background.
+var blockDbStoredDataCache struct {
+	mutex      sync.Mutex
+	data       *BlockDbStoredData
+	refreshing bool
+}
+
 func buildDebugPageData() *DebugPageData {
 	logrus.Debugf("debug page called")
 
@@ -358,9 +374,37 @@ func buildBlockDBDebugData() *BlockDBDebugData {
 		data.EngineName = "Unknown"
 	}
 
-	data.StoredData = buildBlockDbStoredData()
+	data.StoredData = getCachedBlockDbStoredData()
 	data.TxHashIndex = buildTxHashIndexDebugData()
 	return data
+}
+
+// getCachedBlockDbStoredData returns the last stored-data snapshot and starts a background
+// refresh when it is stale. It returns nil until the first computation has finished.
+func getCachedBlockDbStoredData() *BlockDbStoredData {
+	cache := &blockDbStoredDataCache
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
+	if !cache.refreshing && (cache.data == nil || time.Since(cache.data.UpdatedAt) > blockDbStoredDataRefreshInterval) {
+		cache.refreshing = true
+		go func() {
+			var data *BlockDbStoredData
+			defer func() {
+				cache.mutex.Lock()
+				defer cache.mutex.Unlock()
+				if data != nil {
+					cache.data = data
+				}
+				cache.refreshing = false
+			}()
+			defer utils.HandleSubroutinePanic("getCachedBlockDbStoredData", nil)
+
+			data = buildBlockDbStoredData()
+		}()
+	}
+
+	return cache.data
 }
 
 func buildTxHashIndexDebugData() *TxHashIndexDebugData {
@@ -439,6 +483,7 @@ func buildBlockDbStoredData() *BlockDbStoredData {
 		return nil
 	}
 	data := &BlockDbStoredData{
+		UpdatedAt:        time.Now().UTC(),
 		BeaconBlockCount: dbStats.BeaconBlockCount,
 		BeaconBlockSize:  dbStats.BeaconBlockSize,
 		ExecDataCount:    dbStats.ExecDataCount,

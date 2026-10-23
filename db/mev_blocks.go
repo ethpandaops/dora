@@ -179,9 +179,6 @@ func GetMevBlocksFiltered(ctx context.Context, offset uint64, limit uint32, filt
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT
-			slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
 		FROM mev_blocks
 	`)
 
@@ -249,33 +246,24 @@ func GetMevBlocksFiltered(ctx context.Context, offset uint64, limit uint32, filt
 		filterOp = "AND"
 	}
 
+	fromClause := sql.String()
+	filterArgs := len(args)
+
+	// The page is fetched on its own so the ordering can be served from the slot_number index;
+	// the count runs separately via countFilteredRows.
+	sql.Reset()
 	args = append(args, limit)
-	fmt.Fprintf(&sql, `) 
-	SELECT 
-		count(*) AS slot_number,
-		null AS block_hash,
-		0 AS block_number, 
-		null AS builder_pubkey,
-		0 AS proposer_index,
-		0 AS proposed,
-		0 AS seenby_relays,
-		null AS fee_recipient,
-		0 AS tx_count,
-		0 AS gas_used,
-		null AS block_value,
-		0 AS block_value_gwei
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY slot_number DESC
-	LIMIT $%v 
-	`, len(args))
+	fmt.Fprintf(&sql, `
+	SELECT
+		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
+	%v
+	ORDER BY slot_number DESC NULLS LAST
+	LIMIT $%v`, fromClause, len(args))
 
 	if offset > 0 {
 		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
+		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprintf(&sql, ") AS t1")
 
 	mevBlocks := []*dbtypes.MevBlock{}
 	err := ReaderDb.SelectContext(ctx, &mevBlocks, sql.String(), args...)
@@ -284,5 +272,11 @@ func GetMevBlocksFiltered(ctx context.Context, offset uint64, limit uint32, filt
 		return nil, 0, err
 	}
 
-	return mevBlocks[1:], mevBlocks[0].SlotNumber, nil
+	count, err := countFilteredRows(ctx, fromClause, args[:filterArgs], offset, len(mevBlocks), limit)
+	if err != nil {
+		logger.Errorf("Error while counting filtered mev blocks: %v", err)
+		return nil, 0, err
+	}
+
+	return mevBlocks, count, nil
 }

@@ -187,9 +187,6 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT
-			deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target, fork_id
 		FROM deposit_txs
 	`)
 
@@ -275,35 +272,24 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 		filterOp = "AND"
 	}
 
+	fromClause := sql.String()
+	filterArgs := len(args)
+
+	// The page is fetched on its own so the ordering can be served from the deposit_index index;
+	// the count runs separately via countFilteredRows.
+	sql.Reset()
 	args = append(args, limit)
-	fmt.Fprintf(&sql, `) 
-	SELECT 
-		count(*) AS deposit_index, 
-		0 AS block_number, 
-		0 AS block_time, 
-		null AS block_root, 
-		null AS publickey, 
-		null AS withdrawalcredentials,
-		0 AS amount, 
-		null AS signature, 
-		0 AS valid_signature, 
-		false AS orphaned, 
-		null AS tx_hash, 
-		null AS tx_sender, 
-		null AS tx_target,
-		0 AS fork_id
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY deposit_index DESC 
-	LIMIT $%v 
-	`, len(args))
+	fmt.Fprintf(&sql, `
+	SELECT
+		deposit_txs.deposit_index, deposit_txs.block_number, deposit_txs.block_time, deposit_txs.block_root, deposit_txs.publickey, deposit_txs.withdrawalcredentials, deposit_txs.amount, deposit_txs.signature, deposit_txs.valid_signature, deposit_txs.orphaned, deposit_txs.tx_hash, deposit_txs.tx_sender, deposit_txs.tx_target, deposit_txs.fork_id
+	%v
+	ORDER BY deposit_txs.deposit_index DESC NULLS LAST
+	LIMIT $%v`, fromClause, len(args))
 
 	if offset > 0 {
 		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
+		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprintf(&sql, ") AS t1")
 
 	depositTxs := []*dbtypes.DepositTx{}
 	err := ReaderDb.SelectContext(ctx, &depositTxs, sql.String(), args...)
@@ -312,5 +298,11 @@ func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, can
 		return nil, 0, err
 	}
 
-	return depositTxs[1:], depositTxs[0].Index, nil
+	count, err := countFilteredRows(ctx, fromClause, args[:filterArgs], offset, len(depositTxs), limit)
+	if err != nil {
+		logger.Errorf("Error while counting filtered deposit txs: %v", err)
+		return nil, 0, err
+	}
+
+	return depositTxs, count, nil
 }

@@ -54,7 +54,8 @@ type ChainService struct {
 	ensResolver           *EnsResolver
 	started               bool
 
-	depositQueueIndexes depositQueueIndexCache
+	depositQueueIndexes depositQueueCache[resolvedDepositQueueIndexes]
+	depositQueueAnchors depositQueueCache[dbtypes.Deposit]
 }
 
 var GlobalBeaconService *ChainService
