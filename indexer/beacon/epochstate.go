@@ -434,7 +434,7 @@ func (s *epochState) tryReplayFromParentState(
 
 		blockStart := time.Now()
 		if err := st.ApplyBlockWithStateRoot(parentState, beaconBlock, prevStateRoot); err != nil {
-			client.logger.Warnf("replay: ApplyBlock failed at slot %v: %v", blk.Slot, err)
+			client.logger.Errorf("replay: ApplyBlock failed at slot %v: %v", blk.Slot, err)
 			return nil
 		}
 		blockApplyTotal += time.Since(blockStart)
@@ -451,11 +451,11 @@ func (s *epochState) tryReplayFromParentState(
 	// the post-block HTR reflects everything.
 	gotRootBytes, htrErr := client.indexer.dynSsz.HashTreeRoot(parentState)
 	if htrErr != nil {
-		client.logger.Warnf("replay: HTR failed for epoch %v: %v", parentEpoch, htrErr)
+		client.logger.Errorf("replay: HTR failed for epoch %v: %v", parentEpoch, htrErr)
 		return nil
 	}
 	if phase0.Root(gotRootBytes) != prevStateRoot {
-		client.logger.Warnf("replay: state root mismatch for epoch %v (got %v, expected %v), falling back to API",
+		client.logger.Errorf("replay: state root mismatch for epoch %v (got %v, expected %v), falling back to API",
 			parentEpoch, phase0.Root(gotRootBytes).String(), prevStateRoot.String())
 		return nil
 	}

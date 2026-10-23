@@ -508,7 +508,7 @@ func processAttestation(s *stateAccessor, att *all.Attestation, cc *committeeCac
 			}
 			if !hasFlag(participation[index], fi) {
 				participation[index] |= altair.ParticipationFlags(1 << fi)
-				proposerRewardNumerator += uint64(s.getBaseReward(index)) * ParticipationFlagWeights[fi]
+				proposerRewardNumerator += uint64(s.getBaseReward(index, data.Target.Epoch)) * ParticipationFlagWeights[fi]
 				willSetNewFlag = true
 			}
 		}
@@ -852,7 +852,7 @@ func processSyncAggregate(s *stateAccessor, block *all.SignedBeaconBlock) {
 
 	totalActiveBalance := s.getTotalActiveBalance()
 	totalActiveIncrements := uint64(totalActiveBalance) / s.specs.EffectiveBalanceIncrement
-	totalBaseRewards := totalActiveIncrements * uint64(s.getBaseRewardPerIncrement())
+	totalBaseRewards := totalActiveIncrements * uint64(s.getBaseRewardPerIncrement(s.currentEpoch()))
 	maxParticipantRewards := totalBaseRewards * SyncRewardWeight / WeightDenominator / s.specs.SlotsPerEpoch
 	participantReward := phase0.Gwei(maxParticipantRewards / committeeSize)
 	proposerReward := participantReward * ProposerWeight / (WeightDenominator - ProposerWeight)
