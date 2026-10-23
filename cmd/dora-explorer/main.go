@@ -183,7 +183,10 @@ func startWebserver(logger logrus.FieldLogger) (*http.Server, error) {
 	n.UseHandler(router)
 
 	if utils.Config.Frontend.HttpWriteTimeout == 0 {
-		utils.Config.Frontend.HttpWriteTimeout = time.Second * 15
+		// Leave headroom above the page render timeout, otherwise a slow page runs into the
+		// write timeout first and the connection is cut instead of the timeout error page
+		// being delivered.
+		utils.Config.Frontend.HttpWriteTimeout = services.PageCallTimeout() + 5*time.Second
 	}
 	if utils.Config.Frontend.HttpReadTimeout == 0 {
 		utils.Config.Frontend.HttpReadTimeout = time.Second * 15

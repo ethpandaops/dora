@@ -8,12 +8,12 @@ import (
 type ClientsELPageData struct {
 	Clients                []*ClientsELPageDataClient  `json:"clients"`
 	ClientCount            uint64                      `json:"client_count"`
-	PeerMap                *ClientELPageDataPeerMap    `json:"peer_map"`
+	PeerMap                *ClientELPageDataPeerMap    `json:"peer_map" ssz-type:"optional"`
 	ShowSensitivePeerInfos bool                        `json:"show_sensitive_peer_infos"`
 	Nodes                  []*ClientsELPageDataNode    `json:"nodes"`
 	Sorting                string                      `json:"sorting"`
 	IsDefaultSorting       bool                        `json:"is_default_sorting"`
-	ExpectedEthConfig      *ClientELPageDataForkConfig `json:"expected_eth_config"`
+	ExpectedEthConfig      *ClientELPageDataForkConfig `json:"expected_eth_config" ssz-type:"optional"`
 }
 
 type ClientsELPageDataClient struct {
@@ -31,7 +31,7 @@ type ClientsELPageDataClient struct {
 	PeersOutboundCounter uint32                      `json:"peers_outbound_counter"`
 	PeerID               string                      `json:"peer_id"`
 	ConfigWarnings       []string                    `json:"config_warnings"`
-	ClientConfig         *ClientELPageDataForkConfig `json:"client_config"`
+	ClientConfig         *ClientELPageDataForkConfig `json:"client_config" ssz-type:"optional"`
 }
 
 type ClientsELPageDataNode struct {
@@ -47,13 +47,13 @@ type ClientsELPageDataNode struct {
 	ListenAddr    string                          `json:"listen_addr"`
 	Peers         []*ClientELPageDataNodePeers    `json:"peers"`
 	DidFetchPeers bool                            `json:"peers_fetched"`
-	ForkConfig    *ClientELPageDataForkConfig     `json:"fork_config"`
+	ForkConfig    *ClientELPageDataForkConfig     `json:"fork_config" ssz-type:"optional"`
 }
 
 type ClientELPageDataForkConfig struct {
-	Current *EthConfigObject `json:"current"`
-	Next    *EthConfigObject `json:"next"`
-	Last    *EthConfigObject `json:"last"`
+	Current *EthConfigObject `json:"current" ssz-type:"optional"`
+	Next    *EthConfigObject `json:"next" ssz-type:"optional"`
+	Last    *EthConfigObject `json:"last" ssz-type:"optional"`
 }
 
 type EthConfigObject struct {

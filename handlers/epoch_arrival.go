@@ -194,17 +194,20 @@ func buildEpochArrivalData(ctx context.Context, epoch phase0.Epoch) (*models.Epo
 	response := &models.EpochArrivalResponse{
 		Epoch:   uint64(epoch),
 		Settled: settled,
-		Slots:   make(map[uint64]*models.EpochArrivalSlot, len(slotValues)),
+		Slots:   make([]*models.EpochArrivalSlot, 0, len(slotValues)),
 	}
 
 	for slot, values := range slotValues {
 		sort.Slice(values, func(a, b int) bool { return values[a] < values[b] })
-		response.Slots[uint64(slot)] = &models.EpochArrivalSlot{
+		response.Slots = append(response.Slots, &models.EpochArrivalSlot{
+			Slot:  uint64(slot),
 			Nodes: uint32(len(values)), //nolint:gosec // node counts are small
 			MinMs: values[0],
 			P90Ms: values[len(values)*9/10],
-		}
+		})
 	}
+
+	sort.Slice(response.Slots, func(a, b int) bool { return response.Slots[a].Slot < response.Slots[b].Slot })
 
 	cacheTimeout := time.Duration(-1)
 

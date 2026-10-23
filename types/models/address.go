@@ -6,21 +6,21 @@ import (
 
 // AddressPageData is a struct to hold info for the address page
 type AddressPageData struct {
-	Address            []byte         `json:"address"`
-	AddressEnsName     string         `json:"address_ens_name"`  // primary (display) ENS name for this address (empty if none)
-	AddressEnsNames    []EnsNameEntry `json:"address_ens_names"` // all resolved ENS names for this address across networks
-	AccountID          uint64         `json:"account_id"`
-	IsContract         bool           `json:"is_contract"`
-	DataRange          *ElDataRangeInfo
-	IsToken            bool   `json:"is_token"`
-	TokenName          string `json:"token_name"`
-	TokenSymbol        string `json:"token_symbol"`
-	TokenType          uint8  `json:"token_type"`
-	FirstFunded        uint64 `json:"first_funded"`
-	FundedBy           []byte `json:"funded_by"`
-	FundedByID         uint64 `json:"funded_by_id"`
-	FundedByIsContract bool   `json:"funded_by_is_contract"`
-	LastNonce          uint64 `json:"last_nonce"`
+	Address            []byte           `json:"address"`
+	AddressEnsName     string           `json:"address_ens_name"`  // primary (display) ENS name for this address (empty if none)
+	AddressEnsNames    []EnsNameEntry   `json:"address_ens_names"` // all resolved ENS names for this address across networks
+	AccountID          uint64           `json:"account_id"`
+	IsContract         bool             `json:"is_contract"`
+	DataRange          *ElDataRangeInfo `ssz-type:"optional"`
+	IsToken            bool             `json:"is_token"`
+	TokenName          string           `json:"token_name"`
+	TokenSymbol        string           `json:"token_symbol"`
+	TokenType          uint8            `json:"token_type"`
+	FirstFunded        uint64           `json:"first_funded"`
+	FundedBy           []byte           `json:"funded_by"`
+	FundedByID         uint64           `json:"funded_by_id"`
+	FundedByIsContract bool             `json:"funded_by_is_contract"`
+	LastNonce          uint64           `json:"last_nonce"`
 
 	// ETH Balance (from el_balances with token_id = 0)
 	EthBalance    float64 `json:"eth_balance"`
@@ -44,36 +44,36 @@ type AddressPageData struct {
 	// Transactions tab
 	Transactions []*AddressPageDataTransaction `json:"transactions"`
 	TxPageSize   uint64                        `json:"tx_page_size"`
-	TxFilter     *TransactionsFilter           `json:"tx_filter"`
-	TxPager      *PagerData                    `json:"tx_pager"`
+	TxFilter     *TransactionsFilter           `json:"tx_filter" ssz-type:"optional"`
+	TxPager      *PagerData                    `json:"tx_pager" ssz-type:"optional"`
 
 	// ERC20 Token Transfers tab
 	ERC20Transfers []*AddressPageDataTokenTransfer `json:"erc20_transfers"`
 	ERC20PageSize  uint64                          `json:"erc20_page_size"`
-	ERC20Filter    *TransfersFilter                `json:"erc20_filter"`
-	ERC20Pager     *PagerData                      `json:"erc20_pager"`
+	ERC20Filter    *TransfersFilter                `json:"erc20_filter" ssz-type:"optional"`
+	ERC20Pager     *PagerData                      `json:"erc20_pager" ssz-type:"optional"`
 
 	// NFT Transfers tab (ERC721/ERC1155)
 	NFTTransfers []*AddressPageDataTokenTransfer `json:"nft_transfers"`
 	NFTPageSize  uint64                          `json:"nft_page_size"`
-	NFTFilter    *TransfersFilter                `json:"nft_filter"`
-	NFTPager     *PagerData                      `json:"nft_pager"`
+	NFTFilter    *TransfersFilter                `json:"nft_filter" ssz-type:"optional"`
+	NFTPager     *PagerData                      `json:"nft_pager" ssz-type:"optional"`
 
 	// Internal Transactions tab
 	HasInternalTxs     bool                                  `json:"has_internal_txs"`
 	InternalTxs        []*AddressPageDataInternalTransaction `json:"internal_txs"`
 	InternalTxPageSize uint64                                `json:"internal_tx_page_size"`
-	InternalTxPager    *PagerData                            `json:"internal_tx_pager"`
+	InternalTxPager    *PagerData                            `json:"internal_tx_pager" ssz-type:"optional"`
 
 	// Beacon Withdrawals tab
 	Withdrawals []*AddressPageDataWithdrawal `json:"withdrawals"`
 	WdPageSize  uint64                       `json:"wd_page_size"`
-	WdPager     *PagerData                   `json:"wd_pager"`
+	WdPager     *PagerData                   `json:"wd_pager" ssz-type:"optional"`
 
 	// Block Fees tab
 	BlockFees  []*AddressPageDataBlockFee `json:"block_fees"`
 	BfPageSize uint64                     `json:"bf_page_size"`
-	BfPager    *PagerData                 `json:"bf_pager"`
+	BfPager    *PagerData                 `json:"bf_pager" ssz-type:"optional"`
 
 	EnsNameData
 }
@@ -121,7 +121,7 @@ type AddressPageDataTransaction struct {
 // AddressPageDataTokenTransfer represents a token transfer
 type AddressPageDataTokenTransfer struct {
 	TxHash         []byte    `json:"tx_hash"`
-	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 means render with rowspan, 0 means skip cell
+	TxHashRowspan  uint64    `json:"tx_hash_rowspan"` // >0 means render with rowspan, 0 means skip cell
 	BlockNumber    uint64    `json:"block_number"`
 	BlockUid       uint64    `json:"block_uid"`
 	BlockRoot      []byte    `json:"block_root"`     // For linking to /slot/{root}

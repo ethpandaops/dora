@@ -107,9 +107,9 @@ type TransactionPageData struct {
 	DecodedCalldata []*utils.DecodedCalldataParam `json:"decoded_calldata"` // Decoded params (nil if not available)
 
 	// Calldata gas cost breakdown (computed from InputData; zero when InputData is empty)
-	CalldataZeroBytes      int    `json:"calldata_zero_bytes"`      // Zero bytes in calldata
-	CalldataNonZeroBytes   int    `json:"calldata_nonzero_bytes"`   // Non-zero bytes in calldata
-	CalldataPragueTokens   int    `json:"calldata_prague_tokens"`   // EIP-7623 tokens: 4×nonzero + zero (used as prague floor multiplier)
+	CalldataZeroBytes      uint64 `json:"calldata_zero_bytes"`      // Zero bytes in calldata
+	CalldataNonZeroBytes   uint64 `json:"calldata_nonzero_bytes"`   // Non-zero bytes in calldata
+	CalldataPragueTokens   uint64 `json:"calldata_prague_tokens"`   // EIP-7623 tokens: 4×nonzero + zero (used as prague floor multiplier)
 	CalldataStandardGas    uint64 `json:"calldata_standard_gas"`    // Intrinsic pre-Prague: 21000 + 4×zero + 16×nonzero
 	CalldataPragueFloor    uint64 `json:"calldata_prague_floor"`    // EIP-7623 floor (Prague+): 21000 + (4×nonzero + zero)×10
 	CalldataAmsterdamFloor uint64 `json:"calldata_amsterdam_floor"` // EIP-7976 floor (Amsterdam+): 21000 + total×64
@@ -172,20 +172,20 @@ type TransactionPageData struct {
 	// FrameValidationCount is how many leading frames form the validation prefix: the
 	// run whose success settles whether the transaction runs and who pays for it. The
 	// frames after it carry out the sender's operations.
-	FrameValidationCount int `json:"frame_validation_count"`
+	FrameValidationCount uint64 `json:"frame_validation_count"`
 
 	// Totals over the frames, which is where a frame transaction's gas actually goes.
 	FrameExecGasUsed  uint64 `json:"frame_exec_gas_used"`
 	FrameStateGasUsed uint64 `json:"frame_state_gas_used"`
-	FrameSuccessCount int    `json:"frame_success_count"`
-	FrameFailedCount  int    `json:"frame_failed_count"`
-	FrameSkippedCount int    `json:"frame_skipped_count"`
+	FrameSuccessCount uint64 `json:"frame_success_count"`
+	FrameFailedCount  uint64 `json:"frame_failed_count"`
+	FrameSkippedCount uint64 `json:"frame_skipped_count"`
 
 	// FrameFailedIndex is the first frame that failed, meaningful only when
 	// FrameFailedCount is non-zero. A frame transaction has no revert reason of its own:
 	// it did not revert, one of its frames did.
 	FrameFailedIndex   uint32 `json:"frame_failed_index"`
-	FrameRolledBackCnt int    `json:"frame_rolled_back_count"`
+	FrameRolledBackCnt uint64 `json:"frame_rolled_back_count"`
 
 	// FrameIncomplete marks a frame transaction that ran and paid but did not carry out
 	// everything it asked for. It is not a revert: what the other frames did stands.
@@ -347,11 +347,11 @@ type TransactionPageDataFrame struct {
 	// AtomicBatch marks a frame batched with the frame after it. BatchIndex groups the
 	// frames of one batch so they can be shown together; frames outside a batch each get
 	// their own.
-	AtomicBatch  bool `json:"atomic_batch"`
-	BatchIndex   int  `json:"batch_index"`
-	BatchSize    int  `json:"batch_size"`
-	IsBatchStart bool `json:"is_batch_start"`
-	IsBatchEnd   bool `json:"is_batch_end"`
+	AtomicBatch  bool   `json:"atomic_batch"`
+	BatchIndex   uint64 `json:"batch_index"`
+	BatchSize    uint64 `json:"batch_size"`
+	IsBatchStart bool   `json:"is_batch_start"`
+	IsBatchEnd   bool   `json:"is_batch_end"`
 
 	// IsValidation marks a frame in the validation prefix. Those frames decide whether
 	// the transaction runs at all; the ones after them do the work it was sent for.
@@ -392,8 +392,8 @@ type TransactionPageDataFrame struct {
 	// success, but its logs were discarded and its state gas zeroed - nothing it did
 	// survived, and a plain success would say otherwise. BatchFailedIndex names the
 	// frame that failed and took the batch with it.
-	RolledBack       bool `json:"rolled_back"`
-	BatchFailedIndex int  `json:"batch_failed_index"`
+	RolledBack       bool  `json:"rolled_back"`
+	BatchFailedIndex int64 `json:"batch_failed_index"`
 
 	// EIP-8037 budgets and reports each frame in two gas dimensions.
 	ExecGasLimit  uint64 `json:"exec_gas_limit"`

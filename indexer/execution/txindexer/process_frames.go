@@ -357,3 +357,19 @@ func mergeInternalAggregates(dst, src map[*pendingAccount]*pendingInternalAggreg
 
 	return dst
 }
+
+func frameTraceRoots(frames []*pendingFrame, sender common.Address, roots []*exerpc.CallTraceCall) []*exerpc.CallTraceCall {
+	if len(roots) != 1 || roots[0].To != txtypes.EntryPoint || roots[0].From != sender || len(roots[0].Calls) != len(frames) {
+		return roots
+	}
+
+	executed := make([]*exerpc.CallTraceCall, 0, len(frames))
+
+	for i := range roots[0].Calls {
+		if frames[i].executed() {
+			executed = append(executed, &roots[0].Calls[i])
+		}
+	}
+
+	return executed
+}

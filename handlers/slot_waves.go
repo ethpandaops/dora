@@ -223,7 +223,7 @@ func attestationDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) u
 // payment quorum: BUILDER_PAYMENT_THRESHOLD (6/10 by default) of the slot's
 // expected attesters. Pre-gloas networks do not serve the keys, so the
 // gloas default doubles as a plain supermajority reference there.
-func voteThreshold(chainState *consensus.ChainState, expected int) int {
+func voteThreshold(chainState *consensus.ChainState, expected uint64) uint64 {
 	specs := chainState.GetSpecs()
 
 	numerator := specs.BuilderPaymentThresholdNumerator
@@ -233,7 +233,7 @@ func voteThreshold(chainState *consensus.ChainState, expected int) int {
 		numerator, denominator = 6, 10
 	}
 
-	return int(uint64(expected) * numerator / denominator) //nolint:gosec // bounded by the validator set
+	return expected * numerator / denominator
 }
 
 // executedWaveQuery buckets when each node's execution client finished
@@ -282,7 +282,7 @@ func loadExecutedWave(ctx context.Context, client *xatu.Client, execHash string,
 			return nil, fmt.Errorf("executed wave scan: %w", err)
 		}
 
-		count := int(nodes) //nolint:gosec // bounded by the node fleet
+		count := nodes
 		wave.TotalCount += count
 		wave.Buckets = append(wave.Buckets, &models.SlotAttestationBucket{Ms: chunk, Count: count})
 	}
@@ -303,10 +303,10 @@ func loadExecutedWave(ctx context.Context, client *xatu.Client, execHash string,
 // a validator can hold several seats when the committee is sampled by
 // effective balance, so the seat count overstates the denominator. Falls back
 // to PTC_SIZE when the committee cannot be resolved.
-func expectedPtcVoters(ctx context.Context, chainState *consensus.ChainState, slot phase0.Slot) int {
+func expectedPtcVoters(ctx context.Context, chainState *consensus.ChainState, slot phase0.Slot) uint64 {
 	members := services.GlobalBeaconService.GetSlotPtc(ctx, slot)
 	if len(members) == 0 {
-		return int(chainState.GetSpecs().PtcSize) //nolint:gosec // committee sizes are small
+		return uint64(chainState.GetSpecs().PtcSize)
 	}
 
 	unique := make(map[phase0.ValidatorIndex]struct{}, len(members))
@@ -314,14 +314,14 @@ func expectedPtcVoters(ctx context.Context, chainState *consensus.ChainState, sl
 		unique[v] = struct{}{}
 	}
 
-	return len(unique)
+	return uint64(len(unique))
 }
 
 // expectedAttesters is how many validators were due to attest in the slot:
 // the epoch's active validator count spread over its slots. Recent epochs
 // come from the in-memory epoch stats; older ones fall back to the epochs
 // table, which serves history but only fills when the synchronizer runs.
-func expectedAttesters(ctx context.Context, chainState *consensus.ChainState, slot phase0.Slot) int {
+func expectedAttesters(ctx context.Context, chainState *consensus.ChainState, slot phase0.Slot) uint64 {
 	epoch := chainState.EpochOfSlot(slot)
 
 	slotsPerEpoch := chainState.GetSpecs().SlotsPerEpoch
@@ -332,7 +332,7 @@ func expectedAttesters(ctx context.Context, chainState *consensus.ChainState, sl
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 	if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
 		if values := epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false); values != nil && values.ActiveValidators > 0 {
-			return int(values.ActiveValidators / slotsPerEpoch) //nolint:gosec // bounded by the validator set
+			return uint64(values.ActiveValidators / slotsPerEpoch)
 		}
 	}
 
@@ -341,7 +341,7 @@ func expectedAttesters(ctx context.Context, chainState *consensus.ChainState, sl
 		return 0
 	}
 
-	return int(rows[0].ValidatorCount / slotsPerEpoch) //nolint:gosec // bounded by the validator set
+	return uint64(rows[0].ValidatorCount / slotsPerEpoch)
 }
 
 // seenWaveQuery buckets when each observing node first saw one per-slot
@@ -392,7 +392,7 @@ func loadSeenWave(ctx context.Context, client *xatu.Client, table, rootColumn st
 			return nil, fmt.Errorf("%s wave scan: %w", table, err)
 		}
 
-		count := int(nodes) //nolint:gosec // bounded by the node fleet
+		count := nodes
 		wave.TotalCount += count
 		wave.Buckets = append(wave.Buckets, &models.SlotAttestationBucket{Ms: chunk, Count: count})
 	}
@@ -466,7 +466,7 @@ func loadPtcWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, slo
 			wave.Buckets = append(wave.Buckets, bucket)
 		}
 
-		count := int(votes) //nolint:gosec // bounded by the committee size
+		count := votes
 		wave.TotalCount += count
 
 		if present {
@@ -496,8 +496,8 @@ func loadPtcWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, slo
 // into the response.
 type waveRoot struct {
 	root    string
-	count   int
-	buckets map[uint32]int
+	count   uint64
+	buckets map[uint32]uint64
 }
 
 // loadAttestationWave loads the 50ms attestation first-seen chunks for the
@@ -518,7 +518,7 @@ func loadAttestationWave(ctx context.Context, client *xatu.Client, slot phase0.S
 	}
 
 	roots := map[string]*waveRoot{}
-	total := 0
+	total := uint64(0)
 
 	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
 		req.PageToken = cbtPageToken(pageOffset)
@@ -534,11 +534,11 @@ func loadAttestationWave(ctx context.Context, client *xatu.Client, slot phase0.S
 
 		root := roots[row.BlockRoot]
 		if root == nil {
-			root = &waveRoot{root: row.BlockRoot, buckets: map[uint32]int{}}
+			root = &waveRoot{root: row.BlockRoot, buckets: map[uint32]uint64{}}
 			roots[row.BlockRoot] = root
 		}
 
-		count := int(row.AttestationCount)
+		count := uint64(row.AttestationCount)
 		root.count += count
 		root.buckets[row.ChunkSlotStartDiff] += count
 		total += count
@@ -558,7 +558,7 @@ func loadAttestationWave(ctx context.Context, client *xatu.Client, slot phase0.S
 
 // assembleWaveRoots orders the accumulated roots by vote count, merges the
 // tail beyond maxWaveRoots into one unnamed entry and marks the viewed root.
-func assembleWaveRoots(roots map[string]*waveRoot, total int, blockRoot string) *models.SlotAttestationWave {
+func assembleWaveRoots(roots map[string]*waveRoot, total uint64, blockRoot string) *models.SlotAttestationWave {
 	ordered := make([]*waveRoot, 0, len(roots))
 	for _, root := range roots {
 		ordered = append(ordered, root)
@@ -569,7 +569,7 @@ func assembleWaveRoots(roots map[string]*waveRoot, total int, blockRoot string) 
 	})
 
 	if len(ordered) > maxWaveRoots {
-		rest := &waveRoot{buckets: map[uint32]int{}}
+		rest := &waveRoot{buckets: map[uint32]uint64{}}
 
 		for _, root := range ordered[maxWaveRoots:] {
 			rest.count += root.count
@@ -638,7 +638,7 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 		seenReq.BlockRoot = &cbtch.StringFilter{Filter: &cbtch.StringFilter_Eq{Eq: blockRoot}}
 	}
 
-	blobCount := 0
+	blobCount := uint64(0)
 
 	err := client.QueryPaged(ctx, settled, func(pageOffset uint32) (string, []any, error) {
 		seenReq.PageToken = cbtPageToken(pageOffset)
@@ -669,8 +669,8 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 			}
 		}
 
-		if int(row.RowCount) > blobCount {
-			blobCount = int(row.RowCount)
+		if uint64(row.RowCount) > blobCount {
+			blobCount = uint64(row.RowCount)
 		}
 
 		return nil
@@ -706,11 +706,11 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 
 		pct := row.AvailabilityPct
 		entry.AvailabilityPct = &pct
-		entry.Probes = int(row.ProbeCount)
+		entry.Probes = uint64(row.ProbeCount)
 		entry.P50ResponseMs = row.P50ResponseTimeMs
 
-		if int(row.BlobCount) > blobCount {
-			blobCount = int(row.BlobCount)
+		if uint64(row.BlobCount) > blobCount {
+			blobCount = uint64(row.BlobCount)
 		}
 
 		return nil
@@ -739,9 +739,9 @@ func loadColumnWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, 
 			sort.Slice(times, func(a, b int) bool { return times[a] < times[b] })
 			entry.P50Ms = times[len(times)/2]
 			entry.P90Ms = times[len(times)*9/10]
-			entry.Observations = len(times)
+			entry.Observations = uint64(len(times))
 
-			wave.Observations += len(times)
+			wave.Observations += uint64(len(times))
 			allSightings = append(allSightings, times...)
 		}
 

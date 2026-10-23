@@ -27,7 +27,7 @@ type BuildersPageData struct {
 	LastPageIndex    uint64                     `json:"last_page_index"`
 	FilteredPageLink string                     `json:"filtered_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 
 	EnsNameData
 }
@@ -84,7 +84,7 @@ type BuilderPageData struct {
 	ExitReasonVoluntaryExit bool                          `json:"exit_reason_voluntary_exit"`
 	ExitReasonWithdrawal    bool                          `json:"exit_reason_withdrawal"`
 	ExitReasonTxHash        []byte                        `json:"exit_reason_tx_hash"`
-	ExitReasonTxDetails     *BuilderPageDataExitTxDetails `json:"exit_reason_tx_details"`
+	ExitReasonTxDetails     *BuilderPageDataExitTxDetails `json:"exit_reason_tx_details" ssz-type:"optional"`
 
 	// Tab control
 	TabView       string `json:"tab_view"`

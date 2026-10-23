@@ -2,7 +2,7 @@ package models
 
 // ChainForksPageData is a struct to hold minimal info for the chain forks visualization page template
 type ChainForksPageData struct {
-	ChainSpecs *ChainSpecs `json:"chain_specs"`
+	ChainSpecs *ChainSpecs `json:"chain_specs" ssz-type:"optional"`
 }
 
 // ChainSpecs contains chain specification values needed for visualization
@@ -19,7 +19,7 @@ type ChainSpecs struct {
 
 // ChainForksDiagramData contains all the data needed for AJAX diagram requests
 type ChainForksDiagramData struct {
-	Diagram             *ChainDiagram `json:"diagram"`
+	Diagram             *ChainDiagram `json:"diagram" ssz-type:"optional"`
 	StartSlot           uint64        `json:"start_slot"`
 	EndSlot             uint64        `json:"end_slot"`
 	StartEpoch          uint64        `json:"start_epoch"`
@@ -27,8 +27,8 @@ type ChainForksDiagramData struct {
 	FinalitySlot        uint64        `json:"finality_slot"`
 	RequestedStartSlot  uint64        `json:"requested_start_slot"`  // Original requested start
 	RequestedSizeEpochs uint64        `json:"requested_size_epochs"` // Original requested size
-	PrevPageSlot        *uint64       `json:"prev_page_slot"`
-	NextPageSlot        *uint64       `json:"next_page_slot"`
+	PrevPageSlot        *uint64       `json:"prev_page_slot" ssz-type:"optional"`
+	NextPageSlot        *uint64       `json:"next_page_slot" ssz-type:"optional"`
 	Error               string        `json:"error,omitempty"` // Error message if something went wrong
 }
 
@@ -57,7 +57,7 @@ type EpochParticipation struct {
 type ChainDiagram struct {
 	Epochs        []uint64              `json:"epochs"` // Changed from slots to epochs
 	Forks         []*DiagramFork        `json:"forks"`
-	CanonicalLine *DiagramCanonicalLine `json:"canonical_line"`
+	CanonicalLine *DiagramCanonicalLine `json:"canonical_line" ssz-type:"optional"`
 }
 
 type DiagramFork struct {

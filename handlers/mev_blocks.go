@@ -133,9 +133,9 @@ func buildFilteredMevBlocksPageData(ctx context.Context, pageIdx uint64, pageSiz
 		FilterMinIndex:      minIndex,
 		FilterMaxIndex:      maxIndex,
 		FilterValidatorName: vname,
-		FilterRelays:        map[uint8]bool{},
+		FilterRelays:        []uint8{},
 		FilterRelayOpts:     []*models.MevBlocksPageDataRelay{},
-		FilterProposed:      map[uint8]bool{},
+		FilterProposed:      []uint8{},
 	}
 
 	for _, relay := range utils.Config.MevIndexer.Relays {
@@ -158,7 +158,7 @@ func buildFilteredMevBlocksPageData(ctx context.Context, pageIdx uint64, pageSiz
 
 		if relayId < 63 {
 			withRelayIdx = append(withRelayIdx, uint8(relayId))
-			pageData.FilterRelays[uint8(relayId)] = true
+			pageData.FilterRelays = append(pageData.FilterRelays, uint8(relayId))
 		}
 	}
 
@@ -175,7 +175,7 @@ func buildFilteredMevBlocksPageData(ctx context.Context, pageIdx uint64, pageSiz
 
 		if proposedOpt <= 2 {
 			withProposedOpts = append(withProposedOpts, uint8(proposedOpt))
-			pageData.FilterProposed[uint8(proposedOpt)] = true
+			pageData.FilterProposed = append(pageData.FilterProposed, uint8(proposedOpt))
 		}
 	}
 
@@ -284,13 +284,13 @@ func buildFilteredMevBlocksPageData(ctx context.Context, pageIdx uint64, pageSiz
 	}
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams = make([]models.UrlParam, 0, len(filterArgs)+1)
 	for key, values := range filterArgs {
 		if len(values) > 0 {
-			pageData.UrlParams[key] = values[0]
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: key, Value: values[0]})
 		}
 	}
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
 
 	pageData.FirstPageLink = fmt.Sprintf("/mev/blocks?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/mev/blocks?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)

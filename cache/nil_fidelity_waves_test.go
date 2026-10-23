@@ -11,8 +11,8 @@ import (
 )
 
 // The waves response leans on nil to mean "no data": a nil section hides its
-// panel, a nil FirstSeenMs renders "not seen". Like the arrival response, it
-// must stay on the cache's JSON path, where nil survives a round trip.
+// panel, a nil FirstSeenMs renders "not seen". Like the arrival response, its
+// pointers are SSZ optionals, so nil must survive a cache round trip.
 func TestWavesNilFidelityThroughCache(t *testing.T) {
 	utils.Config = &types.Config{}
 

@@ -146,47 +146,41 @@ type BlockDbStats struct {
 }
 
 // GetBlockDbStats returns counts and sizes for beacon blocks and execution
-// data tracked in the database, avoiding expensive S3/Pebble listing.
+// data tracked in the database, avoiding expensive S3/Pebble listing. Each
+// aggregate is a full scan of its table, so count and size are read in one pass.
 func GetBlockDbStats() (*BlockDbStats, error) {
 	stats := &BlockDbStats{}
 
-	// Beacon blocks: count all slots that have a block_size > 0
-	err := ReaderDb.Get(&stats.BeaconBlockCount,
-		"SELECT COUNT(*) FROM slots WHERE block_size > 0")
-	if err != nil {
-		stats.BeaconBlockCount = 0
+	type countSizeRow struct {
+		Count int64 `db:"row_count"`
+		Size  int64 `db:"total_size"`
 	}
 
-	err = ReaderDb.Get(&stats.BeaconBlockSize,
-		"SELECT COALESCE(SUM(block_size), 0) FROM slots WHERE block_size > 0")
-	if err != nil {
-		stats.BeaconBlockSize = 0
+	// Beacon blocks: all slots that have a block_size > 0
+	var beaconBlocks countSizeRow
+	err := ReaderDb.Get(&beaconBlocks,
+		"SELECT COUNT(*) AS row_count, COALESCE(SUM(block_size), 0) AS total_size FROM slots WHERE block_size > 0")
+	if err == nil {
+		stats.BeaconBlockCount = beaconBlocks.Count
+		stats.BeaconBlockSize = beaconBlocks.Size
 	}
 
-	// Exec data: count el_blocks with data_size > 0
-	err = ReaderDb.Get(&stats.ExecDataCount,
-		"SELECT COUNT(*) FROM el_blocks WHERE data_size > 0")
-	if err != nil {
-		stats.ExecDataCount = 0
+	// Exec data: el_blocks with data_size > 0
+	var execData countSizeRow
+	err = ReaderDb.Get(&execData,
+		"SELECT COUNT(*) AS row_count, COALESCE(SUM(data_size), 0) AS total_size FROM el_blocks WHERE data_size > 0")
+	if err == nil {
+		stats.ExecDataCount = execData.Count
+		stats.ExecDataSize = execData.Size
 	}
 
-	err = ReaderDb.Get(&stats.ExecDataSize,
-		"SELECT COALESCE(SUM(data_size), 0) FROM el_blocks WHERE data_size > 0")
-	if err != nil {
-		stats.ExecDataSize = 0
-	}
-
-	// Duties: count epochs with a stored duties object
-	err = ReaderDb.Get(&stats.DutiesCount,
-		"SELECT COUNT(*) FROM epochs WHERE block_duties_size > 0")
-	if err != nil {
-		stats.DutiesCount = 0
-	}
-
-	err = ReaderDb.Get(&stats.DutiesSize,
-		"SELECT COALESCE(SUM(block_duties_size), 0) FROM epochs WHERE block_duties_size > 0")
-	if err != nil {
-		stats.DutiesSize = 0
+	// Duties: epochs with a stored duties object
+	var duties countSizeRow
+	err = ReaderDb.Get(&duties,
+		"SELECT COUNT(*) AS row_count, COALESCE(SUM(block_duties_size), 0) AS total_size FROM epochs WHERE block_duties_size > 0")
+	if err == nil {
+		stats.DutiesCount = duties.Count
+		stats.DutiesSize = duties.Size
 	}
 
 	return stats, nil

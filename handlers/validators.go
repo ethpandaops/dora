@@ -143,7 +143,7 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 	}
 
 	filterArgs := url.Values{}
-	pageData.FilterCredTypes = make(map[uint8]bool, len(filterCredTypes))
+	pageData.FilterCredTypes = filterCredTypes
 	if filterPubKey != "" || filterIndex != "" || filterName != "" || filterStatus != "" || filterWithdrawal != "" || len(filterCredTypes) > 0 {
 		if filterPubKey != "" {
 			pageData.FilterPubKey = filterPubKey
@@ -190,7 +190,6 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 		if len(filterCredTypes) > 0 {
 			validatorFilter.WithdrawalCredTypes = filterCredTypes
 			for _, t := range filterCredTypes {
-				pageData.FilterCredTypes[t] = true
 				filterArgs.Add("f.cred", fmt.Sprintf("%v", t))
 			}
 		}

@@ -18,7 +18,7 @@ type BlobsPageData struct {
 	BlobGasLast7d          uint64                 `json:"blob_gas_last_7d"`
 	BlobGasLast18d         uint64                 `json:"blob_gas_last_18d"`
 	LatestBlobBlocks       []*LatestBlobBlock     `json:"latest_blob_blocks"`
-	StorageCalculator      *StorageCalculatorData `json:"storage_calculator"`
+	StorageCalculator      *StorageCalculatorData `json:"storage_calculator" ssz-type:"optional"`
 }
 
 type LatestBlobBlock struct {
