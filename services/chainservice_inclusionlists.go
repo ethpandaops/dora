@@ -42,7 +42,7 @@ type SlotInclusionListMember struct {
 	// Status is "submitted", "late", "equivocated" or "missing".
 	Status string `json:"status"`
 	// Lists holds the indexes of the member's lists in SlotInclusionListsView.Lists.
-	Lists []int `json:"lists"`
+	Lists []uint32 `json:"lists"`
 	// FirstSeen is the earliest observation of a list of the member as ms
 	// offset from slot start.
 	FirstSeen *int32 `json:"first_seen,omitempty"`
@@ -56,7 +56,7 @@ type SlotInclusionListEntry struct {
 	Signature      string `json:"signature"`
 	// Transactions holds the list's transactions in list order as indexes
 	// into SlotInclusionListsView.Transactions.
-	Transactions []int `json:"transactions"`
+	Transactions []uint32 `json:"transactions"`
 	// FirstSeen is the earliest observation as ms offset from slot start.
 	FirstSeen *int32                     `json:"first_seen,omitempty"`
 	Seen      []*SlotInclusionListSeenBy `json:"seen"`
@@ -65,7 +65,7 @@ type SlotInclusionListEntry struct {
 // SlotInclusionListSeenBy is one client's first sighting of an inclusion list.
 type SlotInclusionListSeenBy struct {
 	// Client is an index into SlotInclusionListsView.Clients.
-	Client int `json:"client"`
+	Client uint32 `json:"client"`
 	// Time is the first-seen offset in ms from slot start.
 	Time int32 `json:"time"`
 }
@@ -248,7 +248,7 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 	}
 
 	// Lists
-	memberLists := make(map[uint64][]int, 16)
+	memberLists := make(map[uint64][]uint32, 16)
 	if lists != nil {
 		for idx, list := range lists.Lists {
 			entry := &SlotInclusionListEntry{
@@ -256,21 +256,21 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 				ValidatorName:  bs.GetValidatorNameAt(list.ValidatorIndex, slot),
 				DependentRoot:  fmt.Sprintf("0x%x", list.DependentRoot[:]),
 				Signature:      fmt.Sprintf("0x%x", list.Signature[:]),
-				Transactions:   make([]int, 0, len(list.TxRefs)),
+				Transactions:   make([]uint32, 0, len(list.TxRefs)),
 				Seen:           make([]*SlotInclusionListSeenBy, 0, len(list.SeenTimes)),
 			}
 			for _, ref := range list.TxRefs {
-				entry.Transactions = append(entry.Transactions, int(ref))
+				entry.Transactions = append(entry.Transactions, uint32(ref))
 			}
 			for clientIdx, seenTime := range list.SeenByClientIndex() {
-				entry.Seen = append(entry.Seen, &SlotInclusionListSeenBy{Client: clientIdx, Time: seenTime})
+				entry.Seen = append(entry.Seen, &SlotInclusionListSeenBy{Client: uint32(clientIdx), Time: seenTime})
 			}
 			if first, ok := list.FirstSeen(); ok {
 				entry.FirstSeen = &first
 			}
 
 			view.Lists = append(view.Lists, entry)
-			memberLists[list.ValidatorIndex] = append(memberLists[list.ValidatorIndex], idx)
+			memberLists[list.ValidatorIndex] = append(memberLists[list.ValidatorIndex], uint32(idx))
 		}
 	}
 
@@ -284,7 +284,7 @@ func (bs *ChainService) GetSlotInclusionListsView(ctx context.Context, slot phas
 			Lists:          memberLists[validatorIndex],
 		}
 		if member.Lists == nil {
-			member.Lists = []int{}
+			member.Lists = []uint32{}
 		}
 
 		for _, listIdx := range member.Lists {
