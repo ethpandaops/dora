@@ -10,7 +10,7 @@ require (
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260807105509-b0a20c27b6e7
 	github.com/ethpandaops/go-eth2-client v0.1.11-0.20261009114947-aa18b63c346c
-	github.com/ethpandaops/spamoor v1.2.5-0.20261023090635-a5fa94b5647b
+	github.com/ethpandaops/spamoor v1.2.5-0.20261023115937-6a0122cbda13
 	github.com/ethpandaops/xatu v1.25.0
 	github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8
 	github.com/go-redis/redis/v8 v8.11.5

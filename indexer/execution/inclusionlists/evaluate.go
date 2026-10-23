@@ -185,6 +185,8 @@ func listNotEnforcedStatus(flags uint8) uint8 {
 // without sender state. It returns ILTxStatusUnknown and the sender if the
 // outcome depends on the sender state.
 func (eval *evaluation) checkTransaction(idx int, rawTx []byte, payloadTransactions map[string]bool, notEnforced uint8) (uint8, common.Address) {
+	payload := eval.input.payload
+
 	switch {
 	case payloadTransactions[string(rawTx)]:
 		return btypes.ILTxStatusIncluded, common.Address{}
@@ -211,6 +213,10 @@ func (eval *evaluation) checkTransaction(idx int, rawTx []byte, payloadTransacti
 		return btypes.ILTxStatusGasLimit, common.Address{}
 	case tx.GasFeeCap() != nil && tx.GasFeeCap().Cmp(new(big.Int).SetUint64(eval.result.BaseFee)) < 0:
 		return btypes.ILTxStatusFeeCapTooLow, common.Address{}
+	}
+
+	if deadline, ok := tx.ExpiryDeadline(); ok && deadline < payload.Timestamp {
+		return btypes.ILTxStatusExpired, common.Address{}
 	}
 
 	sender, err := tx.From(tx.ChainId())

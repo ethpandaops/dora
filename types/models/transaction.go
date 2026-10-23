@@ -162,9 +162,12 @@ type TransactionPageData struct {
 	FrameHasKeyedNonces bool   `json:"frame_has_keyed_nonces"`
 
 	// FrameMaxFee is EIP-8141's max_fee in ETH: one budget for execution, state and blob
-	// gas in place of per-gas caps. FrameHasMaxFee is false for the earlier per-gas layout.
-	FrameMaxFee    float64 `json:"frame_max_fee"`
-	FrameHasMaxFee bool    `json:"frame_has_max_fee"`
+	// gas in place of per-gas caps. FrameHasMaxFee is false for the earlier per-gas layout,
+	// which FrameLegacyFees marks. A frame transaction with neither has no envelope, so
+	// its per-gas cap is unknown.
+	FrameMaxFee     float64 `json:"frame_max_fee"`
+	FrameHasMaxFee  bool    `json:"frame_has_max_fee"`
+	FrameLegacyFees bool    `json:"frame_legacy_fees"`
 
 	// FrameBodyReverted marks a transaction whose ASSERT frame failed, which reverts
 	// everything after the validation prefix rather than only its own atomic batch.
