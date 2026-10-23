@@ -673,10 +673,10 @@ func TestFrameFailureSummaryCountsFailedFrames(t *testing.T) {
 		t.Errorf("summary = %q, want none when no frame failed", got)
 	}
 
-	// A failed POST_TX frame reverts the body, which the summary has to say.
-	frames = append(frames, &pendingFrame{hasResult: true, mode: uint8(txtypes.FrameModePostTx), status: txtypes.FrameStatusFailed})
+	// A failed ASSERT frame reverts the body, which the summary has to say.
+	frames = append(frames, &pendingFrame{hasResult: true, mode: uint8(txtypes.FrameModeAssert), status: txtypes.FrameStatusFailed})
 
-	if got, want := frameFailureSummary(frames), "3 of 6 frames failed, the POST_TX frame among them (execution body reverted)"; got != want {
+	if got, want := frameFailureSummary(frames), "3 of 6 frames failed, the ASSERT frame among them (execution body reverted)"; got != want {
 		t.Errorf("summary = %q, want %q", got, want)
 	}
 }

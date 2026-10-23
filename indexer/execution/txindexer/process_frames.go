@@ -98,13 +98,13 @@ func (f *pendingFrame) succeeded() bool {
 }
 
 // frameFailureSummary states how many of a transaction's frames failed, as "k of n frames
-// failed", or nothing when none did. A failed POST_TX frame is called out, since it
+// failed", or nothing when none did. A failed ASSERT frame is called out, since it
 // reverts the whole execution body rather than one atomic batch. The summary is stored as
 // the transaction's revert reason: the frames' own results live only in blockdb, and this
 // is what every listing of the transaction has to say about them.
 func frameFailureSummary(frames []*pendingFrame) string {
 	failed := 0
-	postTxFailed := false
+	assertFailed := false
 
 	for _, frame := range frames {
 		if !frame.hasResult || frame.status != txtypes.FrameStatusFailed {
@@ -113,8 +113,8 @@ func frameFailureSummary(frames []*pendingFrame) string {
 
 		failed++
 
-		if frame.mode == uint8(txtypes.FrameModePostTx) {
-			postTxFailed = true
+		if frame.mode == uint8(txtypes.FrameModeAssert) {
+			assertFailed = true
 		}
 	}
 
@@ -123,8 +123,8 @@ func frameFailureSummary(frames []*pendingFrame) string {
 	}
 
 	summary := fmt.Sprintf("%d of %d frames failed", failed, len(frames))
-	if postTxFailed {
-		summary += ", the POST_TX frame among them (execution body reverted)"
+	if assertFailed {
+		summary += ", the ASSERT frame among them (execution body reverted)"
 	}
 
 	return summary
@@ -206,7 +206,7 @@ func (ctx *txProcessingContext) resolveFrames(
 // markUndoneFrames flags the frames whose effects did not survive.
 //
 // A frame's status says whether it ran, not whether what it did lasted: an atomic batch
-// that fails is unrolled, and a failing POST_TX frame reverts the whole execution body.
+// that fails is unrolled, and a failing ASSERT frame reverts the whole execution body.
 // Both rules live in txtypes, which owns them, so the answer is asked for rather than
 // restated here.
 func markUndoneFrames(frames []*pendingFrame, extra *txtypes.FrameReceiptExtra, frameTx *txtypes.FrameTx) {
