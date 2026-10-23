@@ -2787,6 +2787,8 @@ func applyFrameTxEnvelope(pageData *models.TransactionPageData, frameTx *txtypes
 	pageData.FrameExtensions = frameTx.Extensions.String()
 	pageData.FrameHasKeyedNonces = frameTx.HasKeyedNonces()
 
+	pageData.FrameLegacyFees = frameTx.LegacyFees
+
 	if maxFee := frameTx.GetMaxFee(); maxFee != nil {
 		maxFeeFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(maxFee), big.NewFloat(1e18)).Float64()
 		pageData.FrameMaxFee = maxFeeFloat
