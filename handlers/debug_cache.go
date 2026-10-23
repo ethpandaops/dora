@@ -389,14 +389,18 @@ func getCachedBlockDbStoredData() *BlockDbStoredData {
 	if !cache.refreshing && (cache.data == nil || time.Since(cache.data.UpdatedAt) > blockDbStoredDataRefreshInterval) {
 		cache.refreshing = true
 		go func() {
-			data := buildBlockDbStoredData()
+			var data *BlockDbStoredData
+			defer func() {
+				cache.mutex.Lock()
+				defer cache.mutex.Unlock()
+				if data != nil {
+					cache.data = data
+				}
+				cache.refreshing = false
+			}()
+			defer utils.HandleSubroutinePanic("getCachedBlockDbStoredData", nil)
 
-			cache.mutex.Lock()
-			defer cache.mutex.Unlock()
-			if data != nil {
-				cache.data = data
-			}
-			cache.refreshing = false
+			data = buildBlockDbStoredData()
 		}()
 	}
 

@@ -78,7 +78,11 @@ const (
 // On PostgreSQL the planner is asked first and its row estimate is used when the exact count
 // would be expensive; the exact count is used otherwise and always on SQLite.
 func countFilteredRows(ctx context.Context, fromClause string, args []any, offset uint64, fetched int, limit uint32) (uint64, error) {
-	fetchedEnd := offset + uint64(fetched)
+	// fetchedEnd is the number of rows the page proves to exist; the count never reports less.
+	fetchedEnd := uint64(0)
+	if fetched > 0 {
+		fetchedEnd = offset + uint64(fetched)
+	}
 	if uint32(fetched) < limit && (fetched > 0 || offset == 0) {
 		return fetchedEnd, nil
 	}
