@@ -13,8 +13,12 @@ import (
 
 // Envelope is the ExecutionProofEnvelope a prover signs: the proof bytes, the
 // proof type and the beacon block the proof belongs to.
+//
+// The proof bytes are hashed as List[byte, MAX_PROOF_SIZE], as the provers sign
+// and Lighthouse verifies them; the EIP-8025 spec defines ProofData as a
+// ProgressiveList, which merkleizes differently.
 type Envelope struct {
-	ProofData       []byte      `ssz-type:"progressive-list"`
+	ProofData       []byte      `ssz-max:"4194304"`
 	ProofType       uint8       `ssz-type:"uint8"`
 	BeaconBlockRoot phase0.Root `ssz-size:"32"`
 }

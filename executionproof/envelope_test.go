@@ -1,6 +1,7 @@
 package executionproof
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"testing"
 
@@ -91,4 +92,33 @@ func hexZeros(n int) string {
 		zeros[i] = '0'
 	}
 	return string(zeros)
+}
+
+// TestEnvelopeRoot pins the envelope root to an independent merkleization with
+// the proof bytes as List[byte, MAX_PROOF_SIZE], the root the provers sign.
+func TestEnvelopeRoot(t *testing.T) {
+	hash := func(a, b [32]byte) [32]byte { return sha256.Sum256(append(a[:], b[:]...)) }
+
+	// List[byte, 4194304]: one data chunk below a tree of 131072 chunks (depth 17)
+	var node [32]byte
+	copy(node[:], []byte{1, 2, 3})
+
+	var zero [32]byte
+	for range 17 {
+		node = hash(node, zero)
+		zero = hash(zero, zero)
+	}
+
+	var length [32]byte
+	length[0] = 3
+	proofData := hash(node, length)
+
+	var proofType, blockRoot [32]byte
+	proofType[0] = 5
+	blockRoot[0] = 0xaa
+	expected := hash(hash(proofData, proofType), hash(blockRoot, [32]byte{}))
+
+	root, err := dynssz.NewDynSsz(nil).HashTreeRoot(&Envelope{ProofData: []byte{1, 2, 3}, ProofType: 5, BeaconBlockRoot: phase0.Root{0xaa}})
+	require.NoError(t, err)
+	assert.Equal(t, expected, root)
 }
