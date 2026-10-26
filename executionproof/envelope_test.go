@@ -95,23 +95,20 @@ func hexZeros(n int) string {
 }
 
 // TestEnvelopeRoot pins the envelope root to an independent merkleization with
-// the proof bytes as List[byte, MAX_PROOF_SIZE], the root the provers sign.
+// the proof bytes as ProgressiveList[byte] (EIP-8025 ProofData, EIP-7916), the
+// root the prover signature covers. A sign/verify round trip alone passes with
+// any list type.
 func TestEnvelopeRoot(t *testing.T) {
 	hash := func(a, b [32]byte) [32]byte { return sha256.Sum256(append(a[:], b[:]...)) }
 
-	// List[byte, 4194304]: one data chunk below a tree of 131072 chunks (depth 17)
-	var node [32]byte
-	copy(node[:], []byte{1, 2, 3})
-
-	var zero [32]byte
-	for range 17 {
-		node = hash(node, zero)
-		zero = hash(zero, zero)
-	}
+	// progressive list with one chunk: the 1-leaf subtree next to the
+	// zero-terminated rest
+	var chunk [32]byte
+	copy(chunk[:], []byte{1, 2, 3})
 
 	var length [32]byte
 	length[0] = 3
-	proofData := hash(node, length)
+	proofData := hash(hash(chunk, [32]byte{}), length)
 
 	var proofType, blockRoot [32]byte
 	proofType[0] = 5
