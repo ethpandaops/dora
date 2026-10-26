@@ -40,7 +40,7 @@
         return unknownText ? '<span class="badge rounded-pill text-bg-secondary me-1">' + escapeHtml(unknownText) + '</span>' : '';
       }
       function chip(text, title) {
-        return '<span class="badge rounded-pill text-bg-light border text-body-secondary fw-normal me-1"' + (title ? ' data-bs-toggle="tooltip" title="' + escapeHtml(title) + '"' : '') + '>' + escapeHtml(text) + '</span>';
+        return '<span class="badge rounded-pill bg-body-tertiary border text-body-secondary fw-normal me-1"' + (title ? ' data-bs-toggle="tooltip" title="' + escapeHtml(title) + '"' : '') + '>' + escapeHtml(text) + '</span>';
       }
       function validatorLabel(index, name) {
         var label = name ? escapeHtml(name) + ' (' + index + ')' : index;
