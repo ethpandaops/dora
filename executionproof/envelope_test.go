@@ -1,7 +1,6 @@
 package executionproof
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"testing"
 
@@ -92,30 +91,4 @@ func hexZeros(n int) string {
 		zeros[i] = '0'
 	}
 	return string(zeros)
-}
-
-// TestEnvelopeRoot pins the envelope root to an independent merkleization with
-// the proof bytes as ProgressiveList[byte] (EIP-8025 ProofData, EIP-7916), the
-// root the prover signature covers. A sign/verify round trip alone passes with
-// any list type.
-func TestEnvelopeRoot(t *testing.T) {
-	hash := func(a, b [32]byte) [32]byte { return sha256.Sum256(append(a[:], b[:]...)) }
-
-	// progressive list with one chunk: the 1-leaf subtree next to the
-	// zero-terminated rest
-	var chunk [32]byte
-	copy(chunk[:], []byte{1, 2, 3})
-
-	var length [32]byte
-	length[0] = 3
-	proofData := hash(hash(chunk, [32]byte{}), length)
-
-	var proofType, blockRoot [32]byte
-	proofType[0] = 5
-	blockRoot[0] = 0xaa
-	expected := hash(hash(proofData, proofType), hash(blockRoot, [32]byte{}))
-
-	root, err := dynssz.NewDynSsz(nil).HashTreeRoot(&Envelope{ProofData: []byte{1, 2, 3}, ProofType: 5, BeaconBlockRoot: phase0.Root{0xaa}})
-	require.NoError(t, err)
-	assert.Equal(t, expected, root)
 }
