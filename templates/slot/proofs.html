@@ -61,7 +61,13 @@
         var committed = proof.committed_public_input;
 
         var badges = '';
-        if (proof.verification === 'valid') {
+        if (proof.verifier === 'mock') {
+          // a devnet's mock proof: only the public input it carries was checked
+          badges += '<span class="badge rounded-pill text-bg-warning me-1" data-bs-toggle="tooltip" title="Only the public input was checked, no zkVM verifier ran"><i class="fa fa-flask me-1"></i>mock proof</span>';
+          badges += proof.verification === 'valid'
+            ? '<span class="badge rounded-pill text-bg-success me-1">public input valid</span>'
+            : '<span class="badge rounded-pill text-bg-danger me-1">public input invalid</span>';
+        } else if (proof.verification === 'valid') {
           badges += '<span class="badge rounded-pill text-bg-success me-1" data-bs-toggle="tooltip" title="Verified with the ere ' + escapeHtml(proof.verifier) + ' verifier"><i class="fa fa-shield-halved me-1"></i>zk proof valid</span>';
         } else if (proof.verification === 'invalid') {
           badges += '<span class="badge rounded-pill text-bg-danger me-1" data-bs-toggle="tooltip" title="Rejected by the ere ' + escapeHtml(proof.verifier) + ' verifier"><i class="fa fa-shield-halved me-1"></i>zk proof invalid</span>';

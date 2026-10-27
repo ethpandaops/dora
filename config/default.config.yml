@@ -137,6 +137,7 @@ indexer:
   #  disabled: false
   #  verificationDisabled: false  # verify the proofs with the embedded zkVM verifiers
   #  verifierCacheDir: ""         # compiled verifier cache kept across restarts (default: dora-verifiers in the temp dir)
+  #  allowMockProofs: false       # devnets: accept zkboost mock proofs that carry the block's public input
 
 executionIndexer:
   enabled: false # enable execution data indexing

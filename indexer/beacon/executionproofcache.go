@@ -135,7 +135,9 @@ type executionProofCache struct {
 	verifiersMutex       sync.Mutex
 	verifiersRetryAt     time.Time
 	verificationDisabled bool
-	verifierCacheDir     string
+	// allowMockProofs accepts zkboost mock proofs (devnets).
+	allowMockProofs  bool
+	verifierCacheDir string
 
 	cacheMutex sync.RWMutex
 	entries    map[phase0.Root]*proofEntry
@@ -159,6 +161,7 @@ func newExecutionProofCache(indexer *Indexer) *executionProofCache {
 		cache.disabled = cfg.Disabled
 		cache.verificationDisabled = cfg.VerificationDisabled
 		cache.verifierCacheDir = cfg.VerifierCacheDir
+		cache.allowMockProofs = cfg.AllowMockProofs
 	}
 
 	return cache
@@ -491,6 +494,13 @@ func (cache *executionProofCache) verifyProofs(entry *proofEntry, proofs []*btyp
 			}
 			verdict.status = result.Status
 			verdict.generation = result.Generation
+
+			if result.Status != verifiers.StatusValid && cache.allowMockProofs {
+				if status, isMock := mockVerdict(proof.ProofData, expected); isMock {
+					verdict.status = status
+					verdict.generation = executionproof.MockVerifier
+				}
+			}
 		}
 		verdicts = append(verdicts, verdict)
 	}
@@ -509,6 +519,22 @@ func (cache *executionProofCache) verifyProofs(entry *proofEntry, proofs []*btyp
 		delete(entry.unverified, key)
 		entry.dirty[key] = true
 	}
+}
+
+// mockVerdict checks a proof the zkVM verifiers did not validate as zkboost mock
+// proof (devnets): valid when it carries the expected public input. isMock is
+// false for proofs that are no mock proofs.
+func mockVerdict(proofData []byte, expected *executionproof.PublicInput) (status verifiers.Status, isMock bool) {
+	committed, err := executionproof.DecodeMock(proofData)
+	if err != nil {
+		return verifiers.StatusUnknown, false
+	}
+
+	if committed.PublicInput == nil || *committed.PublicInput != *expected {
+		return verifiers.StatusInvalid, true
+	}
+
+	return verifiers.StatusValid, true
 }
 
 // errPayloadPending is returned by expectedPublicInput while the block's

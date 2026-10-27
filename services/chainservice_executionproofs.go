@@ -111,7 +111,7 @@ func (bs *ChainService) AnalyzeBlockExecutionProofs(ctx context.Context, slot ph
 			entry.DecodeError = "unassigned proof type"
 		} else if proof.ProofData == nil {
 			entry.DecodeError = "proof bytes not available"
-		} else if committed, err := executionproof.DecodeCommitted(entry.Type.ZkVM, proof.ProofData); err != nil {
+		} else if committed, err := decodeCommitted(entry.Type.ZkVM, proof); err != nil {
 			entry.DecodeError = err.Error()
 		} else {
 			entry.Committed = committed
@@ -174,4 +174,14 @@ func (bs *ChainService) expectedExecutionProofPublicInput(ctx context.Context, b
 		ChainID:               chainID,
 		SchemaID:              schemaID,
 	}, ""
+}
+
+// decodeCommitted reads the committed values of a proof: as zkboost mock proof
+// for a proof accepted as one, else with the decoder of its zkVM.
+func decodeCommitted(zkvm executionproof.ZkVM, proof *btypes.SlotExecutionProof) (*executionproof.Committed, error) {
+	if proof.Verifier == executionproof.MockVerifier {
+		return executionproof.DecodeMock(proof.ProofData)
+	}
+
+	return executionproof.DecodeCommitted(zkvm, proof.ProofData)
 }
