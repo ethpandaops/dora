@@ -117,6 +117,13 @@ func buildSlotExecutionProofsData(ctx context.Context, slot phase0.Slot, blockRo
 			model.ZkVM = string(entry.Type.ZkVM)
 			model.ProgramVK = fmt.Sprintf("0x%x", entry.Type.ProgramVK)
 		}
+		if proof.SeenTime != 0 {
+			model.SeenTime = proof.SeenTime
+			slotStart := uint64(services.GlobalBeaconService.GetChainState().SlotToTime(slot).UnixMilli())
+			if proof.SeenTime > slotStart {
+				model.SeenDelay = proof.SeenTime - slotStart
+			}
+		}
 		model.ValidatorIndex = proof.ValidatorIndex
 		model.ValidatorName = services.GlobalBeaconService.GetValidatorNameAt(proof.ValidatorIndex, slot)
 		model.Signature = fmt.Sprintf("0x%x", proof.Signature[:])

@@ -135,14 +135,19 @@ func TestExecutionProofCache(t *testing.T) {
 
 	// a proof of a block the indexer has not seen waits for the block
 	rootC, rootD := phase0.Root{0xc}, phase0.Root{0xd}
+	arrived := uint64(time.Now().UnixMilli())
 	cache.addProof(testRpcProof(3, rootC, 10))
 	cache.addProof(testRpcProof(3, rootC, 20))
 	cache.addProof(testRpcProof(4, rootD, 10))
 	require.Len(t, cache.held[rootC], 1, "the first proof of a type is held")
 	require.Empty(t, cache.entries)
+	time.Sleep(20 * time.Millisecond)
+	tracked := uint64(time.Now().UnixMilli())
 	cache.trackBlock(14, rootC)
 	waitProofs(t, cache, rootC, 1)
 	require.Equal(t, uint32(10), cache.getProofs(rootC)[0].DataSize)
+	seenC := cache.getProofs(rootC)[0].SeenTime
+	require.True(t, seenC >= arrived && seenC < tracked, "a held proof keeps its arrival time")
 	require.Nil(t, cache.held[rootC])
 
 	// another prover's proof of the same type is a distinct proof, kept after
@@ -180,7 +185,7 @@ func TestExecutionProofVerification(t *testing.T) {
 	root := phase0.Root{0xc}
 	cache.trackBlock(10, root)
 	entry := cache.entries[root]
-	proofs := []*btypes.SlotExecutionProof{convertProof(testRpcProof(1, root, 10)), convertProof(testRpcProof(200, root, 10))}
+	proofs := []*btypes.SlotExecutionProof{convertProof(testRpcProof(1, root, 10), 0), convertProof(testRpcProof(200, root, 10), 0)}
 	cache.verifyProofs(entry, proofs)
 	require.Equal(t, map[proofKey]bool{{proofType: 1, prover: 1}: true}, entry.unverified)
 	require.Equal(t, uint8(verifiers.StatusUnknown), proofs[0].Verification)
@@ -210,4 +215,29 @@ func TestExecutionProofVerification(t *testing.T) {
 	delete(entry.unverified, proofKey{proofType: 1, prover: 1})
 	cache.verifyProofs(entry, proofs[:1])
 	require.Empty(t, entry.unverified)
+}
+
+func TestExecutionProofItemSeenTime(t *testing.T) {
+	root := phase0.Root{0xe}
+	proof := convertProof(testRpcProof(2, root, 16), 1_793_000_000_123)
+	proof.Verifier = "v0.19.2"
+
+	decoded, err := decodeExecutionProofItem(root, encodeExecutionProofItem(proof), true)
+	require.NoError(t, err)
+	require.Equal(t, proof.SeenTime, decoded.SeenTime)
+	require.Equal(t, "v0.19.2", decoded.Verifier)
+	require.Equal(t, proof.ProofData, decoded.ProofData)
+	require.Equal(t, uint32(16), decoded.DataSize)
+
+	// an item written before the seen time was stored: no flag, no field
+	item := encodeExecutionProofItem(proof)
+	legacy := append([]byte(nil), item[:proofItemHeaderSize+len(proof.Verifier)]...)
+	legacy[0] &^= proofItemFlagSeenTime
+	legacy = append(legacy, proof.ProofData...)
+
+	decoded, err = decodeExecutionProofItem(root, legacy, true)
+	require.NoError(t, err)
+	require.Zero(t, decoded.SeenTime)
+	require.Equal(t, proof.ProofData, decoded.ProofData)
+	require.Equal(t, uint32(16), decoded.DataSize)
 }

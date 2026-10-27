@@ -560,6 +560,11 @@ type SlotExecutionProof struct {
 	ProverActive   bool   `json:"prover_active"`
 	Size           uint32 `json:"size"`
 	DownloadUrl    string `json:"download_url"`
+	// SeenTime is when the explorer first received the proof (unix
+	// milliseconds) and SeenDelay how long after the start of the slot (ms);
+	// both 0 when unknown.
+	SeenTime  uint64 `json:"seen_time,omitempty"`
+	SeenDelay uint64 `json:"seen_delay,omitempty"`
 	// The values read from the proof bytes: the public input it commits to, and
 	// the zkVM-specific metadata around it (nil/empty where the zkVM has none).
 	ProofMode            string                         `json:"proof_mode,omitempty"`

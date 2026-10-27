@@ -39,6 +39,9 @@ const (
 	// check outcome as in the meta object.
 	proofItemFlagSignatureValid = 1
 	proofItemFlagProverActive   = 2
+	// proofItemFlagSeenTime marks an item carrying the time the proof was first
+	// seen (uint64 unix milliseconds) after the verifier name.
+	proofItemFlagSeenTime = 4
 )
 
 // proofKey identifies a proof of a block: a prover publishes one proof per type,
@@ -105,6 +108,8 @@ type heldProof struct {
 	proof *rpc.ExecutionProof
 	// seen is the slot the proof arrived at; it is dropped proofHoldSlots later.
 	seen phase0.Slot
+	// seenTime is when the proof arrived (unix milliseconds).
+	seenTime uint64
 }
 
 // executionProofCache collects the EIP-8025 execution proofs of recent blocks from
@@ -248,7 +253,7 @@ func (cache *executionProofCache) trackBlockLocked(slot phase0.Slot, root phase0
 		cache.entries[root] = entry
 
 		for _, held := range cache.held[root] {
-			cache.receiveLocked(entry, held.proof)
+			cache.receiveLocked(entry, held.proof, held.seenTime)
 		}
 		delete(cache.held, root)
 	}
@@ -263,6 +268,8 @@ func (cache *executionProofCache) addProof(proof *rpc.ExecutionProof) {
 		return
 	}
 
+	seenTime := uint64(time.Now().UnixMilli())
+
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
@@ -270,7 +277,7 @@ func (cache *executionProofCache) addProof(proof *rpc.ExecutionProof) {
 	if entry == nil {
 		block := cache.indexer.blockCache.getBlockByRoot(proof.BeaconBlockRoot)
 		if block == nil {
-			cache.holdLocked(proof)
+			cache.holdLocked(proof, seenTime)
 			return
 		}
 		if block.Slot < cache.cutoff || uint64(block.Slot) < cache.indexer.metadataCutoff.Load() {
@@ -279,12 +286,12 @@ func (cache *executionProofCache) addProof(proof *rpc.ExecutionProof) {
 		entry = cache.trackBlockLocked(block.Slot, proof.BeaconBlockRoot)
 	}
 
-	cache.receiveLocked(entry, proof)
+	cache.receiveLocked(entry, proof, seenTime)
 }
 
 // holdLocked keeps a proof of an unknown block, one per type and prover. Caller
 // must hold the write lock.
-func (cache *executionProofCache) holdLocked(proof *rpc.ExecutionProof) {
+func (cache *executionProofCache) holdLocked(proof *rpc.ExecutionProof, seenTime uint64) {
 	held := cache.held[proof.BeaconBlockRoot]
 	for _, other := range held {
 		if other.proof.ProofType == proof.ProofType && other.proof.ValidatorIndex == proof.ValidatorIndex {
@@ -292,15 +299,17 @@ func (cache *executionProofCache) holdLocked(proof *rpc.ExecutionProof) {
 		}
 	}
 	cache.held[proof.BeaconBlockRoot] = append(held, heldProof{
-		proof: proof,
-		seen:  cache.indexer.consensusPool.GetChainState().CurrentSlot(),
+		proof:    proof,
+		seen:     cache.indexer.consensusPool.GetChainState().CurrentSlot(),
+		seenTime: seenTime,
 	})
 }
 
-// receiveLocked queues a proof of the entry's block for checking unless the
-// prover's proof of that type is known. Caller must hold the write lock.
-func (cache *executionProofCache) receiveLocked(entry *proofEntry, proof *rpc.ExecutionProof) {
-	converted := convertProof(proof)
+// receiveLocked queues a proof of the entry's block, first seen at seenTime,
+// for checking unless the prover's proof of that type is known. Caller must
+// hold the write lock.
+func (cache *executionProofCache) receiveLocked(entry *proofEntry, proof *rpc.ExecutionProof, seenTime uint64) {
+	converted := convertProof(proof, seenTime)
 	if entry.hasProof(keyOf(converted)) {
 		return
 	}
@@ -604,13 +613,15 @@ func (cache *executionProofCache) addProofsLocked(entry *proofEntry, proofs []*b
 	}
 }
 
-// convertProof turns a proof envelope delivered by a node into a meta object proof.
-func convertProof(proof *rpc.ExecutionProof) *btypes.SlotExecutionProof {
+// convertProof turns a proof envelope delivered by a node, first seen at
+// seenTime (unix milliseconds), into a meta object proof.
+func convertProof(proof *rpc.ExecutionProof, seenTime uint64) *btypes.SlotExecutionProof {
 	return &btypes.SlotExecutionProof{
 		BlockRoot:      proof.BeaconBlockRoot,
 		ProofType:      proof.ProofType,
 		ValidatorIndex: proof.ValidatorIndex,
 		Signature:      proof.Signature,
+		SeenTime:       seenTime,
 		DataSize:       uint32(len(proof.ProofData)),
 		ProofData:      proof.ProofData,
 	}
@@ -638,13 +649,15 @@ func parseExecutionProofItemKey(item []byte) (phase0.Root, proofKey, bool) {
 }
 
 // encodeExecutionProofItem encodes a proof as crash copy: flags, type, validator
-// index, signature, verification outcome and verifier, then the proof bytes.
+// index, signature, verification outcome and verifier, the time the proof was
+// first seen, then the proof bytes.
 func encodeExecutionProofItem(proof *btypes.SlotExecutionProof) []byte {
 	verifier := proof.Verifier
 	if len(verifier) > 0xff {
 		verifier = verifier[:0xff]
 	}
-	data := make([]byte, proofItemHeaderSize+len(verifier)+len(proof.ProofData))
+	data := make([]byte, proofItemHeaderSize+len(verifier)+8+len(proof.ProofData))
+	data[0] = proofItemFlagSeenTime
 	if proof.SignatureValid {
 		data[0] |= proofItemFlagSignatureValid
 	}
@@ -657,7 +670,8 @@ func encodeExecutionProofItem(proof *btypes.SlotExecutionProof) []byte {
 	data[106] = proof.Verification
 	data[107] = uint8(len(verifier))
 	copy(data[proofItemHeaderSize:], verifier)
-	copy(data[proofItemHeaderSize+len(verifier):], proof.ProofData)
+	binary.BigEndian.PutUint64(data[proofItemHeaderSize+len(verifier):], proof.SeenTime)
+	copy(data[proofItemHeaderSize+len(verifier)+8:], proof.ProofData)
 	return data
 }
 
@@ -668,7 +682,11 @@ func decodeExecutionProofItem(root phase0.Root, data []byte, withData bool) (*bt
 	}
 
 	verifierLen := int(data[107])
-	if len(data) < proofItemHeaderSize+verifierLen {
+	dataStart := proofItemHeaderSize + verifierLen
+	if data[0]&proofItemFlagSeenTime != 0 {
+		dataStart += 8
+	}
+	if len(data) < dataStart {
 		return nil, fmt.Errorf("execution proof item too short")
 	}
 	proof := &btypes.SlotExecutionProof{
@@ -679,11 +697,14 @@ func decodeExecutionProofItem(root phase0.Root, data []byte, withData bool) (*bt
 		ValidatorIndex: binary.BigEndian.Uint64(data[2:10]),
 		Verification:   data[106],
 		Verifier:       string(data[proofItemHeaderSize : proofItemHeaderSize+verifierLen]),
-		DataSize:       uint32(len(data) - proofItemHeaderSize - verifierLen),
+		DataSize:       uint32(len(data) - dataStart),
+	}
+	if data[0]&proofItemFlagSeenTime != 0 {
+		proof.SeenTime = binary.BigEndian.Uint64(data[proofItemHeaderSize+verifierLen : dataStart])
 	}
 	copy(proof.Signature[:], data[10:106])
 	if withData {
-		proof.ProofData = data[proofItemHeaderSize+verifierLen:]
+		proof.ProofData = data[dataStart:]
 	}
 
 	return proof, nil

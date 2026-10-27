@@ -19,7 +19,9 @@
 //	├── Signature:      96 bytes (the prover's envelope signature)
 //	├── Verification:   uint8 (outcome of the zkVM verification)
 //	├── VerifierLen:    uint8
-//	└── Verifier:       VerifierLen bytes (the verifier release)
+//	├── Verifier:       VerifierLen bytes (the verifier release)
+//	└── SeenTime:       uint64 (unix milliseconds the explorer first received the
+//	                    proof; absent in records written before it was tracked)
 //
 // EXECUTION PROOF DATA section (snappy compressed): the proof bytes of all
 // proofs of the slot, concatenated in index order. Proofs can be large (up to
@@ -62,6 +64,9 @@ type SlotExecutionProof struct {
 	// verifier release that produced it.
 	Verification uint8
 	Verifier     string
+	// SeenTime is when the explorer first received the proof (unix
+	// milliseconds), 0 when unknown.
+	SeenTime uint64
 
 	// DataSize is the proof size in bytes. It is known from the index even when
 	// the proof bytes were not loaded.
@@ -104,7 +109,7 @@ func encodeExecutionProofSections(proofs []*SlotExecutionProof) (*SlotMetaSectio
 			return nil, nil, fmt.Errorf("execution proof verifier name too long")
 		}
 
-		_ = binary.Write(&indexBuf, binary.BigEndian, uint16(executionProofRecordSize+len(proof.Verifier)))
+		_ = binary.Write(&indexBuf, binary.BigEndian, uint16(executionProofRecordSize+len(proof.Verifier)+8))
 		indexBuf.Write(proof.BlockRoot[:])
 		indexBuf.WriteByte(proof.ProofType)
 		indexBuf.WriteByte(flags)
@@ -115,6 +120,7 @@ func encodeExecutionProofSections(proofs []*SlotExecutionProof) (*SlotMetaSectio
 		indexBuf.WriteByte(proof.Verification)
 		indexBuf.WriteByte(uint8(len(proof.Verifier)))
 		indexBuf.WriteString(proof.Verifier)
+		_ = binary.Write(&indexBuf, binary.BigEndian, proof.SeenTime)
 
 		dataBuf.Write(proof.ProofData)
 	}
@@ -177,6 +183,9 @@ func decodeExecutionProofSections(indexSection *SlotMetaSection, dataSection *Sl
 		}
 		proof.Verification = record[146]
 		proof.Verifier = string(record[executionProofRecordSize : executionProofRecordSize+verifierLen])
+		if seenPos := executionProofRecordSize + verifierLen; len(record) >= seenPos+8 {
+			proof.SeenTime = binary.BigEndian.Uint64(record[seenPos : seenPos+8])
+		}
 
 		if dataSection != nil {
 			offset := int(binary.BigEndian.Uint32(record[34:38]))
@@ -194,7 +203,8 @@ func decodeExecutionProofSections(indexSection *SlotMetaSection, dataSection *Sl
 }
 
 // mergeSlotExecutionProofs unifies the proofs of two objects, keyed by block root
-// and proof type. For proofs present in both the second (newer) wins.
+// and proof type. For proofs present in both the second (newer) wins, keeping
+// the earlier time the proof was first seen.
 func mergeSlotExecutionProofs(a, b []*SlotExecutionProof) []*SlotExecutionProof {
 	if len(a) == 0 && len(b) == 0 {
 		return nil
@@ -206,6 +216,11 @@ func mergeSlotExecutionProofs(a, b []*SlotExecutionProof) []*SlotExecutionProof 
 		for _, proof := range src {
 			key := proof.Key()
 			if idx, ok := index[key]; ok {
+				if seen := merged[idx].SeenTime; seen != 0 && (proof.SeenTime == 0 || seen < proof.SeenTime) {
+					copied := *proof
+					copied.SeenTime = seen
+					proof = &copied
+				}
 				merged[idx] = proof
 				continue
 			}

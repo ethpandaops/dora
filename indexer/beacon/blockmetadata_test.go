@@ -112,7 +112,7 @@ func addTestProofs(cache *executionProofCache, root phase0.Root, proofs ...*rpc.
 
 	converted := make([]*btypes.SlotExecutionProof, 0, len(proofs))
 	for _, proof := range proofs {
-		converted = append(converted, convertProof(proof))
+		converted = append(converted, convertProof(proof, 0))
 	}
 	cache.addProofsLocked(cache.entries[root], converted)
 }

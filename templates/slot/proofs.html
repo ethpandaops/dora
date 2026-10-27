@@ -89,6 +89,12 @@
         var proverRows = row('Prover', validatorLabel(proof.validator_index, proof.validator_name) +
           (proof.prover_active ? '' : ' <span class="badge text-bg-danger">not active</span>'));
         proverRows += row('Signature', hexCell(proof.signature, 6));
+        if (proof.seen_time) {
+          var seen = new Date(proof.seen_time);
+          proverRows += row('First seen', '<span data-bs-toggle="tooltip" title="' + escapeHtml(seen.toISOString()) + '">' +
+            escapeHtml(seen.toLocaleTimeString([], { hour12: false }) + '.' + String(seen.getMilliseconds()).padStart(3, '0')) + '</span>' +
+            (proof.seen_delay ? ' <span class="text-body-secondary">+' + (proof.seen_delay / 1000).toFixed(1) + 's after slot start</span>' : ''));
+        }
 
         var inputRows;
         if (committed) {

@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,7 @@ func testExecutionProof(root byte, proofType uint8, size int, valid bool) *SlotE
 	proof.Signature[95] = proofType
 	proof.SignatureValid = valid
 	proof.ProverActive = valid
+	proof.SeenTime = 1_793_000_000_000 + uint64(proofType)
 	if valid {
 		proof.Verification = 1
 		proof.Verifier = "v0.17.2"
@@ -49,6 +51,7 @@ func TestSlotExecutionProofsRoundTrip(t *testing.T) {
 		require.Equal(t, want.ProverActive, proof.ProverActive)
 		require.Equal(t, want.Verification, proof.Verification)
 		require.Equal(t, want.Verifier, proof.Verifier)
+		require.Equal(t, want.SeenTime, proof.SeenTime)
 		require.Equal(t, want.ValidatorIndex, proof.ValidatorIndex)
 		require.Equal(t, want.Signature, proof.Signature)
 		require.Equal(t, uint32(len(want.ProofData)), proof.DataSize)
@@ -101,7 +104,56 @@ func TestSlotExecutionProofsMerge(t *testing.T) {
 	require.Same(t, newer, merged.ExecutionProofs[1], "newer object wins for the same (root, type)")
 	require.Equal(t, uint8(3), merged.ExecutionProofs[2].ProofType)
 
+	// the newer proof wins but keeps the earliest known first-seen time
+	seenTests := []struct {
+		name         string
+		older, newer uint64
+		expectedSeen uint64
+	}{
+		{name: "older seen first", older: 100, newer: 200, expectedSeen: 100},
+		{name: "newer seen first", older: 200, newer: 100, expectedSeen: 100},
+		{name: "newer unknown", older: 100, newer: 0, expectedSeen: 100},
+		{name: "older unknown", older: 0, newer: 200, expectedSeen: 200},
+	}
+	for _, tt := range seenTests {
+		older, newer := testExecutionProof(1, 2, 10, true), testExecutionProof(1, 2, 20, true)
+		older.SeenTime, newer.SeenTime = tt.older, tt.newer
+		result := mergeSlotExecutionProofs([]*SlotExecutionProof{older}, []*SlotExecutionProof{newer})
+		require.Len(t, result, 1, tt.name)
+		require.Equal(t, tt.expectedSeen, result[0].SeenTime, tt.name)
+		require.Len(t, result[0].ProofData, 20, tt.name)
+		require.Equal(t, tt.newer, newer.SeenTime, "%s: the input is not modified", tt.name)
+	}
+
 	// merging with an object without proofs keeps them
 	require.Len(t, MergeSlotMeta(merged, buildTestSlotMeta(5, nil, nil)).ExecutionProofs, 3)
 	require.Nil(t, MergeSlotMeta(buildTestSlotMeta(5, nil, nil), buildTestSlotMeta(5, nil, nil)).ExecutionProofs)
+}
+
+// TestSlotExecutionProofsWithoutSeenTime reads records written before the
+// first-seen time was stored.
+func TestSlotExecutionProofsWithoutSeenTime(t *testing.T) {
+	proofs := []*SlotExecutionProof{testExecutionProof(1, 1, 30, true), testExecutionProof(1, 5, 7, false)}
+	index, data, err := encodeExecutionProofSections(proofs)
+	require.NoError(t, err)
+
+	// drop the trailing seen time of every record
+	src := index.Data
+	legacy := append([]byte(nil), src[0:2]...)
+	pos := 2
+	for range binary.BigEndian.Uint16(src[0:2]) {
+		recordLen := int(binary.BigEndian.Uint16(src[pos : pos+2]))
+		legacy = binary.BigEndian.AppendUint16(legacy, uint16(recordLen-8))
+		legacy = append(legacy, src[pos+2:pos+2+recordLen-8]...)
+		pos += 2 + recordLen
+	}
+
+	decoded, err := decodeExecutionProofSections(&SlotMetaSection{Type: MetaSectionExecutionProofs, Data: legacy}, data)
+	require.NoError(t, err)
+	require.Len(t, decoded, 2)
+	for i, proof := range decoded {
+		require.Zero(t, proof.SeenTime)
+		require.Equal(t, proofs[i].Verifier, proof.Verifier)
+		require.Equal(t, proofs[i].ProofData, proof.ProofData)
+	}
 }
