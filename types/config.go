@@ -161,6 +161,8 @@ type Config struct {
 			// VerifierCacheDir keeps the compiled verifier modules across restarts
 			// (default: dora-verifiers in the temp dir, shared by the instances on a host).
 			VerifierCacheDir string `yaml:"verifierCacheDir" envconfig:"INDEXER_EXECUTION_PROOFS_VERIFIER_CACHE_DIR"`
+			// MockProofs reads the proofs as zkboost mock proofs (devnets only).
+			MockProofs bool `yaml:"mockProofs" envconfig:"INDEXER_EXECUTION_PROOFS_MOCK_PROOFS"`
 		} `yaml:"executionProofs"`
 	} `yaml:"indexer"`
 

@@ -159,6 +159,7 @@ func newExecutionProofCache(indexer *Indexer) *executionProofCache {
 		cache.disabled = cfg.Disabled
 		cache.verificationDisabled = cfg.VerificationDisabled
 		cache.verifierCacheDir = cfg.VerifierCacheDir
+		executionproof.MockProofs = cfg.MockProofs
 	}
 
 	return cache

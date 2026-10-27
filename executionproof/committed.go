@@ -29,12 +29,14 @@ type Committed struct {
 func DecodeCommitted(zkvm ZkVM, proof []byte) (*Committed, error) {
 	var committed *Committed
 	var err error
-	switch zkvm {
-	case ZkVMSP1:
+	switch {
+	case MockProofs:
+		committed, err = decodeMock(proof)
+	case zkvm == ZkVMSP1:
 		committed, err = decodeSP1(proof)
-	case ZkVMZisk:
+	case zkvm == ZkVMZisk:
 		committed, err = decodeZisk(proof)
-	case ZkVMOpenVM:
+	case zkvm == ZkVMOpenVM:
 		committed, err = decodeOpenVM(proof)
 	default:
 		return nil, fmt.Errorf("unsupported zkvm: %s", zkvm)
