@@ -118,15 +118,6 @@ func (v *Verifiers) Close(ctx context.Context) error {
 // error means a verifier could not be run (compile, instantiation or the
 // context), not a verdict on the proof.
 func (v *Verifiers) Verify(ctx context.Context, zkvm executionproof.ZkVM, programVK []byte, proof []byte) (*Result, error) {
-	// a mock proof carries its public values in the clear, for the caller to compare
-	if executionproof.MockProofs {
-		committed, err := executionproof.DecodeCommitted(zkvm, proof)
-		if err != nil {
-			return &Result{Status: StatusInvalid, Generation: executionproof.MockVerifier, Reason: err.Error()}, nil
-		}
-		return &Result{Status: StatusValid, Generation: executionproof.MockVerifier, PublicValues: committed.PublicValues}, nil
-	}
-
 	kind, ok := kinds[zkvm]
 	if !ok {
 		return &Result{Status: StatusUnverifiable, Reason: fmt.Sprintf("no verifier for %s", zkvm)}, nil

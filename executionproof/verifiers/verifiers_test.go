@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -79,34 +78,4 @@ func TestVerifiersFixtures(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, StatusInvalid, result.Status, "type %d with key of type %d", id, other.ID)
 	}
-}
-
-func TestVerifyMock(t *testing.T) {
-	executionproof.MockProofs = true
-	defer func() { executionproof.MockProofs = false }()
-	ctx := context.Background()
-	verifiers, err := New(ctx, "")
-	require.NoError(t, err)
-	defer func() { _ = verifiers.Close(ctx) }()
-
-	expected := executionproof.PublicInput{NewPayloadRequestRoot: phase0.Root{0xa5}, SuccessfulValidation: true, ChainID: 3151908, SchemaID: 0x1501}
-	mock := func(input executionproof.PublicInput) []byte {
-		return append(append([]byte{8, 0, 0, 0, 51, 0, 0, 0}, input.Marshal()...), 9, 9, 9)
-	}
-	// the cache's check: a valid proof whose public values are the expected public input
-	matches := func(proof []byte) bool {
-		result, err := verifiers.Verify(ctx, executionproof.ZkVMOpenVM, nil, proof)
-		require.NoError(t, err)
-		if result.Status != StatusValid {
-			return false
-		}
-		committed, err := executionproof.PublicInputFromPublicValues(executionproof.ZkVMOpenVM, result.PublicValues)
-		return err == nil && *committed == expected
-	}
-
-	require.True(t, matches(mock(expected)))
-	other := expected
-	other.NewPayloadRequestRoot[31] = 1
-	require.False(t, matches(mock(other)), "another payload's public input")
-	require.False(t, matches([]byte{1, 2, 3}), "not a mock proof")
 }
