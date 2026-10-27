@@ -550,8 +550,16 @@ func (bs *BeaconStream) processExecutionProofEvent(evt eventstream.StreamEvent) 
 	}
 }
 
-// parseExecutionProofEvent decodes the execution_proof event: a signed proof envelope.
+// parseExecutionProofEvent decodes the execution_proof event: a signed proof envelope,
+// wrapped in {"version", "data"} (https://github.com/ethereum/beacon-APIs/pull/665) or bare.
 func parseExecutionProofEvent(data []byte) (*ExecutionProof, error) {
+	var versioned struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(data, &versioned) == nil && len(versioned.Data) > 0 {
+		data = versioned.Data
+	}
+
 	var envelope executionProofEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, err
