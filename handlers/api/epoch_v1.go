@@ -112,11 +112,13 @@ func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 		lastSlot := chainState.EpochToSlot(phase0.Epoch(epoch+1)) - 1
 		passedSlotCount := uint64(specs.SlotsPerEpoch)
 		if currentSlot < lastSlot {
-			data.ScheduledBlocks = passedSlotCount - uint64(lastSlot-currentSlot)
+			data.ScheduledBlocks = min(uint64(lastSlot-currentSlot), passedSlotCount)
 			passedSlotCount -= data.ScheduledBlocks
 		}
 
-		data.MissedBlocks = passedSlotCount - uint64(dbEpoch.BlockCount)
+		if passedSlotCount > uint64(dbEpoch.BlockCount) {
+			data.MissedBlocks = passedSlotCount - uint64(dbEpoch.BlockCount)
+		}
 		data.BlocksCount = uint64(dbEpoch.BlockCount + dbEpoch.OrphanedCount)
 		data.OrphanedBlocks = uint64(dbEpoch.OrphanedCount)
 		data.ProposedBlocks = uint64(dbEpoch.BlockCount)

@@ -1,6 +1,7 @@
 package executionproof
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 
@@ -51,6 +52,14 @@ func TestEnvelopeSignature(t *testing.T) {
 	valid, err = envelope.VerifySignature(ds, domainType, pubkey, phase0.BLSSignature{}, forkVersion, genesisRoot)
 	require.NoError(t, err)
 	assert.False(t, valid)
+}
+
+func TestEnvelopeHashTreeRoot(t *testing.T) {
+	// from the consensus-specs eip8025 pyspec, where ProofData is ByteList[MAX_PROOF_SIZE]
+	envelope := &Envelope{ProofData: []byte{1, 2, 3}, ProofType: 5, BeaconBlockRoot: phase0.Root{0xaa}}
+	root, err := dynssz.NewDynSsz(nil).HashTreeRoot(envelope)
+	require.NoError(t, err)
+	assert.Equal(t, "6c80b82462fd8639ac695bb98318d8204a061a00bf246c55876754b2b1876aad", hex.EncodeToString(root[:]))
 }
 
 func TestSignedEnvelopeEncodings(t *testing.T) {
