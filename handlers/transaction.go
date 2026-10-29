@@ -2209,7 +2209,7 @@ func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
 
 // frameDurability asks txtypes which frames' effects survived, rebuilding the shapes it
 // needs from what the page holds: a frame's mode and flags decide the validation prefix,
-// the atomic batches and whether a ASSERT frame is present.
+// the atomic batches and whether an ASSERT frame is present.
 //
 // Frames raised from a receipt alone carry no mode or flags, which reads as a transaction
 // with no prefix and no batches - and the answer is then simply whether each frame
