@@ -249,10 +249,17 @@
             </div>
             {{ if ge .TxType 2 }}
             {{/* EIP-1559+ transaction */}}
+            {{ if .FrameHasMaxFee }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-8141 max_fee: the most the payer can be charged, one budget covering execution, state and blob gas">Max Fee:</span></div>
+              <div class="col-md-9">{{ printf "%.9f" .FrameMaxFee }} ETH</div>
+            </div>
+            {{ else if or (not .IsFrameTx) .FrameLegacyFees }}
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Maximum fee per gas the sender is willing to pay (maxFeePerGas)">Max Fee per Gas:</span></div>
               <div class="col-md-9">{{ printf "%.9f" .GasPrice }} Gwei</div>
             </div>
+            {{ end }}
             {{ if gt .TipPrice 0.0 }}
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Maximum priority fee (tip) per gas (maxPriorityFeePerGas)">Max Priority Fee:</span></div>
@@ -264,7 +271,7 @@
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Actual gas price paid per unit of gas">Effective Gas Price:</span></div>
               <div class="col-md-9">
                 {{ printf "%.9f" .EffGasPrice }} Gwei
-                {{ if gt .FeeSavingsPct 0.0 }}
+                {{ if and (gt .FeeSavingsPct 0.0) (or (not .IsFrameTx) .FrameLegacyFees) }}
                 <span class="badge rounded-pill text-bg-success ms-2" data-bs-toggle="tooltip" title="Savings compared to max fee">{{ printf "%.2f" .FeeSavingsPct }}% saved</span>
                 {{ end }}
               </div>

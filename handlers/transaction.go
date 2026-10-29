@@ -1959,7 +1959,7 @@ var frameModeNames = map[uint8]string{
 	uint8(txtypes.FrameModeDefault): "Default",
 	uint8(txtypes.FrameModeVerify):  "Verify",
 	uint8(txtypes.FrameModeSender):  "Sender",
-	uint8(txtypes.FrameModePostTx):  "Post-tx",
+	uint8(txtypes.FrameModeAssert):  "Assert",
 }
 
 // frameSpeciesNames turn the mempool rules' species names into readable ones.
@@ -1980,7 +1980,7 @@ var frameSpeciesNames = map[txtypes.FrameSpecies]string{
 	txtypes.SpeciesDeploy:       "Account deploy",
 	txtypes.SpeciesUserOp:       "User operation",
 	txtypes.SpeciesPostOp:       "Settlement",
-	txtypes.SpeciesPostTx:       "Assertion",
+	txtypes.SpeciesAssert:       "Assertion",
 	txtypes.SpeciesOther:        "Other",
 }
 
@@ -2009,7 +2009,7 @@ var frameSpeciesInfo = map[txtypes.FrameSpecies]string{
 	txtypes.SpeciesPostOp: "A call made after the operations have run, entered by the ENTRY_POINT predeploy rather " +
 		"than by the sender. It is where a paymaster squares up once the real cost is known.",
 
-	txtypes.SpeciesPostTx: "Runs after the transaction's operations, reading what they did through TXTRACE and " +
+	txtypes.SpeciesAssert: "Runs after the transaction's operations, reading what they did through TXTRACE and " +
 		"asserting something about it. If it reverts, the whole execution body is reverted with it - not just " +
 		"its own atomic batch - though the transaction still reaches the chain and its fee is still owed.",
 
@@ -2184,7 +2184,7 @@ func applyFrameReceiptExtra(pageData *models.TransactionPageData, receipt *txtyp
 //
 // A frame's status says whether it ran, not whether what it did lasted. Two rules discard
 // the effects of a frame that reports success: an atomic batch that fails is unrolled,
-// and a failing POST_TX frame reverts the whole execution body. Both live in txtypes,
+// and a failing ASSERT frame reverts the whole execution body. Both live in txtypes,
 // which owns the rules, so the shapes and statuses the page already holds are handed back
 // to it rather than the rules being restated here.
 func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
@@ -2209,7 +2209,7 @@ func markRolledBackFrames(frames []*models.TransactionPageDataFrame) {
 
 // frameDurability asks txtypes which frames' effects survived, rebuilding the shapes it
 // needs from what the page holds: a frame's mode and flags decide the validation prefix,
-// the atomic batches and whether a POST_TX frame is present.
+// the atomic batches and whether an ASSERT frame is present.
 //
 // Frames raised from a receipt alone carry no mode or flags, which reads as a transaction
 // with no prefix and no batches - and the answer is then simply whether each frame
@@ -2294,7 +2294,7 @@ func frameCaller(frame *txtypes.Frame, sender common.Address) common.Address {
 		return sender
 	}
 
-	// DEFAULT, VERIFY and POST_TX frames are all entered by the predeploy.
+	// DEFAULT, VERIFY and ASSERT frames are all entered by the predeploy.
 	return txtypes.EntryPoint
 }
 
@@ -2561,7 +2561,7 @@ func summarizeFrames(pageData *models.TransactionPageData) {
 // the success they earned.
 func applyFrameBodyReverted(pageData *models.TransactionPageData) {
 	for _, frame := range pageData.Frames {
-		if frame.Mode == uint8(txtypes.FrameModePostTx) && uint64(frame.Status) == txtypes.FrameStatusFailed {
+		if frame.Mode == uint8(txtypes.FrameModeAssert) && uint64(frame.Status) == txtypes.FrameStatusFailed {
 			pageData.FrameBodyReverted = true
 
 			return
@@ -2615,7 +2615,7 @@ func applyFrameTxStatus(pageData *models.TransactionPageData) {
 
 	if pageData.FrameBodyReverted {
 		pageData.FrameStatusDetail = fmt.Sprintf(
-			"%s, the POST_TX frame among them (execution body reverted). A failed POST_TX frame reverts "+
+			"%s, the ASSERT frame among them (execution body reverted). A failed ASSERT frame reverts "+
 				"everything the transaction did after its validation frames - not just its own atomic batch. "+
 				"The transaction still reached the chain and its fee was still owed: only the validation "+
 				"frames left anything behind.",
@@ -2786,6 +2786,14 @@ func applyFrameTxEnvelope(pageData *models.TransactionPageData, frameTx *txtypes
 	// independently, so this is a property of the transaction rather than of the chain.
 	pageData.FrameExtensions = frameTx.Extensions.String()
 	pageData.FrameHasKeyedNonces = frameTx.HasKeyedNonces()
+
+	pageData.FrameLegacyFees = frameTx.LegacyFees
+
+	if maxFee := frameTx.GetMaxFee(); maxFee != nil {
+		maxFeeFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(maxFee), big.NewFloat(1e18)).Float64()
+		pageData.FrameMaxFee = maxFeeFloat
+		pageData.FrameHasMaxFee = true
+	}
 
 	if !pageData.NonceIsAccount {
 		pageData.NonceKeys = make([]*models.TransactionPageDataNonceKey, 0, len(frameTx.NonceKeys))

@@ -635,7 +635,7 @@ func TestFailedAssertionFrameRevertsTheWholeBody(t *testing.T) {
 			{Index: 0, Mode: uint8(txtypes.FrameModeVerify), Flags: txtypes.ApproveExecutionAndPayment, Status: uint8(txtypes.FrameStatusSuccess)},
 			{Index: 1, Mode: uint8(txtypes.FrameModeSender), Status: uint8(txtypes.FrameStatusSuccess)},
 			{Index: 2, Mode: uint8(txtypes.FrameModeSender), Status: uint8(txtypes.FrameStatusSuccess)},
-			{Index: 3, Mode: uint8(txtypes.FrameModePostTx), Status: uint8(txtypes.FrameStatusFailed)},
+			{Index: 3, Mode: uint8(txtypes.FrameModeAssert), Status: uint8(txtypes.FrameStatusFailed)},
 		},
 	}
 
@@ -664,7 +664,7 @@ func TestFailedAssertionFrameRevertsTheWholeBody(t *testing.T) {
 		t.Errorf("status = %q, want Complete", pageData.StatusText)
 	}
 
-	for _, want := range []string{"1 of 4 frames failed (frame #3)", "POST_TX frame among them (execution body reverted)"} {
+	for _, want := range []string{"1 of 4 frames failed (frame #3)", "ASSERT frame among them (execution body reverted)"} {
 		if !strings.Contains(pageData.FrameStatusDetail, want) {
 			t.Errorf("status detail %q does not mention %q", pageData.FrameStatusDetail, want)
 		}
@@ -860,22 +860,50 @@ func TestShortNonceKeysAreNotAbbreviated(t *testing.T) {
 	}
 }
 
-// Key zero is the sender's account nonce by definition, so a transaction selecting only
-// that one is sequenced no differently from a transaction predating keyed nonces - and
-// the page says nothing about domains for it.
-func TestKeyZeroAloneIsTheAccountNonce(t *testing.T) {
-	frameTx := envelopeTx(txtypes.FrameExtKeyedNonces)
-	frameTx.NonceKeys = []*uint256.Int{uint256.NewInt(0)}
+// The account nonce is selected by an empty key set, or by key zero alone in the per-gas
+// fee layout bogota-devnet-1 runs. Either is sequenced no differently from a transaction
+// predating keyed nonces - and the page says nothing about domains for it.
+func TestAccountNonceKeySetNamesNoKeys(t *testing.T) {
+	empty := envelopeTx(txtypes.FrameExtKeyedNonces)
+
+	keyZero := envelopeTx(txtypes.FrameExtKeyedNonces)
+	keyZero.NonceKeys = []*uint256.Int{uint256.NewInt(0)}
+	keyZero.LegacyFees = true
+
+	for name, frameTx := range map[string]*txtypes.FrameTx{"empty set": empty, "legacy key zero": keyZero} {
+		pageData := &models.TransactionPageData{}
+		applyFrameTxEnvelope(pageData, frameTx)
+
+		if !pageData.NonceIsAccount {
+			t.Errorf("%s: not read as the account nonce", name)
+		}
+
+		if len(pageData.NonceKeys) != 0 {
+			t.Errorf("%s: nonce keys = %v, want none to be named", name, pageData.NonceKeys)
+		}
+	}
+}
+
+// A max_fee budget is shown as such; the per-gas layout has none.
+func TestFrameMaxFeeIsShown(t *testing.T) {
+	budget := envelopeTx(0)
+	budget.Fees.MaxFee = uint256.NewInt(3e15)
 
 	pageData := &models.TransactionPageData{}
-	applyFrameTxEnvelope(pageData, frameTx)
+	applyFrameTxEnvelope(pageData, budget)
 
-	if !pageData.NonceIsAccount {
-		t.Error("key zero alone is the account nonce")
+	if !pageData.FrameHasMaxFee || pageData.FrameMaxFee != 0.003 {
+		t.Errorf("max fee = %v (shown %v), want 0.003 ETH", pageData.FrameMaxFee, pageData.FrameHasMaxFee)
 	}
 
-	if len(pageData.NonceKeys) != 0 {
-		t.Errorf("nonce keys = %v, want none to be named", pageData.NonceKeys)
+	perGas := envelopeTx(0)
+	perGas.LegacyFees = true
+
+	pageData = &models.TransactionPageData{}
+	applyFrameTxEnvelope(pageData, perGas)
+
+	if pageData.FrameHasMaxFee {
+		t.Error("a per-gas fee layout shows a max fee")
 	}
 }
 
