@@ -45,6 +45,7 @@ type stateTransitionCaches struct {
 	totalActiveBalEpoch    phase0.Epoch
 	totalActiveBalCache    *phase0.Gwei
 	baseRewardPerIncrEpoch phase0.Epoch
+	baseRewardPerIncrFor   phase0.Epoch
 	baseRewardPerIncrCache *phase0.Gwei
 	committeeCache         *committeeCache
 }
@@ -301,25 +302,31 @@ func hasFlag(flags altair.ParticipationFlags, flagIndex int) bool {
 	return flags&altair.ParticipationFlags(1<<flagIndex) != 0
 }
 
-// getBaseRewardPerIncrement returns the base reward per increment.
+// getBaseRewardPerIncrement returns the base reward per increment, priced at
+// the slot duration in effect at epoch.
 // New in Altair: https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#get_base_reward_per_increment
-func (s *stateAccessor) getBaseRewardPerIncrement() phase0.Gwei {
-	epoch := s.currentEpoch()
-	if s.caches.baseRewardPerIncrCache != nil && s.caches.baseRewardPerIncrEpoch == epoch {
+// Modified in EIP-8198: https://github.com/ethereum/consensus-specs/blob/master/specs/_features/eip8198/beacon-chain.md#modified-get_base_reward_per_increment
+func (s *stateAccessor) getBaseRewardPerIncrement(epoch phase0.Epoch) phase0.Gwei {
+	currentEpoch := s.currentEpoch()
+	if s.caches.baseRewardPerIncrCache != nil && s.caches.baseRewardPerIncrEpoch == currentEpoch && s.caches.baseRewardPerIncrFor == epoch {
 		return *s.caches.baseRewardPerIncrCache
 	}
 	totalBalance := s.getTotalActiveBalance()
-	result := phase0.Gwei(s.specs.EffectiveBalanceIncrement) * phase0.Gwei(s.specs.BaseRewardFactor) / phase0.Gwei(intSqrt(uint64(totalBalance)))
+	numerator := s.scaleToSlotDuration(s.specs.EffectiveBalanceIncrement*s.specs.BaseRewardFactor, epoch)
+	result := phase0.Gwei(numerator / intSqrt(uint64(totalBalance)))
 	s.caches.baseRewardPerIncrCache = &result
-	s.caches.baseRewardPerIncrEpoch = epoch
+	s.caches.baseRewardPerIncrEpoch = currentEpoch
+	s.caches.baseRewardPerIncrFor = epoch
 	return result
 }
 
-// getBaseReward returns the base reward for a validator.
+// getBaseReward returns the base reward for a validator, priced at the slot
+// duration in effect at epoch.
 // Modified in Altair: https://github.com/ethereum/consensus-specs/blob/master/specs/altair/beacon-chain.md#get_base_reward
-func (s *stateAccessor) getBaseReward(index phase0.ValidatorIndex) phase0.Gwei {
+// Modified in EIP-8198: https://github.com/ethereum/consensus-specs/blob/master/specs/_features/eip8198/beacon-chain.md#modified-get_base_reward
+func (s *stateAccessor) getBaseReward(index phase0.ValidatorIndex, epoch phase0.Epoch) phase0.Gwei {
 	increments := s.Validators[index].EffectiveBalance / phase0.Gwei(s.specs.EffectiveBalanceIncrement)
-	return increments * s.getBaseRewardPerIncrement()
+	return increments * s.getBaseRewardPerIncrement(epoch)
 }
 
 // getUnslashedParticipatingIndices returns validator indices that participated with
@@ -399,13 +406,31 @@ func (s *stateAccessor) hasGloasChurn() bool {
 
 // getGloasChurnLimit returns the churn base shared by the Gloas activation and
 // exit churn limits: the total active balance over CHURN_LIMIT_QUOTIENT_GLOAS,
-// floored at MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA and rounded down to
-// EFFECTIVE_BALANCE_INCREMENT.
-func (s *stateAccessor) getGloasChurnLimit() phase0.Gwei {
+// floored at MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA. Callers scale it to the slot
+// duration and round it to EFFECTIVE_BALANCE_INCREMENT.
+func (s *stateAccessor) getGloasChurnLimit() uint64 {
 	churn := uint64(s.getTotalActiveBalance()) / s.specs.ChurnLimitQuotientGloas
 	if s.specs.MinPerEpochChurnLimitElectra > churn {
 		churn = s.specs.MinPerEpochChurnLimitElectra
 	}
+	return churn
+}
+
+// scaleToSlotDuration scales value by the slot duration in effect at epoch
+// relative to the genesis slot duration (EIP-8198).
+func (s *stateAccessor) scaleToSlotDuration(value uint64, epoch phase0.Epoch) uint64 {
+	genesisMs := s.specs.GetSlotDurationMs(0)
+	if genesisMs == 0 {
+		return value
+	}
+	return value * s.specs.GetSlotDurationMs(epoch) / genesisMs
+}
+
+// scaleChurnToSlotDuration scales a per-epoch churn to the slot duration in
+// effect at the current epoch and rounds it down to EFFECTIVE_BALANCE_INCREMENT.
+// Modified in EIP-8198: https://github.com/ethereum/consensus-specs/blob/master/specs/_features/eip8198/beacon-chain.md#modified-get_activation_churn_limit
+func (s *stateAccessor) scaleChurnToSlotDuration(churn uint64) phase0.Gwei {
+	churn = s.scaleToSlotDuration(churn, s.currentEpoch())
 	return phase0.Gwei(churn - churn%s.specs.EffectiveBalanceIncrement)
 }
 
@@ -419,10 +444,10 @@ func (s *stateAccessor) getActivationChurnLimit() phase0.Gwei {
 	}
 
 	churn := s.getGloasChurnLimit()
-	if phase0.Gwei(s.specs.MaxPerEpochActivationChurnLimitGloas) < churn {
-		return phase0.Gwei(s.specs.MaxPerEpochActivationChurnLimitGloas)
+	if s.specs.MaxPerEpochActivationChurnLimitGloas < churn {
+		churn = s.specs.MaxPerEpochActivationChurnLimitGloas
 	}
-	return churn
+	return s.scaleChurnToSlotDuration(churn)
 }
 
 // getExitChurnLimit returns the per-epoch churn limit for exits, which is
@@ -434,5 +459,5 @@ func (s *stateAccessor) getExitChurnLimit() phase0.Gwei {
 		return s.getActivationExitChurnLimit()
 	}
 
-	return s.getGloasChurnLimit()
+	return s.scaleChurnToSlotDuration(s.getGloasChurnLimit())
 }

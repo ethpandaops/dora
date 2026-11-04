@@ -125,8 +125,7 @@ func computeConsolidationEpochAndUpdateChurn(s *stateAccessor, consolidationBala
 // Original Electra: https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-get_consolidation_churn_limit
 func (s *stateAccessor) getConsolidationChurnLimit() phase0.Gwei {
 	if s.Version >= spec.DataVersionGloas && s.specs.ConsolidationChurnLimitQuotient > 0 {
-		churn := uint64(s.getTotalActiveBalance()) / s.specs.ConsolidationChurnLimitQuotient
-		return phase0.Gwei(churn - churn%s.specs.EffectiveBalanceIncrement)
+		return s.scaleChurnToSlotDuration(uint64(s.getTotalActiveBalance()) / s.specs.ConsolidationChurnLimitQuotient)
 	}
 	return s.getBalanceChurnLimit() - s.getActivationExitChurnLimit()
 }

@@ -103,7 +103,7 @@ func processRewardsAndPenalties(s *stateAccessor) error {
 		}
 
 		idx := phase0.ValidatorIndex(i)
-		baseReward := uint64(s.getBaseReward(idx))
+		baseReward := uint64(s.getBaseReward(idx, previousEpoch))
 		var flags altair.ParticipationFlags
 		if i < len(prevParticipation) {
 			flags = prevParticipation[i]
@@ -128,9 +128,13 @@ func processRewardsAndPenalties(s *stateAccessor) error {
 
 		// Inactivity penalty (spec: get_inactivity_penalty_deltas)
 		// penalty = effective_balance * inactivity_score / (INACTIVITY_SCORE_BIAS * INACTIVITY_PENALTY_QUOTIENT_BELLATRIX)
+		// Modified in EIP-8198: the denominator scales with the square of the previous epoch's slot duration.
 		if v.Slashed || !hasFlag(flags, TimelyTargetFlagIndex) {
 			penaltyNumerator := uint64(v.EffectiveBalance) * s.InactivityScores[i]
 			penaltyDenominator := s.specs.InactivityScoreBias * s.getInactivityPenaltyQuotient()
+			if genesisSlotMs, previousSlotMs := s.specs.GetSlotDurationMs(0), s.specs.GetSlotDurationMs(previousEpoch); previousSlotMs > 0 {
+				penaltyDenominator = penaltyDenominator * genesisSlotMs * genesisSlotMs / (previousSlotMs * previousSlotMs)
+			}
 			if penaltyDenominator > 0 {
 				penalty := penaltyNumerator / penaltyDenominator
 				s.decreaseBalance(idx, phase0.Gwei(penalty))
