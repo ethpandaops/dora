@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/p2p/enode"
 	dasguardian "github.com/ethpandaops/eth-das-guardian"
 	"github.com/ethpandaops/eth-das-guardian/api"
 	"github.com/ethpandaops/go-eth2-client/spec"
@@ -54,9 +55,29 @@ func (d *DasGuardian) Close() error {
 	return d.guardian.Close()
 }
 
+// validateScanTarget rejects ENRs that resolve to a loopback, private, link-local
+// (including cloud metadata endpoints served from 169.254.0.0/16), unspecified, or
+// multicast address. The ENR is attacker-controlled input from an unauthenticated API
+// caller (POST /api/v1/das-guardian/scan); without this check dora's server would open
+// an outbound connection to whatever address the caller encoded in it, including
+// internal infrastructure the caller cannot otherwise reach.
+func validateScanTarget(node *enode.Node) error {
+	ip := node.IP()
+	if ip == nil {
+		return fmt.Errorf("enr has no resolvable IP address")
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return fmt.Errorf("enr resolves to a non-routable address (%s), which is not allowed", ip.String())
+	}
+	return nil
+}
+
 func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string, slots []uint64) (*dasguardian.DasGuardianScanResult, error) {
 	node, err := dasguardian.ParseNode(nodeEnr)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateScanTarget(node); err != nil {
 		return nil, err
 	}
 
@@ -83,6 +104,9 @@ type SlotSelectorCallback func(nodeStatus *dasguardian.StatusV2) ([]uint64, erro
 func (d *DasGuardian) ScanNodeWithCallback(ctx context.Context, nodeEnr string, slotCallback SlotSelectorCallback) (*dasguardian.DasGuardianScanResult, error) {
 	node, err := dasguardian.ParseNode(nodeEnr)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateScanTarget(node); err != nil {
 		return nil, err
 	}
 
