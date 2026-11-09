@@ -6,12 +6,12 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/allegro/bigcache/v3 v3.2.0
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/ethereum/go-ethereum v1.17.9
+	github.com/ethereum/go-ethereum v1.17.10
 	github.com/ethpandaops/eth-das-guardian v0.1.1
-	github.com/ethpandaops/ethcore v0.0.0-20260807105509-b0a20c27b6e7
-	github.com/ethpandaops/go-eth2-client v0.1.11
+	github.com/ethpandaops/ethcore v0.0.0-20261102004625-b3dd8ce5085c
+	github.com/ethpandaops/go-eth2-client v0.1.12
 	github.com/ethpandaops/spamoor v1.2.5-0.20261026130923-d235dd5b6995
-	github.com/ethpandaops/xatu v1.30.3
+	github.com/ethpandaops/xatu v1.30.11
 	github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -23,7 +23,7 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/libp2p/go-libp2p v0.50.0
 	github.com/mashingan/smapping v0.1.20
-	github.com/mattn/go-sqlite3 v1.14.52
+	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/minio/minio-go/v7 v7.4.1
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v1.4.0
@@ -192,7 +192,7 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.49.0
+	github.com/ClickHouse/clickhouse-go/v2 v2.50.0
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.3 // indirect
