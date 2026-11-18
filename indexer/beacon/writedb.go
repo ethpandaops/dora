@@ -266,7 +266,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 	if epochStats != nil {
 		epochStatsValues = epochStats.GetValues(true)
 	}
-	if epochStatsValues == nil {
+	if epochStatsValues == nil || len(epochStatsValues.SyncCommitteeDuties) == 0 || specs.EpochsPerSyncCommitteePeriod == 0 {
 		return nil
 	}
 

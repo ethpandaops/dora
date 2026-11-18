@@ -90,6 +90,10 @@ func MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, pa
 	} else {
 		// SSZ encoding
 		version = uint64(spec.DataVersionGloas)
+		if payload.Version == spec.DataVersionPQ {
+			version = uint64(spec.DataVersionPQ)
+		}
+
 		ssz, err = dynSsz.MarshalSSZ(payload)
 	}
 
