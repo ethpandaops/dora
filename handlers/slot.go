@@ -1064,6 +1064,11 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		}
 	}
 
+	if specs.Eip8450ForkEpoch != nil && uint64(epoch) >= *specs.Eip8450ForkEpoch {
+		pageData.ShowPQKeyRegistrations = true
+		pageData.PQKeyRegistrationsCount = uint64(len(blockData.Block.Message.Body.PQKeyRegistrations))
+	}
+
 	if specs.CapellaForkEpoch != nil && uint64(epoch) >= *specs.CapellaForkEpoch {
 		pageData.BLSChangesCount = uint64(len(blsToExecChanges))
 		pageData.BLSChanges = make([]*models.SlotPageBLSChange, pageData.BLSChangesCount)

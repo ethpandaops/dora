@@ -3,6 +3,7 @@ package statetransition
 import (
 	"github.com/ethpandaops/dora/indexer/beacon/depositsig"
 	"github.com/ethpandaops/go-eth2-client/spec"
+	"github.com/ethpandaops/go-eth2-client/spec/eip8450"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	zrnt_common "github.com/protolambda/zrnt/eth2/beacon/common"
@@ -157,6 +158,11 @@ func addValidatorToRegistry(s *stateAccessor, pubkey phase0.BLSPubKey, withdrawa
 	s.PreviousEpochParticipation = append(s.PreviousEpochParticipation, 0)
 	s.CurrentEpochParticipation = append(s.CurrentEpochParticipation, 0)
 	s.InactivityScores = append(s.InactivityScores, 0)
+
+	if s.Version >= spec.DataVersionEIP8450 {
+		s.PostQuantumKeyMaterial = append(s.PostQuantumKeyMaterial, &eip8450.PQKeyMaterial{})
+		s.PostQuantumKeyChangeEpochs = append(s.PostQuantumKeyChangeEpochs, FarFutureEpoch)
+	}
 }
 
 // getValidatorFromDeposit implements the Electra modified get_validator_from_deposit.

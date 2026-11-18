@@ -79,6 +79,8 @@ type SlotPageBlockData struct {
 	DepositsCount               uint64                  `json:"deposits_count"`
 	WithdrawalsCount            uint64                  `json:"withdrawals_count"`
 	BLSChangesCount             uint64                  `json:"bls_changes_count"`
+	ShowPQKeyRegistrations      bool                    `json:"show_pq_key_registrations"`
+	PQKeyRegistrationsCount     uint64                  `json:"pq_key_registrations_count"`
 	VoluntaryExitsCount         uint64                  `json:"voluntaryexits_count"`
 	SlashingsCount              uint64                  `json:"slashings_count"`
 	BlobsCount                  uint64                  `json:"blobs_count"`

@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/altair"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/eip8450"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -61,6 +62,35 @@ func processOperations(s *stateAccessor, block *all.SignedBeaconBlock, parentSlo
 	if s.Version < spec.DataVersionGloas {
 		applyExecutionRequests(s, body.ExecutionRequests)
 	}
+
+	for _, registration := range body.PQKeyRegistrations {
+		processPQKeyRegistration(s, registration)
+	}
+}
+
+// processPQKeyRegistration implements the state changes of process_pq_key_registration (EIP-8450).
+func processPQKeyRegistration(s *stateAccessor, signed *eip8450.SignedPQKeyRegistration) {
+	registration := signed.Message
+	epoch := s.currentEpoch()
+
+	if uint64(registration.Index)&BuilderIndexFlag != 0 {
+		builderIndex := uint64(registration.Index) &^ BuilderIndexFlag
+		if builderIndex >= uint64(len(s.BuilderPostQuantumKeyMaterial)) {
+			return
+		}
+
+		s.BuilderPostQuantumKeyMaterial[builderIndex] = registration.KeyMaterial
+		s.BuilderPostQuantumKeyChangeEpochs[builderIndex] = epoch
+
+		return
+	}
+
+	if uint64(registration.Index) >= uint64(len(s.PostQuantumKeyMaterial)) {
+		return
+	}
+
+	s.PostQuantumKeyMaterial[registration.Index] = registration.KeyMaterial
+	s.PostQuantumKeyChangeEpochs[registration.Index] = epoch
 }
 
 // applyExecutionRequests processes a block/payload's execution-layer requests
@@ -324,6 +354,18 @@ func addBuilderToRegistry(s *stateAccessor, pubkey phase0.BLSPubKey, version byt
 		s.Builders = append(s.Builders, builder)
 	} else {
 		s.Builders[index] = builder
+	}
+
+	if s.Version < spec.DataVersionEIP8450 {
+		return
+	}
+
+	if index == uint64(len(s.BuilderPostQuantumKeyMaterial)) {
+		s.BuilderPostQuantumKeyMaterial = append(s.BuilderPostQuantumKeyMaterial, &eip8450.PQKeyMaterial{})
+		s.BuilderPostQuantumKeyChangeEpochs = append(s.BuilderPostQuantumKeyChangeEpochs, builder.DepositEpoch)
+	} else {
+		s.BuilderPostQuantumKeyMaterial[index] = &eip8450.PQKeyMaterial{}
+		s.BuilderPostQuantumKeyChangeEpochs[index] = builder.DepositEpoch
 	}
 }
 

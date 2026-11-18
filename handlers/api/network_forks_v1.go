@@ -138,6 +138,7 @@ func buildNetworkForks(chainState *consensus.ChainState) []*APINetworkForkInfo {
 	addConsensusFork("Fulu", specs.FuluForkEpoch, specs.FuluForkVersion)
 	addConsensusFork("Gloas", specs.GloasForkEpoch, specs.GloasForkVersion)
 	addConsensusFork("Heze", specs.HezeForkEpoch, specs.HezeForkVersion)
+	addConsensusFork("EIP-8450", specs.Eip8450ForkEpoch, specs.Eip8450ForkVersion)
 
 	// Add BPO forks (from el genesis config if available, cl BLOB_SCHEDULE otherwise)
 	for _, bpoFork := range services.GlobalBeaconService.GetBpoForks() {
