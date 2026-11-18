@@ -224,7 +224,7 @@ func getBlockPayloadBuilderIndex(b *all.SignedBeaconBlock) (gloas.BuilderIndex, 
 		return 0, errors.New("nil block body")
 	}
 
-	if b.Version < spec.DataVersionGloas {
+	if b.Version < spec.DataVersionGloas || b.Version == spec.DataVersionDaisugi {
 		return 0, errors.New("no builder index in pre-gloas block")
 	}
 
@@ -243,7 +243,7 @@ func getBlockPayloadBidValue(b *all.SignedBeaconBlock) (phase0.Gwei, error) {
 		return 0, errors.New("nil block body")
 	}
 
-	if b.Version < spec.DataVersionGloas {
+	if b.Version < spec.DataVersionGloas || b.Version == spec.DataVersionDaisugi {
 		return 0, errors.New("no payload bid in pre-gloas block")
 	}
 
@@ -266,7 +266,7 @@ func getBlockExecutionParentHash(b *all.SignedBeaconBlock) (phase0.Hash32, error
 	switch {
 	case b.Version < spec.DataVersionBellatrix:
 		return phase0.Hash32{}, errors.New("no execution parent hash in pre-bellatrix block")
-	case b.Version >= spec.DataVersionGloas:
+	case b.Version >= spec.DataVersionGloas && b.Version != spec.DataVersionDaisugi:
 		bid := b.Message.Body.SignedExecutionPayloadBid
 		if bid == nil || bid.Message == nil {
 			return phase0.Hash32{}, errors.New("no payload bid")
@@ -293,7 +293,7 @@ func getBlockExecutionBlockHash(b *all.SignedBeaconBlock) (phase0.Hash32, error)
 	switch {
 	case b.Version < spec.DataVersionBellatrix:
 		return phase0.Hash32{}, errors.New("no execution block hash in pre-bellatrix block")
-	case b.Version >= spec.DataVersionGloas:
+	case b.Version >= spec.DataVersionGloas && b.Version != spec.DataVersionDaisugi:
 		bid := b.Message.Body.SignedExecutionPayloadBid
 		if bid == nil || bid.Message == nil {
 			return phase0.Hash32{}, errors.New("no payload bid")

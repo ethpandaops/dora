@@ -498,6 +498,27 @@
                   </div>
                 {{ end }}
 
+                {{ if .HasRecursiveStarkProof }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Recursive STARK proof carried by the execution payload (EIP-8288)">STARK Proof:</span></div>
+                    <div class="col-md-10 text-monospace text-break">
+                      {{ if .RecursiveStarkProofSize }}
+                        {{ formatAddCommas .RecursiveStarkProofSize }} bytes
+                      {{ else }}
+                        <span class="text-muted">none (empty proof)</span>
+                      {{ end }}
+                    </div>
+                  </div>
+                  {{ if and .RecursiveStarkProofSize .RecursiveStarkProofRoot }}
+                    <div class="row py-1">
+                      <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="SSZ hash tree root of the recursive STARK proof, as committed in the execution payload header (EIP-8288)">STARK Proof Root:</span></div>
+                      <div class="col-md-10 text-monospace text-break">
+                        <span class="text-truncate">0x{{ printf "%x" .RecursiveStarkProofRoot }}</span>
+                      </div>
+                    </div>
+                  {{ end }}
+                {{ end }}
+
                 {{ if .BlockAccessListHash }}
                   <div class="row py-1">
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block Access List Hash (EIP-7928)">BAL Hash:</span></div>

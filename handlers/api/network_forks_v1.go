@@ -139,6 +139,22 @@ func buildNetworkForks(chainState *consensus.ChainState) []*APINetworkForkInfo {
 	addConsensusFork("Gloas", specs.GloasForkEpoch, specs.GloasForkVersion)
 	addConsensusFork("Heze", specs.HezeForkEpoch, specs.HezeForkVersion)
 
+	// Daisugi (PQ devnets) branches off Electra: its fork digest has no blob parameter mix-in.
+	if specs.DaisugiForkEpoch != nil && *specs.DaisugiForkEpoch < uint64(18446744073709551615) {
+		forkDigest := chainState.GetForkDigest(specs.DaisugiForkVersion, nil)
+		version := fmt.Sprintf("0x%x", specs.DaisugiForkVersion)
+		forks = append(forks, &APINetworkForkInfo{
+			Name:       "Daisugi",
+			Version:    &version,
+			Epoch:      *specs.DaisugiForkEpoch,
+			Active:     uint64(currentEpoch) >= *specs.DaisugiForkEpoch,
+			Scheduled:  true,
+			Time:       chainState.EpochToTime(phase0.Epoch(*specs.DaisugiForkEpoch)).Unix(),
+			Type:       "consensus",
+			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
+		})
+	}
+
 	// Add BPO forks (from el genesis config if available, cl BLOB_SCHEDULE otherwise)
 	for _, bpoFork := range services.GlobalBeaconService.GetBpoForks() {
 		forks = append(forks, &APINetworkForkInfo{

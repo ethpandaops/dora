@@ -172,6 +172,12 @@ type SlotPageExecutionData struct {
 	BlockAccessListHash []byte              `json:"block_access_list_hash,omitempty"`
 	BALSummary          *SlotPageBALSummary `json:"bal_summary,omitempty" ssz-type:"optional"`
 
+	// EIP-8288 (Daisugi): recursive STARK proof carried by the execution payload. The root is
+	// the value the execution payload header commits to.
+	HasRecursiveStarkProof  bool   `json:"has_recursive_stark_proof"`
+	RecursiveStarkProofSize uint64 `json:"recursive_stark_proof_size"`
+	RecursiveStarkProofRoot []byte `json:"recursive_stark_proof_root,omitempty"`
+
 	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
 	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).
 	// Only set when EL indexing has enriched all tx receipts; nil otherwise.

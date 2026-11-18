@@ -181,7 +181,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		// For Fulu+: apply epoch transition to advance the state from the post-block state
 		// of the parent epoch's last block to the pre-state of the target epoch.
 		// Skip for genesis (epoch 0) — the genesis state is already the correct pre-state.
-		if resState.Version >= spec.DataVersionFulu && s.targetEpoch > 0 {
+		if resState.Version >= spec.DataVersionFulu && resState.Version != spec.DataVersionDaisugi && s.targetEpoch > 0 {
 			epochStart := time.Now()
 
 			var transitionInfo statetransition.TransitionInfo
@@ -277,7 +277,7 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 	}
 
 	// Process builder set for Gloas+
-	if state.Version >= spec.DataVersionGloas {
+	if state.Version >= spec.DataVersionGloas && state.Version != spec.DataVersionDaisugi {
 		if cache != nil {
 			cache.indexer.builderCache.updateBuilderSet(state.Slot, dependentRoot, state.Builders)
 		}
@@ -323,7 +323,7 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 		s.pendingConsolidations = state.PendingConsolidations
 	}
 
-	if state.Version >= spec.DataVersionGloas {
+	if state.Version >= spec.DataVersionGloas && state.Version != spec.DataVersionDaisugi {
 		s.builderPendingWithdrawals = state.BuilderPendingWithdrawals
 		s.latestExecutionHash = state.LatestExecutionPayloadBid.ParentBlockHash
 	} else {

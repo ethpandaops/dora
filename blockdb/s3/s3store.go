@@ -502,7 +502,7 @@ func (e *S3Engine) AddBlock(
 		bytes.NewReader(finalData.BodyData),
 	}
 
-	if finalData.BodyVersion >= uint64(spec.DataVersionGloas) {
+	if finalData.BodyVersion >= uint64(spec.DataVersionGloas) && finalData.BodyVersion != uint64(spec.DataVersionDaisugi) {
 		totalSize += int64(len(finalData.PayloadData) + len(finalData.BalData))
 		readers = append(readers,
 			bytes.NewReader(finalData.PayloadData),

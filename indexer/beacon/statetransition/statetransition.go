@@ -84,7 +84,7 @@ func (st *StateTransition) HashTreeRoot(state *all.BeaconState) (phase0.Root, er
 
 // PrepareEpochPreState advances a post-block state to the pre-state of the target epoch.
 func (st *StateTransition) PrepareEpochPreState(state *all.BeaconState, epoch phase0.Epoch, info *TransitionInfo) error {
-	if state.Version < spec.DataVersionFulu {
+	if state.Version < spec.DataVersionFulu || state.Version == spec.DataVersionDaisugi {
 		return nil
 	}
 

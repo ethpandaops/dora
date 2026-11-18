@@ -30,7 +30,7 @@ func clampInt64(v uint64) uint64 {
 // beacon block and converts it to a dbtypes.BlockBid. Returns nil for
 // pre-Gloas blocks or blocks without a bid.
 func getBlockBid(v *all.SignedBeaconBlock) *dbtypes.BlockBid {
-	if v == nil || v.Version < spec.DataVersionGloas || v.Message == nil || v.Message.Body == nil {
+	if v == nil || (v.Version < spec.DataVersionGloas || v.Version == spec.DataVersionDaisugi) || v.Message == nil || v.Message.Body == nil {
 		return nil
 	}
 
@@ -562,7 +562,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 
 		switch {
-		case blockBody.Version >= spec.DataVersionBellatrix && blockBody.Version < spec.DataVersionGloas:
+		case blockBody.Version >= spec.DataVersionBellatrix && (blockBody.Version < spec.DataVersionGloas || blockBody.Version == spec.DataVersionDaisugi):
 			if body.ExecutionPayload != nil {
 				payload := body.ExecutionPayload
 				dbBlock.EthGasUsed = payload.GasUsed
@@ -574,7 +574,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 				}
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
-		case blockBody.Version >= spec.DataVersionGloas:
+		case blockBody.Version >= spec.DataVersionGloas && blockBody.Version != spec.DataVersionDaisugi:
 			blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 			if blockPayload != nil {
 				payload := blockPayload.Message.Payload
@@ -756,12 +756,12 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 
 			// Aggregate gas used and gas limit
 			switch {
-			case blockBody.Version >= spec.DataVersionBellatrix && blockBody.Version < spec.DataVersionGloas:
+			case blockBody.Version >= spec.DataVersionBellatrix && (blockBody.Version < spec.DataVersionGloas || blockBody.Version == spec.DataVersionDaisugi):
 				if body.ExecutionPayload != nil {
 					dbEpoch.EthGasUsed += body.ExecutionPayload.GasUsed
 					dbEpoch.EthGasLimit += body.ExecutionPayload.GasLimit
 				}
-			case blockBody.Version >= spec.DataVersionGloas:
+			case blockBody.Version >= spec.DataVersionGloas && blockBody.Version != spec.DataVersionDaisugi:
 				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 				if blockPayload != nil {
 					payload := blockPayload.Message.Payload

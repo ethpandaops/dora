@@ -13,7 +13,7 @@ import (
 // beacon block body — sourced from the body pre-Gloas, and from the
 // embedded execution payload bid post-EIP-7732 (where they were moved).
 func BlockBodyBlobCommitments(body *all.BeaconBlockBody) []deneb.KZGCommitment {
-	if body.Version >= spec.DataVersionGloas {
+	if body.Version >= spec.DataVersionGloas && body.Version != spec.DataVersionDaisugi {
 		return body.SignedExecutionPayloadBid.Message.BlobKZGCommitments
 	}
 	return body.BlobKZGCommitments

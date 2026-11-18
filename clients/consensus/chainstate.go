@@ -511,6 +511,8 @@ func (cs *ChainState) GetForkVersionAtEpoch(epoch phase0.Epoch) phase0.Version {
 	}
 
 	switch {
+	case cs.specs.DaisugiForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.DaisugiForkEpoch):
+		return cs.specs.DaisugiForkVersion
 	case cs.specs.HezeForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.HezeForkEpoch):
 		return cs.specs.HezeForkVersion
 	case cs.specs.GloasForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.GloasForkEpoch):

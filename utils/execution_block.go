@@ -99,7 +99,7 @@ func ExecutionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.
 		h := types.CalcRequestsHash(ExecutionRequestsList(requests))
 		header.RequestsHash = &h
 	}
-	if payload.Version >= spec.DataVersionGloas {
+	if payload.Version >= spec.DataVersionGloas && payload.Version != spec.DataVersionDaisugi {
 		var balHash common.Hash // placeholder when the BAL is unavailable
 		if len(bal) > 0 {
 			balHash = crypto.Keccak256Hash(bal)

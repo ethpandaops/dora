@@ -19,6 +19,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/all"
 	"github.com/ethpandaops/go-eth2-client/spec/bellatrix"
 	"github.com/ethpandaops/go-eth2-client/spec/capella"
+	"github.com/ethpandaops/go-eth2-client/spec/daisugi"
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -636,7 +637,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			attPageData.BeaconBlockSlot = uint64(slot)
 		}
 
-		if att.Version >= spec.DataVersionGloas {
+		if att.Version >= spec.DataVersionGloas && att.Version != spec.DataVersionDaisugi {
 			payloadStatus := uint64(attData.Index)
 			attPageData.PayloadStatus = &payloadStatus
 		}
@@ -822,7 +823,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	// or from the separately-delivered envelope (Gloas+). Both share the same
 	// fork-specific fields exposed via the agnostic ExecutionPayload struct.
 	var executionPayload *all.ExecutionPayload
-	if blockData.Block.Version >= spec.DataVersionGloas {
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Block.Version != spec.DataVersionDaisugi {
 		havePayload := blockData.Payload != nil && blockData.Payload.Message != nil
 		if havePayload {
 			executionPayload = blockData.Payload.Message.Payload
@@ -871,7 +872,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	// base. Shown for every Gloas block; for builder-built blocks it also decides whether the
 	// builder's (delayed) payment settles. Resolved after the payload status above so a
 	// quorum-met-but-payload-not-included case can be explained. Base is recovered from weight/percent.
-	if blockData.Block.Version >= spec.DataVersionGloas {
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Block.Version != spec.DataVersionDaisugi {
 		beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 		var dbSlot *dbtypes.Slot
 		if cacheBlock := beaconIndexer.GetBlockByRoot(blockData.Root); cacheBlock != nil {
@@ -936,6 +937,15 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			pageData.ExecutionData.ExcessBlobGas = &excessBlobGas
 			blobGasUsed := executionPayload.BlobGasUsed
 			pageData.ExecutionData.BlobGasUsed = &blobGasUsed
+		}
+
+		if executionPayload.Version == spec.DataVersionDaisugi {
+			pageData.ExecutionData.HasRecursiveStarkProof = true
+			pageData.ExecutionData.RecursiveStarkProofSize = uint64(len(executionPayload.RecursiveStarkProof))
+
+			if proofRoot, err := daisugi.RecursiveStarkProofRoot(executionPayload.RecursiveStarkProof); err == nil {
+				pageData.ExecutionData.RecursiveStarkProofRoot = proofRoot[:]
+			}
 		}
 
 		executionChainState := services.GlobalBeaconService.GetExecutionChainState()
@@ -1023,7 +1033,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		// Post-Gloas the blob commitments come from the bid, but the blobs themselves only
 		// propagate alongside the payload - a missed-payload block carries no blobs.
 		// Orphaned payloads were revealed, so their blobs are still shown.
-		if blockData.Block.Version >= spec.DataVersionGloas &&
+		if blockData.Block.Version >= spec.DataVersionGloas && blockData.Block.Version != spec.DataVersionDaisugi &&
 			(pageData.PayloadHeader == nil || pageData.PayloadHeader.PayloadStatus == uint16(dbtypes.PayloadStatusMissing)) {
 			blobKzgCommitments = nil
 		}
@@ -1041,7 +1051,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
 		var requests *all.ExecutionRequests
-		if blockData.Block.Version >= spec.DataVersionGloas {
+		if blockData.Block.Version >= spec.DataVersionGloas && blockData.Block.Version != spec.DataVersionDaisugi {
 			// In Gloas the execution requests carried by a payload are processed in the next
 			// block (as parent_execution_requests), so they are displayed there — consistent
 			// with the deposits table and the slot/epoch deposit counts. The withdrawal sweep
@@ -1153,7 +1163,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 	}
 
 	// Load execution payload bids for ePBS (gloas+) blocks
-	if blockData.Block.Version >= spec.DataVersionGloas {
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Block.Version != spec.DataVersionDaisugi {
 		getSlotPageBids(ctx, pageData, blockData.Header.Message.Slot)
 		getSlotPagePtcVotes(pageData, blockData, blockData.Header.Message.Slot)
 	}
@@ -1626,7 +1636,7 @@ func describeBidClass(bid *services.ClassifiedBlockBid) (label, color, title str
 // PTC votes are included in blocks as payload attestations for the PREVIOUS slot.
 func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services.CombinedBlockResponse, blockSlot phase0.Slot) {
 	// Only Gloas+ blocks have payload attestations
-	if blockData.Block.Version < spec.DataVersionGloas {
+	if blockData.Block.Version < spec.DataVersionGloas || blockData.Block.Version == spec.DataVersionDaisugi {
 		return
 	}
 
