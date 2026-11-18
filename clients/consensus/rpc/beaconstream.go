@@ -16,6 +16,7 @@ import (
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/pq"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc/eventstream"
@@ -476,7 +477,12 @@ func parseExecutionPayloadBidEvent(data []byte) (*gloas.SignedExecutionPayloadBi
 
 	parsed := &gloas.SignedExecutionPayloadBid{}
 	if err := json.Unmarshal(data, parsed); err != nil {
-		return nil, err
+		xmssSigned := &pq.SignedExecutionPayloadBid{}
+		if pqErr := json.Unmarshal(data, xmssSigned); pqErr != nil {
+			return nil, err
+		}
+
+		return &gloas.SignedExecutionPayloadBid{Message: xmssSigned.Message}, nil
 	}
 	return parsed, nil
 }

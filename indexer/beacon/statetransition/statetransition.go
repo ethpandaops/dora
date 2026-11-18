@@ -93,6 +93,8 @@ func (st *StateTransition) PrepareEpochPreState(state *all.BeaconState, epoch ph
 		return fmt.Errorf("process_slots to epoch %d (slot %d): %w", epoch, targetSlot, err)
 	}
 
+	syncPQRegistries(state)
+
 	return nil
 }
 
@@ -207,7 +209,7 @@ func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 	}
 
 	// Removed in Heze along with the Eth1 bridge (EIP-8015).
-	if s.Version < spec.DataVersionHeze {
+	if !hasHeze(s.Version) {
 		processEth1DataReset(s)
 	}
 
@@ -232,7 +234,10 @@ func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 	processRandaoMixesReset(s)
 	processHistoricalSummariesUpdate(s)
 	processParticipationFlagUpdates(s)
-	processSyncCommitteeUpdates(s)
+	if s.Version != spec.DataVersionPQ {
+		processSyncCommitteeUpdates(s)
+	}
+
 	processProposerLookahead(s)
 
 	// Gloas-only: process PTC window

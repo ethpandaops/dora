@@ -316,15 +316,15 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		})
 	}
 
-	if specs.Eip8450ForkEpoch != nil && *specs.Eip8450ForkEpoch < uint64(18446744073709551615) {
-		blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*specs.Eip8450ForkEpoch))
-		forkDigest := chainState.GetForkDigest(specs.Eip8450ForkVersion, blobParams)
+	if specs.PqForkEpoch != nil && *specs.PqForkEpoch < uint64(18446744073709551615) {
+		blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*specs.PqForkEpoch))
+		forkDigest := chainState.GetForkDigest(specs.PqForkVersion, blobParams)
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:       "EIP-8450",
-			Epoch:      *specs.Eip8450ForkEpoch,
-			Version:    specs.Eip8450ForkVersion[:],
-			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.Eip8450ForkEpoch)).Unix()),
-			Active:     uint64(currentEpoch) >= *specs.Eip8450ForkEpoch,
+			Name:       "PQ",
+			Epoch:      *specs.PqForkEpoch,
+			Version:    specs.PqForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.PqForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.PqForkEpoch,
 			Type:       "consensus",
 			ForkDigest: forkDigest[:],
 		})

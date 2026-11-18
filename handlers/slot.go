@@ -22,6 +22,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/pq"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -555,6 +556,30 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
 	}
 
+	if blockData.Block.Version == spec.DataVersionPQ {
+		signature := blockData.Block.XMSSSignature
+		vrfProof := make([]byte, 0, pq.VRFProofLength*32)
+
+		for i := range body.VRFReveal {
+			vrfProof = append(vrfProof, body.VRFReveal[i][:]...)
+		}
+
+		pageData.PQ = &models.SlotPagePQData{
+			Signature:            signature[:],
+			SignatureLeafIndex:   uint64(signature.LeafIndex()),
+			VRFLeaf:              body.VRFReveal[0][:],
+			VRFProof:             vrfProof,
+			AttestationProofSize: uint64(len(body.AttestationProof)),
+			ProvenSignatures:     uint64(pq.ProvenSignatures(body.AttestationProof)),
+		}
+
+		if requests := body.ParentExecutionRequests; requests != nil {
+			pageData.PQ.ValidatorPreregistrationsCount = uint64(len(requests.ValidatorPreregistrations))
+			pageData.PQ.BuilderPreregistrationsCount = uint64(len(requests.BuilderPreregistrations))
+			pageData.PQ.ExecutionVoluntaryExitsCount = uint64(len(requests.VoluntaryExits))
+		}
+	}
+
 	if eth1Data != nil {
 		pageData.HasEth1Data = true
 		pageData.Eth1dataDepositroot = eth1Data.DepositRoot[:]
@@ -1062,11 +1087,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			getSlotPageBuilderDeposits(ctx, pageData, requests.BuilderDeposits)
 			getSlotPageBuilderExits(ctx, pageData, requests.BuilderExits)
 		}
-	}
-
-	if specs.Eip8450ForkEpoch != nil && uint64(epoch) >= *specs.Eip8450ForkEpoch {
-		pageData.ShowPQKeyRegistrations = true
-		pageData.PQKeyRegistrationsCount = uint64(len(blockData.Block.Message.Body.PQKeyRegistrations))
 	}
 
 	if specs.CapellaForkEpoch != nil && uint64(epoch) >= *specs.CapellaForkEpoch {

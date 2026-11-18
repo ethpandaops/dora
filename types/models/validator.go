@@ -11,6 +11,8 @@ type ValidatorPageData struct {
 	ProjectedIndex   bool      `json:"projected_index"`
 	Name             string    `json:"name"`
 	PublicKey        []byte    `json:"pubkey" ssz-size:"48"`
+	XMSSPublicKey    []byte    `json:"xmss_pubkey"`
+	VRFRoot          []byte    `json:"vrf_root"`
 	Balance          uint64    `json:"balance"`
 	BalanceResolved  bool      `json:"balance_resolved"`
 	EffectiveBalance uint64    `json:"eff_balance"`
@@ -44,11 +46,6 @@ type ValidatorPageData struct {
 	ExitReason               string                                `json:"exit_reason"`
 	ExitReasonSlot           uint64                                `json:"exit_reason_slot"`
 	ExitReasonSlashing       bool                                  `json:"exit_reason_slashing"`
-	ShowPQKeys               bool                                  `json:"show_pq_keys"`
-	PQKeysRegistered         bool                                  `json:"pq_keys_registered"`
-	XMSSPublicKey            []byte                                `json:"xmss_public_key"`
-	VRFRoot                  []byte                                `json:"vrf_root"`
-	PQKeyChangeEpoch         uint64                                `json:"pq_key_change_epoch"`
 	ExitReasonSlashingReason uint64                                `json:"exit_reason_slashing_reason"`
 	ExitReasonVoluntaryExit  bool                                  `json:"exit_reason_voluntary_exit"`
 	ExitReasonWithdrawal     bool                                  `json:"exit_reason_withdrawal"`

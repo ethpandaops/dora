@@ -4,46 +4,40 @@ import (
 	"sync"
 
 	"github.com/ethpandaops/go-eth2-client/spec/all"
-	"github.com/ethpandaops/go-eth2-client/spec/eip8450"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/pq"
 )
 
 type pqKeyRegistry struct {
-	mutex        sync.RWMutex
-	slot         phase0.Slot
-	material     []*eip8450.PQKeyMaterial
-	changeEpochs []phase0.Epoch
+	mutex      sync.RWMutex
+	slot       phase0.Slot
+	validators []*pq.Validator
 }
 
 func (r *pqKeyRegistry) update(state *all.BeaconState) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if state.Slot < r.slot {
+	if state.Slot < r.slot && len(state.XMSSValidators) <= len(r.validators) {
 		return
 	}
 
 	r.slot = state.Slot
-	r.material = state.PostQuantumKeyMaterial
-	r.changeEpochs = state.PostQuantumKeyChangeEpochs
+	r.validators = state.XMSSValidators
 }
 
-// GetValidatorPQKeys returns the post-quantum keys a validator registered and the epoch of the
-// last change, or nil if the validator has no registry entry with a leanXMSS key.
-func (indexer *Indexer) GetValidatorPQKeys(index phase0.ValidatorIndex) (*eip8450.PQKeyMaterial, phase0.Epoch) {
+// GetValidatorXMSSKeys returns the leanXMSS public key and VRF root of a validator on a pq network.
+func (indexer *Indexer) GetValidatorXMSSKeys(index phase0.ValidatorIndex) (pubkey pq.XMSSPubKey, vrfRoot phase0.Root, found bool) {
 	registry := indexer.pqKeyRegistry
 
 	registry.mutex.RLock()
 	defer registry.mutex.RUnlock()
 
-	if uint64(index) >= uint64(len(registry.material)) || uint64(index) >= uint64(len(registry.changeEpochs)) {
-		return nil, 0
+	if uint64(index) >= uint64(len(registry.validators)) {
+		return pubkey, vrfRoot, false
 	}
 
-	material := registry.material[index]
-	if material == nil || material.XMSSPublicKey == (eip8450.XMSSPublicKey{}) {
-		return nil, 0
-	}
+	validator := registry.validators[index]
 
-	return material, registry.changeEpochs[index]
+	return validator.PublicKey, validator.VRFRoot, true
 }

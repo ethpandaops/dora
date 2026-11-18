@@ -23,7 +23,7 @@ func BuildEpochDuties(specs *consensus.ChainSpec, epoch phase0.Epoch, values *Ep
 
 	slotsPerEpoch := specs.SlotsPerEpoch
 	validatorCount := values.ActiveValidators
-	committeesPerSlot := duties.SlotCommitteeCount(specs, validatorCount)
+	committeesPerSlot := duties.SlotCommitteeCount(specs, epoch, validatorCount)
 
 	resolve := func(activeIdx duties.ActiveIndiceIndex) uint64 {
 		if int(activeIdx) < len(values.ActiveIndices) {

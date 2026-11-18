@@ -222,7 +222,7 @@ func GetAttesterDuties(spec *consensus.ChainSpec, state *BeaconState, epoch phas
 	seed := GetSeed(spec, state, epoch, spec.DomainBeaconAttester)
 
 	validatorCount := state.GetActiveCount()
-	committeesPerSlot := SlotCommitteeCount(spec, validatorCount)
+	committeesPerSlot := SlotCommitteeCount(spec, epoch, validatorCount)
 	committeesCount := committeesPerSlot * spec.SlotsPerEpoch
 
 	// Save the shuffled indices in cache, this is only needed once per epoch or once per new committee index.
@@ -262,11 +262,11 @@ func GetAttesterDuties(spec *consensus.ChainSpec, state *BeaconState, epoch phas
 	return attesterDuties, nil
 }
 
-func SlotCommitteeCount(spec *consensus.ChainSpec, activeValidatorCount uint64) uint64 {
+func SlotCommitteeCount(spec *consensus.ChainSpec, epoch phase0.Epoch, activeValidatorCount uint64) uint64 {
 	var committeesPerSlot = activeValidatorCount / spec.SlotsPerEpoch / spec.TargetCommitteeSize
 
-	if committeesPerSlot > spec.MaxCommitteesPerSlot {
-		return spec.MaxCommitteesPerSlot
+	if maxCommittees := spec.MaxCommitteesPerSlotAtEpoch(epoch); committeesPerSlot > maxCommittees {
+		return maxCommittees
 	}
 	if committeesPerSlot == 0 {
 		return 1

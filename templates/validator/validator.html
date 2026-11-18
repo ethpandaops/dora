@@ -116,6 +116,24 @@
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Index }}"></i>
           </div>
         </div>
+        {{ if .XMSSPublicKey }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The leanXMSS public key of this validator">XMSS Public Key:</span></div>
+          <div class="col-md-10 text-monospace">
+            0x{{ printf "%x" .XMSSPublicKey }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .XMSSPublicKey }}"></i>
+          </div>
+        </div>
+        {{ if .VRFRoot }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Root of the VRF tree whose leaves this validator reveals as RANDAO contributions">VRF Root:</span></div>
+          <div class="col-md-10 text-monospace">
+            0x{{ printf "%x" .VRFRoot }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .VRFRoot }}"></i>
+          </div>
+        </div>
+        {{ end }}
+        {{ else }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the public key for this validator">Public Key:</span></div>
           <div class="col-md-10 text-monospace">
@@ -123,6 +141,7 @@
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .PublicKey }}"></i>
           </div>
         </div>
+        {{ end }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The current status for this validator">Status:</span></div>
           <div class="col-md-10">
@@ -173,33 +192,6 @@
             {{ ethAddressLink .WithdrawAddress }}
           </div>
         </div>
-        {{ end }}
-        {{ if .ShowPQKeys }}
-        <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="leanXMSS public key registered for this validator in the post-quantum key registry (EIP-8450)">XMSS Pubkey:</span></div>
-          <div class="col-md-10 text-monospace">
-            {{ if .PQKeysRegistered }}
-              0x{{ printf "%x" .XMSSPublicKey }}
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .XMSSPublicKey }}"></i>
-            {{ else }}
-              <span class="text-muted">not registered</span>
-            {{ end }}
-          </div>
-        </div>
-        {{ if .PQKeysRegistered }}
-        <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Root of the VRF tree registered for this validator (EIP-8450)">VRF Root:</span></div>
-          <div class="col-md-10 text-monospace">
-            0x{{ printf "%x" .VRFRoot }}
-          </div>
-        </div>
-        <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Epoch of the last change of this validator's post-quantum keys">PQ Key Change:</span></div>
-          <div class="col-md-10">
-            <a href="/epoch/{{ .PQKeyChangeEpoch }}">Epoch {{ formatAddCommas .PQKeyChangeEpoch }}</a>
-          </div>
-        </div>
-        {{ end }}
         {{ end }}
         {{ if .ExitReason }}
         <div class="row border-bottom p-2 mx-0">

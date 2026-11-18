@@ -205,7 +205,7 @@ func getBlockExecutionExtraData(b *all.SignedBeaconBlock) ([]byte, error) {
 	switch b.Version {
 	case spec.DataVersionPhase0, spec.DataVersionAltair:
 		return nil, errors.New("no execution payload in pre-bellatrix block")
-	case spec.DataVersionGloas, spec.DataVersionHeze, spec.DataVersionEIP8450:
+	case spec.DataVersionGloas, spec.DataVersionHeze, spec.DataVersionPQ:
 		// Execution payload is delivered in a separate envelope.
 		return nil, nil
 	}

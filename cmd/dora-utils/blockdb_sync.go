@@ -458,7 +458,7 @@ func computeEpochDuties(chainState *consensus.ChainState, epoch phase0.Epoch, st
 		Epoch:             uint64(epoch),
 		ValidatorCount:    uint64(len(activeIndices)),
 		SlotsPerEpoch:     slotsPerEpoch,
-		CommitteesPerSlot: duties.SlotCommitteeCount(specs, uint64(len(activeIndices))),
+		CommitteesPerSlot: duties.SlotCommitteeCount(specs, epoch, uint64(len(activeIndices))),
 		PtcSize:           ptcSize,
 		Committees:        committees,
 		Ptc:               ptc,
