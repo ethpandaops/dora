@@ -147,13 +147,22 @@
           <div class="col-md-10">
             {{ len .Block.PQ.Signature }} bytes, leaf <span class="text-monospace">{{ .Block.PQ.SignatureLeafIndex }}</span>
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Block.PQ.Signature }}"></i>
+            <div class="text-monospace text-break small mt-1" style="max-height: 8rem; overflow-y: auto;">0x{{ printf "%x" .Block.PQ.Signature }}</div>
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="RANDAO entropy contribution: the leaf of the proposer's VRF tree for this slot, revealed with its Merkle branch">RANDAO Reveal (VRF leaf):</span></div>
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="RANDAO entropy contribution: the leaf of the proposer's VRF tree for this slot">RANDAO Reveal (VRF leaf):</span></div>
           <div class="col-md-10 text-monospace text-break">
             0x{{ printf "%x" .Block.PQ.VRFLeaf }}
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy the full VRF proof to clipboard" data-clipboard-text="0x{{ printf "%x" .Block.PQ.VRFProof }}"></i>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Block.PQ.VRFLeaf }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The revealed VRF leaf followed by its Merkle branch to the proposer's VRF root">VRF Proof:</span></div>
+          <div class="col-md-10">
+            {{ len .Block.PQ.VRFProof }} bytes
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Block.PQ.VRFProof }}"></i>
+            <div class="text-monospace text-break small mt-1" style="max-height: 8rem; overflow-y: auto;">0x{{ printf "%x" .Block.PQ.VRFProof }}</div>
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
