@@ -9,7 +9,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.9
 	github.com/ethpandaops/eth-das-guardian v0.1.1
 	github.com/ethpandaops/ethcore v0.0.0-20260807105509-b0a20c27b6e7
-	github.com/ethpandaops/go-eth2-client v0.1.11
+	github.com/ethpandaops/go-eth2-client v0.1.13-0.20261119084629-52f726e70baa
 	github.com/ethpandaops/spamoor v1.2.5-0.20261026130923-d235dd5b6995
 	github.com/ethpandaops/xatu v1.30.3
 	github.com/ethpandaops/xatu-cbt v0.0.0-20260825024339-8eadec716ac8
@@ -263,5 +263,3 @@ require (
 )
 
 tool github.com/pk910/dynamic-ssz/dynssz-gen
-
-replace github.com/ethpandaops/go-eth2-client => ../go-eth2-client-wt-pq
