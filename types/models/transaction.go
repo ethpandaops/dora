@@ -183,6 +183,12 @@ type TransactionPageData struct {
 	FrameValidationCount uint64 `json:"frame_validation_count"`
 
 	// Totals over the frames, which is where a frame transaction's gas actually goes.
+	// FrameDependencyCount is how many EIP-8288 dependencies the transaction's frames
+	// declare, and FrameDependencyGas the intrinsic gas they add for their share of the
+	// block's recursive STARK, on top of the budgets of the frames declaring them.
+	FrameDependencyCount uint64 `json:"frame_dependency_count"`
+	FrameDependencyGas   uint64 `json:"frame_dependency_gas"`
+
 	FrameExecGasUsed  uint64 `json:"frame_exec_gas_used"`
 	FrameStateGasUsed uint64 `json:"frame_state_gas_used"`
 	FrameSuccessCount uint64 `json:"frame_success_count"`
@@ -335,6 +341,28 @@ type TransactionPageDataFrameRecentRoot struct {
 	Root     []byte `json:"root"`
 }
 
+// TransactionPageDataFrameDependency is one EIP-8288 dependency a frame declares: a
+// signature or proof the transaction relies on without carrying it. The witness travels
+// with the transaction through the mempool and stops there; the block proves it with one
+// recursive STARK over the dependencies of all its transactions.
+type TransactionPageDataFrameDependency struct {
+	Index uint32 `json:"index"`
+
+	Scheme     uint8  `json:"scheme"`
+	SchemeName string `json:"scheme_name"`
+
+	// DataHash is what was signed or proven, with the transaction's signature hash in
+	// place of the zero hash a frame declares it by. SignsTransaction marks that case.
+	DataHash         []byte `json:"data_hash"`
+	SignsTransaction bool   `json:"signs_transaction"`
+
+	// VerificationKey is a leanSPHINCS public key, or the hash of a leanSTARK
+	// verification key.
+	VerificationKey []byte `json:"verification_key"`
+
+	VerifyGas uint64 `json:"verify_gas"`
+}
+
 // TransactionPageDataFrame is one frame of an EIP-8141 frame transaction.
 type TransactionPageDataFrame struct {
 	Index uint32 `json:"index"`
@@ -360,6 +388,11 @@ type TransactionPageDataFrame struct {
 	BatchSize    uint64 `json:"batch_size"`
 	IsBatchStart bool   `json:"is_batch_start"`
 	IsBatchEnd   bool   `json:"is_batch_end"`
+
+	// IsDependency marks an EIP-8288 dependency frame, which calls nothing and runs no
+	// code: it has no caller and no target, and its data is the Dependencies it declares.
+	IsDependency bool                                  `json:"is_dependency"`
+	Dependencies []*TransactionPageDataFrameDependency `json:"dependencies,omitempty"`
 
 	// IsValidation marks a frame in the validation prefix. Those frames decide whether
 	// the transaction runs at all; the ones after them do the work it was sent for.

@@ -946,6 +946,10 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			if proofRoot, err := daisugi.RecursiveStarkProofRoot(executionPayload.RecursiveStarkProof); err == nil {
 				pageData.ExecutionData.RecursiveStarkProofRoot = proofRoot[:]
 			}
+
+			if _, execBlock, err := resolveExecutionBlock(blockData); err == nil {
+				applySlotPageStarkCommitment(pageData.ExecutionData, execBlock)
+			}
 		}
 
 		executionChainState := services.GlobalBeaconService.GetExecutionChainState()
@@ -1843,6 +1847,52 @@ func computeBALSummary(accesses []utils.BALAccountAccess) *models.SlotPageBALSum
 		s.NonceChanges += uint64(len(e.NonceChanges))
 	}
 	return s
+}
+
+// slotPageStarkDependencyLimit caps the dependencies listed on the slot page. A block can
+// declare tens of thousands; the counts say how many there are.
+const slotPageStarkDependencyLimit = 100
+
+// applySlotPageStarkCommitment fills in what an EIP-8288 block's header commits to and
+// which dependencies its transactions declare.
+//
+// The beacon block carries the proof but not the header, so the commitments are derived
+// and then checked the only way a consensus client can check them: the header they
+// produce has to hash to the payload's block hash.
+func applySlotPageStarkCommitment(execData *models.SlotPageExecutionData, execBlock *utils.ExecutionBlock) {
+	commitment := execBlock.Stark
+	if commitment == nil {
+		return
+	}
+
+	execData.RecursiveStarkProofHash = commitment.ProofHash[:]
+	execData.BlockDepsHash = commitment.DepsHash[:]
+	execData.StarkCommitted = execBlock.HashMatch
+	execData.StarkDependencyCount = uint64(len(commitment.Dependencies))
+	execData.StarkDeclarationCount = uint64(len(commitment.Declarations))
+
+	if commitment.TxError != nil {
+		execData.StarkCommitmentError = commitment.TxError.Error()
+	}
+
+	listed := commitment.Declarations
+	if len(listed) > slotPageStarkDependencyLimit {
+		listed = listed[:slotPageStarkDependencyLimit]
+	}
+
+	execData.StarkDependencies = make([]*models.SlotPageStarkDependency, 0, len(listed))
+
+	for _, declaration := range listed {
+		execData.StarkDependencies = append(execData.StarkDependencies, &models.SlotPageStarkDependency{
+			TxIndex:          declaration.TxIndex,
+			TxHash:           declaration.TxHash[:],
+			Scheme:           uint8(declaration.Dependency.Scheme),
+			SchemeName:       declaration.Dependency.Scheme.String(),
+			DataHash:         declaration.Dependency.DataHash[:],
+			SignsTransaction: declaration.SignsTransaction,
+			VerificationKey:  declaration.Dependency.VerificationKey[:],
+		})
+	}
 }
 
 // getSlotPageBlockSizes measures the SSZ sizes of the beacon block and (Gloas+) the

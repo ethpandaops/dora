@@ -680,3 +680,56 @@ func TestFrameFailureSummaryCountsFailedFrames(t *testing.T) {
 		t.Errorf("summary = %q, want %q", got, want)
 	}
 }
+
+// An EIP-8288 dependency frame reports success and its whole budget as used, but it
+// calls nobody: it must not register an account, count as a call to the sender, stand
+// for a root of the call trace or lend its scheme padding as a method id.
+func TestDependencyFrameIsNotACall(t *testing.T) {
+	ctx := newFrameTestContext()
+	sender := ctx.ensureAccount(frameSender, nil, false)
+
+	dependency := txtypes.DependencyFrame(txtypes.FrameDependency{
+		Scheme:          txtypes.DepSchemeLeanSphincs,
+		VerificationKey: common.HexToHash("0x01"),
+	})
+
+	frameTx := &txtypes.FrameTx{
+		Sender: frameSender,
+		Frames: []*txtypes.Frame{
+			{Mode: txtypes.FrameModeVerify, Flags: txtypes.ApproveExecutionAndPayment, Value: uint256.NewInt(0)},
+			dependency,
+			{Mode: txtypes.FrameModeSender, Target: &frameCallee, Value: uint256.NewInt(0)},
+		},
+	}
+
+	receipt := frameReceipt(frameSender,
+		&txtypes.FrameReceipt{Status: txtypes.FrameStatusSuccess, ExecutionGas: 100},
+		&txtypes.FrameReceipt{Status: txtypes.FrameStatusSuccess, ExecutionGas: dependency.Limits.Execution},
+		&txtypes.FrameReceipt{Status: txtypes.FrameStatusSuccess, ExecutionGas: 2_600},
+	)
+
+	frames := ctx.resolveFrames(frameTx, receipt, sender)
+
+	declared := frames[1]
+	if declared.executed() || declared.toAccount != nil || len(declared.methodID) != 0 {
+		t.Fatalf("dependency frame is indexed as a call: executed %v, account %v, method %x",
+			declared.executed(), declared.toAccount, declared.methodID)
+	}
+
+	// Its result is still what the receipt reported.
+	if declared.storedStatus() != uint8(txtypes.FrameStatusSuccess) || declared.execGasUsed != dependency.Limits.Execution {
+		t.Errorf("dependency frame result = status %d, %d gas", declared.storedStatus(), declared.execGasUsed)
+	}
+
+	// Only the verifier frame addresses the sender.
+	aggregates := ctx.aggregateFrames(frames, sender)
+	if agg := aggregates[sender]; agg == nil || agg.inCount != 1 || agg.gasUsed != 100+2_600 {
+		t.Errorf("sender aggregate = %+v, want one inbound call and the gas of the two frames that ran", agg)
+	}
+
+	// A trace has one root per frame that ran, which is two.
+	roots := []*exerpc.CallTraceCall{{To: frameSender}, {To: frameCallee}}
+	if !correlateFrameTrace(frames, roots) {
+		t.Error("the trace roots of the two executed frames do not correlate")
+	}
+}

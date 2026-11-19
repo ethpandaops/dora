@@ -86,9 +86,10 @@ func frameReceiptData(frames []*pendingFrame, payer common.Address) *bdbtypes.Fr
 }
 
 // executed reports whether the frame ran at all. A skipped frame never did, and a frame
-// with no reported result cannot be claimed to have.
+// with no reported result cannot be claimed to have. An EIP-8288 dependency frame reports
+// success without running anything: it calls nobody and has no root in a call trace.
 func (f *pendingFrame) executed() bool {
-	return f.hasResult && f.status != txtypes.FrameStatusSkipped
+	return f.hasResult && f.status != txtypes.FrameStatusSkipped && f.mode != uint8(txtypes.FrameModeDepVerify)
 }
 
 // succeeded reports whether the frame's effects are durable: it ran, it reported success,
@@ -172,7 +173,7 @@ func (ctx *txProcessingContext) resolveFrames(
 			pending.value = frame.Value.ToBig()
 		}
 
-		if len(frame.Data) >= 4 {
+		if len(frame.Data) >= 4 && !frame.IsDependency() {
 			pending.methodID = frame.Data[:4]
 		}
 

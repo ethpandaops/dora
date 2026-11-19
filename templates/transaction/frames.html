@@ -194,6 +194,12 @@
           <span class="frm-stat-label">Sender</span>
           <span class="frm-stat-value">{{ formatEthAddressShortLink .FromAddr false 5 }}</span>
         </div>
+        {{ if gt .FrameDependencyCount 0 }}
+        <div class="frm-stat">
+          <span class="frm-stat-label" data-bs-toggle="tooltip" data-bs-placement="top" title="EIP-8288. Signatures or proofs the transaction depends on without carrying them. The block proves them with one recursive STARK, and each one adds intrinsic gas for its share of that proof.">Dependencies</span>
+          <span class="frm-stat-value">{{ .FrameDependencyCount }} <span class="text-muted">+{{ formatAddCommas .FrameDependencyGas }} intrinsic gas</span></span>
+        </div>
+        {{ end }}
         {{ if and (gt (len .PayerAddr) 0) (not .PayerIsSender) }}
         <div class="frm-stat">
           <span class="frm-stat-label" data-bs-toggle="tooltip" data-bs-placement="top" title="The account that settled the fee. A paymaster approved payment in the validation prefix, so the sender did not pay for this transaction.">Fee paid by</span>
@@ -221,6 +227,10 @@
           <dd class="col-sm-9 col-lg-10">Frames can be batched so they take effect together. If one of a batch fails the whole batch is rolled back and the frames after it are skipped - neither a success nor a failure.</dd>
           <dt class="col-sm-3 col-lg-2">Envelope</dt>
           <dd class="col-sm-9 col-lg-10">EIP-8250 replaces the sender's nonce with a keyed sequence. A chain can run it or not, so the badge above says which shape this payload is.</dd>
+          {{ if gt .FrameDependencyCount 0 }}
+          <dt class="col-sm-3 col-lg-2">Dependencies</dt>
+          <dd class="col-sm-9 col-lg-10">Under EIP-8288 a frame can declare signatures or proofs instead of making a call. The signature itself is not part of the transaction: it travels alongside it through the mempool, and the block replaces all of them with one recursive STARK. A later frame reads what was declared and decides whether it authorises the transaction.</dd>
+          {{ end }}
           <dt class="col-sm-3 col-lg-2">Two gas dimensions</dt>
           <dd class="col-sm-9 col-lg-10">Each frame budgets execution gas and, under EIP-8037, state gas. State gas is a final attribution rather than a running total: a later frame can retroactively reduce an earlier one through a refill.</dd>
         </dl>
@@ -265,11 +275,19 @@
           {{ if $frame.Species }}
           <span class="badge text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if $frame.SpeciesInfo }}{{ $frame.SpeciesInfo }}{{ else }}What this frame does within the transaction, derived from its mode and approval flags.{{ end }}">{{ $frame.Species }}</span>
           {{ end }}
-          <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if eq $frame.Mode 1 }}VERIFY frames run with STATICCALL semantics and cannot change state{{ else if eq $frame.Mode 2 }}SENDER frames are the only ones that may carry value{{ else }}DEFAULT frames run general operations, such as a paymaster settling up{{ end }}">{{ $frame.ModeName }}</span>
+          <span class="badge text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if eq $frame.Mode 1 }}VERIFY frames run with STATICCALL semantics and cannot change state{{ else if eq $frame.Mode 2 }}SENDER frames are the only ones that may carry value{{ else if eq $frame.Mode 3 }}ASSERT frames run last with STATICCALL semantics, and revert the whole execution body when they fail{{ else if eq $frame.Mode 4 }}DEP_VERIFY frames run no code: their data declares dependencies the block proves{{ else }}DEFAULT frames run general operations, such as a paymaster settling up{{ end }}">{{ $frame.ModeName }}</span>
           {{ if $frame.ApprovesPayment }}<i class="fas fa-coins text-muted" style="font-size:0.72rem" data-bs-toggle="tooltip" data-bs-placement="top" title="Approves payment: its success is what makes the fee payable"></i>{{ end }}
           {{ if $frame.ApprovesExecution }}<i class="fas fa-check-double text-muted" style="font-size:0.72rem" data-bs-toggle="tooltip" data-bs-placement="top" title="Approves execution: its success is what lets the later frames run"></i>{{ end }}
         </span>
 
+        {{ if $frame.IsDependency }}
+        <span class="frm-flow">
+          <span class="text-muted" data-bs-toggle="tooltip" data-bs-placement="top" title="This frame calls nothing. It declares what the block's recursive STARK has to prove.">declares</span>
+          <span class="frm-arrow"><i class="fas fa-long-arrow-alt-right"></i></span>
+          <span>{{ len $frame.Dependencies }} {{ if eq (len $frame.Dependencies) 1 }}dependency{{ else }}dependencies{{ end }}</span>
+          {{ range $di, $dep := $frame.Dependencies }}{{ if lt $di 3 }}<span class="badge text-bg-light text-dark border ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="Scheme 0x{{ printf "%02x" $dep.Scheme }}{{ if $dep.SignsTransaction }}, over this transaction's signature hash{{ end }}">{{ $dep.SchemeName }}</span>{{ end }}{{ end }}
+        </span>
+        {{ else }}
         <span class="frm-flow">
           {{ if $frame.CallerIsSender }}
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Entered by the transaction's sender">{{ formatEthAddressShortLink $frame.CallerAddr false 4 }}</span>
@@ -288,8 +306,9 @@
           <span class="text-muted">unknown</span>
           {{ end }}
         </span>
+        {{ end }}
 
-        {{ if gt $frame.DataLen 0 }}
+        {{ if and (gt $frame.DataLen 0) (not $frame.IsDependency) }}
         <span class="frm-method badge text-bg-secondary" style="font-size: 0.75rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if $frame.MethodSignature }}{{ $frame.MethodSignature }}{{ else if gt (len $frame.MethodID) 0 }}Method {{ formatHexBytes $frame.MethodID }}{{ else }}Calldata{{ end }}">
           {{ if $frame.MethodName }}{{ $frame.MethodName }}{{ else if gt (len $frame.MethodID) 0 }}{{ formatHexBytes $frame.MethodID }}{{ else }}{{ $frame.DataLen }} B{{ end }}
         </span>
@@ -316,6 +335,8 @@
           <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="This frame ran, but an assertion frame failed and reverted the whole execution body. Nothing it did survived.">{{ $frame.StatusText }}</span>
           {{ else if $frame.RolledBack }}
           <span class="badge text-bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="This frame ran, but frame #{{ $frame.BatchFailedIndex }} in its atomic batch failed. Its logs were discarded and its state gas zeroed, so nothing it did survived.">{{ $frame.StatusText }}</span>
+          {{ else if and $frame.IsDependency (eq $frame.Status 1) }}
+          <span class="badge text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" title="A dependency frame runs nothing, so it always reports success and uses its whole budget. The block could not have been built without a proof of what it declares.">Declared</span>
           {{ else if eq $frame.Status 1 }}
           <span class="badge text-bg-success">{{ $frame.StatusText }}</span>
           {{ else if eq $frame.Status 0 }}
@@ -337,6 +358,67 @@
 
       {{ if $hasPanel }}
       <div class="frm-panel" id="frm-panel-{{ $idx }}">
+        {{ if $frame.IsDependency }}
+        <table class="table table-sm frm-meta-table mb-2">
+          <tbody>
+            <tr>
+              <th>Runs</th>
+              <td>
+                <span class="text-muted">nothing — the frame has no target and executes no code. It declares the dependencies below.</span>
+              </td>
+            </tr>
+            <tr>
+              <th>Gas</th>
+              <td class="text-monospace">
+                {{ formatAddCommas $frame.ExecGasUsed }} / {{ formatAddCommas $frame.ExecGasLimit }} execution
+                <span class="text-muted">— fixed by the dependencies it declares, not metered</span>
+              </td>
+            </tr>
+            <tr>
+              <th>Proven by</th>
+              <td>
+                the recursive STARK of
+                {{ if gt (len $.BlockRoot) 0 }}<a href="/slot/0x{{ printf "%x" $.BlockRoot }}">block {{ formatAddCommas $.BlockNumber }}</a>{{ else }}<a href="/slot/{{ $.Slot }}">block {{ formatAddCommas $.BlockNumber }}</a>{{ end }}
+                <span class="text-muted">— the signatures and proofs themselves are not on chain</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered frm-decoded-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Scheme</th>
+                <th><span data-bs-toggle="tooltip" data-bs-placement="top" title="What was signed or proven: a message hash for a signature, a public inputs hash for a STARK">Data hash</span></th>
+                <th><span data-bs-toggle="tooltip" data-bs-placement="top" title="The leanSPHINCS public key, or the hash of a leanSTARK verification key">Verification key</span></th>
+                <th><span data-bs-toggle="tooltip" data-bs-placement="top" title="The part of the frame's execution budget this dependency fixes">Gas</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ range $dep := $frame.Dependencies }}
+              <tr>
+                <td>{{ $dep.Index }}</td>
+                <td><span data-bs-toggle="tooltip" data-bs-placement="top" title="Scheme 0x{{ printf "%02x" $dep.Scheme }}">{{ $dep.SchemeName }}</span></td>
+                <td class="frm-decoded-val">
+                  {{ formatHexBytes $dep.DataHash }}
+                  {{ if $dep.SignsTransaction }}<div class="text-muted small">this transaction's signature hash — the frame declares it as zero, since the hash covers the frame's own data</div>{{ end }}
+                </td>
+                <td class="frm-decoded-val">{{ formatHexBytes $dep.VerificationKey }}</td>
+                <td>{{ formatAddCommas $dep.VerifyGas }}</td>
+              </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
+          <span class="text-muted small me-1">Frame data ({{ len $frame.Data }} bytes):</span>
+          <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy frame data" data-clipboard-text="{{ formatHexBytes $frame.Data }}" style="font-size: 0.75rem;"></i>
+        </div>
+        <div id="frm-data-hex-{{ $idx }}" class="frm-data-box">{{ formatHexBytes $frame.Data }}</div>
+        {{ else }}
         <table class="table table-sm frm-meta-table mb-2">
           <tbody>
             <tr>
@@ -420,6 +502,7 @@
         <div id="frm-data-hex-{{ $idx }}" class="frm-data-box" style="display:none;">{{ formatHexBytes $frame.Data }}</div>
         {{ else }}
         <div id="frm-data-hex-{{ $idx }}" class="frm-data-box">{{ formatHexBytes $frame.Data }}</div>
+        {{ end }}
         {{ end }}
         {{ end }}
       </div>

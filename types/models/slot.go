@@ -142,6 +142,22 @@ type SlotPageBlockSizes struct {
 	BlockDownloadError string `json:"block_download_error,omitempty"` // why they are unavailable
 }
 
+// SlotPageStarkDependency is an EIP-8288 dependency a transaction of the block declares:
+// a signature or proof that is not on chain, which the block's recursive STARK proves.
+type SlotPageStarkDependency struct {
+	TxIndex uint32 `json:"tx_index"`
+	TxHash  []byte `json:"tx_hash"`
+
+	Scheme     uint8  `json:"scheme"`
+	SchemeName string `json:"scheme_name"`
+
+	// DataHash is what was signed or proven. SignsTransaction marks the usual case, a
+	// dependency over the declaring transaction's own signature hash.
+	DataHash         []byte `json:"data_hash"`
+	SignsTransaction bool   `json:"signs_transaction"`
+	VerificationKey  []byte `json:"verification_key"`
+}
+
 type SlotPageExecutionData struct {
 	ParentHash         []byte    `json:"parent_hash" ssz-size:"32"`
 	FeeRecipient       []byte    `json:"fee_recipient"`
@@ -177,6 +193,22 @@ type SlotPageExecutionData struct {
 	HasRecursiveStarkProof  bool   `json:"has_recursive_stark_proof"`
 	RecursiveStarkProofSize uint64 `json:"recursive_stark_proof_size"`
 	RecursiveStarkProofRoot []byte `json:"recursive_stark_proof_root,omitempty"`
+
+	// What the execution block header commits to: keccak256 of the proof, and the digest
+	// of the dependencies the proof covers. Neither is carried by the beacon block; both
+	// are derived from the payload, and StarkCommitted says whether the payload's block
+	// hash confirms them. StarkCommitmentError is set when they could not be derived.
+	RecursiveStarkProofHash []byte `json:"recursive_stark_proof_hash,omitempty"`
+	BlockDepsHash           []byte `json:"block_deps_hash,omitempty"`
+	StarkCommitted          bool   `json:"stark_committed"`
+	StarkCommitmentError    string `json:"stark_commitment_error,omitempty"`
+
+	// The dependencies the block's transactions declare. StarkDependencyCount is the
+	// number of distinct ones the proof covers, StarkDeclarationCount what the
+	// transactions declare in total; the list is capped.
+	StarkDependencyCount  uint64                     `json:"stark_dependency_count"`
+	StarkDeclarationCount uint64                     `json:"stark_declaration_count"`
+	StarkDependencies     []*SlotPageStarkDependency `json:"stark_dependencies,omitempty"`
 
 	// EIP-7778: block gas delta. In Amsterdam block.gasUsed = max(sum_regular,sum_state)
 	// while sum(receipt.gasUsed) includes both regular+state gas per tx (minus refunds).
