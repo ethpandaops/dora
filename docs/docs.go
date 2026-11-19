@@ -4892,6 +4892,9 @@ const docTemplate = `{
                 "parentroot": {
                     "type": "string"
                 },
+                "pq": {
+                    "$ref": "#/definitions/api.APISlotPQData"
+                },
                 "proposer": {
                     "type": "integer"
                 },
@@ -5036,6 +5039,26 @@ const docTemplate = `{
                 },
                 "with_eth_block": {
                     "type": "boolean"
+                }
+            }
+        },
+        "api.APISlotPQData": {
+            "type": "object",
+            "properties": {
+                "attestation_proof_size": {
+                    "type": "integer"
+                },
+                "vrf_leaf": {
+                    "type": "string"
+                },
+                "vrf_proof": {
+                    "type": "string"
+                },
+                "xmss_leaf_index": {
+                    "type": "integer"
+                },
+                "xmss_signature": {
+                    "type": "string"
                 }
             }
         },

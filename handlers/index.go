@@ -316,6 +316,20 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		})
 	}
 
+	if specs.PqForkEpoch != nil && *specs.PqForkEpoch < uint64(18446744073709551615) {
+		blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*specs.PqForkEpoch))
+		forkDigest := chainState.GetForkDigest(specs.PqForkVersion, blobParams)
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:       "PQ",
+			Epoch:      *specs.PqForkEpoch,
+			Version:    specs.PqForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.PqForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.PqForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
+		})
+	}
+
 	// Add BPO forks (from el genesis config if available, cl BLOB_SCHEDULE otherwise)
 	for _, bpoFork := range services.GlobalBeaconService.GetBpoForks() {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{

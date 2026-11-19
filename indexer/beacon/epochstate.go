@@ -276,6 +276,10 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 		cache.indexer.validatorCache.updateValidatorSet(state.Slot, dependentRoot, validators, realValidatorCount)
 	}
 
+	if cache != nil && state.Version == spec.DataVersionPQ {
+		cache.indexer.pqKeyRegistry.update(state)
+	}
+
 	// Process builder set for Gloas+
 	if state.Version >= spec.DataVersionGloas {
 		if cache != nil {
@@ -350,7 +354,7 @@ func (s *epochState) tryReplayFromParentState(
 	specs *consensus.ChainSpec,
 	sc *statecache.StateCache,
 ) *all.BeaconState {
-	if depBlock == nil || depBeaconBlock == nil {
+	if depBlock == nil || depBeaconBlock == nil || depBeaconBlock.Version == spec.DataVersionPQ {
 		return nil
 	}
 

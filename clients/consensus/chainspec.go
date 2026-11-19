@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"gopkg.in/Knetic/govaluate.v3"
 	"gopkg.in/yaml.v2"
@@ -57,6 +58,8 @@ type ChainSpecConfig struct {
 	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"       check-if-fork:"GloasForkEpoch"`
 	HezeForkVersion      phase0.Version `yaml:"HEZE_FORK_VERSION"      check-if-fork:"HezeForkEpoch"`
 	HezeForkEpoch        *uint64        `yaml:"HEZE_FORK_EPOCH"        check-if-fork:"HezeForkEpoch"`
+	PqForkVersion        phase0.Version `yaml:"PQ_FORK_VERSION"        check-if-fork:"PqForkEpoch"`
+	PqForkEpoch          *uint64        `yaml:"PQ_FORK_EPOCH"          check-if-fork:"PqForkEpoch"`
 
 	// Time parameters
 	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`
@@ -149,6 +152,8 @@ type ChainSpecConfig struct {
 type ChainSpecPreset struct {
 	// Presets
 	MaxCommitteesPerSlot           uint64 `yaml:"MAX_COMMITTEES_PER_SLOT"`
+	MaxCommitteesPerSlotPq         uint64 `yaml:"MAX_COMMITTEES_PER_SLOT_PQ" check-if-fork:"PqForkEpoch"`
+	MaxStarkProofSize              uint64 `yaml:"MAX_STARK_PROOF_SIZE" check-if-fork:"PqForkEpoch"`
 	TargetCommitteeSize            uint64 `yaml:"TARGET_COMMITTEE_SIZE"`
 	MaxValidatorsPerCommittee      uint64 `yaml:"MAX_VALIDATORS_PER_COMMITTEE"`
 	ShuffleRoundCount              uint64 `yaml:"SHUFFLE_ROUND_COUNT"`
@@ -159,6 +164,7 @@ type ChainSpecPreset struct {
 	MaxEffectiveBalance            uint64 `yaml:"MAX_EFFECTIVE_BALANCE"`
 	EffectiveBalanceIncrement      uint64 `yaml:"EFFECTIVE_BALANCE_INCREMENT"`
 	MinAttestationInclusionDelay   uint64 `yaml:"MIN_ATTESTATION_INCLUSION_DELAY"`
+	MinAttestationInclusionDelayPq uint64 `yaml:"MIN_ATTESTATION_INCLUSION_DELAY_PQ" check-if-fork:"PqForkEpoch"`
 	SlotsPerEpoch                  uint64 `yaml:"SLOTS_PER_EPOCH"`
 	MinSeedLookahead               uint64 `yaml:"MIN_SEED_LOOKAHEAD"`
 	MaxSeedLookahead               uint64 `yaml:"MAX_SEED_LOOKAHEAD"`
@@ -298,6 +304,20 @@ func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 
 	if chain.DomainExecutionProof == (phase0.DomainType{}) {
 		chain.DomainExecutionProof = phase0.DomainType{0x0f, 0x00, 0x00, 0x00}
+	}
+
+	if chain.PqForkEpoch != nil {
+		if chain.MaxCommitteesPerSlotPq == 0 {
+			chain.MaxCommitteesPerSlotPq = min(chain.MaxCommitteesPerSlot, 16)
+		}
+
+		if chain.MinAttestationInclusionDelayPq == 0 {
+			chain.MinAttestationInclusionDelayPq = 2
+		}
+
+		if chain.MaxStarkProofSize == 0 {
+			chain.MaxStarkProofSize = 1 << 20
+		}
 	}
 
 	if chain.SlotDurationMs == 0 {
@@ -479,6 +499,26 @@ func (chain *ChainSpec) Clone() *ChainSpec {
 	}
 
 	return res
+}
+
+func (chain *ChainSpec) IsPqActive(epoch phase0.Epoch) bool {
+	return chain.PqForkEpoch != nil && uint64(epoch) >= *chain.PqForkEpoch
+}
+
+func (chain *ChainSpec) MaxCommitteesPerSlotAt(version spec.DataVersion) uint64 {
+	if version == spec.DataVersionPQ && chain.MaxCommitteesPerSlotPq > 0 {
+		return chain.MaxCommitteesPerSlotPq
+	}
+
+	return chain.MaxCommitteesPerSlot
+}
+
+func (chain *ChainSpec) MaxCommitteesPerSlotAtEpoch(epoch phase0.Epoch) uint64 {
+	if chain.IsPqActive(epoch) {
+		return chain.MaxCommitteesPerSlotAt(spec.DataVersionPQ)
+	}
+
+	return chain.MaxCommitteesPerSlot
 }
 
 // GetSlotDurationMs returns the slot duration in milliseconds in effect at the given epoch.

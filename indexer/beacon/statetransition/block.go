@@ -115,7 +115,7 @@ func (st *StateTransition) applyBlock(state *all.BeaconState, block *all.SignedB
 	processRandao(s, block)
 
 	// process_eth1_data — removed in Heze along with the Eth1 bridge (EIP-8015)
-	if state.Version < spec.DataVersionHeze {
+	if !hasHeze(state.Version) {
 		processEth1Data(s, block)
 	}
 
