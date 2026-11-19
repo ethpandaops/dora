@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
 	"net/http"
 	"strconv"
 	"strings"
@@ -125,6 +126,7 @@ func APISlotV1(w http.ResponseWriter, r *http.Request) {
 		filter.WithMissing = 1
 	}
 
+	chainState := services.GlobalBeaconService.GetChainState()
 	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), filter, 0, 1, 0)
 
 	// Handle case where slot is not found
@@ -145,7 +147,7 @@ func APISlotV1(w http.ResponseWriter, r *http.Request) {
 				Slot:     assignedSlot.Slot,
 				Proposer: assignedSlot.Proposer,
 				Status:   "Missing",
-				Epoch:    assignedSlot.Slot / 32, // Slots per epoch
+				Epoch:    uint64(chainState.EpochOfSlot(phase0.Slot(assignedSlot.Slot))),
 			},
 		}
 
@@ -178,7 +180,7 @@ func APISlotV1(w http.ResponseWriter, r *http.Request) {
 		AttesterSlashingsCount:     dbSlot.AttesterSlashingCount,
 		BlockRoot:                  fmt.Sprintf("0x%x", dbSlot.Root),
 		DepositsCount:              dbSlot.DepositCount,
-		Epoch:                      dbSlot.Slot / 32, // Slots per epoch
+		Epoch:                      uint64(chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))),
 		Graffiti:                   fmt.Sprintf("0x%x", dbSlot.Graffiti),
 		GraffitiText:               dbSlot.GraffitiText,
 		ParentRoot:                 fmt.Sprintf("0x%x", dbSlot.ParentRoot),

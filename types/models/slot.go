@@ -62,7 +62,6 @@ type SlotPagePQData struct {
 	VRFLeaf                        []byte `json:"vrf_leaf"`
 	VRFProof                       []byte `json:"vrf_proof"`
 	AttestationProofSize           uint64 `json:"attestation_proof_size"`
-	ProvenSignatures               uint64 `json:"proven_signatures"`
 	ValidatorPreregistrationsCount uint64 `json:"validator_preregistrations_count"`
 	BuilderPreregistrationsCount   uint64 `json:"builder_preregistrations_count"`
 	ExecutionVoluntaryExitsCount   uint64 `json:"execution_voluntary_exits_count"`

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/ethpandaops/go-eth2-client/spec/pq"
 	"net/http"
 	"net/url"
 	"sort"
@@ -274,6 +275,7 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 
 	// get validators
 	pageData.Validators = make([]*models.ValidatorsPageDataValidator, 0)
+	pqEnabled := chainState.IsPqEnabled(chainState.CurrentEpoch())
 
 	for _, validator := range validatorSet {
 		if validator.Validator == nil {
@@ -287,6 +289,9 @@ func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize ui
 			PublicKey:        validator.Validator.PublicKey[:],
 			Balance:          uint64(validator.Balance),
 			EffectiveBalance: uint64(validator.Validator.EffectiveBalance),
+		}
+		if pqEnabled {
+			validatorData.PublicKey = validator.Validator.PublicKey[pq.DepositPrefixSize:]
 		}
 		if strings.HasPrefix(validator.Status.String(), "pending") {
 			validatorData.State = "Pending"

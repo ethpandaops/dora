@@ -570,7 +570,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			VRFLeaf:              body.VRFReveal[0][:],
 			VRFProof:             vrfProof,
 			AttestationProofSize: uint64(len(body.AttestationProof)),
-			ProvenSignatures:     uint64(pq.ProvenSignatures(body.AttestationProof)),
 		}
 
 		if requests := body.ParentExecutionRequests; requests != nil {
