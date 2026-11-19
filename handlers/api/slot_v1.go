@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/pq"
 	"net/http"
 	"strconv"
 	"strings"
@@ -72,31 +74,41 @@ type APISlotResponse struct {
 
 // APISlotData represents detailed slot information
 type APISlotData struct {
-	AttestationsCount          uint64  `json:"attestationscount"`
-	AttesterSlashingsCount     uint64  `json:"attesterslashingscount"`
-	BlockRoot                  string  `json:"blockroot"`
-	DepositsCount              uint64  `json:"depositscount"`
-	Epoch                      uint64  `json:"epoch"`
-	ExecBaseFeePerGas          uint64  `json:"exec_base_fee_per_gas"`
-	ExecBlockHash              string  `json:"exec_block_hash"`
-	ExecBlockNumber            uint64  `json:"exec_block_number"`
-	ExecExtraData              string  `json:"exec_extra_data"`
-	ExecFeeRecipient           string  `json:"exec_fee_recipient"`
-	ExecGasLimit               uint64  `json:"exec_gas_limit"`
-	ExecGasUsed                uint64  `json:"exec_gas_used"`
-	ExecTransactionsCount      uint64  `json:"exec_transactions_count"`
-	Graffiti                   string  `json:"graffiti"`
-	GraffitiText               string  `json:"graffiti_text"`
-	ParentRoot                 string  `json:"parentroot"`
-	Proposer                   uint64  `json:"proposer"`
-	ProposerSlashingsCount     uint64  `json:"proposerslashingscount"`
-	Slot                       uint64  `json:"slot"`
-	StateRoot                  string  `json:"stateroot"`
-	Status                     string  `json:"status"`
-	SyncAggregateParticipation float64 `json:"syncaggregate_participation"`
-	VoluntaryExitsCount        uint64  `json:"voluntaryexitscount"`
-	WithdrawalCount            uint64  `json:"withdrawalcount"`
-	BlobCount                  uint64  `json:"blob_count"`
+	AttestationsCount          uint64         `json:"attestationscount"`
+	AttesterSlashingsCount     uint64         `json:"attesterslashingscount"`
+	BlockRoot                  string         `json:"blockroot"`
+	DepositsCount              uint64         `json:"depositscount"`
+	Epoch                      uint64         `json:"epoch"`
+	ExecBaseFeePerGas          uint64         `json:"exec_base_fee_per_gas"`
+	ExecBlockHash              string         `json:"exec_block_hash"`
+	ExecBlockNumber            uint64         `json:"exec_block_number"`
+	ExecExtraData              string         `json:"exec_extra_data"`
+	ExecFeeRecipient           string         `json:"exec_fee_recipient"`
+	ExecGasLimit               uint64         `json:"exec_gas_limit"`
+	ExecGasUsed                uint64         `json:"exec_gas_used"`
+	ExecTransactionsCount      uint64         `json:"exec_transactions_count"`
+	Graffiti                   string         `json:"graffiti"`
+	GraffitiText               string         `json:"graffiti_text"`
+	ParentRoot                 string         `json:"parentroot"`
+	Proposer                   uint64         `json:"proposer"`
+	ProposerSlashingsCount     uint64         `json:"proposerslashingscount"`
+	Slot                       uint64         `json:"slot"`
+	StateRoot                  string         `json:"stateroot"`
+	Status                     string         `json:"status"`
+	SyncAggregateParticipation float64        `json:"syncaggregate_participation"`
+	VoluntaryExitsCount        uint64         `json:"voluntaryexitscount"`
+	WithdrawalCount            uint64         `json:"withdrawalcount"`
+	BlobCount                  uint64         `json:"blob_count"`
+	PQ                         *APISlotPQData `json:"pq,omitempty"`
+}
+
+// APISlotPQData represents the post-quantum fields of a pq fork block
+type APISlotPQData struct {
+	XMSSSignature        string `json:"xmss_signature"`
+	XMSSLeafIndex        uint64 `json:"xmss_leaf_index"`
+	VRFLeaf              string `json:"vrf_leaf"`
+	VRFProof             string `json:"vrf_proof"`
+	AttestationProofSize uint64 `json:"attestation_proof_size"`
 }
 
 // APISlotV1 returns information about a specific slot by slot number or block root
@@ -212,6 +224,27 @@ func APISlotV1(w http.ResponseWriter, r *http.Request) {
 	data.ExecGasLimit = dbSlot.EthGasLimit
 	data.ExecGasUsed = dbSlot.EthGasUsed
 	data.ExecBaseFeePerGas = dbSlot.EthBaseFee
+
+	if chainState.IsPqEnabled(chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))) {
+		blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), phase0.Root(dbSlot.Root))
+		if err == nil && blockData != nil && blockData.Block != nil && blockData.Block.Version == spec.DataVersionPQ {
+			body := blockData.Block.Message.Body
+			vrfProof := make([]byte, 0, pq.VRFProofLength*32)
+
+			for i := range body.VRFReveal {
+				vrfProof = append(vrfProof, body.VRFReveal[i][:]...)
+			}
+
+			signature := blockData.Block.XMSSSignature
+			data.PQ = &APISlotPQData{
+				XMSSSignature:        fmt.Sprintf("0x%x", signature[:]),
+				XMSSLeafIndex:        uint64(signature.LeafIndex()),
+				VRFLeaf:              fmt.Sprintf("0x%x", body.VRFReveal[0][:]),
+				VRFProof:             fmt.Sprintf("0x%x", vrfProof),
+				AttestationProofSize: uint64(len(body.AttestationProof)),
+			}
+		}
+	}
 
 	response := APISlotResponse{
 		Status: "OK",
