@@ -146,8 +146,11 @@
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The proposer's leanXMSS signature over the block">XMSS Signature:</span></div>
           <div class="col-md-10">
             {{ len .Block.PQ.Signature }} bytes, leaf <span class="text-monospace">{{ .Block.PQ.SignatureLeafIndex }}</span>
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Block.PQ.Signature }}"></i>
-            <div class="text-monospace text-break small mt-1" style="max-height: 8rem; overflow-y: auto;">0x{{ printf "%x" .Block.PQ.Signature }}</div>
+            {{ $hex := printf "%x" .Block.PQ.Signature }}
+            <span class="text-monospace">0x{{ printf "%x" (slice .Block.PQ.Signature 0 8) }}…{{ printf "%x" (slice .Block.PQ.Signature (sub (len .Block.PQ.Signature) 8) (len .Block.PQ.Signature)) }}</span>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ $hex }}"></i>
+            <a class="text-muted p-1" role="button" data-bs-toggle="collapse" data-bs-target="#pqSignatureFull" aria-expanded="false" aria-controls="pqSignatureFull" title="Show full value"><i class="fa fa-chevron-down"></i></a>
+            <div class="collapse text-monospace text-break small mt-1" id="pqSignatureFull">0x{{ $hex }}</div>
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
@@ -161,8 +164,11 @@
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The revealed VRF leaf followed by its Merkle branch to the proposer's VRF root">VRF Proof:</span></div>
           <div class="col-md-10">
             {{ len .Block.PQ.VRFProof }} bytes
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Block.PQ.VRFProof }}"></i>
-            <div class="text-monospace text-break small mt-1" style="max-height: 8rem; overflow-y: auto;">0x{{ printf "%x" .Block.PQ.VRFProof }}</div>
+            {{ $hex := printf "%x" .Block.PQ.VRFProof }}
+            <span class="text-monospace">0x{{ printf "%x" (slice .Block.PQ.VRFProof 0 8) }}…{{ printf "%x" (slice .Block.PQ.VRFProof (sub (len .Block.PQ.VRFProof) 8) (len .Block.PQ.VRFProof)) }}</span>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ $hex }}"></i>
+            <a class="text-muted p-1" role="button" data-bs-toggle="collapse" data-bs-target="#pqVrfProofFull" aria-expanded="false" aria-controls="pqVrfProofFull" title="Show full value"><i class="fa fa-chevron-down"></i></a>
+            <div class="collapse text-monospace text-break small mt-1" id="pqVrfProofFull">0x{{ $hex }}</div>
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
