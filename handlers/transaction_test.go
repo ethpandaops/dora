@@ -977,3 +977,96 @@ func TestProtocolAccountsAreNamedInStateChanges(t *testing.T) {
 		t.Errorf("an ordinary account = %q, want no name", got)
 	}
 }
+
+// daisugiDependencyTx is transaction 0x576438a5...477f38 of daisugi-devnet-0: a
+// self-relayed frame transaction whose second frame declares one leanSTARK dependency
+// over the transaction's own signature hash.
+const daisugiDependencyTx = "0x06f9012b8429d103d8c584ccbd53ec809405a20b6083bd71c58c10cbfa9db8036bf5a8e206f89bce01" +
+	"0380c8830186a083017e808080f86b048080c48275308080b8600000000000000000000000000000000000000000000000000000" +
+	"00000000001100000000000000000000000000000000000000000000000000000000000000004f0922a927365fec2cf13867145a" +
+	"3de76b3d26385681cd100c9b3d23c3c03d46de028094000000000000000000000000000000000000deadc482c350807b80f85cf8" +
+	"5a019405a20b6083bd71c58c10cbfa9db8036bf5a8e20680b84101f9e4f70b43dcfddbd1ce7062d64373a45945d6772d68e28c35" +
+	"ca070c0fef77137420ebe89837279324ab8195934169a2b9f04542de1ec4eff441471a78c959c6cd8762bcad3f9900008477359" +
+	"400c0"
+
+// dependencyFramePage builds the frames of the devnet transaction with the results its
+// receipt reported.
+func dependencyFramePage(t *testing.T) *models.TransactionPageData {
+	t.Helper()
+
+	tx, err := txtypes.DecodeTx(common.FromHex(daisugiDependencyTx))
+	if err != nil {
+		t.Fatalf("failed decoding: %v", err)
+	}
+
+	frameTx, ok := tx.Inner().(*txtypes.FrameTx)
+	if !ok {
+		t.Fatalf("decoded a %T, want a frame transaction", tx.Inner())
+	}
+
+	pageData := &models.TransactionPageData{BlockNumber: 675, Slot: 676}
+	buildFramesFromEnvelope(pageData, frameTx)
+	applyFrameTxEnvelope(pageData, frameTx)
+	applyFrameResults(pageData, []bdbtypes.FrameReceiptEntry{
+		{Status: uint8(txtypes.FrameStatusSuccess), ExecGasUsed: 100, StateGasUsed: 97_920},
+		{Status: uint8(txtypes.FrameStatusSuccess), ExecGasUsed: 30_000},
+		{Status: uint8(txtypes.FrameStatusSuccess), ExecGasUsed: 2_600},
+	})
+
+	return pageData
+}
+
+// A dependency frame declares what the block has to prove. It is not a call: it has no
+// caller, no target and no method, and what it carries is a list of dependencies with
+// the transaction's signature hash where the frame spells zero.
+func TestDependencyFrameIsADeclarationNotACall(t *testing.T) {
+	pageData := dependencyFramePage(t)
+
+	if len(pageData.Frames) != 3 {
+		t.Fatalf("got %d frames, want 3", len(pageData.Frames))
+	}
+
+	if pageData.FrameDependencyCount != 1 || pageData.FrameDependencyGas != txtypes.LeanStarkVerificationGas {
+		t.Errorf("%d dependencies adding %d intrinsic gas, want 1 adding %d",
+			pageData.FrameDependencyCount, pageData.FrameDependencyGas, txtypes.LeanStarkVerificationGas)
+	}
+
+	frame := pageData.Frames[1]
+	if !frame.IsDependency || frame.ModeName != "DepVerify" || frame.Species != "Dependencies" {
+		t.Fatalf("frame 1 is %q / %q, dependency %v", frame.ModeName, frame.Species, frame.IsDependency)
+	}
+
+	if frame.HasTarget || len(frame.TargetAddr) != 0 || len(frame.CallerAddr) != 0 || len(frame.MethodID) != 0 {
+		t.Errorf("a dependency frame is shown as a call: target %x, caller %x, method %x",
+			frame.TargetAddr, frame.CallerAddr, frame.MethodID)
+	}
+
+	if len(frame.Dependencies) != 1 {
+		t.Fatalf("got %d dependencies, want 1", len(frame.Dependencies))
+	}
+
+	dep := frame.Dependencies[0]
+	if dep.SchemeName != "leanSTARK" || !dep.SignsTransaction || dep.VerifyGas != txtypes.LeanStarkVerificationGas {
+		t.Errorf("dependency = %+v", dep)
+	}
+
+	if want := common.HexToHash("0xf1b421aad5d69d2c014c87d8a29e95f8ab93dba1089f6054ea25947de28197b3"); common.BytesToHash(dep.DataHash) != want {
+		t.Errorf("data hash = %x, want the signature hash %s", dep.DataHash, want)
+	}
+
+	if want := common.HexToHash("0x4f0922a927365fec2cf13867145a3de76b3d26385681cd100c9b3d23c3c03d46"); common.BytesToHash(dep.VerificationKey) != want {
+		t.Errorf("verification key = %x, want %s", dep.VerificationKey, want)
+	}
+
+	// It reports success without running, so a call trace has no root for it.
+	for _, executed := range executedFrames(pageData.Frames) {
+		if executed.IsDependency {
+			t.Error("a dependency frame is counted among the frames that ran")
+		}
+	}
+
+	// The frames around it are unaffected.
+	if !pageData.Frames[0].HasTarget || !pageData.Frames[2].HasTarget || pageData.FrameShape != "Self-relayed" {
+		t.Errorf("neighbouring frames changed: shape %q", pageData.FrameShape)
+	}
+}

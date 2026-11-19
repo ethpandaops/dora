@@ -1227,7 +1227,7 @@ func copyCmdBuildS3BlockObject(root []byte, components map[uint16]*pebbleBlockCo
 	}
 
 	// Use v2 format for Gloas+ blocks.
-	useV2 := bodyVersion >= uint64(spec.DataVersionGloas)
+	useV2 := bodyVersion >= uint64(spec.DataVersionGloas) && bodyVersion != uint64(spec.DataVersionDaisugi)
 
 	if useV2 {
 		meta := make([]byte, s3MetaSizeV2)

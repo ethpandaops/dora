@@ -27,7 +27,7 @@ import (
 //
 // Modified in Gloas: https://github.com/ethereum/consensus-specs/blob/master/specs/gloas/beacon-chain.md#modified-block-processing
 func (st *StateTransition) applyBlock(state *all.BeaconState, block *all.SignedBeaconBlock, parentStateRoot phase0.Root, info *ApplyInfo) error {
-	if state.Version < spec.DataVersionFulu {
+	if state.Version < spec.DataVersionFulu || state.Version == spec.DataVersionDaisugi {
 		return nil
 	}
 

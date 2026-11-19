@@ -57,6 +57,8 @@ type ChainSpecConfig struct {
 	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"       check-if-fork:"GloasForkEpoch"`
 	HezeForkVersion      phase0.Version `yaml:"HEZE_FORK_VERSION"      check-if-fork:"HezeForkEpoch"`
 	HezeForkEpoch        *uint64        `yaml:"HEZE_FORK_EPOCH"        check-if-fork:"HezeForkEpoch"`
+	DaisugiForkVersion   phase0.Version `yaml:"DAISUGI_FORK_VERSION"   check-if-fork:"DaisugiForkEpoch"`
+	DaisugiForkEpoch     *uint64        `yaml:"DAISUGI_FORK_EPOCH"     check-if-fork:"DaisugiForkEpoch"`
 
 	// Time parameters
 	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`

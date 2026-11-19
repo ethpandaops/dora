@@ -220,7 +220,7 @@ func (bs *ChainService) loadBlockFromClientsByRoot(ctx context.Context, blockroo
 			}
 		}
 
-		if block != nil && block.Version >= spec.DataVersionGloas {
+		if block != nil && block.Version >= spec.DataVersionGloas && block.Version != spec.DataVersionDaisugi {
 			payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
 			if payload != nil {
 				break
@@ -415,7 +415,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 	// Only attempt this when something is actually missing to avoid extra lookups for
 	// blocks that already loaded fully from cache or clients.
 	needsBlockDb := result == nil ||
-		(result.Block != nil && result.Block.Version >= spec.DataVersionGloas && result.Payload == nil)
+		(result.Block != nil && result.Block.Version >= spec.DataVersionGloas && result.Block.Version != spec.DataVersionDaisugi && result.Payload == nil)
 	if blockdb.GlobalBlockDb != nil && needsBlockDb {
 		if (blockRoot == phase0.Root{}) {
 			blockRoot = bs.getCanonicalDbBlockRoot(ctx, slot)
@@ -495,7 +495,7 @@ func (bs *ChainService) loadBlockFromClientsBySlot(ctx context.Context, slot pha
 			logrus.WithError(err).Debugf("could not load block body for slot %v from client %s", slot, client.GetClient().GetName())
 		}
 
-		if block != nil && block.Version >= spec.DataVersionGloas {
+		if block != nil && block.Version >= spec.DataVersionGloas && block.Version != spec.DataVersionDaisugi {
 			payload, err = beacon.LoadExecutionPayload(ctx, client, load.root)
 			if payload != nil {
 				break
@@ -538,7 +538,7 @@ func (bs *ChainService) completeBlockFromBlockDb(ctx context.Context, slot phase
 	var flags btypes.BlockDataFlags
 	if result == nil {
 		flags = btypes.BlockDataFlagHeader | btypes.BlockDataFlagBody | btypes.BlockDataFlagPayload | btypes.BlockDataFlagBal
-	} else if result.Block != nil && result.Block.Version >= spec.DataVersionGloas && result.Payload == nil {
+	} else if result.Block != nil && result.Block.Version >= spec.DataVersionGloas && result.Block.Version != spec.DataVersionDaisugi && result.Payload == nil {
 		// We have the block but its payload (and possibly the BAL stored with it)
 		// couldn't be loaded from a client.
 		flags = btypes.BlockDataFlagPayload | btypes.BlockDataFlagBal
@@ -607,7 +607,7 @@ func (bs *ChainService) completeBlockFromBlockDb(ctx context.Context, slot phase
 // in blockdb when the node has pruned it (BAL is ephemeral on nodes but
 // stored forever in blockdb — see indexer/beacon/block.go writeToBlockDb).
 func (bs *ChainService) populateBlockAccessList(ctx context.Context, result *CombinedBlockResponse) {
-	if result == nil || result.Block == nil || result.Block.Version < spec.DataVersionGloas {
+	if result == nil || result.Block == nil || (result.Block.Version < spec.DataVersionGloas || result.Block.Version == spec.DataVersionDaisugi) {
 		return
 	}
 	if len(result.BlockAccessList) > 0 {

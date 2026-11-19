@@ -32,8 +32,14 @@ type ExecutionBlock struct {
 	Header    *types.Header // always set
 	Block     *types.Block  // nil if go-ethereum cannot decode a transaction (see TxError)
 	TxError   error
-	HashMatch bool   // Header.Hash() equals the payload block hash
+	HashMatch bool   // Hash equals the payload block hash
 	Size      uint64 // len(rlp(block)) (EIP-7934); from the raw tx bytes when Block is nil
+
+	// Hash is the reconstructed block hash. It is Header.Hash() except for an EIP-8288
+	// block, whose header carries the commitments in Stark, which go-ethereum's header
+	// has no fields for.
+	Hash  common.Hash
+	Stark *StarkCommitment // EIP-8288 (Daisugi) only
 }
 
 // rawTxs feeds the opaque EIP-2718 tx encodings to DeriveSha, so the transactions
@@ -99,7 +105,7 @@ func ExecutionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.
 		h := types.CalcRequestsHash(ExecutionRequestsList(requests))
 		header.RequestsHash = &h
 	}
-	if payload.Version >= spec.DataVersionGloas {
+	if payload.Version >= spec.DataVersionGloas && payload.Version != spec.DataVersionDaisugi {
 		var balHash common.Hash // placeholder when the BAL is unavailable
 		if len(bal) > 0 {
 			balHash = crypto.Keccak256Hash(bal)
@@ -108,18 +114,42 @@ func ExecutionBlockFromPayload(payload *all.ExecutionPayload, parentRoot phase0.
 		header.BlockAccessListHash, header.SlotNumber = &balHash, &slot
 	}
 
-	result := &ExecutionBlock{Header: header, HashMatch: header.Hash() == common.Hash(payload.BlockHash)}
+	result := &ExecutionBlock{Header: header, Hash: header.Hash()}
+
+	var starkHeader rlp.RawValue
+
+	if payload.Version == spec.DataVersionDaisugi {
+		result.Stark = newStarkCommitment(payload)
+
+		if encoded, err := result.Stark.headerRLP(header); err == nil {
+			starkHeader = encoded
+			result.Hash = crypto.Keccak256Hash(encoded)
+		}
+	}
+
+	result.HashMatch = result.Hash == common.Hash(payload.BlockHash)
+
+	// The proof is part of an EIP-8288 block's body, so its size is taken from the raw
+	// encoding whether or not go-ethereum can decode the transactions.
+	if starkHeader != nil {
+		result.Size, _ = result.Stark.blockSize(starkHeader, payload.Transactions, withdrawals, payload.RecursiveStarkProof)
+	}
+
 	txs := make([]*types.Transaction, len(payload.Transactions))
 	for i, raw := range payload.Transactions {
 		txs[i] = new(types.Transaction)
 		if err := txs[i].UnmarshalBinary(raw); err != nil {
 			result.TxError = fmt.Errorf("go-ethereum cannot decode tx %d: %w", i, err)
-			result.Size, _ = rawBlockSize(header, payload.Transactions, withdrawals)
+			if starkHeader == nil {
+				result.Size, _ = rawBlockSize(header, payload.Transactions, withdrawals)
+			}
 			return result
 		}
 	}
 	result.Block = types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: txs, Withdrawals: withdrawals})
-	result.Size = result.Block.Size()
+	if starkHeader == nil {
+		result.Size = result.Block.Size()
+	}
 	return result
 }
 
@@ -131,8 +161,10 @@ const unsupportedFork = "dora's go-ethereum version likely does not support this
 // beacon block commits to in its execution payload bid (nil before Gloas), and
 // go-ethereum must have decoded every transaction.
 func (b *ExecutionBlock) Verify(payload *all.ExecutionPayload, bid *all.ExecutionPayloadBid) error {
-	hash := b.Header.Hash()
+	hash := b.Hash
 	switch {
+	case b.Stark != nil:
+		return errors.New("EL block downloads are not available for EIP-8288 blocks: go-ethereum cannot encode the header's proof commitments")
 	case b.Header.BlockAccessListHash != nil && *b.Header.BlockAccessListHash == (common.Hash{}):
 		return errors.New("block access list unavailable, the EL block header cannot be rebuilt without it")
 	case bid != nil && hash != common.Hash(bid.BlockHash):
@@ -176,17 +208,9 @@ func (b *ExecutionBlock) BlockJSON() (map[string]json.RawMessage, error) {
 // with tx types go-ethereum cannot decode. It encodes the same list as geth's extblock:
 // a legacy tx is already an RLP list, a typed tx is an RLP string of type || payload.
 func rawBlockSize(header *types.Header, txs []bellatrix.Transaction, withdrawals []*types.Withdrawal) (uint64, error) {
-	encTxs := make([]rlp.RawValue, len(txs))
-	for i, tx := range txs {
-		if len(tx) > 0 && tx[0] >= 0xc0 {
-			encTxs[i] = rlp.RawValue(tx)
-		} else {
-			enc, err := rlp.EncodeToBytes([]byte(tx))
-			if err != nil {
-				return 0, err
-			}
-			encTxs[i] = enc
-		}
+	encTxs, err := encodeRawTxs(txs)
+	if err != nil {
+		return 0, err
 	}
 	enc, err := rlp.EncodeToBytes(&struct {
 		Header      *types.Header
@@ -195,6 +219,24 @@ func rawBlockSize(header *types.Header, txs []bellatrix.Transaction, withdrawals
 		Withdrawals []*types.Withdrawal `rlp:"optional"`
 	}{header, encTxs, nil, withdrawals})
 	return uint64(len(enc)), err
+}
+
+// encodeRawTxs encodes the opaque tx encodings as the items of a block's transaction
+// list: a legacy tx is already an RLP list, a typed tx is an RLP string of type || payload.
+func encodeRawTxs(txs []bellatrix.Transaction) ([]rlp.RawValue, error) {
+	encTxs := make([]rlp.RawValue, len(txs))
+	for i, tx := range txs {
+		if len(tx) > 0 && tx[0] >= 0xc0 {
+			encTxs[i] = rlp.RawValue(tx)
+		} else {
+			enc, err := rlp.EncodeToBytes([]byte(tx))
+			if err != nil {
+				return nil, err
+			}
+			encTxs[i] = enc
+		}
+	}
+	return encTxs, nil
 }
 
 // ExecutionRequestsList encodes execution requests as the EIP-7685 list

@@ -544,7 +544,7 @@ func (block *Block) setBlockIndex(body *all.SignedBeaconBlock, payload *all.Sign
 
 	// Post-Gloas the blob commitments come from the bid, but the blobs themselves only
 	// propagate alongside the payload - without a revealed payload the block carries no blobs.
-	if bbody.Version >= spec.DataVersionGloas && payload == nil {
+	if bbody.Version >= spec.DataVersionGloas && bbody.Version != spec.DataVersionDaisugi && payload == nil {
 		blockIndex.BlobCount = 0
 	} else {
 		blockIndex.BlobCount = uint64(len(utils.BlockBodyBlobCommitments(bbody)))

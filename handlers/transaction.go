@@ -1960,6 +1960,8 @@ var frameModeNames = map[uint8]string{
 	uint8(txtypes.FrameModeVerify):  "Verify",
 	uint8(txtypes.FrameModeSender):  "Sender",
 	uint8(txtypes.FrameModeAssert):  "Assert",
+
+	uint8(txtypes.FrameModeDepVerify): "DepVerify",
 }
 
 // frameSpeciesNames turn the mempool rules' species names into readable ones.
@@ -1981,6 +1983,7 @@ var frameSpeciesNames = map[txtypes.FrameSpecies]string{
 	txtypes.SpeciesUserOp:       "User operation",
 	txtypes.SpeciesPostOp:       "Settlement",
 	txtypes.SpeciesAssert:       "Assertion",
+	txtypes.SpeciesDepVerify:    "Dependencies",
 	txtypes.SpeciesOther:        "Other",
 }
 
@@ -2012,6 +2015,10 @@ var frameSpeciesInfo = map[txtypes.FrameSpecies]string{
 	txtypes.SpeciesAssert: "Runs after the transaction's operations, reading what they did through TXTRACE and " +
 		"asserting something about it. If it reverts, the whole execution body is reverted with it - not just " +
 		"its own atomic batch - though the transaction still reaches the chain and its fee is still owed.",
+
+	txtypes.SpeciesDepVerify: "Declares signatures or proofs the transaction depends on without carrying them. " +
+		"The frame runs no code: the block includes one recursive STARK proving the dependencies of all its " +
+		"transactions, and a later frame can read what was declared here.",
 
 	txtypes.SpeciesOther: "The frame's mode and approval flags match none of the shapes the mempool rules name.",
 }
@@ -2046,7 +2053,23 @@ func buildFramesFromEnvelope(pageData *models.TransactionPageData, frameTx *txty
 
 	validationLen := frameTx.ValidationPrefixLength()
 
+	// A dependency over the transaction itself is declared with a zero data hash, which
+	// stands for the signature hash.
+	var sigHash common.Hash
+	if frameTx.DependencyCount() > 0 {
+		sigHash, _ = frameTx.SigHash()
+	}
+
+	pageData.FrameDependencyCount = uint64(frameTx.DependencyCount())
+	pageData.FrameDependencyGas = frameTx.RecursiveStarkGas()
+
 	for i, protocolFrame := range frameTx.Frames {
+		if protocolFrame.IsDependency() {
+			frames = append(frames, buildDependencyFrame(uint32(i), protocolFrame, sigHash, i < validationLen))
+
+			continue
+		}
+
 		target := protocolFrame.ResolvedTarget(frameTx.Sender)
 		caller := frameCaller(protocolFrame, frameTx.Sender)
 		species := frameSpecies(protocolFrame, frameTx.Sender, i < validationLen)
@@ -2103,6 +2126,53 @@ func buildFramesFromEnvelope(pageData *models.TransactionPageData, frameTx *txty
 	// The envelope declares the frames; what each of them did is on the receipt, which is
 	// overlaid separately and may not have been kept.
 	pageData.FrameResultsMissing = true
+}
+
+// buildDependencyFrame builds the page's view of an EIP-8288 dependency frame.
+//
+// Such a frame is a declaration rather than a call: nothing enters it and it addresses
+// nothing, so it has neither caller nor target, and its data is a list of dependencies
+// rather than calldata.
+func buildDependencyFrame(index uint32, protocolFrame *txtypes.Frame, sigHash common.Hash, inValidationPrefix bool) *models.TransactionPageDataFrame {
+	frame := &models.TransactionPageDataFrame{
+		Index:            index,
+		Mode:             uint8(protocolFrame.Mode),
+		ModeName:         frameModeNames[uint8(protocolFrame.Mode)],
+		Species:          frameSpeciesNames[txtypes.SpeciesDepVerify],
+		SpeciesInfo:      frameSpeciesInfo[txtypes.SpeciesDepVerify],
+		Flags:            protocolFrame.Flags,
+		IsDependency:     true,
+		IsValidation:     inValidationPrefix,
+		DataLen:          uint32(len(protocolFrame.Data)),
+		Data:             protocolFrame.Data,
+		ExecGasLimit:     protocolFrame.Limits.Execution,
+		StateGasLimit:    protocolFrame.Limits.State,
+		Status:           bdbtypes.FrameStatusUnknown,
+		StatusText:       frameStatusText(bdbtypes.FrameStatusUnknown, false),
+		BatchFailedIndex: -1,
+	}
+
+	declared := protocolFrame.Dependencies()
+	frame.Dependencies = make([]*models.TransactionPageDataFrameDependency, 0, len(declared))
+
+	for i, dep := range declared {
+		dataHash := dep.DataHash
+		if dep.SignsTransaction() {
+			dataHash = sigHash
+		}
+
+		frame.Dependencies = append(frame.Dependencies, &models.TransactionPageDataFrameDependency{
+			Index:            uint32(i),
+			Scheme:           uint8(dep.Scheme),
+			SchemeName:       dep.Scheme.String(),
+			DataHash:         dataHash[:],
+			SignsTransaction: dep.SignsTransaction(),
+			VerificationKey:  dep.VerificationKey[:],
+			VerifyGas:        dep.Scheme.VerificationGas(),
+		})
+	}
+
+	return frame
 }
 
 // applyFrameResults overlays the result a receipt reports for each frame.
@@ -2298,12 +2368,17 @@ func frameCaller(frame *txtypes.Frame, sender common.Address) common.Address {
 	return txtypes.EntryPoint
 }
 
-// executedFrames are the frames that ran: a skipped frame never did, and a frame the
-// client reported no result for cannot be claimed to have.
+// executedFrames are the frames that ran: a skipped frame never did, a frame the client
+// reported no result for cannot be claimed to have, and a dependency frame reports
+// success without running anything.
 func executedFrames(frames []*models.TransactionPageDataFrame) []*models.TransactionPageDataFrame {
 	executed := make([]*models.TransactionPageDataFrame, 0, len(frames))
 
 	for _, frame := range frames {
+		if frame.IsDependency {
+			continue
+		}
+
 		switch uint64(frame.Status) {
 		case txtypes.FrameStatusSuccess, txtypes.FrameStatusFailed:
 			executed = append(executed, frame)

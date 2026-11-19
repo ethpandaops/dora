@@ -84,7 +84,7 @@ func APISlotPayloadHeaderV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if blockData.Block.Version < spec.DataVersionGloas {
+	if blockData.Block.Version < spec.DataVersionGloas || blockData.Block.Version == spec.DataVersionDaisugi {
 		writePayloadHeaderResponse(w, data)
 		return
 	}

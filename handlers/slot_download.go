@@ -159,7 +159,7 @@ func resolveExecutionPayload(blockData *services.CombinedBlockResponse) (*all.Ex
 		return nil, fmt.Errorf("block has no body")
 	}
 
-	if blockData.Block.Version >= spec.DataVersionGloas {
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Block.Version != spec.DataVersionDaisugi {
 		if blockData.Payload == nil || blockData.Payload.Message == nil || blockData.Payload.Message.Payload == nil {
 			return nil, fmt.Errorf("block has no execution payload")
 		}
@@ -184,7 +184,7 @@ func resolveExecutionBlock(blockData *services.CombinedBlockResponse) (*all.Exec
 
 	parentRoot := blockData.Header.Message.ParentRoot
 	requests := blockData.Block.Message.Body.ExecutionRequests
-	if blockData.Block.Version >= spec.DataVersionGloas {
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Block.Version != spec.DataVersionDaisugi {
 		// The EL payload commits to the envelope's parent root and execution requests.
 		parentRoot = blockData.Payload.Message.ParentBeaconBlockRoot
 		requests = blockData.Payload.Message.ExecutionRequests
@@ -211,7 +211,7 @@ func resolveVerifiedExecutionBlock(blockData *services.CombinedBlockResponse) (*
 // The slot page gates the download buttons with it, so they only show what the downloads serve.
 func verifyExecutionBlock(blockData *services.CombinedBlockResponse, executionPayload *all.ExecutionPayload, execBlock *utils.ExecutionBlock) error {
 	var bid *all.ExecutionPayloadBid
-	if blockData.Block.Version >= spec.DataVersionGloas {
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Block.Version != spec.DataVersionDaisugi {
 		signedBid := blockData.Block.Message.Body.SignedExecutionPayloadBid
 		if signedBid == nil || signedBid.Message == nil {
 			return fmt.Errorf("block has no execution payload bid")

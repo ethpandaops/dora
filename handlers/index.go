@@ -316,6 +316,19 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		})
 	}
 
+	if specs.DaisugiForkEpoch != nil && *specs.DaisugiForkEpoch < uint64(18446744073709551615) {
+		forkDigest := chainState.GetForkDigest(specs.DaisugiForkVersion, nil)
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:       "Daisugi",
+			Epoch:      *specs.DaisugiForkEpoch,
+			Version:    specs.DaisugiForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.DaisugiForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.DaisugiForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
+		})
+	}
+
 	// Add BPO forks (from el genesis config if available, cl BLOB_SCHEDULE otherwise)
 	for _, bpoFork := range services.GlobalBeaconService.GetBpoForks() {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{

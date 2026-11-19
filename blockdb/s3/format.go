@@ -137,7 +137,7 @@ func readObjectMetadata(data []byte) (*objectMetadata, error) {
 // Uses v1 format for pre-gloas blocks, v2 for gloas+ blocks.
 func writeObjectMetadata(data *types.BlockData) []byte {
 	// Use v2 format only for gloas+ blocks (which can have payload/BAL)
-	if data.BodyVersion >= uint64(spec.DataVersionGloas) {
+	if data.BodyVersion >= uint64(spec.DataVersionGloas) && data.BodyVersion != uint64(spec.DataVersionDaisugi) {
 		meta := make([]byte, metadataSizeV2)
 		binary.BigEndian.PutUint32(meta[0:4], 2)
 		binary.BigEndian.PutUint32(meta[4:8], uint32(len(data.HeaderData)))
