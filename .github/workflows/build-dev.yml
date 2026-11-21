@@ -62,6 +62,12 @@ jobs:
 
         manual_tag="$MANUAL_DOCKER_TAG"
         if [[ ! -z "$manual_tag" ]]; then
+          # Manual tags must be valid docker tags and must not take reserved names
+          # (master/main/latest/pr and their -suffixed tags, or release tags).
+          if [[ ! "$manual_tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,100}$ || "$manual_tag" =~ ^(master|main|latest|pr)(-|$)|^v[0-9] ]]; then
+            echo "::error::reserved or invalid docker tag: use letters, digits, _ . - (write / as -), and no master, main, latest or pr prefix or v<digit> start"
+            exit 1
+          fi
           branch_name="$manual_tag"
           run_builds="true"
           build_docker="true"
