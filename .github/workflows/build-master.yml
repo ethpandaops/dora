@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -23,16 +23,20 @@ jobs:
   build_binaries:
     name: "Build Dora"
     needs: [check_source]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     uses: ./.github/workflows/_shared-build.yaml
     with:
       release: "snapshot"
       docker: true
-      docker_repository: "ethpandaops/dora"
+      docker_repository: "ghcr.io/ethpandaops/dora"
       docker_tag_prefix: "master"
       additional_tags: "['master','master-latest']"
     secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      IMAGE_MIRROR_URL: ${{ secrets.IMAGE_MIRROR_URL }}
   
   clone_docker_images:
     name: "Copy docker images"

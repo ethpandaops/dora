@@ -36,7 +36,7 @@ on:
         required: false
         type: boolean
       docker_repository:
-        description: 'Docker Hub Repository'
+        description: 'Image repository (ghcr.io/ethpandaops/<image>)'
         default: ''
         required: false
         type: string
@@ -51,11 +51,8 @@ on:
         required: false
         type: string
     secrets:
-      DOCKERHUB_USERNAME:
-        description: 'Docker Hub Username'
-        required: false
-      DOCKERHUB_TOKEN:
-        description: 'Docker Hub Token'
+      IMAGE_MIRROR_URL:
+        description: 'Image mirror URL (IMAGE_MIRROR_URL organization secret)'
         required: false
 
 permissions:
@@ -284,6 +281,11 @@ jobs:
     needs: [build_ui_package, build_linux_amd64_binary]
     if: ${{ inputs.docker }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -296,11 +298,12 @@ jobs:
     # prepare docker
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-    - name: Login to Docker Hub
+    - name: Login to GitHub Container Registry
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
 
     # download build artifacts
     - name: Download UI build artifacts
@@ -330,15 +333,37 @@ jobs:
           --tag ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
           --platform=linux/amd64
     - name: Push amd64 docker images
+      id: push
       run: |
-        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-amd64
-        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64
+        set -o pipefail
+        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-amd64 | tee -a "$RUNNER_TEMP/docker-push.log"
+        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 | tee -a "$RUNNER_TEMP/docker-push.log"
+        # Both tags name the same local image, so docker push reports one digest.
+        digest=$(grep -oE 'digest: sha256:[a-f0-9]{64}' "$RUNNER_TEMP/docker-push.log" | cut -d' ' -f2 | sort -u)
+        if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+          echo "::error::Expected one pushed digest, got: $digest"
+          exit 1
+        fi
+        echo "digest=$digest" >> "$GITHUB_OUTPUT"
+    - name: Attest and mirror amd64 docker images to Docker Hub
+      uses: ethpandaops/actions/mirror-image@738aeadbcdc54f1c9af659d35f8ef29dd5c0fae6
+      with:
+        tags: |
+          ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-amd64
+          ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64
+        digest: ${{ steps.push.outputs.digest }}
+        mirror-url: ${{ secrets.IMAGE_MIRROR_URL }}
 
   build_arm64_docker_image:
     name: Build arm64 docker image
     needs: [build_ui_package, build_linux_arm64_binary]
     if: ${{ inputs.docker }}
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -350,11 +375,12 @@ jobs:
     # prepare docker
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-    - name: Login to Docker Hub
+    - name: Login to GitHub Container Registry
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
 
     # download build artifacts
     - name: Download UI build artifacts
@@ -384,15 +410,37 @@ jobs:
           --tag ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64 \
           --platform=linux/arm64
     - name: Push arm64 docker image
+      id: push
       run: |
-        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-arm64
-        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
+        set -o pipefail
+        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-arm64 | tee -a "$RUNNER_TEMP/docker-push.log"
+        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64 | tee -a "$RUNNER_TEMP/docker-push.log"
+        # Both tags name the same local image, so docker push reports one digest.
+        digest=$(grep -oE 'digest: sha256:[a-f0-9]{64}' "$RUNNER_TEMP/docker-push.log" | cut -d' ' -f2 | sort -u)
+        if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+          echo "::error::Expected one pushed digest, got: $digest"
+          exit 1
+        fi
+        echo "digest=$digest" >> "$GITHUB_OUTPUT"
+    - name: Attest and mirror arm64 docker images to Docker Hub
+      uses: ethpandaops/actions/mirror-image@738aeadbcdc54f1c9af659d35f8ef29dd5c0fae6
+      with:
+        tags: |
+          ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-arm64
+          ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
+        digest: ${{ steps.push.outputs.digest }}
+        mirror-url: ${{ secrets.IMAGE_MIRROR_URL }}
 
   build_multiarch_image:
     name: Build multiarch docker image
     needs: [build_amd64_docker_image, build_arm64_docker_image]
     if: ${{ inputs.docker }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -404,24 +452,39 @@ jobs:
     # prepare docker
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-    - name: Login to Docker Hub
+    - name: Login to GitHub Container Registry
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
 
     # build multiarch image
     - name: Build multiarch docker manifest
+      id: manifest
       run: |
-        docker buildx imagetools create -t ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }} \
+        docker buildx imagetools create --metadata-file "$RUNNER_TEMP/manifest.json" -t ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }} \
         ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
         ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
+        digest=$(jq -er '."containerimage.descriptor".digest' "$RUNNER_TEMP/manifest.json")
+        echo "digest=$digest" >> "$GITHUB_OUTPUT"
+    - name: Attest and mirror multiarch docker manifest to Docker Hub
+      uses: ethpandaops/actions/mirror-image@738aeadbcdc54f1c9af659d35f8ef29dd5c0fae6
+      with:
+        tags: ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}
+        digest: ${{ steps.manifest.outputs.digest }}
+        mirror-url: ${{ secrets.IMAGE_MIRROR_URL }}
 
   build_extra_image:
     name: Build additional docker manifests
     needs: [build_multiarch_image]
     if: ${{ inputs.additional_tags }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     strategy:
       matrix:
         tag: ${{ fromJSON(inputs.additional_tags) }}
@@ -436,21 +499,36 @@ jobs:
     # prepare docker
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-    - name: Login to Docker Hub
+    - name: Login to GitHub Container Registry
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
 
     # build multiarch image
     - name: "Build additional docker manifest: ${{ matrix.tag }}"
+      id: manifest
       run: |
-        docker buildx imagetools create -t ${{ inputs.docker_repository }}:${{ matrix.tag }}-amd64 \
+        docker buildx imagetools create --metadata-file "$RUNNER_TEMP/amd64.json" -t ${{ inputs.docker_repository }}:${{ matrix.tag }}-amd64 \
         ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64
 
-        docker buildx imagetools create -t ${{ inputs.docker_repository }}:${{ matrix.tag }}-arm64 \
+        docker buildx imagetools create --metadata-file "$RUNNER_TEMP/arm64.json" -t ${{ inputs.docker_repository }}:${{ matrix.tag }}-arm64 \
         ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
 
-        docker buildx imagetools create -t ${{ inputs.docker_repository }}:${{ matrix.tag }} \
+        docker buildx imagetools create --metadata-file "$RUNNER_TEMP/multiarch.json" -t ${{ inputs.docker_repository }}:${{ matrix.tag }} \
         ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
         ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
+
+        for name in amd64 arm64 multiarch; do
+          digest=$(jq -er '."containerimage.descriptor".digest' "$RUNNER_TEMP/$name.json")
+          echo "${name}_digest=$digest" >> "$GITHUB_OUTPUT"
+        done
+    - name: "Attest and mirror additional docker manifest to Docker Hub: ${{ matrix.tag }}"
+      uses: ethpandaops/actions/mirror-image@738aeadbcdc54f1c9af659d35f8ef29dd5c0fae6
+      with:
+        tags: |
+          ${{ inputs.docker_repository }}:${{ matrix.tag }}-amd64@${{ steps.manifest.outputs.amd64_digest }}
+          ${{ inputs.docker_repository }}:${{ matrix.tag }}-arm64@${{ steps.manifest.outputs.arm64_digest }}
+          ${{ inputs.docker_repository }}:${{ matrix.tag }}@${{ steps.manifest.outputs.multiarch_digest }}
+        mirror-url: ${{ secrets.IMAGE_MIRROR_URL }}
