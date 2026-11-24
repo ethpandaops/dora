@@ -1328,6 +1328,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/slot/{slotOrHash}/arrival": {
+            "get": {
+                "description": "Returns when each observing node first saw the block of a slot, as milliseconds after slot start, from Xatu.\nCovers beacon API block and head events, libp2p block gossip and engine API newPayload calls, with per-continent and per-group summaries, mirroring the propagation tab on the slot page.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Slot"
+                ],
+                "summary": "Get block propagation for a slot",
+                "operationId": "getSlotArrival",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slot number or block root (0x-prefixed hex)",
+                        "name": "slotOrHash",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APISlotArrivalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid slot number or root format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Slot not found or Xatu not configured",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Propagation data unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/slot/{slotOrHash}/bids": {
             "get": {
                 "description": "Returns all execution payload bids submitted for a slot (ePBS, gloas+), including bids targeting other forks or deeper ancestors (reorg bids). Each bid is classified against the slot's actual block parent chain.",
@@ -4554,6 +4611,17 @@ const docTemplate = `{
                 }
             }
         },
+        "api.APISlotArrivalResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.SlotArrivalResponse"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "api.APISlotBid": {
             "type": "object",
             "properties": {
@@ -5910,6 +5978,180 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "min_time": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.SlotArrivalContinent": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "head_min_ms": {
+                    "type": "integer"
+                },
+                "head_p50_ms": {
+                    "type": "integer"
+                },
+                "head_p90_ms": {
+                    "type": "integer"
+                },
+                "nodes": {
+                    "type": "integer"
+                },
+                "pl_min_ms": {
+                    "type": "integer"
+                },
+                "pl_p50_ms": {
+                    "type": "integer"
+                },
+                "pl_p90_ms": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.SlotArrivalGroup": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "integer"
+                },
+                "p50_ms": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.SlotArrivalNode": {
+            "type": "object",
+            "properties": {
+                "api_ms": {
+                    "type": "integer"
+                },
+                "continent": {
+                    "type": "string"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "country_code": {
+                    "type": "string"
+                },
+                "full_name": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "head_ms": {
+                    "type": "integer"
+                },
+                "implementation": {
+                    "type": "string"
+                },
+                "late": {
+                    "type": "boolean"
+                },
+                "min_ms": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "np_dur_ms": {
+                    "type": "integer"
+                },
+                "np_ms": {
+                    "type": "integer"
+                },
+                "np_status": {
+                    "type": "string"
+                },
+                "observations": {
+                    "type": "integer"
+                },
+                "operator": {
+                    "type": "string"
+                },
+                "p2p_ms": {
+                    "type": "integer"
+                },
+                "pl_ms": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.SlotArrivalResponse": {
+            "type": "object",
+            "properties": {
+                "continents": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SlotArrivalContinent"
+                    }
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SlotArrivalGroup"
+                    }
+                },
+                "head_observations": {
+                    "type": "integer"
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SlotArrivalNode"
+                    }
+                },
+                "np_observations": {
+                    "type": "integer"
+                },
+                "observations": {
+                    "type": "integer"
+                },
+                "p2p_observations": {
+                    "type": "integer"
+                },
+                "pl_observations": {
+                    "type": "integer"
+                },
+                "settled": {
+                    "description": "Settled is false while the Xatu ingest pipeline may still be receiving\nevents for this slot; such responses are cached for one slot only.",
+                    "type": "boolean"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "stats": {
+                    "$ref": "#/definitions/models.SlotArrivalStats"
+                }
+            }
+        },
+        "models.SlotArrivalStats": {
+            "type": "object",
+            "properties": {
+                "late_nodes": {
+                    "description": "LateNodes counts nodes whose earliest observation came more than a full\nslot after slot start (syncing or stalled nodes); they are excluded\nfrom the timing stats.",
+                    "type": "integer"
+                },
+                "max_ms": {
+                    "type": "integer"
+                },
+                "min_ms": {
+                    "type": "integer"
+                },
+                "p50_ms": {
+                    "type": "integer"
+                },
+                "p90_ms": {
+                    "type": "integer"
+                },
+                "unique_nodes": {
                     "type": "integer"
                 }
             }

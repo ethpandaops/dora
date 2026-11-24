@@ -52,6 +52,22 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 	execHash := normalizeBlockRoot(r.URL.Query().Get("exec"))
 	execNumber, _ := strconv.ParseUint(r.URL.Query().Get("num"), 10, 64)
 
+	result, err := GetSlotArrivalData(slot, blockRoot, execHash, execNumber)
+	if err != nil {
+		logrus.WithError(err).Error("error building slot arrival data")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		logrus.WithError(err).Error("error encoding slot arrival data")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+	}
+}
+
+// GetSlotArrivalData returns the cached block propagation observations for a
+// slot from Xatu, scoped to blockRoot when it is set. Xatu must be configured.
+func GetSlotArrivalData(slot uint64, blockRoot, execHash string, execNumber uint64) (*models.SlotArrivalResponse, error) {
 	cacheKey := fmt.Sprintf("slotarrival:%d:%s:%s:%d", slot, blockRoot, execHash, execNumber)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
 		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
@@ -67,21 +83,15 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 		return data
 	})
 	if pageErr != nil {
-		logrus.WithError(pageErr).Error("error building slot arrival data")
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-		return
+		return nil, pageErr
 	}
 
 	result, ok := pageRes.(*models.SlotArrivalResponse)
 	if !ok {
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-		return
+		return nil, fmt.Errorf("unexpected slot arrival data type %T", pageRes)
 	}
 
-	if err := json.NewEncoder(w).Encode(result); err != nil {
-		logrus.WithError(err).Error("error encoding slot arrival data")
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-	}
+	return result, nil
 }
 
 // arrivalNode accumulates per-node observations across both series.
