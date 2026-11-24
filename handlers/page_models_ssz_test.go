@@ -68,6 +68,7 @@ var cachedPageValues = []any{
 	&models.QueuedWithdrawalsPageData{},
 	&models.SlashingsPageData{},
 	&models.SlotArrivalResponse{},
+	&models.SlotAttestersResponse{},
 	&models.SlotBidSeenResponse{},
 	&models.SlotBlockAccessListResponse{},
 	&models.SlotDutiesResponse{},

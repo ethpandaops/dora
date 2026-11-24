@@ -219,6 +219,18 @@ func attestationDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) u
 	return bpsOfSlot(chainState, specs.AttestationDueBps, 3333)
 }
 
+// aggregateDeadlineMs is when aggregates are due: AGGREGATE_DUE_BPS of the
+// slot, moved earlier by gloas.
+func aggregateDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) uint32 {
+	specs := chainState.GetSpecs()
+
+	if gloasActive(chainState, slot) {
+		return bpsOfSlot(chainState, specs.AggregateDueBpsGloas, 5000)
+	}
+
+	return bpsOfSlot(chainState, specs.AggregateDueBps, 6667)
+}
+
 // voteThreshold is the vote count where the block clears the gloas builder
 // payment quorum: BUILDER_PAYMENT_THRESHOLD (6/10 by default) of the slot's
 // expected attesters. Pre-gloas networks do not serve the keys, so the
