@@ -1330,7 +1330,7 @@ const docTemplate = `{
         },
         "/v1/slot/{slotOrHash}/arrival": {
             "get": {
-                "description": "Returns when each observing node first saw the block of a slot, as milliseconds after slot start, from Xatu.\nCovers beacon API block and head events, libp2p block gossip and engine API newPayload calls, with per-continent and per-group summaries, mirroring the propagation tab on the slot page.",
+                "description": "Returns when each observing node first saw the block of a slot, as milliseconds after slot start, from Xatu. A slot number resolves to the canonical block when there is one; block_root identifies the block reported on.\nCovers beacon API block and head events, libp2p block gossip and engine API newPayload calls, with per-continent and per-group summaries, mirroring the propagation tab on the slot page.",
                 "produces": [
                     "application/json"
                 ],
@@ -4611,11 +4611,62 @@ const docTemplate = `{
                 }
             }
         },
+        "api.APISlotArrivalData": {
+            "type": "object",
+            "properties": {
+                "block_root": {
+                    "type": "string"
+                },
+                "continents": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SlotArrivalContinent"
+                    }
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SlotArrivalGroup"
+                    }
+                },
+                "head_observations": {
+                    "type": "integer"
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SlotArrivalNode"
+                    }
+                },
+                "np_observations": {
+                    "type": "integer"
+                },
+                "observations": {
+                    "type": "integer"
+                },
+                "p2p_observations": {
+                    "type": "integer"
+                },
+                "pl_observations": {
+                    "type": "integer"
+                },
+                "settled": {
+                    "description": "Settled is false while the Xatu ingest pipeline may still be receiving\nevents for this slot; such responses are cached for one slot only.",
+                    "type": "boolean"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "stats": {
+                    "$ref": "#/definitions/models.SlotArrivalStats"
+                }
+            }
+        },
         "api.APISlotArrivalResponse": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/models.SlotArrivalResponse"
+                    "$ref": "#/definitions/api.APISlotArrivalData"
                 },
                 "status": {
                     "type": "string"
@@ -6081,54 +6132,6 @@ const docTemplate = `{
                 },
                 "pl_ms": {
                     "type": "integer"
-                }
-            }
-        },
-        "models.SlotArrivalResponse": {
-            "type": "object",
-            "properties": {
-                "continents": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.SlotArrivalContinent"
-                    }
-                },
-                "groups": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.SlotArrivalGroup"
-                    }
-                },
-                "head_observations": {
-                    "type": "integer"
-                },
-                "nodes": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.SlotArrivalNode"
-                    }
-                },
-                "np_observations": {
-                    "type": "integer"
-                },
-                "observations": {
-                    "type": "integer"
-                },
-                "p2p_observations": {
-                    "type": "integer"
-                },
-                "pl_observations": {
-                    "type": "integer"
-                },
-                "settled": {
-                    "description": "Settled is false while the Xatu ingest pipeline may still be receiving\nevents for this slot; such responses are cached for one slot only.",
-                    "type": "boolean"
-                },
-                "slot": {
-                    "type": "integer"
-                },
-                "stats": {
-                    "$ref": "#/definitions/models.SlotArrivalStats"
                 }
             }
         },

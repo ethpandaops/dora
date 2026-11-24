@@ -52,7 +52,7 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 	execHash := normalizeBlockRoot(r.URL.Query().Get("exec"))
 	execNumber, _ := strconv.ParseUint(r.URL.Query().Get("num"), 10, 64)
 
-	result, err := GetSlotArrivalData(slot, blockRoot, execHash, execNumber)
+	result, err := GetSlotArrivalData(r.Context(), slot, blockRoot, execHash, execNumber)
 	if err != nil {
 		logrus.WithError(err).Error("error building slot arrival data")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
@@ -67,7 +67,13 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 
 // GetSlotArrivalData returns the cached block propagation observations for a
 // slot from Xatu, scoped to blockRoot when it is set. Xatu must be configured.
-func GetSlotArrivalData(slot uint64, blockRoot, execHash string, execNumber uint64) (*models.SlotArrivalResponse, error) {
+// Without a frontend cache the data is loaded directly.
+func GetSlotArrivalData(ctx context.Context, slot uint64, blockRoot, execHash string, execNumber uint64) (*models.SlotArrivalResponse, error) {
+	if services.GlobalFrontendCache == nil {
+		data, _, err := buildSlotArrivalData(ctx, phase0.Slot(slot), blockRoot, execHash, execNumber)
+		return data, err
+	}
+
 	cacheKey := fmt.Sprintf("slotarrival:%d:%s:%s:%d", slot, blockRoot, execHash, execNumber)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
 		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
