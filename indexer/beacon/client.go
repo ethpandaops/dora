@@ -100,17 +100,6 @@ func (c *Client) startIndexing() {
 	c.singleAttestationSubscription = c.client.SubscribeSingleAttestationEvent(8192, false)
 
 	go c.startClientLoop()
-	go c.runAttestationLoop()
-}
-
-func (c *Client) runAttestationLoop() {
-	defer utils.HandleSubroutinePanic("indexer.beacon.Client.runAttestationLoop", func() {
-		c.runAttestationLoop()
-	})
-
-	for singleAttestation := range c.singleAttestationSubscription.Channel() {
-		c.indexer.attestationArrivals.addAttestation(singleAttestation)
-	}
 }
 
 // startClientLoop starts the client event processing subroutine.
@@ -221,6 +210,8 @@ func (c *Client) runClientLoop() error {
 			c.processInclusionListEvent(inclusionListEvent)
 		case executionProof := <-c.executionProofSubscription.Channel():
 			c.indexer.executionProofCache.addProof(executionProof)
+		case singleAttestation := <-c.singleAttestationSubscription.Channel():
+			c.indexer.attestationArrivals.addAttestation(singleAttestation)
 		}
 	}
 
