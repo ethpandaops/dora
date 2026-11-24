@@ -9,52 +9,29 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const defaultAttestationArrivalRetention = 256
-
 type attestationArrival struct {
 	seenMs uint32
-	root   uint8
-}
-
-type slotAttestationArrivals struct {
-	roots    []phase0.Root
-	arrivals map[phase0.ValidatorIndex]attestationArrival
+	root   phase0.Root
 }
 
 type attestationArrivalCache struct {
 	indexer    *Indexer
 	retention  phase0.Slot
 	cacheMutex sync.RWMutex
-	slots      map[phase0.Slot]*slotAttestationArrivals
+	slots      map[phase0.Slot]map[phase0.ValidatorIndex]attestationArrival
 }
 
 func newAttestationArrivalCache(indexer *Indexer) *attestationArrivalCache {
 	retention := utils.Config.Indexer.AttestationArrivals.RetentionSlots
 	if retention == 0 {
-		retention = defaultAttestationArrivalRetention
+		retention = 256
 	}
 
 	return &attestationArrivalCache{
 		indexer:   indexer,
 		retention: phase0.Slot(retention),
-		slots:     make(map[phase0.Slot]*slotAttestationArrivals, retention),
+		slots:     make(map[phase0.Slot]map[phase0.ValidatorIndex]attestationArrival, retention),
 	}
-}
-
-func (slot *slotAttestationArrivals) rootIndex(root phase0.Root) (uint8, bool) {
-	for idx, known := range slot.roots {
-		if known == root {
-			return uint8(idx), true //nolint:gosec // bounded below
-		}
-	}
-
-	if len(slot.roots) >= 255 {
-		return 0, false
-	}
-
-	slot.roots = append(slot.roots, root)
-
-	return uint8(len(slot.roots) - 1), true //nolint:gosec // bounded above
 }
 
 func (cache *attestationArrivalCache) addAttestation(evt *rpc.SingleAttestationEvent) {
@@ -75,22 +52,17 @@ func (cache *attestationArrivalCache) addAttestation(evt *rpc.SingleAttestationE
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	slot := cache.slots[evt.Slot]
-	if slot == nil {
-		slot = &slotAttestationArrivals{arrivals: make(map[phase0.ValidatorIndex]attestationArrival, 512)}
-		cache.slots[evt.Slot] = slot
+	arrivals := cache.slots[evt.Slot]
+	if arrivals == nil {
+		arrivals = make(map[phase0.ValidatorIndex]attestationArrival, 512)
+		cache.slots[evt.Slot] = arrivals
 	}
 
-	if first, seen := slot.arrivals[evt.AttesterIndex]; seen && first.seenMs <= seenMs {
+	if first, seen := arrivals[evt.AttesterIndex]; seen && first.seenMs <= seenMs {
 		return
 	}
 
-	root, ok := slot.rootIndex(evt.BeaconBlockRoot)
-	if !ok {
-		return
-	}
-
-	slot.arrivals[evt.AttesterIndex] = attestationArrival{seenMs: seenMs, root: root}
+	arrivals[evt.AttesterIndex] = attestationArrival{seenMs: seenMs, root: evt.BeaconBlockRoot}
 }
 
 func (cache *attestationArrivalCache) processSlot(currentSlot phase0.Slot) {
@@ -104,20 +76,20 @@ func (cache *attestationArrivalCache) processSlot(currentSlot phase0.Slot) {
 	}
 }
 
-func (cache *attestationArrivalCache) getArrivals(slotNumber phase0.Slot, blockRoot *phase0.Root) (map[phase0.ValidatorIndex]uint32, uint64) {
+func (cache *attestationArrivalCache) getArrivals(slot phase0.Slot, blockRoot *phase0.Root) (map[phase0.ValidatorIndex]uint32, uint64) {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
-	slot := cache.slots[slotNumber]
-	if slot == nil {
+	arrivals := cache.slots[slot]
+	if arrivals == nil {
 		return nil, 0
 	}
 
-	result := make(map[phase0.ValidatorIndex]uint32, len(slot.arrivals))
+	result := make(map[phase0.ValidatorIndex]uint32, len(arrivals))
 	otherRoots := uint64(0)
 
-	for index, arrival := range slot.arrivals {
-		if blockRoot != nil && slot.roots[arrival.root] != *blockRoot {
+	for index, arrival := range arrivals {
+		if blockRoot != nil && arrival.root != *blockRoot {
 			otherRoots++
 
 			continue
