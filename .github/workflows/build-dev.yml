@@ -77,16 +77,21 @@ jobs:
           echo "Skipping docker push for forked PR; dispatch this workflow manually to publish a trusted build."
         fi
 
+        # PR builds are tagged with the branch name (/ becomes -). A name that isn't a
+        # valid tag, or would take a reserved one (master, main, latest, pr, releases),
+        # is tagged pr-<number> instead.
+        if [[ -n "$PR_NUMBER" ]]; then
+          branch_name="${branch_name//\//-}"
+          if [[ ! "$branch_name" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,100}$ || "$branch_name" =~ ^(master|main|latest|pr)(-|$)|^v?[0-9] ]]; then
+            branch_name="pr-$PR_NUMBER"
+          fi
+          echo "docker tag: $branch_name"
+        fi
+
         if [[ "$branch_name" == "master" ]] || [[ "$branch_name" =~ ^v[0-9] ]]; then
           echo "Invalid branch name! Skipping builds"
           run_builds="false"
           build_docker="false"
-        fi
-
-        # PR builds are tagged pr-<number>, never with the PR's branch name, which could
-        # otherwise overwrite any existing tag, such as master or a release.
-        if [[ -n "$PR_NUMBER" ]]; then
-          branch_name="pr-$PR_NUMBER"
         fi
 
         echo "run_builds=$run_builds" >> $GITHUB_OUTPUT
