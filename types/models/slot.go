@@ -8,28 +8,28 @@ import (
 
 // SlotPageData is a struct to hold info for the slot details page
 type SlotPageData struct {
-	Slot                    uint64                  `json:"slot"`
-	Epoch                   uint64                  `json:"epoch"`
-	EpochFinalized          bool                    `json:"epoch_finalized"`
-	EpochParticipationRate  float64                 `json:"epoch_participation_rate"`
-	Ts                      time.Time               `json:"time"`
-	NextSlot                uint64                  `json:"next_slot"`
-	PreviousSlot            uint64                  `json:"prev_slot"`
-	Status                  uint16                  `json:"status"`
-	Future                  bool                    `json:"future"`
-	Proposer                uint64                  `json:"proposer"`
-	ProposerName            string                  `json:"proposer_name"`
-	Block                   *SlotPageBlockData      `json:"block" ssz-type:"optional"`
-	Badges                  []*SlotPageBlockBadge   `json:"badges"`
-	SlotBlocks              []*SlotPageSlotBlock    `json:"slot_blocks"`
-	TracoorUrl              string                  `json:"tracoor_url"`
-	XatuEnabled             bool                    `json:"xatu_enabled"`
-	XatuCbtEnabled          bool                    `json:"xatu_cbt_enabled"`
-	AttesterArrivalsEnabled bool                    `json:"attester_arrivals_enabled"`
-	SystemContracts         []*types.SystemContract `json:"system_contracts"`
-	TransactionDetails      []*SlotPageTransaction  `json:"transaction_details"`
-	InclusionListsEnabled   bool                    `json:"inclusion_lists_enabled"` // Inclusion lists (EIP-7805) are active for this slot; they are loaded lazily
-	InclusionListsCount     uint64                  `json:"inclusion_lists_count"`   // Number of inclusion lists published in this slot
+	Slot                   uint64                  `json:"slot"`
+	Epoch                  uint64                  `json:"epoch"`
+	EpochFinalized         bool                    `json:"epoch_finalized"`
+	EpochParticipationRate float64                 `json:"epoch_participation_rate"`
+	Ts                     time.Time               `json:"time"`
+	NextSlot               uint64                  `json:"next_slot"`
+	PreviousSlot           uint64                  `json:"prev_slot"`
+	Status                 uint16                  `json:"status"`
+	Future                 bool                    `json:"future"`
+	Proposer               uint64                  `json:"proposer"`
+	ProposerName           string                  `json:"proposer_name"`
+	Block                  *SlotPageBlockData      `json:"block" ssz-type:"optional"`
+	Badges                 []*SlotPageBlockBadge   `json:"badges"`
+	SlotBlocks             []*SlotPageSlotBlock    `json:"slot_blocks"`
+	TracoorUrl             string                  `json:"tracoor_url"`
+	XatuEnabled            bool                    `json:"xatu_enabled"`
+	XatuCbtEnabled         bool                    `json:"xatu_cbt_enabled"`
+	AttestersEnabled       bool                    `json:"attesters_enabled"`
+	SystemContracts        []*types.SystemContract `json:"system_contracts"`
+	TransactionDetails     []*SlotPageTransaction  `json:"transaction_details"`
+	InclusionListsEnabled  bool                    `json:"inclusion_lists_enabled"` // Inclusion lists (EIP-7805) are active for this slot; they are loaded lazily
+	InclusionListsCount    uint64                  `json:"inclusion_lists_count"`   // Number of inclusion lists published in this slot
 
 	EnsNameData
 }

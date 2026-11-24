@@ -25,8 +25,6 @@ import (
 const (
 	attesterBucketMs = 100
 	attesterUnknown  = "unknown"
-
-	attesterSettleDelay = 30 * time.Second
 )
 
 func SlotAttesters(w http.ResponseWriter, r *http.Request) {
@@ -86,17 +84,6 @@ func attesterClientName(validatorName string) string {
 	return clientType.String()
 }
 
-func parseAttesterRoot(blockRoot string) *phase0.Root {
-	raw, err := hex.DecodeString(strings.TrimPrefix(blockRoot, "0x"))
-	if err != nil || len(raw) != len(phase0.Root{}) {
-		return nil
-	}
-
-	root := phase0.Root(raw)
-
-	return &root
-}
-
 type attesterGroup struct {
 	client  *models.SlotAttestersClient
 	seenMs  []uint32
@@ -154,7 +141,7 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 	slotTime := chainState.SlotToTime(slot)
 	slotMs := lateThreshold(chainState)
 
-	settleDelay := attesterSettleDelay
+	settleDelay := 30 * time.Second
 	if client != nil {
 		settleDelay = client.SettleDelay()
 	}
@@ -178,7 +165,13 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 	}
 
 	if len(arrivals) == 0 && utils.Config.Indexer.AttestationArrivals.Enabled {
-		arrivals, otherRoots = services.GlobalBeaconService.GetBeaconIndexer().GetAttestationArrivals(slot, parseAttesterRoot(blockRoot))
+		var root *phase0.Root
+
+		if raw, err := hex.DecodeString(strings.TrimPrefix(blockRoot, "0x")); err == nil && len(raw) == len(phase0.Root{}) {
+			root = (*phase0.Root)(raw)
+		}
+
+		arrivals, otherRoots = services.GlobalBeaconService.GetBeaconIndexer().GetAttestationArrivals(slot, root)
 	}
 
 	response := &models.SlotAttestersResponse{
