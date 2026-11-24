@@ -580,6 +580,10 @@ func parseClientTypesFromName(validatorName string) (execution.ClientType, conse
 		consensusClient = consensus.LodestarClient
 	} else if strings.Contains(name, "grandine") {
 		consensusClient = consensus.GrandineClient
+	} else if strings.Contains(name, "silver") {
+		consensusClient = consensus.SilverClient
+	} else if strings.Contains(name, "ethlambda") {
+		consensusClient = consensus.EthlambdaClient
 	} else if regexp.MustCompile(`\bnimbus\b`).MatchString(name) {
 		consensusClient = consensus.NimbusClient
 	}
