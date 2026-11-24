@@ -1236,13 +1236,14 @@
         attesterData = data;
 
         var row = document.getElementById('attesters-row');
-        if (!row || !data || !data.clients || !data.clients.length) return;
+        if (!row || !data || !(data.seen || data.other_roots)) return;
         row.style.display = '';
 
         var slotMs = data.slot_ms || 12000;
         var step = data.bucket_ms || 100;
         var bins = Math.ceil(slotMs / step);
-        var visible = data.clients.filter(function(c) { return !attesterSolo || attesterSolo === c.name; });
+        var clients = data.clients || [];
+        var visible = clients.filter(function(c) { return !attesterSolo || attesterSolo === c.name; });
         var totals = [];
         var i;
 
@@ -1306,7 +1307,7 @@
           '<th class="text-end" title="Attestations first seen after the aggregate deadline, too late to be aggregated in time">after aggregate deadline</th>' +
           '<th class="text-end" title="Attestations first seen after the end of the slot">after slot</th></tr></thead><tbody>';
 
-        data.clients.forEach(function(c) {
+        clients.forEach(function(c) {
           var color = attesterColors[c.name] || attesterColors.unknown;
           var off = attesterSolo && attesterSolo !== c.name;
           var duePct = c.seen ? Math.round(c.after_due / c.seen * 100) : 0;
@@ -1377,16 +1378,8 @@
             return null;
           });
 
-        function showAttesters(attesters) {
-          try {
-            renderAttesters(attesters);
-          } catch (err) {
-            console.error('slot attesters rendering failed:', err);
-          }
-        }
-
-        // both fetches run concurrently, but everything renders in one pass
-        // once both are in, so the wave panels never pop in later and shift
+        // the fetches run concurrently, but everything renders in one pass
+        // once all are in, so the wave panels never pop in later and shift
         // the table under the reader
         fetch('/slot/' + arrivalSlot + '/arrival' + params)
           .then(function(r) {
@@ -1398,7 +1391,12 @@
               var waves = res[0];
 
               render(data);
-              showAttesters(res[1]);
+
+              try {
+                renderAttesters(res[1]);
+              } catch (err) {
+                console.error('slot attesters rendering failed:', err);
+              }
 
               if (waves) {
                 try {

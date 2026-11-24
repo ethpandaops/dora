@@ -154,6 +154,7 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		BucketMs:         attesterBucketMs,
 		AttestationDueMs: attestationDeadlineMs(chainState, slot),
 		AggregateDueMs:   aggregateDeadlineMs(chainState, slot),
+		Seen:             uint64(len(arrivals)),
 		OtherRoots:       otherRoots,
 	}
 
@@ -166,7 +167,7 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		cacheTimeout = 30 * time.Second
 	}
 
-	if len(arrivals) == 0 {
+	if len(arrivals) == 0 && otherRoots == 0 {
 		return response, cacheTimeout, nil
 	}
 
@@ -197,7 +198,6 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		group := groupOf(index)
 		group.client.Seen++
 		group.seenMs = append(group.seenMs, seenMs)
-		response.Seen++
 
 		if seenMs >= response.AggregateDueMs {
 			group.client.AfterDue++
