@@ -543,6 +543,8 @@ func computeHealthStatus(onlinePct float64, hasProposal bool, proposalPct float6
 	}
 }
 
+var nimbusNamePattern = regexp.MustCompile(`\bnimbus\b`)
+
 func parseClientTypesFromName(validatorName string) (execution.ClientType, consensus.ClientType) {
 	if validatorName == "" {
 		return execution.UnknownClient, consensus.UnknownClient
@@ -584,7 +586,9 @@ func parseClientTypesFromName(validatorName string) (execution.ClientType, conse
 		consensusClient = consensus.SilverClient
 	} else if strings.Contains(name, "ethlambda") {
 		consensusClient = consensus.EthlambdaClient
-	} else if regexp.MustCompile(`\bnimbus\b`).MatchString(name) {
+	} else if strings.Contains(name, "caplin") {
+		consensusClient = consensus.CaplinClient
+	} else if nimbusNamePattern.MatchString(name) {
 		consensusClient = consensus.NimbusClient
 	}
 
