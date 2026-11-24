@@ -120,6 +120,10 @@ func (client *Client) buildEventStreamMask() uint16 {
 	// being mixed into the main block/head/finalized stream
 	events |= rpc.StreamFastConfirmationEvent
 
+	if client.pool.attestationStream {
+		events |= rpc.StreamSingleAttestationEvent
+	}
+
 	return events
 }
 
@@ -187,6 +191,11 @@ func (client *Client) runClientLogic() error {
 
 			case rpc.StreamExecutionProofEvent:
 				client.executionProofDispatcher.Fire(evt.Data.(*rpc.ExecutionProof))
+
+			case rpc.StreamSingleAttestationEvent:
+				client.singleAttestationDispatcher.Fire(evt.Data.(*rpc.SingleAttestationEvent))
+
+				continue
 			}
 
 			// fire through stream dispatcher first to preserve SSE ordering

@@ -319,7 +319,7 @@
   <div id="arrival-content" class="card-body px-0 py-1">
     <div class="text-center p-4" id="arrival-loading">
       <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-      Loading propagation data from Xatu...
+      Loading propagation data...
     </div>
     <div id="arrival-loaded" style="display: none;">
       <div class="row border-bottom p-2 mx-0" id="attesters-row" style="display: none;">
@@ -357,10 +357,12 @@
         <div id="arrival-body" class="px-2 pt-1"></div>
       </div>
     </div>
+    {{ if .XatuEnabled }}
     <div class="text-muted small px-2 pb-2 d-flex align-items-center" style="gap: 6px;">
       <img src="/images/xatu.png" alt="Xatu" style="width: 18px; height: 18px;" />
       Data from <a href="https://github.com/ethpandaops/xatu" target="_blank" rel="noopener">Xatu</a>
     </div>
+    {{ end }}
   </div>
 
   <script type="text/javascript">
@@ -377,6 +379,7 @@
       // mark the observing nodes responsible for this slot in the table.
       var arrivalProposer = "{{ .ProposerName }}".toLowerCase();
       var arrivalBuilder = "{{ if .Block.PayloadHeader }}{{ .Block.PayloadHeader.BuilderName }}{{ end }}".toLowerCase();
+      var arrivalXatu = {{ .XatuEnabled }};
       var arrivalLoaded = false;
       var arrivalData = null;
       var sortState = { key: 'min', dir: 1 };
@@ -1397,6 +1400,31 @@
             return null;
           });
 
+        function showAttesters(attesters) {
+          try {
+            renderAttesters(attesters);
+          } catch (err) {
+            console.error('slot attesters rendering failed:', err);
+          }
+        }
+
+        if (!arrivalXatu) {
+          attestersReq.then(function(attesters) {
+            document.getElementById('arrival-loading').style.display = 'none';
+            document.getElementById('arrival-loaded').style.display = '';
+
+            if (attesters && (attesters.seen || attesters.other_roots)) {
+              showAttesters(attesters);
+            } else {
+              var empty = document.getElementById('arrival-empty');
+              empty.style.display = '';
+              empty.innerHTML = 'No attestation arrivals recorded for this slot.';
+            }
+          });
+
+          return;
+        }
+
         // the fetches run concurrently, but everything renders in one pass
         // once all are in, so the wave panels never pop in later and shift
         // the table under the reader
@@ -1411,11 +1439,7 @@
 
               render(data);
 
-              try {
-                renderAttesters(res[1]);
-              } catch (err) {
-                console.error('slot attesters rendering failed:', err);
-              }
+              showAttesters(res[1]);
 
               if (waves) {
                 try {

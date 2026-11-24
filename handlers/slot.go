@@ -246,17 +246,18 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	epoch := chainState.EpochOfSlot(slot)
 
 	pageData := &models.SlotPageData{
-		Slot:           uint64(slot),
-		Epoch:          uint64(chainState.EpochOfSlot(slot)),
-		Ts:             chainState.SlotToTime(slot),
-		NextSlot:       uint64(slot + 1),
-		PreviousSlot:   uint64(slot - 1),
-		Future:         slot >= currentSlot,
-		EpochFinalized: finalizedEpoch >= chainState.EpochOfSlot(slot),
-		Badges:         []*models.SlotPageBlockBadge{},
-		TracoorUrl:     utils.Config.Frontend.TracoorUrl,
-		XatuEnabled:    xatu.GlobalClient != nil,
-		XatuCbtEnabled: xatu.GlobalCbtClient != nil,
+		Slot:             uint64(slot),
+		Epoch:            uint64(chainState.EpochOfSlot(slot)),
+		Ts:               chainState.SlotToTime(slot),
+		NextSlot:         uint64(slot + 1),
+		PreviousSlot:     uint64(slot - 1),
+		Future:           slot >= currentSlot,
+		EpochFinalized:   finalizedEpoch >= chainState.EpochOfSlot(slot),
+		Badges:           []*models.SlotPageBlockBadge{},
+		TracoorUrl:       utils.Config.Frontend.TracoorUrl,
+		XatuEnabled:      xatu.GlobalClient != nil,
+		XatuCbtEnabled:   xatu.GlobalCbtClient != nil,
+		AttestersEnabled: utils.Config.Indexer.AttestationArrivals.Enabled,
 	}
 
 	var epochStatsValues *beacon.EpochStatsValues
