@@ -896,6 +896,18 @@
           });
         }
 
+        var agg = data.aggregates;
+        if (agg && (agg.total_count || agg.late_count)) {
+          series.push({
+            label: 'aggregates seen', color: '#94d82d',
+            buckets: agg.buckets || [],
+            count: agg.total_count,
+            denom: agg.total_count + (agg.late_count || 0),
+            of: 'aggregate sightings, including those after the slot',
+            unit: 'sightings',
+          });
+        }
+
         if (data.payload && data.payload.total_count) {
           series.push({
             label: 'payload seen', color: '#e64980',
@@ -960,6 +972,13 @@
           marks.push({
             ms: att.deadline_ms, label: 'attestation deadline', color: '#f46a6a', series: 'attestations',
             title: 'ATTESTATION_DUE_BPS into the slot: validators attest now even without a block in hand',
+          });
+        }
+
+        if (agg && agg.deadline_ms > 0) {
+          marks.push({
+            ms: agg.deadline_ms, label: 'aggregate deadline', color: '#f46a6a', series: 'aggregates seen',
+            title: 'AGGREGATE_DUE_BPS into the slot: aggregators publish their aggregates by here',
           });
         }
 

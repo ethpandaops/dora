@@ -123,6 +123,8 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot, execHa
 
 	var ptc *models.SlotPtcWave
 
+	var aggregates *models.SlotAggregateWave
+
 	var payload, head, executed *models.SlotSeenWave
 
 	if xatu.GlobalClient != nil {
@@ -140,6 +142,17 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot, execHa
 			// votes are due within PAYLOAD_ATTESTATION_DUE_BPS of the slot
 			ptc.DeadlineMs = bpsOfSlot(chainState, chainState.GetSpecs().PayloadAttestationDueBps, 7500)
 			ptc.ExpectedCount = expectedPtcVoters(queryCtx, chainState, slot)
+		}
+
+		aggregates, err = loadAggregateWave(queryCtx, xatu.GlobalClient, slot, slotTime, settled, blockRoot, slotMs)
+		if err != nil {
+			logrus.WithError(err).Warn("error loading aggregate wave from xatu")
+
+			aggregates = nil
+		}
+
+		if aggregates != nil {
+			aggregates.DeadlineMs = aggregateDeadlineMs(chainState, slot)
 		}
 
 		payload, err = loadSeenWave(queryCtx, xatu.GlobalClient, "beacon_api_eth_v1_events_execution_payload_gossip", "block_root", slot, slotTime, settled, blockRoot, slotMs)
@@ -170,6 +183,7 @@ func buildSlotWavesData(ctx context.Context, slot phase0.Slot, blockRoot, execHa
 		SlotMs:       lateThreshold(chainState),
 		Attestations: attestations,
 		Ptc:          ptc,
+		Aggregates:   aggregates,
 		Payload:      payload,
 		Head:         head,
 		Executed:     executed,
@@ -217,6 +231,18 @@ func attestationDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) u
 	}
 
 	return bpsOfSlot(chainState, specs.AttestationDueBps, 3333)
+}
+
+// aggregateDeadlineMs is when aggregates are due: AGGREGATE_DUE_BPS of the
+// slot, moved earlier by gloas.
+func aggregateDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) uint32 {
+	specs := chainState.GetSpecs()
+
+	if gloasActive(chainState, slot) {
+		return bpsOfSlot(chainState, specs.AggregateDueBpsGloas, 5000)
+	}
+
+	return bpsOfSlot(chainState, specs.AggregateDueBps, 6667)
 }
 
 // voteThreshold is the vote count where the block clears the gloas builder
@@ -402,6 +428,80 @@ func loadSeenWave(ctx context.Context, client *xatu.Client, table, rootColumn st
 	}
 
 	if wave.TotalCount == 0 {
+		return nil, nil
+	}
+
+	return wave, nil
+}
+
+// aggregateWaveQuery buckets when each observing node first saw each
+// aggregate for the slot. The attestation event table also holds unaggregated
+// votes, which are stored without aggregation bits. An aggregate is
+// identified by its aggregation bits, the most the table keeps: committee bits
+// are not stored, so equal bitfields from different committees count once per
+// node. Sightings are kept up to the end of the following slot, so late
+// aggregates are counted rather than dropped.
+const aggregateWaveQuery = `SELECT toUInt32(intDiv(first_ms, 50) * 50) AS chunk, count() AS sightings
+FROM (
+    SELECT meta_client_name, aggregation_bits, min(propagation_slot_start_diff) AS first_ms
+    FROM beacon_api_eth_v1_events_attestation
+    WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ? AND aggregation_bits != ''%s
+    GROUP BY meta_client_name, aggregation_bits
+    HAVING first_ms < ?
+)
+GROUP BY chunk
+ORDER BY chunk`
+
+// loadAggregateWave loads the aggregate sightings for the slot, or nil when
+// no observing node reported an aggregate.
+func loadAggregateWave(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, slotMs uint32) (*models.SlotAggregateWave, error) {
+	filter := ""
+	args := []any{client.Network(), slotTime.Unix(), uint32(slot)}
+
+	if blockRoot != "" {
+		filter = " AND beacon_block_root = ?"
+
+		args = append(args, blockRoot)
+	}
+
+	args = append(args, 2*slotMs)
+
+	rows, err := client.Query(ctx, settled, fmt.Sprintf(aggregateWaveQuery, filter), args...)
+	if err != nil {
+		if isMissingTableError(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("aggregate wave query: %w", err)
+	}
+	defer rows.Close()
+
+	wave := &models.SlotAggregateWave{}
+
+	for rows.Next() {
+		var chunk uint32
+
+		var sightings uint64
+
+		if err := rows.Scan(&chunk, &sightings); err != nil {
+			return nil, fmt.Errorf("aggregate wave scan: %w", err)
+		}
+
+		if chunk >= slotMs {
+			wave.LateCount += sightings
+
+			continue
+		}
+
+		wave.TotalCount += sightings
+		wave.Buckets = append(wave.Buckets, &models.SlotAttestationBucket{Ms: chunk, Count: sightings})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("aggregate wave query: %w", err)
+	}
+
+	if wave.TotalCount == 0 && wave.LateCount == 0 {
 		return nil, nil
 	}
 

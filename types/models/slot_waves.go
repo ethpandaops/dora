@@ -16,6 +16,7 @@ type SlotWavesResponse struct {
 	SlotMs       uint32               `json:"slot_ms"`
 	Attestations *SlotAttestationWave `json:"attestations,omitempty" ssz-type:"optional"`
 	Ptc          *SlotPtcWave         `json:"ptc,omitempty" ssz-type:"optional"`
+	Aggregates   *SlotAggregateWave   `json:"aggregates,omitempty" ssz-type:"optional"`
 	// Payload and Head bucket when each observing node first saw the revealed
 	// execution payload and first adopted the block as head; Executed buckets
 	// when each node's execution client finished importing the payload.
@@ -29,6 +30,19 @@ type SlotWavesResponse struct {
 // in 50ms chunks capped to the slot.
 type SlotSeenWave struct {
 	TotalCount uint64                   `json:"total_count"`
+	Buckets    []*SlotAttestationBucket `json:"buckets,omitempty"`
+}
+
+// SlotAggregateWave buckets when observing nodes first saw each aggregate
+// attestation for the slot, one sighting per node and aggregate, in 50ms
+// chunks capped to the slot. LateCount holds the sightings that landed in the
+// following slot, so slow aggregation shows up instead of vanishing.
+type SlotAggregateWave struct {
+	TotalCount uint64 `json:"total_count"`
+	LateCount  uint64 `json:"late_count,omitempty"`
+	// DeadlineMs is when aggregates are due: AGGREGATE_DUE_BPS of the slot,
+	// moved earlier by gloas.
+	DeadlineMs uint32                   `json:"deadline_ms,omitempty"`
 	Buckets    []*SlotAttestationBucket `json:"buckets,omitempty"`
 }
 
