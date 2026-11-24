@@ -30,6 +30,7 @@ const (
 	StreamInclusionListEvent       uint16 = 0x20
 	StreamFastConfirmationEvent    uint16 = 0x40
 	StreamExecutionProofEvent      uint16 = 0x80
+	StreamSingleAttestationEvent   uint16 = 0x100
 )
 
 type BeaconStreamEvent struct {
@@ -84,6 +85,54 @@ func (e *FastConfirmationEvent) UnmarshalJSON(input []byte) error {
 
 		e.CurrentSlot = phase0.Slot(currentSlot)
 	}
+
+	return nil
+}
+
+type SingleAttestationEvent struct {
+	Slot            phase0.Slot
+	AttesterIndex   phase0.ValidatorIndex
+	BeaconBlockRoot phase0.Root
+	Seen            time.Time
+}
+
+func (e *SingleAttestationEvent) UnmarshalJSON(input []byte) error {
+	var data struct {
+		AttesterIndex string `json:"attester_index"`
+		Data          struct {
+			Slot            string `json:"slot"`
+			BeaconBlockRoot string `json:"beacon_block_root"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(input, &data); err != nil {
+		return err
+	}
+
+	attester, err := strconv.ParseUint(data.AttesterIndex, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid value for attester_index: %w", err)
+	}
+
+	e.AttesterIndex = phase0.ValidatorIndex(attester)
+
+	slot, err := strconv.ParseUint(data.Data.Slot, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid value for slot: %w", err)
+	}
+
+	e.Slot = phase0.Slot(slot)
+
+	root, err := hex.DecodeString(strings.TrimPrefix(data.Data.BeaconBlockRoot, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid value for beacon_block_root: %w", err)
+	}
+
+	if len(root) != len(e.BeaconBlockRoot) {
+		return fmt.Errorf("incorrect length %d for beacon_block_root", len(root))
+	}
+
+	copy(e.BeaconBlockRoot[:], root)
 
 	return nil
 }
@@ -192,6 +241,9 @@ func (bs *BeaconStream) ensureAncillaryStreams(events uint16) {
 	// so it gets its own stream as well
 	proofEvents := events & StreamExecutionProofEvent
 	bs.startAncillaryStream(proofEvents)
+
+	attestationEvents := events & StreamSingleAttestationEvent
+	bs.startAncillaryStream(attestationEvents)
 }
 
 func (bs *BeaconStream) startAncillaryStream(events uint16) {
@@ -212,7 +264,7 @@ func (bs *BeaconStream) startAncillaryStream(events uint16) {
 
 func (bs *BeaconStream) runAncillaryStream(events uint16) {
 	// streams carrying only optional topics give up when the node rejects the topic
-	optional := events&^(StreamFastConfirmationEvent|StreamExecutionProofEvent) == 0
+	optional := events&^(StreamFastConfirmationEvent|StreamExecutionProofEvent|StreamSingleAttestationEvent) == 0
 
 	stream := bs.subscribeStream(bs.client.endpoint, events, optional)
 	if stream == nil {
@@ -236,6 +288,8 @@ func (bs *BeaconStream) runAncillaryStream(events uint16) {
 				bs.processFastConfirmationEvent(evt)
 			case "execution_proof":
 				bs.processExecutionProofEvent(evt)
+			case "single_attestation":
+				bs.processSingleAttestationEvent(evt)
 			}
 		case <-stream.Ready:
 		case err := <-stream.Errors:
@@ -361,6 +415,16 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16, optional
 		}
 
 		fmt.Fprintf(&topics, "execution_proof")
+
+		topicsCount++
+	}
+
+	if events&StreamSingleAttestationEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "single_attestation")
 
 		topicsCount++
 	}
@@ -520,6 +584,21 @@ func (bs *BeaconStream) processInclusionListEvent(evt eventstream.StreamEvent) {
 
 	bs.EventChan <- &BeaconStreamEvent{
 		Event: StreamInclusionListEvent,
+		Data:  &parsed,
+	}
+}
+
+func (bs *BeaconStream) processSingleAttestationEvent(evt eventstream.StreamEvent) {
+	parsed := SingleAttestationEvent{Seen: time.Now()}
+
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		bs.logger.Warnf("beacon block stream failed to decode single_attestation event: %v", err)
+		return
+	}
+
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamSingleAttestationEvent,
 		Data:  &parsed,
 	}
 }

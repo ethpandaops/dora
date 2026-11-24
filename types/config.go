@@ -166,6 +166,11 @@ type Config struct {
 			// it carries the block's public input.
 			AllowMockProofs bool `yaml:"allowMockProofs" envconfig:"INDEXER_EXECUTION_PROOFS_ALLOW_MOCK_PROOFS"`
 		} `yaml:"executionProofs"`
+
+		AttestationArrivals struct {
+			Enabled        bool `yaml:"enabled" envconfig:"INDEXER_ATTESTATION_ARRIVALS_ENABLED"`
+			RetentionSlots uint `yaml:"retentionSlots" envconfig:"INDEXER_ATTESTATION_ARRIVALS_RETENTION_SLOTS"`
+		} `yaml:"attestationArrivals"`
 	} `yaml:"indexer"`
 
 	TxSignature struct {
