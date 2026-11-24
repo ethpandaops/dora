@@ -24,11 +24,6 @@ const (
 	attesterUnknown  = "unknown"
 )
 
-const attesterArrivalQuery = `SELECT assumeNotNull(attesting_validator_index) AS validator, beacon_block_root AS root, toUInt32(min(propagation_slot_start_diff)) AS first_ms
-FROM beacon_api_eth_v1_events_attestation
-WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ? AND attesting_validator_index IS NOT NULL
-GROUP BY validator, root`
-
 func SlotAttesters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -93,7 +88,10 @@ type attesterGroup struct {
 }
 
 func loadAttesterArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (map[phase0.ValidatorIndex]uint32, uint64, error) {
-	rows, err := client.Query(ctx, settled, attesterArrivalQuery, client.Network(), slotTime.Unix(), uint32(slot))
+	rows, err := client.Query(ctx, settled, `SELECT assumeNotNull(attesting_validator_index) AS validator, beacon_block_root AS root, toUInt32(min(propagation_slot_start_diff)) AS first_ms
+FROM beacon_api_eth_v1_events_attestation
+WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ? AND attesting_validator_index IS NOT NULL
+GROUP BY validator, root`, client.Network(), slotTime.Unix(), uint32(slot))
 	if err != nil {
 		if isMissingTableError(err) {
 			return nil, 0, nil
