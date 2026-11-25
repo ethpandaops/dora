@@ -270,7 +270,7 @@
 
             (c.nodes || []).forEach(function(n) {
               legend += '<tr class="tl-toggle" data-attester-node="' + esc(n.name) + '" title="click to list this node\u2019s validators, slowest first">' +
-                '<td class="ps-4 text-muted">' + esc(n.name) + '</td>' + statCells(n) + '</tr>';
+                '<td class="ps-4 text-muted">' + esc(n.name) + (opts && opts.nodeNote ? opts.nodeNote(n.name) : '') + '</td>' + statCells(n) + '</tr>';
 
               if (attesterNode === n.name) {
                 legend += '<tr><td colspan="7" class="ps-4">' + nodeValidators(n.name) + '</td></tr>';

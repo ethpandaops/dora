@@ -324,6 +324,13 @@
           arrivalSolo = solo;
           fadeOtherClients();
         },
+        nodeNote: function(name) {
+          var node = ((arrivalData || {}).nodes || []).filter(function(n) { return n.name === name; })[0];
+          if (!node || !(node.continent || node.country_code)) return '';
+
+          return ' <span class="small" title="' + esc(node.country || '') + '">' + flag((node.country_code || '').toUpperCase()) + ' ' +
+            esc(continentNames[node.continent] || node.continent || '') + '</span>';
+        },
         nodeUrl: function(name) {
           return '/slot/' + arrivalSlot + '/attesters/node?name=' + encodeURIComponent(name) + '&root=' + encodeURIComponent(arrivalBlockRoot);
         }
@@ -775,7 +782,7 @@
             }).map(function(n) {
               return '<div class="d-flex align-items-center arrival-region-line text-muted">' +
                 '<span class="region-name ps-3" title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' +
-                '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">' + flag(n.country_code) + ' ' + esc(n.country || n.country_code || '') + '</span>' +
+                '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">' + flag((n.country_code || '').toUpperCase()) + ' ' + esc(n.country || n.country_code || '') + '</span>' +
                 '<span style="width: 4.5rem; flex: none; text-align: right">' + esc(n.implementation || '') + '</span>' +
                 regionNodeCells(n.head_ms) + (hasPl ? regionNodeCells(n.pl_ms) : '') +
                 '</div>';
