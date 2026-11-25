@@ -175,7 +175,11 @@
       </div>
       <script type="text/javascript">
         (function() {
-          var render = window.doraArrivalChart.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'));
+          var render = window.doraArrivalChart.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'), {
+            nodeUrl: function(name) {
+              return '/epoch/{{ .Epoch }}/attesters/node?name=' + encodeURIComponent(name);
+            }
+          });
 
           fetch('/epoch/{{ .Epoch }}/attesters')
             .then(function(r) {

@@ -48,3 +48,18 @@ type EpochAttestersResponse struct {
 	Seen             uint64                 `json:"seen"`
 	Clients          []*SlotAttestersClient `json:"clients,omitempty"`
 }
+
+type AttestersNodeResponse struct {
+	Node             string                    `json:"node"`
+	AttestationDueMs uint32                    `json:"attestation_due_ms"`
+	AggregateDueMs   uint32                    `json:"aggregate_due_ms"`
+	Total            uint64                    `json:"total"`
+	Validators       []*AttestersNodeValidator `json:"validators,omitempty"`
+}
+
+type AttestersNodeValidator struct {
+	Index  uint64 `json:"index"`
+	Slot   uint64 `json:"slot"`
+	Seen   bool   `json:"seen"`
+	SeenMs uint32 `json:"seen_ms"`
+}
