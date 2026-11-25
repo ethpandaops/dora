@@ -343,6 +343,8 @@
       var arrivalXatu = {{ .XatuEnabled }};
       var arrivalLoaded = false;
       var arrivalData = null;
+      var regionOpen = null;
+      var renderRegions = null;
       var sortState = { key: 'min', dir: 1 };
 
       var continentColors = {
@@ -717,49 +719,71 @@
         // its nodes adopted the block as head, and when they got the payload.
         // Group captions use the node table's grammar; the payload group only
         // renders on networks that observe payload gossip.
-        var totalNodes = s.unique_nodes || 1;
-        var hasPl = (data.continents || []).some(function(c) { return c.pl_min_ms != null; });
+        renderRegions = function() {
+          var totalNodes = s.unique_nodes || 1;
+          var hasPl = (data.continents || []).some(function(c) { return c.pl_min_ms != null; });
 
-        var regionTimeCells = function(minMs, p50Ms, p90Ms) {
-          var cell = function(v, cls) {
-            return '<span class="num' + cls + '" style="width: 5.5rem; flex: none; text-align: right">' +
-              (v != null ? fmtMsColored(v) : '<span class="text-muted">&mdash;</span>') + '</span>';
+          var regionTimeCells = function(minMs, p50Ms, p90Ms) {
+            var cell = function(v, cls) {
+              return '<span class="num' + cls + '" style="width: 5.5rem; flex: none; text-align: right">' +
+                (v != null ? fmtMsColored(v) : '<span class="text-muted">&mdash;</span>') + '</span>';
+            };
+            return '<span class="region-times">' + cell(minMs, '') +
+              cell(p50Ms, ' d-none d-sm-inline') + cell(p90Ms, ' d-none d-md-inline') + '</span>';
           };
-          return '<span class="region-times">' + cell(minMs, '') +
-            cell(p50Ms, ' d-none d-sm-inline') + cell(p90Ms, ' d-none d-md-inline') + '</span>';
-        };
-        var regionTimeLabels = '<span class="region-times">' +
-          '<span style="width: 5.5rem; flex: none; text-align: right">fastest</span>' +
-          '<span class="d-none d-sm-inline" style="width: 5.5rem; flex: none; text-align: right">p50</span>' +
-          '<span class="d-none d-md-inline" style="width: 5.5rem; flex: none; text-align: right">p90</span>' +
-          '</span>';
+          var regionNodeCells = function(ms) {
+            return '<span class="region-times"><span class="num" style="width: 5.5rem; flex: none; text-align: right">' +
+              (ms != null ? fmtMsColored(ms) : '<span class="text-muted">&mdash;</span>') + '</span></span>';
+          };
+          var regionTimeLabels = '<span class="region-times">' +
+            '<span style="width: 5.5rem; flex: none; text-align: right">fastest</span>' +
+            '<span class="d-none d-sm-inline" style="width: 5.5rem; flex: none; text-align: right">p50</span>' +
+            '<span class="d-none d-md-inline" style="width: 5.5rem; flex: none; text-align: right">p90</span>' +
+            '</span>';
 
-        var regionHeader = '<div class="d-flex align-items-end arrival-region-line">' +
-          '<span class="region-name"></span>' +
-          '<span class="d-none d-md-inline-block" style="width: 160px; flex: none"></span>' +
-          '<span style="width: 4.5rem; flex: none"></span>' +
-          '<span class="region-times"><span class="region-cap" title="When nodes on each continent adopted this block as head of the chain (beacon API head event)">head arrival</span></span>' +
-          (hasPl ? '<span class="region-times"><span class="region-cap" title="When nodes on each continent first saw this block\'s execution payload on gossip">payload arrival</span></span>' : '') +
-          '</div>' +
-          '<div class="d-flex align-items-center arrival-region-line text-muted small">' +
-          '<span class="region-name"></span>' +
-          '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">share of observing nodes</span>' +
-          '<span style="width: 4.5rem; flex: none; text-align: right">nodes</span>' +
-          regionTimeLabels + (hasPl ? regionTimeLabels : '') +
-          '</div>';
-        var regionRows = (data.continents || []).map(function(c) {
-          var share = c.nodes / totalNodes * 100;
-          var name = continentNames[c.code] || c.code || 'Unknown';
-          return '<div class="d-flex align-items-center arrival-region-line" title="' + esc(name) + ': ' + c.nodes +
-            ' of ' + totalNodes + ' observing nodes (' + share.toFixed(0) + '%)">' +
-            '<span class="region-name"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
-            '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + Math.max(1.5, share).toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
-            '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b></span>' +
-            regionTimeCells(c.head_min_ms, c.head_p50_ms, c.head_p90_ms) +
-            (hasPl ? regionTimeCells(c.pl_min_ms, c.pl_p50_ms, c.pl_p90_ms) : '') +
+          var regionHeader = '<div class="d-flex align-items-end arrival-region-line">' +
+            '<span class="region-name"></span>' +
+            '<span class="d-none d-md-inline-block" style="width: 160px; flex: none"></span>' +
+            '<span style="width: 4.5rem; flex: none"></span>' +
+            '<span class="region-times"><span class="region-cap" title="When nodes on each continent adopted this block as head of the chain (beacon API head event)">head arrival</span></span>' +
+            (hasPl ? '<span class="region-times"><span class="region-cap" title="When nodes on each continent first saw this block\'s execution payload on gossip">payload arrival</span></span>' : '') +
+            '</div>' +
+            '<div class="d-flex align-items-center arrival-region-line text-muted small">' +
+            '<span class="region-name"></span>' +
+            '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">share of observing nodes</span>' +
+            '<span style="width: 4.5rem; flex: none; text-align: right">nodes</span>' +
+            regionTimeLabels + (hasPl ? regionTimeLabels : '') +
             '</div>';
-        }).join('');
-        document.getElementById('arrival-regions').innerHTML = regionRows ? regionHeader + regionRows : '';
+          var regionRows = (data.continents || []).map(function(c) {
+            var share = c.nodes / totalNodes * 100;
+            var name = continentNames[c.code] || c.code || 'Unknown';
+            var line = '<div class="d-flex align-items-center arrival-region-line tl-toggle" data-region="' + esc(c.code || '') + '" title="' + esc(name) + ': ' + c.nodes +
+              ' of ' + totalNodes + ' observing nodes (' + share.toFixed(0) + '%)">' +
+              '<span class="region-name"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
+              '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + Math.max(1.5, share).toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
+              '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b></span>' +
+              regionTimeCells(c.head_min_ms, c.head_p50_ms, c.head_p90_ms) +
+              (hasPl ? regionTimeCells(c.pl_min_ms, c.pl_p50_ms, c.pl_p90_ms) : '') +
+              '</div>';
+
+            if (regionOpen !== (c.code || '')) return line;
+
+            return line + (data.nodes || []).filter(function(n) {
+              return (n.continent || '') === (c.code || '');
+            }).sort(function(x, y) {
+              return (x.head_ms == null ? Infinity : x.head_ms) - (y.head_ms == null ? Infinity : y.head_ms);
+            }).map(function(n) {
+              return '<div class="d-flex align-items-center arrival-region-line text-muted">' +
+                '<span class="region-name ps-3" title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' +
+                '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">' + flag(n.country_code) + ' ' + esc(n.country || n.country_code || '') + '</span>' +
+                '<span style="width: 4.5rem; flex: none; text-align: right">' + esc(n.implementation || '') + '</span>' +
+                regionNodeCells(n.head_ms) + (hasPl ? regionNodeCells(n.pl_ms) : '') +
+                '</div>';
+            }).join('');
+          }).join('');
+          document.getElementById('arrival-regions').innerHTML = regionRows ? regionHeader + regionRows : '';
+        };
+        renderRegions();
 
         document.getElementById('arrival-body').innerHTML = renderTable(data);
 
@@ -1262,6 +1286,14 @@
         document.getElementById('arrival-body').innerHTML = renderTable(arrivalData);
         fadeOtherClients();
         requestAnimationFrame(syncStickyOffsets);
+      });
+
+      document.getElementById('arrival-regions').addEventListener('click', function(ev) {
+        var el = ev.target.closest('[data-region]');
+        if (!el || !renderRegions) return;
+        var code = el.getAttribute('data-region');
+        regionOpen = regionOpen === code ? null : code;
+        renderRegions();
       });
 
       var tlBody = document.getElementById('waves-timeline-body');
