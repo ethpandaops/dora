@@ -312,16 +312,19 @@
       var esc = shared.esc, fmtStr = shared.fmtStr, fmtAxis = shared.fmtAxis, timeColor = shared.timeColor;
       var fmtMsColored = shared.fmtMsColored, liveBadge = shared.liveBadge, sep = shared.sep, histAxis = shared.histAxis;
       var arrivalSolo = null;
+      var arrivalSoloNodes = [];
 
       function fadeOtherClients() {
         document.querySelectorAll('#arrival-body tr[data-impl]').forEach(function(tr) {
-          tr.classList.toggle('arrival-faded', !!arrivalSolo && tr.getAttribute('data-impl') !== arrivalSolo);
+          tr.classList.toggle('arrival-faded', !!arrivalSolo && tr.getAttribute('data-impl') !== arrivalSolo &&
+            arrivalSoloNodes.indexOf(tr.getAttribute('data-node')) < 0);
         });
       }
 
       var renderAttesters = shared.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'), {
-        onSolo: function(solo) {
+        onSolo: function(solo, nodes) {
           arrivalSolo = solo;
+          arrivalSoloNodes = nodes;
           fadeOtherClients();
         },
         nodeNote: function(name) {
@@ -611,7 +614,7 @@
             ? ' <span class="badge rounded-pill text-bg-warning" style="font-size: 10px;" title="This node built this block&#39;s execution payload">builder</span>'
             : '';
 
-          return '<tr data-impl="' + esc(n.implementation || '') + '"' + (n.late ? ' class="text-muted"' : '') + '>' +
+          return '<tr data-impl="' + esc(n.implementation || '') + '" data-node="' + esc(n.name) + '"' + (n.late ? ' class="text-muted"' : '') + '>' +
             '<td class="text-nowrap">' + groupBadge(n.group) +
             '<span class="arrival-node-name"' + (isProposer || isBuilder ? ' style="font-weight: 600"' : '') +
             ' title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' + proposerBadge + builderBadge + '</td>' +
