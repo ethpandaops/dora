@@ -994,8 +994,14 @@
 
         if (!series.length) return;
 
-        if (tlSolo && !series.some(function(sr) { return sr.label === tlSolo; })) tlSolo = null;
-        var visible = series.filter(function(sr) { return !tlSolo || sr.label === tlSolo; });
+        var solo = tlSolo;
+
+        if (solo && !series.some(function(sr) { return sr.label === solo; })) {
+          solo = null;
+          if (!sel) tlSolo = null;
+        }
+
+        var visible = series.filter(function(sr) { return !solo || sr.label === solo; });
 
         document.getElementById('waves-timeline').style.display = '';
 
@@ -1068,7 +1074,7 @@
 
         marks.forEach(function(m) {
           if (m.ms <= ax.lo || m.ms >= ax.hi) return;
-          if (tlSolo && m.series && m.series !== tlSolo) return;
+          if (solo && m.series && m.series !== solo) return;
 
           var x = pos(m.ms);
           var width = m.label.length * 0.62;
@@ -1129,10 +1135,10 @@
         labels += '<span style="left:100%">' + fmtAxis(ax.hi) + '</span>';
 
         var stats = series.map(function(sr) {
-          var off = tlSolo && tlSolo !== sr.label;
+          var off = solo && solo !== sr.label;
           return '<span class="tl-toggle' + (off ? ' off' : '') + '" data-tlseries="' + esc(sr.label) +
             '" style="white-space: nowrap" title="' +
-            (tlSolo === sr.label ? 'showing only this series — click to show all' : 'click to show only this series') +
+            (solo === sr.label ? 'showing only this series — click to show all' : 'click to show only this series') +
             '"><span style="color:' + sr.color + ';font-weight:600" title="of ' +
             (sr.denom !== sr.count ? sr.denom.toLocaleString() + ' ' : '') + sr.of + '">' + sr.label + '</span> <b>' +
             sr.count.toLocaleString() + '</b>' +
