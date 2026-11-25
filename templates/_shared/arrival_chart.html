@@ -16,6 +16,10 @@
     .tl-toggle:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
     .tl-toggle.off { opacity: 0.35; }
     .arrival-faded { opacity: 0.25; }
+    .arrival-hist .bar[data-attester] { cursor: pointer; }
+    .arrival-hist .bar.dim { opacity: 0.3; }
+    .arrival-hist .deadline { pointer-events: none; }
+    tr.attester-hover > td { background: var(--bs-tertiary-bg); }
     .arrival-hist .grid {
       position: absolute; top: 0; bottom: 0; width: 1px;
       background: var(--bs-border-color);
@@ -207,9 +211,8 @@
           });
 
           var stacked = [];
-          var tips = [];
 
-          for (i = 0; i < bins; i++) { stacked.push(0); tips.push([]); }
+          for (i = 0; i < bins; i++) stacked.push(0);
 
           visible.forEach(function(c) {
             var color = attesterColors[c.name] || attesterColors.unknown;
@@ -218,11 +221,11 @@
               var bin = Math.floor(b.ms / step);
               if (bin >= bins) return;
 
-              chart += '<div class="bar" style="left:' + (bin / bins * 100) + '%;width:' + (100 / bins) +
+              chart += '<div class="bar" data-attester="' + esc(c.name) + '" style="left:' + (bin / bins * 100) + '%;width:' + (100 / bins) +
                 '%;bottom:' + (stacked[bin] / peak * 100) + '%;height:' + (b.count / peak * 100) +
-                '%;background:' + color + '"></div>';
+                '%;background:' + color + '" title="' +
+                esc(c.name + ': ' + b.count + ' of ' + totals[bin] + ' attestations at ' + fmtStr(bin * step) + ' \u2013 ' + fmtStr((bin + 1) * step)) + '"></div>';
               stacked[bin] += b.count;
-              tips[bin].push(c.name + ' ' + b.count);
             });
           });
 
@@ -230,12 +233,6 @@
             if (!d[0] || d[0] >= slotMs) return;
             chart += '<div class="deadline" style="left:' + (d[0] / slotMs * 100) + '%"><span class="note">' + d[1] + '</span></div>';
           });
-
-          for (i = 0; i < bins; i++) {
-            if (!totals[i]) continue;
-            chart += '<div class="hover" style="left:' + (i / bins * 100) + '%;width:' + (100 / bins) + '%" title="' +
-              esc(fmtStr(i * step) + ' \u2013 ' + fmtStr((i + 1) * step) + ': ' + totals[i] + ' attestations (' + tips[i].join(', ') + ')') + '"></div>';
-          }
 
           var labels = '<span style="left:0;transform:none">0</span>';
 
@@ -296,6 +293,24 @@
             '<div class="arrival-hist hist-tall">' + chart + '</div>' +
             '<div class="arrival-hist-axis">' + labels + '</div>' + legend;
         }
+
+        function hoverClient(name) {
+          body.querySelectorAll('[data-attester]').forEach(function(el) {
+            var match = el.getAttribute('data-attester') === name;
+
+            if (el.classList.contains('bar')) el.classList.toggle('dim', !!name && !match);
+            else el.classList.toggle('attester-hover', !!name && match);
+          });
+        }
+
+        body.addEventListener('mouseover', function(ev) {
+          var bar = ev.target.closest('.bar[data-attester]');
+          hoverClient(bar ? bar.getAttribute('data-attester') : null);
+        });
+
+        body.addEventListener('mouseleave', function() {
+          hoverClient(null);
+        });
 
         body.addEventListener('click', function(ev) {
           if (!attesterData) return;
