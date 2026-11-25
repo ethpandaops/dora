@@ -90,6 +90,95 @@ type attesterGroup struct {
 	buckets map[uint32]uint64
 }
 
+type attesterGroups struct {
+	groups           map[string]*attesterGroup
+	slotMs           uint32
+	attestationDueMs uint32
+	aggregateDueMs   uint32
+}
+
+func (g *attesterGroups) group(index phase0.ValidatorIndex, slot phase0.Slot) *attesterGroup {
+	name := attesterClientName(services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot))
+
+	group := g.groups[name]
+	if group == nil {
+		group = &attesterGroup{
+			client:  &models.SlotAttestersClient{Name: name},
+			buckets: map[uint32]uint64{},
+		}
+		g.groups[name] = group
+	}
+
+	return group
+}
+
+func (g *attesterGroups) addExpected(ctx context.Context, slot phase0.Slot) uint64 {
+	expected := uint64(0)
+
+	for _, committee := range services.GlobalBeaconService.GetSlotCommittees(ctx, slot) {
+		for _, index := range committee {
+			g.group(index, slot).client.Expected++
+			expected++
+		}
+	}
+
+	return expected
+}
+
+func (g *attesterGroups) addArrival(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
+	group := g.group(index, slot)
+	group.client.Seen++
+	group.seenMs = append(group.seenMs, seenMs)
+
+	if seenMs >= g.attestationDueMs {
+		group.client.AfterAttestationDue++
+	}
+
+	if seenMs >= g.aggregateDueMs {
+		group.client.AfterDue++
+	}
+
+	if seenMs >= g.slotMs {
+		group.client.Late++
+
+		return
+	}
+
+	group.buckets[seenMs/attesterBucketMs*attesterBucketMs]++
+}
+
+func (g *attesterGroups) clients() []*models.SlotAttestersClient {
+	clients := make([]*models.SlotAttestersClient, 0, len(g.groups))
+
+	for _, group := range g.groups {
+		if len(group.seenMs) > 0 {
+			sort.Slice(group.seenMs, func(a, b int) bool { return group.seenMs[a] < group.seenMs[b] })
+			group.client.P50Ms = group.seenMs[len(group.seenMs)/2]
+			group.client.P90Ms = group.seenMs[len(group.seenMs)*9/10]
+		}
+
+		for ms, count := range group.buckets {
+			group.client.Buckets = append(group.client.Buckets, &models.SlotAttestationBucket{Ms: ms, Count: count})
+		}
+
+		sort.Slice(group.client.Buckets, func(a, b int) bool {
+			return group.client.Buckets[a].Ms < group.client.Buckets[b].Ms
+		})
+
+		clients = append(clients, group.client)
+	}
+
+	sort.Slice(clients, func(a, b int) bool {
+		if (clients[a].Name == attesterUnknown) != (clients[b].Name == attesterUnknown) {
+			return clients[b].Name == attesterUnknown
+		}
+
+		return clients[a].Name < clients[b].Name
+	})
+
+	return clients
+}
+
 func loadAttesterArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (map[phase0.ValidatorIndex]uint32, uint64, error) {
 	rows, err := client.Query(ctx, settled, `SELECT assumeNotNull(attesting_validator_index) AS validator, beacon_block_root AS root, toUInt32(min(propagation_slot_start_diff)) AS first_ms
 FROM beacon_api_eth_v1_events_attestation
@@ -198,72 +287,20 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		return response, cacheTimeout, nil
 	}
 
-	groups := map[string]*attesterGroup{}
-	groupOf := func(index phase0.ValidatorIndex) *attesterGroup {
-		name := attesterClientName(services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot))
-
-		group := groups[name]
-		if group == nil {
-			group = &attesterGroup{
-				client:  &models.SlotAttestersClient{Name: name},
-				buckets: map[uint32]uint64{},
-			}
-			groups[name] = group
-		}
-
-		return group
+	groups := &attesterGroups{
+		groups:           map[string]*attesterGroup{},
+		slotMs:           slotMs,
+		attestationDueMs: response.AttestationDueMs,
+		aggregateDueMs:   response.AggregateDueMs,
 	}
 
-	for _, committee := range services.GlobalBeaconService.GetSlotCommittees(queryCtx, slot) {
-		for _, index := range committee {
-			groupOf(index).client.Expected++
-			response.Expected++
-		}
-	}
+	response.Expected = groups.addExpected(queryCtx, slot)
 
 	for index, seenMs := range arrivals {
-		group := groupOf(index)
-		group.client.Seen++
-		group.seenMs = append(group.seenMs, seenMs)
-
-		if seenMs >= response.AggregateDueMs {
-			group.client.AfterDue++
-		}
-
-		if seenMs >= slotMs {
-			group.client.Late++
-
-			continue
-		}
-
-		group.buckets[seenMs/attesterBucketMs*attesterBucketMs]++
+		groups.addArrival(index, slot, seenMs)
 	}
 
-	for _, group := range groups {
-		if len(group.seenMs) > 0 {
-			sort.Slice(group.seenMs, func(a, b int) bool { return group.seenMs[a] < group.seenMs[b] })
-			group.client.P50Ms = group.seenMs[len(group.seenMs)/2]
-			group.client.P90Ms = group.seenMs[len(group.seenMs)*9/10]
-		}
-
-		for ms, count := range group.buckets {
-			group.client.Buckets = append(group.client.Buckets, &models.SlotAttestationBucket{Ms: ms, Count: count})
-		}
-
-		sort.Slice(group.client.Buckets, func(a, b int) bool {
-			return group.client.Buckets[a].Ms < group.client.Buckets[b].Ms
-		})
-
-		response.Clients = append(response.Clients, group.client)
-	}
-
-	sort.Slice(response.Clients, func(a, b int) bool {
-		if (response.Clients[a].Name == attesterUnknown) != (response.Clients[b].Name == attesterUnknown) {
-			return response.Clients[b].Name == attesterUnknown
-		}
-
-		return response.Clients[a].Name < response.Clients[b].Name
-	})
+	response.Clients = groups.clients()
 
 	return response, cacheTimeout, nil
 }

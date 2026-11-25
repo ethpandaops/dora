@@ -11,12 +11,7 @@ import (
 // The arrival tab reads .Block.BlockRoot; a bad expression there only shows up
 // when the template executes, so exercise it directly.
 func TestArrivalTemplateExecutes(t *testing.T) {
-	body, err := Files.ReadFile("slot/arrival.html")
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-
-	tmpl, err := template.New("t").Funcs(template.FuncMap(templateFuncs)).Parse(string(body))
+	tmpl, err := template.New("t").Funcs(template.FuncMap(templateFuncs)).ParseFS(Files, "slot/arrival.html", "_shared/arrival_chart.html")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -53,12 +48,7 @@ func TestArrivalTemplateExecutes(t *testing.T) {
 // The cbt panels are gated on XatuCbtEnabled: their markup and fetch must
 // only render when a cbt source is configured.
 func TestArrivalTemplateGatesCbtPanels(t *testing.T) {
-	body, err := Files.ReadFile("slot/arrival.html")
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-
-	tmpl, err := template.New("t").Funcs(template.FuncMap(templateFuncs)).Parse(string(body))
+	tmpl, err := template.New("t").Funcs(template.FuncMap(templateFuncs)).ParseFS(Files, "slot/arrival.html", "_shared/arrival_chart.html")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
