@@ -315,6 +315,7 @@
       var arrivalSoloNodes = [];
 
       var arrivalHover = null;
+      var attestersCurrent = null;
       var arrivalHoverNodes = [];
 
       function fadeOtherClients() {
@@ -336,6 +337,7 @@
         onSolo: function(solo, nodes) {
           arrivalSolo = solo;
           arrivalSoloNodes = nodes;
+          if (wavesData) renderTimeline(wavesData);
           fadeOtherClients();
         },
         nodeNote: function(name) {
@@ -887,6 +889,52 @@
           });
         }
 
+        if (arrivalSolo) {
+          var soloNodes = ((arrivalData || {}).nodes || []).filter(function(n) {
+            return n.implementation === arrivalSolo || arrivalSoloNodes.indexOf(n.name) >= 0;
+          });
+          var nodeSeries = function(sr, at) {
+            var counts = {};
+            var total = 0;
+
+            soloNodes.forEach(function(n) {
+              var ms = at(n);
+              if (ms == null || ms >= slotMs) return;
+              ms = Math.floor(ms / 50) * 50;
+              counts[ms] = (counts[ms] || 0) + 1;
+              total++;
+            });
+
+            sr.buckets = Object.keys(counts).map(Number).sort(function(x, y) { return x - y; }).map(function(ms) {
+              return { ms: ms, count: counts[ms] };
+            });
+            sr.count = total;
+            sr.denom = total;
+
+            return sr;
+          };
+          var soloSeries = series.map(function(sr) {
+            switch (sr.label) {
+              case 'head adopted': return nodeSeries(sr, function(n) { return n.head_ms; });
+              case 'payload seen': return nodeSeries(sr, function(n) { return n.pl_ms; });
+              case 'executed': return nodeSeries(sr, function(n) { return n.np_ms != null ? n.np_ms + (n.np_dur_ms || 0) : null; });
+              case 'attestations':
+                var client = ((attestersCurrent || {}).clients || []).filter(function(c) { return c.name === arrivalSolo; })[0];
+                if (!client) return null;
+
+                sr.buckets = (client.buckets || []).map(function(b) { return { ms: b.ms + 50, count: b.count }; });
+                sr.count = client.seen;
+                sr.denom = client.expected || client.seen;
+
+                return sr;
+            }
+
+            return null;
+          }).filter(function(sr) { return sr && sr.count; });
+
+          if (soloSeries.length) series = soloSeries;
+        }
+
         if (!series.length) return;
 
         if (tlSolo && !series.some(function(sr) { return sr.label === tlSolo; })) tlSolo = null;
@@ -939,7 +987,7 @@
             if (cum >= att.threshold_count) thresholdMs = b.ms + 50;
           });
 
-          if (thresholdMs != null) {
+          if (thresholdMs != null && !arrivalSolo) {
             var pct = Math.round(att.threshold_count / att.expected_count * 100);
             marks.push({
               ms: thresholdMs, label: pct + '% quorum', color: '#5b8def', series: 'attestations',
@@ -1220,6 +1268,8 @@
           });
 
         function showAttesters(attesters) {
+          attestersCurrent = attesters;
+
           try {
             renderAttesters(attesters);
           } catch (err) {
