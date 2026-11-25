@@ -181,6 +181,7 @@
 
         function renderAttesters(data) {
           attesterData = data;
+          hovered = null;
 
           if (!data || !(data.seen || data.other_roots)) return;
           row.style.display = '';
@@ -294,29 +295,40 @@
             '<div class="arrival-hist-axis">' + labels + '</div>' + legend;
         }
 
-        function soloNodes() {
+        function clientNodes(client) {
           var names = [];
 
           ((attesterData || {}).clients || []).forEach(function(c) {
-            if (c.name !== attesterSolo) return;
+            if (c.name !== client) return;
             (c.nodes || []).forEach(function(n) { names.push(n.name); });
           });
 
           return names;
         }
 
+        function soloNodes() {
+          return clientNodes(attesterSolo);
+        }
+
+        var hovered = null;
+
         function hoverClient(name) {
+          if (name === hovered) return;
+          hovered = name;
+
           body.querySelectorAll('[data-attester]').forEach(function(el) {
             var match = el.getAttribute('data-attester') === name;
 
             if (el.classList.contains('bar')) el.classList.toggle('dim', !!name && !match);
             else el.classList.toggle('attester-hover', !!name && match);
           });
+
+          if (opts && opts.onHover) opts.onHover(name, name ? clientNodes(name) : []);
         }
 
         body.addEventListener('mouseover', function(ev) {
-          var bar = ev.target.closest('.bar[data-attester]');
-          hoverClient(bar ? bar.getAttribute('data-attester') : null);
+          var el = ev.target.closest('[data-attester]');
+          hoverClient(el ? el.getAttribute('data-attester') : null);
         });
 
         body.addEventListener('mouseleave', function() {

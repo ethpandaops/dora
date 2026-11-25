@@ -314,14 +314,25 @@
       var arrivalSolo = null;
       var arrivalSoloNodes = [];
 
+      var arrivalHover = null;
+      var arrivalHoverNodes = [];
+
       function fadeOtherClients() {
+        var client = arrivalHover || arrivalSolo;
+        var nodes = arrivalHover ? arrivalHoverNodes : arrivalSoloNodes;
+
         document.querySelectorAll('#arrival-body tr[data-impl]').forEach(function(tr) {
-          tr.classList.toggle('arrival-faded', !!arrivalSolo && tr.getAttribute('data-impl') !== arrivalSolo &&
-            arrivalSoloNodes.indexOf(tr.getAttribute('data-node')) < 0);
+          tr.classList.toggle('arrival-faded', !!client && tr.getAttribute('data-impl') !== client &&
+            nodes.indexOf(tr.getAttribute('data-node')) < 0);
         });
       }
 
       var renderAttesters = shared.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'), {
+        onHover: function(client, nodes) {
+          arrivalHover = client;
+          arrivalHoverNodes = nodes;
+          fadeOtherClients();
+        },
         onSolo: function(solo, nodes) {
           arrivalSolo = solo;
           arrivalSoloNodes = nodes;
