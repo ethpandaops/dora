@@ -175,9 +175,7 @@ func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.E
 		return response, cacheTimeout, nil
 	}
 
-	for slot := firstSlot; slot < endSlot; slot++ {
-		response.Expected += groups.addExpected(queryCtx, slot)
-	}
+	response.Expected = groups.addExpected(queryCtx, firstSlot, endSlot)
 
 	response.Clients = groups.clients()
 

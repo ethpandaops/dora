@@ -112,16 +112,12 @@ func buildAttestersNodeData(ctx context.Context, node string, firstSlot, endSlot
 	validators := map[attesterDuty]*models.AttestersNodeValidator{}
 	indexes := []phase0.ValidatorIndex{}
 
-	for slot := firstSlot; slot < endSlot; slot++ {
-		for _, committee := range services.GlobalBeaconService.GetSlotCommittees(queryCtx, slot) {
-			for _, index := range committee {
-				if services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot) == node {
-					validators[attesterDuty{slot, index}] = &models.AttestersNodeValidator{Index: uint64(index), Slot: uint64(slot)}
-					indexes = append(indexes, index)
-				}
-			}
+	forEachAttesterDuty(queryCtx, firstSlot, endSlot, func(slot phase0.Slot, index phase0.ValidatorIndex) {
+		if services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot) == node {
+			validators[attesterDuty{slot, index}] = &models.AttestersNodeValidator{Index: uint64(index), Slot: uint64(slot)}
+			indexes = append(indexes, index)
 		}
-	}
+	})
 
 	if len(indexes) == 0 {
 		return &models.AttestersNodeResponse{Node: node}, attesterCacheTimeout(chainState, settled, endTime), nil
