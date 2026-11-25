@@ -235,10 +235,31 @@ func (g *attesterGroups) clients() []*models.SlotAttestersClient {
 	return clients
 }
 
-func loadAttesterArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (map[phase0.ValidatorIndex]uint32, uint64, error) {
+func attesterValidatorFilter(validators []phase0.ValidatorIndex) string {
+	if len(validators) == 0 || len(validators) > 10000 {
+		return ""
+	}
+
+	filter := strings.Builder{}
+	filter.WriteString(" AND attesting_validator_index IN (")
+
+	for i, index := range validators {
+		if i > 0 {
+			filter.WriteByte(',')
+		}
+
+		filter.WriteString(strconv.FormatUint(uint64(index), 10))
+	}
+
+	filter.WriteByte(')')
+
+	return filter.String()
+}
+
+func loadAttesterArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, validators []phase0.ValidatorIndex) (map[phase0.ValidatorIndex]uint32, uint64, error) {
 	rows, err := client.Query(ctx, settled, `SELECT assumeNotNull(attesting_validator_index) AS validator, beacon_block_root AS root, toUInt32(min(propagation_slot_start_diff)) AS first_ms
 FROM beacon_api_eth_v1_events_attestation
-WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ? AND attesting_validator_index IS NOT NULL
+WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ? AND attesting_validator_index IS NOT NULL`+attesterValidatorFilter(validators)+`
 GROUP BY validator, root`, client.Network(), slotTime.Unix(), uint32(slot))
 	if err != nil {
 		if isMissingTableError(err) {
@@ -280,7 +301,7 @@ GROUP BY validator, root`, client.Network(), slotTime.Unix(), uint32(slot))
 	return arrivals, otherRoots, nil
 }
 
-func slotAttesterArrivals(ctx context.Context, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (map[phase0.ValidatorIndex]uint32, uint64, error) {
+func slotAttesterArrivals(ctx context.Context, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, validators []phase0.ValidatorIndex) (map[phase0.ValidatorIndex]uint32, uint64, error) {
 	var arrivals map[phase0.ValidatorIndex]uint32
 
 	var otherRoots uint64
@@ -288,7 +309,7 @@ func slotAttesterArrivals(ctx context.Context, slot phase0.Slot, slotTime time.T
 	if client := xatu.GlobalClient; client != nil {
 		var err error
 
-		arrivals, otherRoots, err = loadAttesterArrivals(ctx, client, slot, slotTime, settled, blockRoot)
+		arrivals, otherRoots, err = loadAttesterArrivals(ctx, client, slot, slotTime, settled, blockRoot, validators)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -336,7 +357,7 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	arrivals, otherRoots, err := slotAttesterArrivals(queryCtx, slot, slotTime, settled, blockRoot)
+	arrivals, otherRoots, err := slotAttesterArrivals(queryCtx, slot, slotTime, settled, blockRoot, nil)
 	if err != nil {
 		return nil, -1, err
 	}

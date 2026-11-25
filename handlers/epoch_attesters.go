@@ -69,10 +69,10 @@ func EpochAttesters(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func loadEpochAttesterArrivals(ctx context.Context, client *xatu.Client, firstSlot, endSlot phase0.Slot, firstTime, endTime time.Time, settled bool, add func(phase0.ValidatorIndex, phase0.Slot, uint32)) error {
+func loadEpochAttesterArrivals(ctx context.Context, client *xatu.Client, firstSlot, endSlot phase0.Slot, firstTime, endTime time.Time, settled bool, validators []phase0.ValidatorIndex, add func(phase0.ValidatorIndex, phase0.Slot, uint32)) error {
 	rows, err := client.Query(ctx, settled, `SELECT slot, assumeNotNull(attesting_validator_index) AS validator, toUInt32(min(propagation_slot_start_diff)) AS first_ms
 FROM beacon_api_eth_v1_events_attestation
-WHERE meta_network_name = ? AND slot_start_date_time >= toDateTime(?) AND slot_start_date_time < toDateTime(?) AND slot >= ? AND slot < ? AND attesting_validator_index IS NOT NULL
+WHERE meta_network_name = ? AND slot_start_date_time >= toDateTime(?) AND slot_start_date_time < toDateTime(?) AND slot >= ? AND slot < ? AND attesting_validator_index IS NOT NULL`+attesterValidatorFilter(validators)+`
 GROUP BY slot, validator`, client.Network(), firstTime.Unix(), endTime.Unix(), uint32(firstSlot), uint32(endSlot))
 	if err != nil {
 		if isMissingTableError(err) {
@@ -100,7 +100,7 @@ GROUP BY slot, validator`, client.Network(), firstTime.Unix(), endTime.Unix(), u
 	return nil
 }
 
-func epochAttesterArrivals(ctx context.Context, firstSlot, endSlot phase0.Slot, settled bool, add func(phase0.ValidatorIndex, phase0.Slot, uint32)) error {
+func epochAttesterArrivals(ctx context.Context, firstSlot, endSlot phase0.Slot, settled bool, validators []phase0.ValidatorIndex, add func(phase0.ValidatorIndex, phase0.Slot, uint32)) error {
 	chainState := services.GlobalBeaconService.GetChainState()
 	seen := 0
 	count := func(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
@@ -109,7 +109,7 @@ func epochAttesterArrivals(ctx context.Context, firstSlot, endSlot phase0.Slot, 
 	}
 
 	if client := xatu.GlobalClient; client != nil {
-		if err := loadEpochAttesterArrivals(ctx, client, firstSlot, endSlot, chainState.SlotToTime(firstSlot), chainState.SlotToTime(endSlot), settled, count); err != nil {
+		if err := loadEpochAttesterArrivals(ctx, client, firstSlot, endSlot, chainState.SlotToTime(firstSlot), chainState.SlotToTime(endSlot), settled, validators, count); err != nil {
 			return err
 		}
 	}
@@ -162,7 +162,7 @@ func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.E
 		aggregateDueMs:   response.AggregateDueMs,
 	}
 
-	if err := epochAttesterArrivals(queryCtx, firstSlot, endSlot, settled, func(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
+	if err := epochAttesterArrivals(queryCtx, firstSlot, endSlot, settled, nil, func(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
 		groups.addArrival(index, slot, seenMs)
 		response.Seen++
 	}); err != nil {
