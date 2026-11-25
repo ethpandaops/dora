@@ -27,14 +27,15 @@ type SlotAttestersClient struct {
 }
 
 type SlotAttestersNode struct {
-	Name                string `json:"name"`
-	Expected            uint64 `json:"expected"`
-	Seen                uint64 `json:"seen"`
-	AfterAttestationDue uint64 `json:"after_attestation_due"`
-	AfterDue            uint64 `json:"after_due"`
-	Late                uint64 `json:"late"`
-	P50Ms               uint32 `json:"p50_ms"`
-	P90Ms               uint32 `json:"p90_ms"`
+	Name                string                   `json:"name"`
+	Expected            uint64                   `json:"expected"`
+	Seen                uint64                   `json:"seen"`
+	AfterAttestationDue uint64                   `json:"after_attestation_due"`
+	AfterDue            uint64                   `json:"after_due"`
+	Late                uint64                   `json:"late"`
+	P50Ms               uint32                   `json:"p50_ms"`
+	P90Ms               uint32                   `json:"p90_ms"`
+	Buckets             []*SlotAttestationBucket `json:"buckets,omitempty"`
 }
 
 type EpochAttestersResponse struct {

@@ -85,8 +85,9 @@ func attesterClientName(validatorName string) string {
 }
 
 type attesterNode struct {
-	node   *models.SlotAttestersNode
-	seenMs []uint32
+	node    *models.SlotAttestersNode
+	seenMs  []uint32
+	buckets map[uint32]uint64
 }
 
 type attesterGroup struct {
@@ -123,7 +124,7 @@ func (g *attesterGroups) group(index phase0.ValidatorIndex, slot phase0.Slot) (*
 
 	node := group.nodes[validatorName]
 	if node == nil {
-		node = &attesterNode{node: &models.SlotAttestersNode{Name: validatorName}}
+		node = &attesterNode{node: &models.SlotAttestersNode{Name: validatorName}, buckets: map[uint32]uint64{}}
 		group.nodes[validatorName] = node
 	}
 
@@ -210,7 +211,12 @@ func (g *attesterGroups) addArrival(index phase0.ValidatorIndex, slot phase0.Slo
 		return
 	}
 
-	group.buckets[seenMs/attesterBucketMs*attesterBucketMs]++
+	bucket := seenMs / attesterBucketMs * attesterBucketMs
+	group.buckets[bucket]++
+
+	if node != nil {
+		node.buckets[bucket]++
+	}
 }
 
 func attesterPercentiles(seenMs []uint32) (uint32, uint32) {
@@ -223,22 +229,29 @@ func attesterPercentiles(seenMs []uint32) (uint32, uint32) {
 	return seenMs[len(seenMs)/2], seenMs[len(seenMs)*9/10]
 }
 
+func attesterBuckets(counts map[uint32]uint64) []*models.SlotAttestationBucket {
+	buckets := make([]*models.SlotAttestationBucket, 0, len(counts))
+
+	for ms, count := range counts {
+		buckets = append(buckets, &models.SlotAttestationBucket{Ms: ms, Count: count})
+	}
+
+	sort.Slice(buckets, func(a, b int) bool { return buckets[a].Ms < buckets[b].Ms })
+
+	return buckets
+}
+
 func (g *attesterGroups) clients() []*models.SlotAttestersClient {
 	clients := make([]*models.SlotAttestersClient, 0, len(g.groups))
 
 	for _, group := range g.groups {
 		group.client.P50Ms, group.client.P90Ms = attesterPercentiles(group.seenMs)
 
-		for ms, count := range group.buckets {
-			group.client.Buckets = append(group.client.Buckets, &models.SlotAttestationBucket{Ms: ms, Count: count})
-		}
-
-		sort.Slice(group.client.Buckets, func(a, b int) bool {
-			return group.client.Buckets[a].Ms < group.client.Buckets[b].Ms
-		})
+		group.client.Buckets = attesterBuckets(group.buckets)
 
 		for _, node := range group.nodes {
 			node.node.P50Ms, node.node.P90Ms = attesterPercentiles(node.seenMs)
+			node.node.Buckets = attesterBuckets(node.buckets)
 			group.client.Nodes = append(group.client.Nodes, node.node)
 		}
 

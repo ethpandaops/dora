@@ -342,6 +342,7 @@
           if (nodeEl) {
             var node = nodeEl.getAttribute('data-attester-node');
             attesterNode = attesterNode === node ? null : node;
+            if (opts && opts.onNode) opts.onNode(attesterNode);
             if (attesterNode) loadNode(attesterNode);
             renderAttesters(attesterData);
 
@@ -354,6 +355,7 @@
           attesterSolo = attesterSolo === name ? null : name;
           attesterNode = null;
           renderAttesters(attesterData);
+          if (opts && opts.onNode) opts.onNode(null);
           if (opts && opts.onSolo) opts.onSolo(attesterSolo, soloNodes());
         });
 
@@ -365,6 +367,7 @@
           attesterSolo = null;
           attesterNode = null;
           renderAttesters(attesterData);
+          if (opts && opts.onNode) opts.onNode(null);
           if (opts && opts.onSolo) opts.onSolo(null, []);
         });
 

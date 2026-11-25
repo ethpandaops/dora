@@ -317,28 +317,50 @@
       var arrivalHover = null;
       var attestersCurrent = null;
       var arrivalHoverNodes = [];
+      var arrivalNode = null;
 
-      function fadeOtherClients() {
-        var client = arrivalHover || arrivalSolo;
-        var nodes = arrivalHover ? arrivalHoverNodes : arrivalSoloNodes;
+      function arrivalSelection() {
+        if (arrivalHover) return { client: arrivalHover, nodes: arrivalHoverNodes };
+        if (arrivalNode) return { client: null, nodes: [arrivalNode] };
+        if (arrivalSolo) return { client: arrivalSolo, nodes: arrivalSoloNodes };
+
+        if (regionOpen != null) {
+          return {
+            client: null,
+            nodes: ((arrivalData || {}).nodes || []).filter(function(n) {
+              return (n.continent || '') === regionOpen;
+            }).map(function(n) { return n.name; })
+          };
+        }
+
+        return null;
+      }
+
+      function applySelection() {
+        var sel = arrivalSelection();
 
         document.querySelectorAll('#arrival-body tr[data-impl]').forEach(function(tr) {
-          tr.classList.toggle('arrival-faded', !!client && tr.getAttribute('data-impl') !== client &&
-            nodes.indexOf(tr.getAttribute('data-node')) < 0);
+          tr.classList.toggle('arrival-faded', !!sel && tr.getAttribute('data-impl') !== sel.client &&
+            sel.nodes.indexOf(tr.getAttribute('data-node')) < 0);
         });
+
+        if (wavesData) renderTimeline(wavesData);
       }
 
       var renderAttesters = shared.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'), {
         onHover: function(client, nodes) {
           arrivalHover = client;
           arrivalHoverNodes = nodes;
-          fadeOtherClients();
+          applySelection();
+        },
+        onNode: function(node) {
+          arrivalNode = node;
+          applySelection();
         },
         onSolo: function(solo, nodes) {
           arrivalSolo = solo;
           arrivalSoloNodes = nodes;
-          if (wavesData) renderTimeline(wavesData);
-          fadeOtherClients();
+          applySelection();
         },
         nodeNote: function(name) {
           var node = ((arrivalData || {}).nodes || []).filter(function(n) { return n.name === name; })[0];
@@ -810,7 +832,7 @@
 
         document.getElementById('arrival-body').innerHTML = renderTable(data);
 
-        fadeOtherClients();
+        applySelection();
         requestAnimationFrame(syncStickyOffsets);
       }
 
@@ -889,9 +911,11 @@
           });
         }
 
-        if (arrivalSolo) {
+        var sel = arrivalSelection();
+
+        if (sel) {
           var soloNodes = ((arrivalData || {}).nodes || []).filter(function(n) {
-            return n.implementation === arrivalSolo || arrivalSoloNodes.indexOf(n.name) >= 0;
+            return n.implementation === sel.client || sel.nodes.indexOf(n.name) >= 0;
           });
           var nodeSeries = function(sr, at) {
             var counts = {};
@@ -919,12 +943,27 @@
               case 'payload seen': return nodeSeries(sr, function(n) { return n.pl_ms; });
               case 'executed': return nodeSeries(sr, function(n) { return n.np_ms != null ? n.np_ms + (n.np_dur_ms || 0) : null; });
               case 'attestations':
-                var client = ((attestersCurrent || {}).clients || []).filter(function(c) { return c.name === arrivalSolo; })[0];
-                if (!client) return null;
+                var counts = {};
+                var seen = 0;
+                var expected = 0;
+                var add = function(group) {
+                  (group.buckets || []).forEach(function(bk) { counts[bk.ms] = (counts[bk.ms] || 0) + bk.count; });
+                  seen += group.seen;
+                  expected += group.expected;
+                };
 
-                sr.buckets = (client.buckets || []).map(function(b) { return { ms: b.ms + 50, count: b.count }; });
-                sr.count = client.seen;
-                sr.denom = client.expected || client.seen;
+                ((attestersCurrent || {}).clients || []).forEach(function(c) {
+                  var nodes = (c.nodes || []).filter(function(n) { return sel.nodes.indexOf(n.name) >= 0; });
+
+                  if (nodes.length) nodes.forEach(add);
+                  else if (c.name === sel.client) add(c);
+                });
+
+                sr.buckets = Object.keys(counts).map(Number).sort(function(x, y) { return x - y; }).map(function(ms) {
+                  return { ms: ms + 50, count: counts[ms] };
+                });
+                sr.count = seen;
+                sr.denom = expected || seen;
 
                 return sr;
             }
@@ -987,7 +1026,7 @@
             if (cum >= att.threshold_count) thresholdMs = b.ms + 50;
           });
 
-          if (thresholdMs != null && !arrivalSolo) {
+          if (thresholdMs != null && !sel) {
             var pct = Math.round(att.threshold_count / att.expected_count * 100);
             marks.push({
               ms: thresholdMs, label: pct + '% quorum', color: '#5b8def', series: 'attestations',
@@ -1336,7 +1375,7 @@
           sortState.dir = 1;
         }
         document.getElementById('arrival-body').innerHTML = renderTable(arrivalData);
-        fadeOtherClients();
+        applySelection();
         requestAnimationFrame(syncStickyOffsets);
       });
 
@@ -1346,6 +1385,7 @@
         var code = el.getAttribute('data-region');
         regionOpen = regionOpen === code ? null : code;
         renderRegions();
+        applySelection();
       });
 
       var tlBody = document.getElementById('waves-timeline-body');
