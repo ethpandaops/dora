@@ -318,8 +318,10 @@
       var attestersCurrent = null;
       var arrivalHoverNodes = [];
       var arrivalNode = null;
+      var arrivalHoverNode = null;
 
       function arrivalSelection() {
+        if (arrivalHoverNode) return { client: null, nodes: [arrivalHoverNode] };
         if (arrivalHover) return { client: arrivalHover, nodes: arrivalHoverNodes };
         if (arrivalNode) return { client: null, nodes: [arrivalNode] };
         if (arrivalSolo) return { client: arrivalSolo, nodes: arrivalSoloNodes };
@@ -351,6 +353,10 @@
         onHover: function(client, nodes) {
           arrivalHover = client;
           arrivalHoverNodes = nodes;
+          applySelection();
+        },
+        onNodeHover: function(node) {
+          arrivalHoverNode = node;
           applySelection();
         },
         onNode: function(node) {
