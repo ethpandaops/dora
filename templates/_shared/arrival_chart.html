@@ -179,35 +179,40 @@
             });
         }
 
-        function renderAttesters(data) {
-          attesterData = data;
-          hovered = null;
-
-          if (!data || !(data.seen || data.other_roots)) return;
-          row.style.display = '';
-
+        function chartHtml(data, focusNode) {
           var slotMs = data.slot_ms || 12000;
           var step = data.bucket_ms || 100;
           var bins = Math.ceil(slotMs / step);
-          var clients = data.clients || [];
-          var visible = clients.filter(function(c) { return !attesterSolo || attesterSolo === c.name; });
+          var series = [];
+
+          (data.clients || []).forEach(function(c) {
+            if (focusNode) {
+              (c.nodes || []).forEach(function(n) {
+                if (n.name === focusNode) series.push({ client: c.name, label: n.name, buckets: n.buckets || [] });
+              });
+
+              return;
+            }
+
+            if (!attesterSolo || attesterSolo === c.name) series.push({ client: c.name, label: c.name, buckets: c.buckets || [] });
+          });
+
           var totals = [];
           var i;
 
           for (i = 0; i < bins; i++) totals.push(0);
 
-          visible.forEach(function(c) {
-            (c.buckets || []).forEach(function(b) {
+          series.forEach(function(sr) {
+            sr.buckets.forEach(function(b) {
               var bin = Math.floor(b.ms / step);
               if (bin < bins) totals[bin] += b.count;
             });
           });
 
           var peak = Math.max.apply(null, totals.concat([1]));
-          var ax = histAxis(0, slotMs);
           var chart = '';
 
-          ax.lines.forEach(function(t) {
+          histAxis(0, slotMs).lines.forEach(function(t) {
             chart += '<div class="grid" style="left:' + (t / slotMs * 100) + '%"></div>';
           });
 
@@ -215,17 +220,17 @@
 
           for (i = 0; i < bins; i++) stacked.push(0);
 
-          visible.forEach(function(c) {
-            var color = attesterColors[c.name] || attesterColors.unknown;
+          series.forEach(function(sr) {
+            var color = attesterColors[sr.client] || attesterColors.unknown;
 
-            (c.buckets || []).forEach(function(b) {
+            sr.buckets.forEach(function(b) {
               var bin = Math.floor(b.ms / step);
               if (bin >= bins) return;
 
-              chart += '<div class="bar" data-attester="' + esc(c.name) + '" style="left:' + (bin / bins * 100) + '%;width:' + (100 / bins) +
+              chart += '<div class="bar" data-attester="' + esc(sr.client) + '" style="left:' + (bin / bins * 100) + '%;width:' + (100 / bins) +
                 '%;bottom:' + (stacked[bin] / peak * 100) + '%;height:' + (b.count / peak * 100) +
                 '%;background:' + color + '" title="' +
-                esc(c.name + ': ' + b.count + ' of ' + totals[bin] + ' attestations at ' + fmtStr(bin * step) + ' \u2013 ' + fmtStr((bin + 1) * step)) + '"></div>';
+                esc(sr.label + ': ' + b.count + ' of ' + totals[bin] + ' attestations at ' + fmtStr(bin * step) + ' \u2013 ' + fmtStr((bin + 1) * step)) + '"></div>';
               stacked[bin] += b.count;
             });
           });
@@ -234,6 +239,23 @@
             if (!d[0] || d[0] >= slotMs) return;
             chart += '<div class="deadline" style="left:' + (d[0] / slotMs * 100) + '%"><span class="note">' + d[1] + '</span></div>';
           });
+
+          return chart;
+        }
+
+        function renderAttesters(data) {
+          attesterData = data;
+          hovered = null;
+          hoveredNode = null;
+
+          if (!data || !(data.seen || data.other_roots)) return;
+          row.style.display = '';
+
+          var slotMs = data.slot_ms || 12000;
+          var step = data.bucket_ms || 100;
+          var clients = data.clients || [];
+          var chart = chartHtml(data, attesterNode);
+          var ax = histAxis(0, slotMs);
 
           var labels = '<span style="left:0;transform:none">0</span>';
 
@@ -326,12 +348,28 @@
           if (opts && opts.onHover) opts.onHover(name, name ? clientNodes(name) : []);
         }
 
+        var hoveredNode = null;
+
+        function hoverNode(name) {
+          if (name === hoveredNode) return;
+          hoveredNode = name;
+
+          var hist = body.querySelector('.arrival-hist');
+          if (hist && attesterData) hist.innerHTML = chartHtml(attesterData, name || attesterNode);
+
+          if (opts && opts.onNodeHover) opts.onNodeHover(name);
+        }
+
         body.addEventListener('mouseover', function(ev) {
+          var node = ev.target.closest('[data-attester-node]');
+          hoverNode(node ? node.getAttribute('data-attester-node') : null);
+
           var el = ev.target.closest('[data-attester]');
           hoverClient(el ? el.getAttribute('data-attester') : null);
         });
 
         body.addEventListener('mouseleave', function() {
+          hoverNode(null);
           hoverClient(null);
         });
 
