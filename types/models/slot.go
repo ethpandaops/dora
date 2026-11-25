@@ -25,6 +25,7 @@ type SlotPageData struct {
 	TracoorUrl             string                  `json:"tracoor_url"`
 	XatuEnabled            bool                    `json:"xatu_enabled"`
 	XatuCbtEnabled         bool                    `json:"xatu_cbt_enabled"`
+	AttestersEnabled       bool                    `json:"attesters_enabled"`
 	SystemContracts        []*types.SystemContract `json:"system_contracts"`
 	TransactionDetails     []*SlotPageTransaction  `json:"transaction_details"`
 	InclusionListsEnabled  bool                    `json:"inclusion_lists_enabled"` // Inclusion lists (EIP-7805) are active for this slot; they are loaded lazily

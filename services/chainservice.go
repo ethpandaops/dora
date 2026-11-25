@@ -68,6 +68,10 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 
 	// initialize client pools & indexers
 	consensusPool := consensus.NewPool(ctx, logger.WithField("service", "cl-pool"))
+	if utils.Config.Indexer.AttestationArrivals.Enabled {
+		consensusPool.EnableAttestationStream()
+	}
+
 	executionPool := execution.NewPool(ctx, logger.WithField("service", "el-pool"))
 	beaconIndexer := beacon.NewIndexer(ctx, logger.WithField("service", "cl-indexer"), consensusPool)
 	chainState := consensusPool.GetChainState()

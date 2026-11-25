@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
@@ -17,6 +19,7 @@ import (
 	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 const (
@@ -27,8 +30,8 @@ const (
 func SlotAttesters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	if xatu.GlobalClient == nil {
-		http.Error(w, "Xatu is not configured", http.StatusNotFound)
+	if xatu.GlobalClient == nil && !utils.Config.Indexer.AttestationArrivals.Enabled {
+		http.Error(w, "Attester arrivals are not available", http.StatusNotFound)
 		return
 	}
 
@@ -137,14 +140,38 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 	chainState := services.GlobalBeaconService.GetChainState()
 	slotTime := chainState.SlotToTime(slot)
 	slotMs := lateThreshold(chainState)
-	settled := time.Now().After(slotTime.Add(client.SettleDelay()))
+
+	settleDelay := 30 * time.Second
+	if client != nil {
+		settleDelay = client.SettleDelay()
+	}
+
+	settled := time.Now().After(slotTime.Add(settleDelay))
 
 	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	arrivals, otherRoots, err := loadAttesterArrivals(queryCtx, client, slot, slotTime, settled, blockRoot)
-	if err != nil {
-		return nil, -1, err
+	var arrivals map[phase0.ValidatorIndex]uint32
+
+	var otherRoots uint64
+
+	if client != nil {
+		var err error
+
+		arrivals, otherRoots, err = loadAttesterArrivals(queryCtx, client, slot, slotTime, settled, blockRoot)
+		if err != nil {
+			return nil, -1, err
+		}
+	}
+
+	if len(arrivals) == 0 && otherRoots == 0 && utils.Config.Indexer.AttestationArrivals.Enabled {
+		var root *phase0.Root
+
+		if raw, err := hex.DecodeString(strings.TrimPrefix(blockRoot, "0x")); err == nil && len(raw) == len(phase0.Root{}) {
+			root = (*phase0.Root)(raw)
+		}
+
+		arrivals, otherRoots = services.GlobalBeaconService.GetBeaconIndexer().GetAttestationArrivals(slot, root)
 	}
 
 	response := &models.SlotAttestersResponse{

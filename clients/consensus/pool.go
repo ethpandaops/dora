@@ -13,11 +13,12 @@ import (
 )
 
 type Pool struct {
-	ctx           context.Context
-	logger        logrus.FieldLogger
-	clientCounter uint16
-	clients       []*Client
-	chainState    *ChainState
+	ctx               context.Context
+	logger            logrus.FieldLogger
+	clientCounter     uint16
+	clients           []*Client
+	chainState        *ChainState
+	attestationStream bool
 }
 
 func NewPool(ctx context.Context, logger logrus.FieldLogger) *Pool {
@@ -27,6 +28,10 @@ func NewPool(ctx context.Context, logger logrus.FieldLogger) *Pool {
 		clients:    make([]*Client, 0),
 		chainState: newChainState(),
 	}
+}
+
+func (pool *Pool) EnableAttestationStream() {
+	pool.attestationStream = true
 }
 
 func (pool *Pool) SubscribeFinalizedEvent(capacity int) *utils.Subscription[*v1.Finality] {

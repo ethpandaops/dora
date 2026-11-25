@@ -139,6 +139,10 @@ indexer:
   #  verifierCacheDir: ""         # compiled verifier cache kept across restarts (default: dora-verifiers in the temp dir)
   #  allowMockProofs: false       # devnets: accept zkboost mock proofs that carry the block's public input
 
+  #attestationArrivals:
+  #  enabled: false
+  #  retentionSlots: 256
+
 executionIndexer:
   enabled: false # enable execution data indexing
   retention: 4368h # 4368 hours = 6 months

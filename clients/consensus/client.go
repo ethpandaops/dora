@@ -62,6 +62,7 @@ type Client struct {
 	inclusionListDispatcher       utils.Dispatcher[*v1.InclusionListEvent]
 	fastConfirmationDispatcher    utils.Dispatcher[*rpc.FastConfirmationEvent]
 	executionProofDispatcher      utils.Dispatcher[*rpc.ExecutionProof]
+	singleAttestationDispatcher   utils.Dispatcher[*rpc.SingleAttestationEvent]
 
 	specsMutex   sync.RWMutex
 	specWarnings []string // warnings from incomplete spec checks
@@ -127,6 +128,10 @@ func (client *Client) SubscribeFastConfirmationEvent(capacity int, blocking bool
 
 func (client *Client) SubscribeExecutionProofEvent(capacity int, blocking bool) *utils.Subscription[*rpc.ExecutionProof] {
 	return client.executionProofDispatcher.Subscribe(capacity, blocking)
+}
+
+func (client *Client) SubscribeSingleAttestationEvent(capacity int, blocking bool) *utils.Subscription[*rpc.SingleAttestationEvent] {
+	return client.singleAttestationDispatcher.Subscribe(capacity, blocking)
 }
 
 func (client *Client) GetPool() *Pool {
