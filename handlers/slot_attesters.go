@@ -280,32 +280,17 @@ GROUP BY validator, root`, client.Network(), slotTime.Unix(), uint32(slot))
 	return arrivals, otherRoots, nil
 }
 
-func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot string) (*models.SlotAttestersResponse, time.Duration, error) {
-	client := xatu.GlobalClient
-	chainState := services.GlobalBeaconService.GetChainState()
-	slotTime := chainState.SlotToTime(slot)
-	slotMs := lateThreshold(chainState)
-
-	settleDelay := 30 * time.Second
-	if client != nil {
-		settleDelay = client.SettleDelay()
-	}
-
-	settled := time.Now().After(slotTime.Add(settleDelay))
-
-	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
+func slotAttesterArrivals(ctx context.Context, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (map[phase0.ValidatorIndex]uint32, uint64, error) {
 	var arrivals map[phase0.ValidatorIndex]uint32
 
 	var otherRoots uint64
 
-	if client != nil {
+	if client := xatu.GlobalClient; client != nil {
 		var err error
 
-		arrivals, otherRoots, err = loadAttesterArrivals(queryCtx, client, slot, slotTime, settled, blockRoot)
+		arrivals, otherRoots, err = loadAttesterArrivals(ctx, client, slot, slotTime, settled, blockRoot)
 		if err != nil {
-			return nil, -1, err
+			return nil, 0, err
 		}
 	}
 
@@ -319,6 +304,43 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		arrivals, otherRoots = services.GlobalBeaconService.GetBeaconIndexer().GetAttestationArrivals(slot, root)
 	}
 
+	return arrivals, otherRoots, nil
+}
+
+func attesterSettled(slotTime time.Time) bool {
+	settleDelay := 30 * time.Second
+	if client := xatu.GlobalClient; client != nil {
+		settleDelay = client.SettleDelay()
+	}
+
+	return time.Now().After(slotTime.Add(settleDelay))
+}
+
+func attesterCacheTimeout(chainState *consensus.ChainState, settled bool, endTime time.Time) time.Duration {
+	switch {
+	case !settled:
+		return unsettledCacheTimeout(chainState)
+	case time.Since(endTime) < 30*time.Minute:
+		return 30 * time.Second
+	}
+
+	return time.Hour
+}
+
+func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot string) (*models.SlotAttestersResponse, time.Duration, error) {
+	chainState := services.GlobalBeaconService.GetChainState()
+	slotTime := chainState.SlotToTime(slot)
+	slotMs := lateThreshold(chainState)
+	settled := attesterSettled(slotTime)
+
+	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	arrivals, otherRoots, err := slotAttesterArrivals(queryCtx, slot, slotTime, settled, blockRoot)
+	if err != nil {
+		return nil, -1, err
+	}
+
 	response := &models.SlotAttestersResponse{
 		Slot:             uint64(slot),
 		Settled:          settled,
@@ -330,14 +352,7 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		OtherRoots:       otherRoots,
 	}
 
-	cacheTimeout := time.Hour
-
-	switch {
-	case !settled:
-		cacheTimeout = unsettledCacheTimeout(chainState)
-	case time.Since(slotTime) < 30*time.Minute:
-		cacheTimeout = 30 * time.Second
-	}
+	cacheTimeout := attesterCacheTimeout(chainState, settled, slotTime)
 
 	if len(arrivals) == 0 && otherRoots == 0 {
 		return response, cacheTimeout, nil

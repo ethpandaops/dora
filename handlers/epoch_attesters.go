@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/xatu"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types/models"
@@ -99,24 +100,48 @@ GROUP BY slot, validator`, client.Network(), firstTime.Unix(), endTime.Unix(), u
 	return nil
 }
 
-func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.EpochAttestersResponse, time.Duration, error) {
-	client := xatu.GlobalClient
+func epochAttesterArrivals(ctx context.Context, firstSlot, endSlot phase0.Slot, settled bool, add func(phase0.ValidatorIndex, phase0.Slot, uint32)) error {
 	chainState := services.GlobalBeaconService.GetChainState()
+	seen := 0
+	count := func(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
+		add(index, slot, seenMs)
+		seen++
+	}
+
+	if client := xatu.GlobalClient; client != nil {
+		if err := loadEpochAttesterArrivals(ctx, client, firstSlot, endSlot, chainState.SlotToTime(firstSlot), chainState.SlotToTime(endSlot), settled, count); err != nil {
+			return err
+		}
+	}
+
+	if seen == 0 && utils.Config.Indexer.AttestationArrivals.Enabled {
+		for slot := firstSlot; slot < endSlot; slot++ {
+			arrivals, _ := services.GlobalBeaconService.GetBeaconIndexer().GetAttestationArrivals(slot, nil)
+			for index, seenMs := range arrivals {
+				add(index, slot, seenMs)
+			}
+		}
+	}
+
+	return nil
+}
+
+func epochAttesterSlots(chainState *consensus.ChainState, epoch phase0.Epoch) (phase0.Slot, phase0.Slot, time.Time) {
 	firstSlot := chainState.EpochToSlot(epoch)
 	endSlot := chainState.EpochToSlot(epoch + 1)
-	firstTime := chainState.SlotToTime(firstSlot)
 	endTime := chainState.SlotToTime(endSlot)
 
 	if currentSlot := chainState.CurrentSlot(); endSlot > currentSlot+1 {
 		endSlot = currentSlot + 1
 	}
 
-	settleDelay := 30 * time.Second
-	if client != nil {
-		settleDelay = client.SettleDelay()
-	}
+	return firstSlot, endSlot, endTime
+}
 
-	settled := time.Now().After(endTime.Add(settleDelay))
+func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.EpochAttestersResponse, time.Duration, error) {
+	chainState := services.GlobalBeaconService.GetChainState()
+	firstSlot, endSlot, endTime := epochAttesterSlots(chainState, epoch)
+	settled := attesterSettled(endTime)
 
 	queryCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -137,34 +162,14 @@ func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.E
 		aggregateDueMs:   response.AggregateDueMs,
 	}
 
-	add := func(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
+	if err := epochAttesterArrivals(queryCtx, firstSlot, endSlot, settled, func(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
 		groups.addArrival(index, slot, seenMs)
 		response.Seen++
+	}); err != nil {
+		return nil, -1, err
 	}
 
-	if client != nil {
-		if err := loadEpochAttesterArrivals(queryCtx, client, firstSlot, endSlot, firstTime, endTime, settled, add); err != nil {
-			return nil, -1, err
-		}
-	}
-
-	if response.Seen == 0 && utils.Config.Indexer.AttestationArrivals.Enabled {
-		for slot := firstSlot; slot < endSlot; slot++ {
-			arrivals, _ := services.GlobalBeaconService.GetBeaconIndexer().GetAttestationArrivals(slot, nil)
-			for index, seenMs := range arrivals {
-				add(index, slot, seenMs)
-			}
-		}
-	}
-
-	cacheTimeout := time.Hour
-
-	switch {
-	case !settled:
-		cacheTimeout = unsettledCacheTimeout(chainState)
-	case time.Since(endTime) < 30*time.Minute:
-		cacheTimeout = 30 * time.Second
-	}
+	cacheTimeout := attesterCacheTimeout(chainState, settled, endTime)
 
 	if response.Seen == 0 {
 		return response, cacheTimeout, nil

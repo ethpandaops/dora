@@ -123,9 +123,57 @@
         teku: '#f0824c', grandine: '#34c38f', caplin: '#d4a373', silver: '#b8c4d6',
         ethlambda: '#f46a6a', unknown: '#6c757d'
       };
-      function mountAttesters(row, body, onSolo) {
+      function mountAttesters(row, body, opts) {
         var attesterSolo = null;
         var attesterData = null;
+        var attesterNode = null;
+        var nodeDetails = {};
+
+        function nodeValidators(name) {
+          var detail = nodeDetails[name];
+
+          if (!detail) return '<span class="text-muted">Loading validators...</span>';
+          if (detail.error) return '<span class="text-danger">Failed to load validators: ' + esc(detail.error) + '</span>';
+          if (!detail.validators || !detail.validators.length) return '<span class="text-muted">No attestation duties for this node.</span>';
+
+          var rows = '';
+
+          detail.validators.forEach(function(v) {
+            var note = '';
+
+            if (!v.seen) note = '<span style="color:#f46a6a">not seen</span>';
+            else if (v.seen_ms >= detail.aggregate_due_ms) note = '<span style="color:#f46a6a">after aggregate deadline</span>';
+            else if (v.seen_ms >= detail.attestation_due_ms) note = '<span style="color:#f1b44c">after attestation deadline</span>';
+
+            rows += '<tr><td class="num"><a href="/validator/' + v.index + '">' + v.index + '</a></td>' +
+              '<td class="num"><a href="/slot/' + v.slot + '">' + v.slot + '</a></td>' +
+              '<td class="text-end num">' + (v.seen ? fmtMsColored(v.seen_ms) : '&mdash;') + '</td>' +
+              '<td>' + note + '</td></tr>';
+          });
+
+          return '<div style="max-height:320px;overflow-y:auto"><table class="table table-sm small mb-0" style="width:auto">' +
+            '<thead><tr class="text-muted"><th>validator</th><th>slot</th><th class="text-end">first seen</th><th></th></tr></thead><tbody>' +
+            rows + '</tbody></table></div>' +
+            (detail.total > detail.validators.length
+              ? '<div class="text-muted small">slowest ' + detail.validators.length + ' of ' + detail.total + '</div>' : '');
+        }
+
+        function loadNode(name) {
+          if (nodeDetails[name] || !opts || !opts.nodeUrl) return;
+
+          fetch(opts.nodeUrl(name))
+            .then(function(r) {
+              if (!r.ok) throw new Error('status ' + r.status);
+              return r.json();
+            })
+            .catch(function(err) {
+              return { error: err.message };
+            })
+            .then(function(detail) {
+              nodeDetails[name] = detail;
+              if (attesterNode === name) renderAttesters(attesterData);
+            });
+        }
 
         function renderAttesters(data) {
           attesterData = data;
@@ -224,7 +272,12 @@
             if (attesterSolo !== c.name) return;
 
             (c.nodes || []).forEach(function(n) {
-              legend += '<tr><td class="ps-4 text-muted">' + esc(n.name) + '</td>' + statCells(n) + '</tr>';
+              legend += '<tr class="tl-toggle" data-attester-node="' + esc(n.name) + '" title="click to list this node\u2019s validators, slowest first">' +
+                '<td class="ps-4 text-muted">' + esc(n.name) + '</td>' + statCells(n) + '</tr>';
+
+              if (attesterNode === n.name) {
+                legend += '<tr><td colspan="7" class="ps-4">' + nodeValidators(n.name) + '</td></tr>';
+              }
             });
           });
 
@@ -245,12 +298,25 @@
         }
 
         body.addEventListener('click', function(ev) {
+          if (!attesterData) return;
+
+          var nodeEl = ev.target.closest('[data-attester-node]');
+          if (nodeEl) {
+            var node = nodeEl.getAttribute('data-attester-node');
+            attesterNode = attesterNode === node ? null : node;
+            if (attesterNode) loadNode(attesterNode);
+            renderAttesters(attesterData);
+
+            return;
+          }
+
           var el = ev.target.closest('[data-attester]');
-          if (!el || !attesterData) return;
+          if (!el) return;
           var name = el.getAttribute('data-attester');
           attesterSolo = attesterSolo === name ? null : name;
+          attesterNode = null;
           renderAttesters(attesterData);
-          if (onSolo) onSolo(attesterSolo);
+          if (opts && opts.onSolo) opts.onSolo(attesterSolo);
         });
 
         return renderAttesters;
