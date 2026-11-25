@@ -15,6 +15,7 @@
     .tl-toggle { cursor: pointer; }
     .tl-toggle:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
     .tl-toggle.off { opacity: 0.35; }
+    .arrival-faded { opacity: 0.25; }
     .arrival-hist .grid {
       position: absolute; top: 0; bottom: 0; width: 1px;
       background: var(--bs-border-color);
@@ -122,7 +123,7 @@
         teku: '#f0824c', grandine: '#34c38f', caplin: '#d4a373', silver: '#b8c4d6',
         ethlambda: '#f46a6a', unknown: '#6c757d'
       };
-      function mountAttesters(row, body) {
+      function mountAttesters(row, body, onSolo) {
         var attesterSolo = null;
         var attesterData = null;
 
@@ -201,20 +202,30 @@
             '<th class="text-end" title="Attestations first seen after the aggregate deadline, too late to be aggregated in time">after aggregate deadline</th>' +
             '<th class="text-end" title="Attestations first seen after the end of the slot">after slot</th></tr></thead><tbody>';
 
-          clients.forEach(function(c) {
-            var color = attesterColors[c.name] || attesterColors.unknown;
-            var off = attesterSolo && attesterSolo !== c.name;
+          var statCells = function(c) {
             var pct = function(n) { return ' <span class="text-muted">(' + (c.seen ? Math.round(n / c.seen * 100) : 0) + '%)</span>'; };
 
-            legend += '<tr class="tl-toggle' + (off ? ' off' : '') + '" data-attester="' + esc(c.name) + '" title="' +
-              (attesterSolo === c.name ? 'showing only this client \u2014 click to show all' : 'click to show only this client') + '">' +
-              '<td><span class="arrival-heat-key" style="background:' + color + '"></span> ' + esc(c.name) + '</td>' +
-              '<td class="text-end num"><b>' + c.seen + '</b>' + (c.expected ? '<span class="text-muted">/' + c.expected + '</span>' : '') + '</td>' +
+            return '<td class="text-end num"><b>' + c.seen + '</b>' + (c.expected ? '<span class="text-muted">/' + c.expected + '</span>' : '') + '</td>' +
               '<td class="text-end num">' + (c.seen ? fmtMsColored(c.p50_ms) : '&mdash;') + '</td>' +
               '<td class="text-end num">' + (c.seen ? fmtMsColored(c.p90_ms) : '&mdash;') + '</td>' +
               '<td class="text-end num">' + (c.seen ? c.after_attestation_due + pct(c.after_attestation_due) : '&mdash;') + '</td>' +
               '<td class="text-end num">' + (c.seen ? c.after_due + pct(c.after_due) : '&mdash;') + '</td>' +
-              '<td class="text-end num">' + (c.seen ? c.late : '&mdash;') + '</td></tr>';
+              '<td class="text-end num">' + (c.seen ? c.late : '&mdash;') + '</td>';
+          };
+
+          clients.forEach(function(c) {
+            var color = attesterColors[c.name] || attesterColors.unknown;
+            var off = attesterSolo && attesterSolo !== c.name;
+
+            legend += '<tr class="tl-toggle' + (off ? ' off' : '') + '" data-attester="' + esc(c.name) + '" title="' +
+              (attesterSolo === c.name ? 'showing only this client \u2014 click to show all' : 'click to show only this client and its nodes') + '">' +
+              '<td><span class="arrival-heat-key" style="background:' + color + '"></span> ' + esc(c.name) + '</td>' + statCells(c) + '</tr>';
+
+            if (attesterSolo !== c.name) return;
+
+            (c.nodes || []).forEach(function(n) {
+              legend += '<tr><td class="ps-4 text-muted">' + esc(n.name) + '</td>' + statCells(n) + '</tr>';
+            });
           });
 
           legend += '</tbody></table>';
@@ -239,6 +250,7 @@
           var name = el.getAttribute('data-attester');
           attesterSolo = attesterSolo === name ? null : name;
           renderAttesters(attesterData);
+          if (onSolo) onSolo(attesterSolo);
         });
 
         return renderAttesters;

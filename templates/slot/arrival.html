@@ -311,7 +311,18 @@
       var shared = window.doraArrivalChart;
       var esc = shared.esc, fmtStr = shared.fmtStr, fmtAxis = shared.fmtAxis, timeColor = shared.timeColor;
       var fmtMsColored = shared.fmtMsColored, liveBadge = shared.liveBadge, sep = shared.sep, histAxis = shared.histAxis;
-      var renderAttesters = shared.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'));
+      var arrivalSolo = null;
+
+      function fadeOtherClients() {
+        document.querySelectorAll('#arrival-body tr[data-impl]').forEach(function(tr) {
+          tr.classList.toggle('arrival-faded', !!arrivalSolo && tr.getAttribute('data-impl') !== arrivalSolo);
+        });
+      }
+
+      var renderAttesters = shared.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'), function(solo) {
+        arrivalSolo = solo;
+        fadeOtherClients();
+      });
       var arrivalSlot = {{ .Slot }};
       // Scopes the query to this block, so a slot with competing blocks shows
       // each block's own propagation instead of both merged together.
@@ -586,7 +597,7 @@
             ? ' <span class="badge rounded-pill text-bg-warning" style="font-size: 10px;" title="This node built this block&#39;s execution payload">builder</span>'
             : '';
 
-          return '<tr' + (n.late ? ' class="text-muted"' : '') + '>' +
+          return '<tr data-impl="' + esc(n.implementation || '') + '"' + (n.late ? ' class="text-muted"' : '') + '>' +
             '<td class="text-nowrap">' + groupBadge(n.group) +
             '<span class="arrival-node-name"' + (isProposer || isBuilder ? ' style="font-weight: 600"' : '') +
             ' title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' + proposerBadge + builderBadge + '</td>' +
@@ -746,6 +757,8 @@
         document.getElementById('arrival-regions').innerHTML = regionRows ? regionHeader + regionRows : '';
 
         document.getElementById('arrival-body').innerHTML = renderTable(data);
+
+        fadeOtherClients();
         requestAnimationFrame(syncStickyOffsets);
       }
 
@@ -1223,6 +1236,7 @@
           sortState.dir = 1;
         }
         document.getElementById('arrival-body').innerHTML = renderTable(arrivalData);
+        fadeOtherClients();
         requestAnimationFrame(syncStickyOffsets);
       });
 
