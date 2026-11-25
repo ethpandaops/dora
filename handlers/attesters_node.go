@@ -110,15 +110,21 @@ func buildAttestersNodeData(ctx context.Context, node string, firstSlot, endSlot
 	defer cancel()
 
 	validators := map[attesterDuty]*models.AttestersNodeValidator{}
+	indexes := []phase0.ValidatorIndex{}
 
 	for slot := firstSlot; slot < endSlot; slot++ {
 		for _, committee := range services.GlobalBeaconService.GetSlotCommittees(queryCtx, slot) {
 			for _, index := range committee {
 				if services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot) == node {
 					validators[attesterDuty{slot, index}] = &models.AttestersNodeValidator{Index: uint64(index), Slot: uint64(slot)}
+					indexes = append(indexes, index)
 				}
 			}
 		}
+	}
+
+	if len(indexes) == 0 {
+		return &models.AttestersNodeResponse{Node: node}, attesterCacheTimeout(chainState, settled, endTime), nil
 	}
 
 	add := func(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
@@ -137,7 +143,7 @@ func buildAttestersNodeData(ctx context.Context, node string, firstSlot, endSlot
 	}
 
 	if endSlot == firstSlot+1 {
-		arrivals, _, err := slotAttesterArrivals(queryCtx, firstSlot, chainState.SlotToTime(firstSlot), settled, blockRoot)
+		arrivals, _, err := slotAttesterArrivals(queryCtx, firstSlot, chainState.SlotToTime(firstSlot), settled, blockRoot, indexes)
 		if err != nil {
 			return nil, -1, err
 		}
@@ -145,7 +151,7 @@ func buildAttestersNodeData(ctx context.Context, node string, firstSlot, endSlot
 		for index, seenMs := range arrivals {
 			add(index, firstSlot, seenMs)
 		}
-	} else if err := epochAttesterArrivals(queryCtx, firstSlot, endSlot, settled, add); err != nil {
+	} else if err := epochAttesterArrivals(queryCtx, firstSlot, endSlot, settled, indexes, add); err != nil {
 		return nil, -1, err
 	}
 
