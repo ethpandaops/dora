@@ -130,21 +130,46 @@ func (g *attesterGroups) group(index phase0.ValidatorIndex, slot phase0.Slot) (*
 	return group, node
 }
 
-func (g *attesterGroups) addExpected(ctx context.Context, slot phase0.Slot) uint64 {
-	expected := uint64(0)
-
-	for _, committee := range services.GlobalBeaconService.GetSlotCommittees(ctx, slot) {
-		for _, index := range committee {
-			group, node := g.group(index, slot)
-			group.client.Expected++
-
-			if node != nil {
-				node.node.Expected++
+func forEachAttesterDuty(ctx context.Context, firstSlot, endSlot phase0.Slot, duty func(phase0.Slot, phase0.ValidatorIndex)) {
+	if endSlot == firstSlot+1 {
+		for _, committee := range services.GlobalBeaconService.GetSlotCommittees(ctx, firstSlot) {
+			for _, index := range committee {
+				duty(firstSlot, index)
 			}
+		}
 
-			expected++
+		return
+	}
+
+	epoch := services.GlobalBeaconService.GetChainState().EpochOfSlot(firstSlot)
+
+	for slotIndex, committees := range services.GlobalBeaconService.GetEpochCommittees(ctx, epoch) {
+		slot := firstSlot + phase0.Slot(slotIndex)
+		if slot >= endSlot {
+			break
+		}
+
+		for _, committee := range committees {
+			for _, index := range committee {
+				duty(slot, index)
+			}
 		}
 	}
+}
+
+func (g *attesterGroups) addExpected(ctx context.Context, firstSlot, endSlot phase0.Slot) uint64 {
+	expected := uint64(0)
+
+	forEachAttesterDuty(ctx, firstSlot, endSlot, func(slot phase0.Slot, index phase0.ValidatorIndex) {
+		group, node := g.group(index, slot)
+		group.client.Expected++
+
+		if node != nil {
+			node.node.Expected++
+		}
+
+		expected++
+	})
 
 	return expected
 }
@@ -386,7 +411,7 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		aggregateDueMs:   response.AggregateDueMs,
 	}
 
-	response.Expected = groups.addExpected(queryCtx, slot)
+	response.Expected = groups.addExpected(queryCtx, slot, slot+1)
 
 	for index, seenMs := range arrivals {
 		groups.addArrival(index, slot, seenMs)
