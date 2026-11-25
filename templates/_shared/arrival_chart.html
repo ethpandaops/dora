@@ -334,6 +334,17 @@
           if (opts && opts.onSolo) opts.onSolo(attesterSolo);
         });
 
+        document.addEventListener('click', function(ev) {
+          if (!attesterSolo || !attesterData) return;
+          if (ev.target.closest('[data-attester], [data-attester-node], a, button, input, select, [data-sort], [data-tlseries]')) return;
+          if (body.contains(ev.target) && ev.target.closest('table')) return;
+
+          attesterSolo = null;
+          attesterNode = null;
+          renderAttesters(attesterData);
+          if (opts && opts.onSolo) opts.onSolo(null);
+        });
+
         return renderAttesters;
       }
 
