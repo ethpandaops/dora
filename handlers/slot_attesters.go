@@ -315,7 +315,7 @@ func slotAttesterArrivals(ctx context.Context, slot phase0.Slot, slotTime time.T
 		}
 	}
 
-	if len(arrivals) == 0 && utils.Config.Indexer.AttestationArrivals.Enabled {
+	if len(arrivals) == 0 && otherRoots == 0 && utils.Config.Indexer.AttestationArrivals.Enabled {
 		var root *phase0.Root
 
 		if raw, err := hex.DecodeString(strings.TrimPrefix(blockRoot, "0x")); err == nil && len(raw) == len(phase0.Root{}) {
