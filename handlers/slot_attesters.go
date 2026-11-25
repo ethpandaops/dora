@@ -84,10 +84,16 @@ func attesterClientName(validatorName string) string {
 	return clientType.String()
 }
 
+type attesterNode struct {
+	node   *models.SlotAttestersNode
+	seenMs []uint32
+}
+
 type attesterGroup struct {
 	client  *models.SlotAttestersClient
 	seenMs  []uint32
 	buckets map[uint32]uint64
+	nodes   map[string]*attesterNode
 }
 
 type attesterGroups struct {
@@ -97,19 +103,31 @@ type attesterGroups struct {
 	aggregateDueMs   uint32
 }
 
-func (g *attesterGroups) group(index phase0.ValidatorIndex, slot phase0.Slot) *attesterGroup {
-	name := attesterClientName(services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot))
+func (g *attesterGroups) group(index phase0.ValidatorIndex, slot phase0.Slot) (*attesterGroup, *attesterNode) {
+	validatorName := services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot)
+	name := attesterClientName(validatorName)
 
 	group := g.groups[name]
 	if group == nil {
 		group = &attesterGroup{
 			client:  &models.SlotAttestersClient{Name: name},
 			buckets: map[uint32]uint64{},
+			nodes:   map[string]*attesterNode{},
 		}
 		g.groups[name] = group
 	}
 
-	return group
+	if validatorName == "" {
+		return group, nil
+	}
+
+	node := group.nodes[validatorName]
+	if node == nil {
+		node = &attesterNode{node: &models.SlotAttestersNode{Name: validatorName}}
+		group.nodes[validatorName] = node
+	}
+
+	return group, node
 }
 
 func (g *attesterGroups) addExpected(ctx context.Context, slot phase0.Slot) uint64 {
@@ -117,7 +135,13 @@ func (g *attesterGroups) addExpected(ctx context.Context, slot phase0.Slot) uint
 
 	for _, committee := range services.GlobalBeaconService.GetSlotCommittees(ctx, slot) {
 		for _, index := range committee {
-			g.group(index, slot).client.Expected++
+			group, node := g.group(index, slot)
+			group.client.Expected++
+
+			if node != nil {
+				node.node.Expected++
+			}
+
 			expected++
 		}
 	}
@@ -126,20 +150,37 @@ func (g *attesterGroups) addExpected(ctx context.Context, slot phase0.Slot) uint
 }
 
 func (g *attesterGroups) addArrival(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
-	group := g.group(index, slot)
+	group, node := g.group(index, slot)
 	group.client.Seen++
 	group.seenMs = append(group.seenMs, seenMs)
 
+	if node != nil {
+		node.node.Seen++
+		node.seenMs = append(node.seenMs, seenMs)
+	}
+
 	if seenMs >= g.attestationDueMs {
 		group.client.AfterAttestationDue++
+
+		if node != nil {
+			node.node.AfterAttestationDue++
+		}
 	}
 
 	if seenMs >= g.aggregateDueMs {
 		group.client.AfterDue++
+
+		if node != nil {
+			node.node.AfterDue++
+		}
 	}
 
 	if seenMs >= g.slotMs {
 		group.client.Late++
+
+		if node != nil {
+			node.node.Late++
+		}
 
 		return
 	}
@@ -147,15 +188,21 @@ func (g *attesterGroups) addArrival(index phase0.ValidatorIndex, slot phase0.Slo
 	group.buckets[seenMs/attesterBucketMs*attesterBucketMs]++
 }
 
+func attesterPercentiles(seenMs []uint32) (uint32, uint32) {
+	if len(seenMs) == 0 {
+		return 0, 0
+	}
+
+	sort.Slice(seenMs, func(a, b int) bool { return seenMs[a] < seenMs[b] })
+
+	return seenMs[len(seenMs)/2], seenMs[len(seenMs)*9/10]
+}
+
 func (g *attesterGroups) clients() []*models.SlotAttestersClient {
 	clients := make([]*models.SlotAttestersClient, 0, len(g.groups))
 
 	for _, group := range g.groups {
-		if len(group.seenMs) > 0 {
-			sort.Slice(group.seenMs, func(a, b int) bool { return group.seenMs[a] < group.seenMs[b] })
-			group.client.P50Ms = group.seenMs[len(group.seenMs)/2]
-			group.client.P90Ms = group.seenMs[len(group.seenMs)*9/10]
-		}
+		group.client.P50Ms, group.client.P90Ms = attesterPercentiles(group.seenMs)
 
 		for ms, count := range group.buckets {
 			group.client.Buckets = append(group.client.Buckets, &models.SlotAttestationBucket{Ms: ms, Count: count})
@@ -163,6 +210,15 @@ func (g *attesterGroups) clients() []*models.SlotAttestersClient {
 
 		sort.Slice(group.client.Buckets, func(a, b int) bool {
 			return group.client.Buckets[a].Ms < group.client.Buckets[b].Ms
+		})
+
+		for _, node := range group.nodes {
+			node.node.P50Ms, node.node.P90Ms = attesterPercentiles(node.seenMs)
+			group.client.Nodes = append(group.client.Nodes, node.node)
+		}
+
+		sort.Slice(group.client.Nodes, func(a, b int) bool {
+			return group.client.Nodes[a].Name < group.client.Nodes[b].Name
 		})
 
 		clients = append(clients, group.client)
