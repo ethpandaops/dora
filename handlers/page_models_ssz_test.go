@@ -54,6 +54,7 @@ var cachedPageValues = []any{
 	&models.ElConsolidationsPageData{},
 	&models.ElWithdrawalsPageData{},
 	&models.EpochArrivalResponse{},
+	&models.EpochAttestersResponse{},
 	&models.EpochPageData{},
 	&models.EpochsPageData{},
 	&models.ErrorPageData{},
