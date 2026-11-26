@@ -179,7 +179,7 @@ func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.E
 
 	response.Clients = groups.clients()
 
-	loadAttesterNodeGeo(queryCtx, chainState.SlotToTime(firstSlot), endTime, settled, response.Clients)
+	setAttesterNodeGeo(response.Clients, epochNodeGeo(queryCtx, chainState, epoch, settled))
 
 	return response, cacheTimeout, nil
 }

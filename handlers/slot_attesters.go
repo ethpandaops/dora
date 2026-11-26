@@ -273,10 +273,16 @@ func (g *attesterGroups) clients() []*models.SlotAttestersClient {
 	return clients
 }
 
-func loadAttesterNodeGeo(ctx context.Context, firstTime, endTime time.Time, settled bool, clients []*models.SlotAttestersClient) {
+type nodeGeo struct {
+	continent   string
+	country     string
+	countryCode string
+}
+
+func loadNodeGeo(ctx context.Context, firstTime, endTime time.Time, settled bool) map[string]*nodeGeo {
 	client := xatu.GlobalClient
-	if client == nil || len(clients) == 0 {
-		return
+	if client == nil {
+		return nil
 	}
 
 	rows, err := client.Query(ctx, settled, `SELECT meta_client_name, any(meta_client_geo_continent_code), any(meta_client_geo_country), any(meta_client_geo_country_code)
@@ -285,35 +291,44 @@ WHERE meta_network_name = ? AND slot_start_date_time >= toDateTime(?) AND slot_s
 GROUP BY meta_client_name`, client.Network(), firstTime.Unix(), endTime.Unix())
 	if err != nil {
 		if !isMissingTableError(err) {
-			logrus.WithError(err).Warn("error loading attester node locations from xatu")
+			logrus.WithError(err).Warn("error loading node locations from xatu")
 		}
 
-		return
+		return nil
 	}
 	defer func() { _ = rows.Close() }()
 
-	nodes := map[string]*models.SlotAttestersNode{}
-
-	for _, group := range clients {
-		for _, node := range group.Nodes {
-			nodes[node.Name] = node
-		}
-	}
+	geo := map[string]*nodeGeo{}
 
 	for rows.Next() {
-		var name, continent, country, countryCode string
+		var name string
 
-		if err := rows.Scan(&name, &continent, &country, &countryCode); err != nil {
-			logrus.WithError(err).Warn("error scanning attester node locations from xatu")
-			return
+		entry := &nodeGeo{}
+
+		if err := rows.Scan(&name, &entry.continent, &entry.country, &entry.countryCode); err != nil {
+			logrus.WithError(err).Warn("error scanning node locations from xatu")
+			return geo
 		}
 
 		_, _, display := parseSentryName(name, client.Network())
+		geo[display] = entry
+	}
 
-		if node := nodes[display]; node != nil {
-			node.Continent = continent
-			node.Country = country
-			node.CountryCode = countryCode
+	return geo
+}
+
+func epochNodeGeo(ctx context.Context, chainState *consensus.ChainState, epoch phase0.Epoch, settled bool) map[string]*nodeGeo {
+	return loadNodeGeo(ctx, chainState.SlotToTime(chainState.EpochToSlot(epoch)), chainState.SlotToTime(chainState.EpochToSlot(epoch+1)), settled)
+}
+
+func setAttesterNodeGeo(clients []*models.SlotAttestersClient, geo map[string]*nodeGeo) {
+	for _, group := range clients {
+		for _, node := range group.Nodes {
+			if entry := geo[node.Name]; entry != nil {
+				node.Continent = entry.continent
+				node.Country = entry.country
+				node.CountryCode = entry.countryCode
+			}
 		}
 	}
 }
@@ -477,8 +492,7 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 
 	response.Clients = groups.clients()
 
-	epoch := chainState.EpochOfSlot(slot)
-	loadAttesterNodeGeo(queryCtx, chainState.SlotToTime(chainState.EpochToSlot(epoch)), chainState.SlotToTime(chainState.EpochToSlot(epoch+1)), settled, response.Clients)
+	setAttesterNodeGeo(response.Clients, epochNodeGeo(queryCtx, chainState, chainState.EpochOfSlot(slot), settled))
 
 	return response, cacheTimeout, nil
 }
