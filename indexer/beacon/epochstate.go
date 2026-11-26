@@ -277,7 +277,7 @@ func (s *epochState) processState(state *all.BeaconState, cache *epochCache) err
 	}
 
 	if cache != nil && state.Version == spec.DataVersionPQ {
-		cache.indexer.pqKeyRegistry.update(state, cache.indexer.consensusPool.GetChainState().GetSpecs().SlotsPerEpoch)
+		cache.indexer.pqKeyRegistry.update(state)
 	}
 
 	// Process builder set for Gloas+

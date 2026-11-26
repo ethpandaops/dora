@@ -416,3 +416,49 @@ func GetPtcDuties(
 
 	return selected, nil
 }
+
+// GetAggregatorDuties returns the aggregation committee of a beacon committee on a pq network:
+// up to aggregatorsPerCommittee members sampled by effective balance without duplicates.
+func GetAggregatorDuties(
+	spec *consensus.ChainSpec,
+	state *BeaconState,
+	committee []ActiveIndiceIndex,
+	slot phase0.Slot,
+	committeeIndex uint64,
+) []ActiveIndiceIndex {
+	const aggregatorsPerCommittee = 4
+
+	epoch := phase0.Epoch(slot / phase0.Slot(spec.SlotsPerEpoch))
+	epochSeed := GetSeed(spec, state, epoch, spec.DomainSelectionProof)
+
+	seedData := append([]byte{}, epochSeed[:]...)
+	seedData = append(seedData, UintToBytes(uint64(slot))...)
+	seedData = append(seedData, UintToBytes(committeeIndex)...)
+	seed := Hash(seedData)
+
+	candidates := append([]ActiveIndiceIndex(nil), committee...)
+	aggregators := make([]ActiveIndiceIndex, 0, aggregatorsPerCommittee)
+	maxRandomValue := uint64(1<<16 - 1)
+
+	for len(aggregators) < aggregatorsPerCommittee && len(candidates) > 0 {
+		roundSeed := Hash(append(append([]byte{}, seed[:]...), UintToBytes(uint64(len(aggregators)))...))
+		total := uint64(len(candidates))
+		selected := -1
+
+		for i := uint64(0); selected < 0; i++ {
+			hash := Hash(append(append([]byte{}, roundSeed[:]...), UintToBytes(i/16)...))
+			offset := (i % 16) * 2
+			randomValue := BytesToUint(hash[offset : offset+2])
+			next := i % total
+
+			if uint64(state.GetEffectiveBalance(candidates[next]))*maxRandomValue >= spec.MaxEffectiveBalanceElectra*randomValue {
+				selected = int(next)
+			}
+		}
+
+		aggregators = append(aggregators, candidates[selected])
+		candidates = append(candidates[:selected], candidates[selected+1:]...)
+	}
+
+	return aggregators
+}

@@ -117,6 +117,35 @@ func (bs *ChainService) GetEpochCommittees(ctx context.Context, epoch phase0.Epo
 
 // GetSlotPtc returns the PTC members for a slot (global validator indices),
 // from the in-memory epoch cache or the blockdb duties store. Returns nil if unavailable.
+func (bs *ChainService) GetSlotAggregators(ctx context.Context, slot phase0.Slot) [][]phase0.ValidatorIndex {
+	chainState := bs.consensusPool.GetChainState()
+	slotIndex := int(chainState.SlotToSlotIndex(slot))
+
+	epochStats := bs.beaconIndexer.GetEpochStats(chainState.EpochOfSlot(slot), nil)
+	if epochStats == nil {
+		return nil
+	}
+
+	values := epochStats.GetOrLoadValues(ctx, bs.beaconIndexer, true, false)
+	if values == nil || slotIndex >= len(values.AggregatorDuties) {
+		return nil
+	}
+
+	committees := make([][]phase0.ValidatorIndex, len(values.AggregatorDuties[slotIndex]))
+	for committeeIndex, aggregators := range values.AggregatorDuties[slotIndex] {
+		members := make([]phase0.ValidatorIndex, 0, len(aggregators))
+		for _, activeIdx := range aggregators {
+			if int(activeIdx) < len(values.ActiveIndices) {
+				members = append(members, values.ActiveIndices[activeIdx])
+			}
+		}
+
+		committees[committeeIndex] = members
+	}
+
+	return committees
+}
+
 func (bs *ChainService) GetSlotPtc(ctx context.Context, slot phase0.Slot) []phase0.ValidatorIndex {
 	chainState := bs.consensusPool.GetChainState()
 	epoch := chainState.EpochOfSlot(slot)

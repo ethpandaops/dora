@@ -62,6 +62,7 @@ type EpochStatsValues struct {
 	AttesterDuties            [][][]duties.ActiveIndiceIndex
 	SyncCommitteeDuties       []phase0.ValidatorIndex
 	PtcDuties                 [][]duties.ActiveIndiceIndex // [slot_index][ptc_member_index] - PTC duties for Gloas+ epochs
+	AggregatorDuties          [][][]duties.ActiveIndiceIndex
 	ActiveValidators          uint64
 	TotalBalance              phase0.Gwei
 	ActiveBalance             phase0.Gwei
@@ -73,6 +74,25 @@ type EpochStatsValues struct {
 	SourceBlockUid            uint64   // block UID of the source block (last block of parent epoch)
 	PendingConsolidations     []electra.PendingConsolidation
 	ConsolidatingBalance      phase0.Gwei
+}
+
+func computeAggregatorDuties(chainState *consensus.ChainState, beaconState *duties.BeaconState, attesterDuties [][][]duties.ActiveIndiceIndex, epoch phase0.Epoch) [][][]duties.ActiveIndiceIndex {
+	specs := chainState.GetSpecs()
+	if !specs.IsPqActive(epoch) || attesterDuties == nil {
+		return nil
+	}
+
+	result := make([][][]duties.ActiveIndiceIndex, len(attesterDuties))
+	for slotIndex, committees := range attesterDuties {
+		slot := chainState.EpochToSlot(epoch) + phase0.Slot(slotIndex)
+		result[slotIndex] = make([][]duties.ActiveIndiceIndex, len(committees))
+
+		for committeeIndex, committee := range committees {
+			result[slotIndex][committeeIndex] = duties.GetAggregatorDuties(specs, beaconState, committee, slot, uint64(committeeIndex))
+		}
+	}
+
+	return result
 }
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
@@ -326,6 +346,8 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 			}
 			values.PtcDuties = ptcDuties
 		}
+
+		values.AggregatorDuties = computeAggregatorDuties(chainState, beaconState, attesterDuties, es.epoch)
 	}
 
 	return values, nil
@@ -347,6 +369,7 @@ func (es *EpochStats) pruneValues() {
 		AttesterDuties:         nil, // prune
 		SyncCommitteeDuties:    es.values.SyncCommitteeDuties,
 		PtcDuties:              nil, // prune - only needed for recent epochs
+		AggregatorDuties:       nil,
 		ActiveValidators:       es.values.ActiveValidators,
 		TotalBalance:           es.values.TotalBalance,
 		ActiveBalance:          es.values.ActiveBalance,
@@ -559,6 +582,8 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		values.PtcDuties = ptcDuties
 	}
 
+	values.AggregatorDuties = computeAggregatorDuties(chainState, beaconState, attesterDuties, es.epoch)
+
 	if beaconState.RandaoMix != nil {
 		values.RandaoMix = *beaconState.RandaoMix
 		values.NextRandaoMix = *beaconState.NextRandaoMix
@@ -735,6 +760,8 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 			}
 			values.PtcDuties = ptcDuties
 		}
+
+		values.AggregatorDuties = computeAggregatorDuties(chainState, beaconState, attesterDuties, es.epoch)
 
 		es.precalcValues = values
 
