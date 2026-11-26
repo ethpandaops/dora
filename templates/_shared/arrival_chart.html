@@ -98,6 +98,21 @@
           return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
         });
       }
+      var continentNames = {
+        EU: 'Europe', NA: 'North America', AS: 'Asia',
+        OC: 'Oceania', SA: 'South America', AF: 'Africa'
+      };
+      function flag(cc) {
+        if (!cc || cc.length !== 2) return '';
+        var A = 0x1F1E6;
+        return String.fromCodePoint(A + cc.charCodeAt(0) - 65, A + cc.charCodeAt(1) - 65);
+      }
+      function nodeLocation(node) {
+        if (!node || !(node.continent || node.country_code)) return '';
+
+        return ' <span class="small" title="' + esc(node.country || '') + '">' + flag((node.country_code || '').toUpperCase()) + ' ' +
+          esc(continentNames[node.continent] || node.continent || '') + '</span>';
+      }
       function fmtStr(ms) {
         if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
         return ms + 'ms';
@@ -398,7 +413,7 @@
 
             (c.nodes || []).forEach(function(n) {
               legend += '<tr class="tl-toggle" data-attester-node="' + esc(n.name) + '" title="click to list this node\u2019s validators, slowest first">' +
-                '<td class="ps-4 text-muted">' + esc(n.name) + (opts && opts.nodeNote ? opts.nodeNote(n.name) : '') + '</td>' + statCells(n) + '</tr>';
+                '<td class="ps-4 text-muted">' + esc(n.name) + nodeLocation(n) + '</td>' + statCells(n) + '</tr>';
 
               if (attesterNode === n.name) {
                 legend += '<tr><td colspan="7" class="ps-4">' + nodeValidators(n.name) + '</td></tr>';
@@ -620,7 +635,7 @@
         var expanded = {};
 
         function aggregatorRow(a, dueMs) {
-          var name = a.aggregator_name ? ' <span class="text-muted">' + esc(a.aggregator_name) + '</span>' + (opts && opts.nodeNote ? opts.nodeNote(a.aggregator_name) : '') : '';
+          var name = a.aggregator_name ? ' <span class="text-muted">' + esc(a.aggregator_name) + '</span>' + nodeLocation(a) : '';
           var cells = '<td class="num">' + a.committee_index + '</td>' +
             '<td class="num"><a href="/validator/' + a.aggregator_index + '">' + a.aggregator_index + '</a>' + name + '</td>' +
             '<td><span class="arrival-heat-key" style="background:' + clientColor(a.client) + '"></span> ' + esc(a.client) + '</td>';
@@ -914,7 +929,7 @@
 
             (c.nodes || []).forEach(function(n) {
               rows += '<tr data-agg-node="' + esc(n.name) + '">' +
-                '<td class="ps-4 text-muted">' + esc(n.name) + '</td>' + aggregatorCells(n, dueMs) + '</tr>';
+                '<td class="ps-4 text-muted">' + esc(n.name) + nodeLocation(n) + '</td>' + aggregatorCells(n, dueMs) + '</tr>';
             });
           });
 
@@ -985,7 +1000,8 @@
       return {
         esc: esc, fmtStr: fmtStr, fmtAxis: fmtAxis, timeColor: timeColor, fmtMsColored: fmtMsColored,
         liveBadge: liveBadge, sep: sep, histAxis: histAxis, mountAttesters: mountAttesters,
-        mountSlotAggregates: mountSlotAggregates, mountEpochAggregates: mountEpochAggregates
+        mountSlotAggregates: mountSlotAggregates, mountEpochAggregates: mountEpochAggregates,
+        flag: flag, continentNames: continentNames
       };
     })();
   </script>
