@@ -19,6 +19,12 @@
     .arrival-hist .bar[data-attester] { cursor: pointer; }
     .arrival-hist .bar.dim { opacity: 0.3; }
     .arrival-hist .deadline { pointer-events: none; }
+    .arrival-hist .agg-mark {
+      position: absolute; bottom: -5px; width: 9px; height: 9px;
+      transform: translateX(-50%) rotate(45deg);
+      border: 1px solid var(--bs-body-bg);
+      z-index: 2;
+    }
     tr.attester-hover > td { background: var(--bs-tertiary-bg); }
     .arrival-hist .grid {
       position: absolute; top: 0; bottom: 0; width: 1px;
@@ -238,6 +244,17 @@
           [[data.attestation_due_ms, 'attestation deadline'], [data.aggregate_due_ms, 'aggregate deadline']].forEach(function(d) {
             if (!d[0] || d[0] >= slotMs) return;
             chart += '<div class="deadline" style="left:' + (d[0] / slotMs * 100) + '%"><span class="note">' + d[1] + '</span></div>';
+          });
+
+          var aggregates = data.aggregates || [];
+          var marks = Array.isArray(aggregates)
+            ? aggregates.filter(function(a) { return a.seen; }).map(function(a) { return { ms: a.seen_ms, client: a.client, aggregator: a.aggregator_index }; })
+            : (aggregates.points || []).map(function(p) { return { ms: p.ms, client: p.client, aggregator: p.aggregator, slot: p.slot }; });
+
+          marks.forEach(function(m) {
+            if (m.ms >= slotMs) return;
+            chart += '<div class="agg-mark" style="left:' + (m.ms / slotMs * 100) + '%;background:' + (attesterColors[m.client] || attesterColors.unknown) + '" title="' +
+              esc('aggregate from ' + m.aggregator + ' (' + m.client + ')' + (m.slot != null ? ' in slot ' + m.slot : '') + ' at ' + fmtStr(m.ms)) + '"></div>';
           });
 
           return chart;
