@@ -23,3 +23,16 @@ func TestBitlistMembers(t *testing.T) {
 		t.Fatalf("empty or invalid bitlists not handled")
 	}
 }
+
+func TestAggregateObserversMatchTruncatedBits(t *testing.T) {
+	full := &aggregateObservers{members: bitlistMembers("0xffbffffffffffffffffffffbffffffffffffff1f"), observers: 11}
+	index := indexAggregateObservers([]*aggregateObservers{full})
+
+	if index[membersKey(bitlistMembers("0xffbffffffffffffffffffffbffffffffffffff0f"))] != full {
+		t.Fatalf("truncated gossip bits not matched")
+	}
+
+	if index[membersKey(full.members)] != full {
+		t.Fatalf("full bits not matched")
+	}
+}
