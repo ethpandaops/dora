@@ -26,6 +26,13 @@
       z-index: 2;
     }
     tr.attester-hover > td { background: var(--bs-tertiary-bg); }
+    .agg-table { width: auto; }
+    .agg-table td, .agg-table th { font-size: 0.8rem; white-space: nowrap; vertical-align: middle; padding: 0.25rem 0.75rem; }
+    .agg-table th { vertical-align: bottom; cursor: help; }
+    .agg-table td + td, .agg-table th + th { border-left: 1px solid rgba(var(--bs-border-color-rgb, 128, 128, 128), 0.35); }
+    .agg-table tr.agg-dim > td { opacity: 0.4; }
+    .agg-table tr[data-agg-client], .agg-table tr[data-agg-node] { cursor: pointer; }
+    @media (max-width: 767.98px) { .agg-table td, .agg-table th { padding: 0.2rem 0.4rem; } }
     .arrival-hist .grid {
       position: absolute; top: 0; bottom: 0; width: 1px;
       background: var(--bs-border-color);
@@ -555,7 +562,7 @@
         });
 
         body.innerHTML = '<div class="mb-1">' + summary + '</div>' + aggregateLanes(data) +
-          '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
+          '<div class="table-responsive"><table class="table table-sm agg-table text-left mb-1"><thead><tr class="text-muted">' +
           th('committee', aggregateTips.committee) + th('aggregator', aggregateTips.aggregator) + th('client', aggregateTips.client) + (hasElected ? th('elected', aggregateTips.elected) : '') +
           th('first seen', aggregateTips.firstSeen, 'text-end') + th('after send', aggregateTips.afterSend, 'text-end') + th('p50 (nodes)', aggregateTips.nodesP50, 'text-end') +
           th('attesters', aggregateTips.attestersRow, 'text-end') + th('last single', aggregateTips.lastSingle, 'text-end') + th('left out', aggregateTips.leftOut, 'text-end') +
@@ -590,7 +597,7 @@
       };
 
       function th(label, tip, cls) {
-        return '<th' + (cls ? ' class="' + cls + '"' : '') + ' title="' + esc(tip) + '" style="cursor: help">' + label + '</th>';
+        return '<th' + (cls ? ' class="' + cls + '"' : '') + ' title="' + esc(tip) + '">' + label + '</th>';
       }
 
       function epochAggregateScatter(data, focus) {
@@ -612,7 +619,8 @@
         var svg = '<svg viewBox="0 0 ' + (left + plotW + 10) + ' ' + (top + plotH + 22) + '" style="width:100%;height:auto">';
 
         slots.forEach(function(s, i) {
-          if (i % 2) svg += '<rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="var(--bs-secondary-bg)" opacity="0.35"></rect>';
+          if (s.missing) svg += '<rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="#f46a6a" opacity="0.18"></rect>';
+          else if (i % 2) svg += '<rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="var(--bs-secondary-bg)" opacity="0.35"></rect>';
         });
 
         for (var t = Math.ceil(lo / 1000) * 1000; t <= hi; t += 1000) {
@@ -637,7 +645,6 @@
             (s.redundant ? ', ' + plural(s.redundant, 'redundant aggregate') + ' not relayed' : '');
 
           svg += '<a href="/slot/' + s.slot + '#arrival"><rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="transparent"><title>' + esc(title) + '</title></rect></a>';
-          if (s.missing) svg += '<text x="' + cx + '" y="' + (top - 4) + '" text-anchor="middle" font-size="10" fill="#f46a6a"><title>' + esc(title) + '</title>&#10005;' + (s.missing > 1 ? s.missing : '') + '</text>';
           if (i % 4 === 0) svg += '<text x="' + cx + '" y="' + (top + plotH + 14) + '" text-anchor="middle" font-size="10" fill="var(--bs-secondary-color)">' + s.slot + '</text>';
         });
 
@@ -646,7 +653,7 @@
           var jitter = ((p.aggregator * 7919) % 100) / 100 - 0.5;
           var cx = left + (i + 0.5 + jitter * 0.6) * colW;
           var on = focus(p);
-          svg += '<circle cx="' + cx + '" cy="' + y(p.ms) + '" r="' + (on === 2 ? 4 : 3) + '" fill="' + clientColor(p.client) + '" opacity="' + (on ? 1 : 0.12) + '" pointer-events="none"></circle>';
+          svg += '<circle data-client="' + esc(p.client) + '" data-node="' + esc(p.node || '') + '" cx="' + cx + '" cy="' + y(p.ms) + '" r="' + (on === 2 ? 4 : 3) + '" fill="' + clientColor(p.client) + '" opacity="' + (on ? 1 : 0.12) + '" pointer-events="none"></circle>';
         });
 
         return svg + '</svg>';
@@ -668,11 +675,39 @@
         var solo = null;
         var soloNode = null;
 
+        var hoveredNode = null;
+
+        function focusOf(client, node) {
+          var fNode = hoveredNode || soloNode;
+          if (fNode) return node === fNode ? 2 : 0;
+          var fClient = hovered || solo;
+          if (!fClient) return 1;
+          return client === fClient ? 2 : 0;
+        }
+
         function focus(p) {
-          if (soloNode) return p.node === soloNode ? 2 : 0;
-          var client = hovered || solo;
-          if (!client) return 1;
-          return p.client === client ? 2 : 0;
+          return focusOf(p.client, p.node);
+        }
+
+        function applyFocus() {
+          var fClient = hovered || solo;
+          var fNode = hoveredNode || soloNode;
+
+          body.querySelectorAll('circle[data-client]').forEach(function(c) {
+            var on = focusOf(c.getAttribute('data-client'), c.getAttribute('data-node'));
+            c.setAttribute('opacity', on ? 1 : 0.12);
+            c.setAttribute('r', on === 2 ? 4 : 3);
+          });
+          body.querySelectorAll('tr[data-agg-client]').forEach(function(tr) {
+            var name = tr.getAttribute('data-agg-client');
+            tr.classList.toggle('agg-dim', !!fClient && name !== fClient);
+            tr.classList.toggle('attester-hover', name === hovered || name === solo);
+          });
+          body.querySelectorAll('tr[data-agg-node]').forEach(function(tr) {
+            var name = tr.getAttribute('data-agg-node');
+            tr.classList.toggle('agg-dim', !!fNode && name !== fNode);
+            tr.classList.toggle('attester-hover', name === fNode);
+          });
         }
 
         function nodeList() {
@@ -693,7 +728,7 @@
           }).join('');
 
           return '<div class="mt-2"><b>' + esc(soloNode) + '</b> <span class="text-muted">&middot; ' + plural(points.length, 'aggregation duty') + '</span>' +
-            '<div style="max-height:320px;overflow-y:auto"><table class="table table-sm arrival-table text-left mb-0" style="width:auto"><thead><tr class="text-muted">' +
+            '<div class="table-responsive" style="max-height:320px;overflow-y:auto"><table class="table table-sm agg-table text-left mb-0"><thead><tr class="text-muted">' +
             th('slot', aggregateTips.slot) + th('committee', aggregateTips.committee) + th('aggregator', aggregateTips.aggregator) +
             th('first seen', aggregateTips.state, 'text-end') + th('after send', aggregateTips.afterSend, 'text-end') + th('attesters', aggregateTips.attestersRow, 'text-end') +
             '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
@@ -712,14 +747,13 @@
           var rows = '';
 
           agg.clients.forEach(function(c) {
-            var dim = (hovered || solo) && (hovered || solo) !== c.name;
-            rows += '<tr data-agg-client="' + esc(c.name) + '" style="cursor:pointer' + (dim ? ';opacity:0.45' : '') + '"' + (solo === c.name ? ' class="attester-hover"' : '') + '>' +
+            rows += '<tr data-agg-client="' + esc(c.name) + '">' +
               '<td><span class="arrival-heat-key" style="background:' + clientColor(c.name) + '"></span> ' + esc(c.name) + '</td>' + aggregatorCells(c, dueMs) + '</tr>';
 
             if (solo !== c.name) return;
 
             (c.nodes || []).forEach(function(n) {
-              rows += '<tr data-agg-node="' + esc(n.name) + '" style="cursor:pointer"' + (soloNode === n.name ? ' class="attester-hover"' : '') + '>' +
+              rows += '<tr data-agg-node="' + esc(n.name) + '">' +
                 '<td class="ps-4 text-muted">' + esc(n.name) + '</td>' + aggregatorCells(n, dueMs) + '</tr>';
             });
           });
@@ -727,25 +761,30 @@
           body.innerHTML = '<div class="mb-1">' + summary + '</div>' +
             epochAggregateScatter(data, focus) +
             '<div class="text-muted small mb-1">Hover an aggregator client to highlight its aggregates, click it for its nodes, click a node for its aggregation duties.</div>' +
-            '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
-            th('aggregator client', aggregateTips.client) + th('aggregates', aggregateTips.aggregates, 'text-end') + th('not seen', aggregateTips.notSeen, 'text-end') +
-            th('redundant', aggregateTips.redundant, 'text-end') + th('p50 first seen', aggregateTips.p50, 'text-end') + th('p90', aggregateTips.p90, 'text-end') +
-            th('late', aggregateTips.late, 'text-end') + th('avg attesters', aggregateTips.attesters, 'text-end') +
+            '<div class="table-responsive"><table class="table table-sm agg-table text-left mb-1"><thead><tr class="text-muted">' +
+            th('client', aggregateTips.client) + th('aggregates', aggregateTips.aggregates, 'text-end') + th('not seen', aggregateTips.notSeen, 'text-end') +
+            th('redundant', aggregateTips.redundant, 'text-end') + th('p50', aggregateTips.p50, 'text-end') + th('p90', aggregateTips.p90, 'text-end') +
+            th('late', aggregateTips.late, 'text-end') + th('attesters', aggregateTips.attesters, 'text-end') +
             '</tr></thead><tbody>' + rows + '</tbody></table></div>' + (soloNode ? nodeList() : '');
           row.style.display = '';
+          applyFocus();
         }
 
         body.addEventListener('mouseover', function(ev) {
-          var tr = ev.target.closest('[data-agg-client]');
-          var name = tr ? tr.getAttribute('data-agg-client') : null;
-          if (name === hovered || solo) return;
-          hovered = name;
-          render();
+          var nodeTr = ev.target.closest('[data-agg-node]');
+          var clientTr = ev.target.closest('[data-agg-client]');
+          var nextNode = nodeTr ? nodeTr.getAttribute('data-agg-node') : null;
+          var nextClient = clientTr ? clientTr.getAttribute('data-agg-client') : null;
+          if (nextNode === hoveredNode && nextClient === hovered) return;
+          hoveredNode = nextNode;
+          hovered = nextClient;
+          applyFocus();
         });
         body.addEventListener('mouseleave', function() {
-          if (!hovered) return;
+          if (!hovered && !hoveredNode) return;
           hovered = null;
-          render();
+          hoveredNode = null;
+          applyFocus();
         });
         body.addEventListener('click', function(ev) {
           var node = ev.target.closest('[data-agg-node]');
@@ -766,6 +805,7 @@
           }
 
           hovered = null;
+          hoveredNode = null;
           render();
         });
 
