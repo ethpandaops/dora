@@ -14,12 +14,56 @@ type SlotAttestersResponse struct {
 }
 
 type SlotAttestersClient struct {
-	Name     string                   `json:"name"`
-	Expected uint64                   `json:"expected"`
-	Seen     uint64                   `json:"seen"`
-	AfterDue uint64                   `json:"after_due"`
-	Late     uint64                   `json:"late"`
-	P50Ms    uint32                   `json:"p50_ms"`
-	P90Ms    uint32                   `json:"p90_ms"`
-	Buckets  []*SlotAttestationBucket `json:"buckets,omitempty"`
+	Name                string                   `json:"name"`
+	Expected            uint64                   `json:"expected"`
+	Seen                uint64                   `json:"seen"`
+	AfterAttestationDue uint64                   `json:"after_attestation_due"`
+	AfterDue            uint64                   `json:"after_due"`
+	Late                uint64                   `json:"late"`
+	P50Ms               uint32                   `json:"p50_ms"`
+	P90Ms               uint32                   `json:"p90_ms"`
+	Buckets             []*SlotAttestationBucket `json:"buckets,omitempty"`
+	Nodes               []*SlotAttestersNode     `json:"nodes,omitempty"`
+}
+
+type SlotAttestersNode struct {
+	Name                string                   `json:"name"`
+	Continent           string                   `json:"continent,omitempty"`
+	Country             string                   `json:"country,omitempty"`
+	CountryCode         string                   `json:"country_code,omitempty"`
+	Expected            uint64                   `json:"expected"`
+	Seen                uint64                   `json:"seen"`
+	AfterAttestationDue uint64                   `json:"after_attestation_due"`
+	AfterDue            uint64                   `json:"after_due"`
+	Late                uint64                   `json:"late"`
+	P50Ms               uint32                   `json:"p50_ms"`
+	P90Ms               uint32                   `json:"p90_ms"`
+	Buckets             []*SlotAttestationBucket `json:"buckets,omitempty"`
+}
+
+type EpochAttestersResponse struct {
+	Epoch            uint64                 `json:"epoch"`
+	Settled          bool                   `json:"settled"`
+	SlotMs           uint32                 `json:"slot_ms"`
+	BucketMs         uint32                 `json:"bucket_ms"`
+	AttestationDueMs uint32                 `json:"attestation_due_ms"`
+	AggregateDueMs   uint32                 `json:"aggregate_due_ms"`
+	Expected         uint64                 `json:"expected"`
+	Seen             uint64                 `json:"seen"`
+	Clients          []*SlotAttestersClient `json:"clients,omitempty"`
+}
+
+type AttestersNodeResponse struct {
+	Node             string                    `json:"node"`
+	AttestationDueMs uint32                    `json:"attestation_due_ms"`
+	AggregateDueMs   uint32                    `json:"aggregate_due_ms"`
+	Total            uint64                    `json:"total"`
+	Validators       []*AttestersNodeValidator `json:"validators,omitempty"`
+}
+
+type AttestersNodeValidator struct {
+	Index  uint64 `json:"index"`
+	Slot   uint64 `json:"slot"`
+	Seen   bool   `json:"seen"`
+	SeenMs uint32 `json:"seen_ms"`
 }

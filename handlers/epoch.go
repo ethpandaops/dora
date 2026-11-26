@@ -19,12 +19,14 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // Epoch will return the main "epoch" page using a go template
 func Epoch(w http.ResponseWriter, r *http.Request) {
 	var epochTemplateFiles = append(layoutTemplateFiles,
 		"epoch/epoch.html",
+		"_shared/arrival_chart.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"epoch/notfound.html",
@@ -135,14 +137,15 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	firstSlot := chainState.EpochToSlot(phase0.Epoch(epoch))
 	lastSlot := chainState.EpochToSlot(phase0.Epoch(epoch+1)) - 1
 	pageData := &models.EpochPageData{
-		XatuEnabled:   xatu.GlobalClient != nil,
-		Epoch:         epoch,
-		PreviousEpoch: epoch - 1,
-		NextEpoch:     nextEpoch,
-		Ts:            chainState.SlotToTime(chainState.EpochToSlot(phase0.Epoch(epoch))),
-		Synchronized:  syncedEpoch,
-		Finalized:     finalizedEpoch > 0 && finalizedEpoch >= phase0.Epoch(epoch),
-		Future:        isFuture,
+		XatuEnabled:      xatu.GlobalClient != nil,
+		AttestersEnabled: utils.Config.Indexer.AttestationArrivals.Enabled,
+		Epoch:            epoch,
+		PreviousEpoch:    epoch - 1,
+		NextEpoch:        nextEpoch,
+		Ts:               chainState.SlotToTime(chainState.EpochToSlot(phase0.Epoch(epoch))),
+		Synchronized:     syncedEpoch,
+		Finalized:        finalizedEpoch > 0 && finalizedEpoch >= phase0.Epoch(epoch),
+		Future:           isFuture,
 	}
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(ctx, epoch, 1)

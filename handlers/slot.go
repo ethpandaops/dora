@@ -59,6 +59,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/builder_exit_requests.html",
 		"slot/bids.html",
 		"slot/arrival.html",
+		"_shared/arrival_chart.html",
 		"slot/ptc_votes.html",
 		"slot/inclusion_lists.html",
 		"slot/block_access_list.html",

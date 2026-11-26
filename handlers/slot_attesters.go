@@ -84,16 +84,280 @@ func attesterClientName(validatorName string) string {
 	return clientType.String()
 }
 
-type attesterGroup struct {
-	client  *models.SlotAttestersClient
+type attesterNode struct {
+	node    *models.SlotAttestersNode
 	seenMs  []uint32
 	buckets map[uint32]uint64
 }
 
-func loadAttesterArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string) (map[phase0.ValidatorIndex]uint32, uint64, error) {
+type attesterGroup struct {
+	client  *models.SlotAttestersClient
+	seenMs  []uint32
+	buckets map[uint32]uint64
+	nodes   map[string]*attesterNode
+}
+
+type attesterGroups struct {
+	groups           map[string]*attesterGroup
+	slotMs           uint32
+	attestationDueMs uint32
+	aggregateDueMs   uint32
+}
+
+func (g *attesterGroups) group(index phase0.ValidatorIndex, slot phase0.Slot) (*attesterGroup, *attesterNode) {
+	validatorName := services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot)
+	name := attesterClientName(validatorName)
+
+	group := g.groups[name]
+	if group == nil {
+		group = &attesterGroup{
+			client:  &models.SlotAttestersClient{Name: name},
+			buckets: map[uint32]uint64{},
+			nodes:   map[string]*attesterNode{},
+		}
+		g.groups[name] = group
+	}
+
+	if validatorName == "" {
+		return group, nil
+	}
+
+	node := group.nodes[validatorName]
+	if node == nil {
+		node = &attesterNode{node: &models.SlotAttestersNode{Name: validatorName}, buckets: map[uint32]uint64{}}
+		group.nodes[validatorName] = node
+	}
+
+	return group, node
+}
+
+func forEachAttesterDuty(ctx context.Context, firstSlot, endSlot phase0.Slot, duty func(phase0.Slot, phase0.ValidatorIndex)) {
+	if endSlot == firstSlot+1 {
+		for _, committee := range services.GlobalBeaconService.GetSlotCommittees(ctx, firstSlot) {
+			for _, index := range committee {
+				duty(firstSlot, index)
+			}
+		}
+
+		return
+	}
+
+	epoch := services.GlobalBeaconService.GetChainState().EpochOfSlot(firstSlot)
+
+	for slotIndex, committees := range services.GlobalBeaconService.GetEpochCommittees(ctx, epoch) {
+		slot := firstSlot + phase0.Slot(slotIndex)
+		if slot >= endSlot {
+			break
+		}
+
+		for _, committee := range committees {
+			for _, index := range committee {
+				duty(slot, index)
+			}
+		}
+	}
+}
+
+func (g *attesterGroups) addExpected(ctx context.Context, firstSlot, endSlot phase0.Slot) uint64 {
+	expected := uint64(0)
+
+	forEachAttesterDuty(ctx, firstSlot, endSlot, func(slot phase0.Slot, index phase0.ValidatorIndex) {
+		group, node := g.group(index, slot)
+		group.client.Expected++
+
+		if node != nil {
+			node.node.Expected++
+		}
+
+		expected++
+	})
+
+	return expected
+}
+
+func (g *attesterGroups) addArrival(index phase0.ValidatorIndex, slot phase0.Slot, seenMs uint32) {
+	group, node := g.group(index, slot)
+	group.client.Seen++
+	group.seenMs = append(group.seenMs, seenMs)
+
+	if node != nil {
+		node.node.Seen++
+		node.seenMs = append(node.seenMs, seenMs)
+	}
+
+	if seenMs >= g.attestationDueMs {
+		group.client.AfterAttestationDue++
+
+		if node != nil {
+			node.node.AfterAttestationDue++
+		}
+	}
+
+	if seenMs >= g.aggregateDueMs {
+		group.client.AfterDue++
+
+		if node != nil {
+			node.node.AfterDue++
+		}
+	}
+
+	if seenMs >= g.slotMs {
+		group.client.Late++
+
+		if node != nil {
+			node.node.Late++
+		}
+
+		return
+	}
+
+	bucket := seenMs / attesterBucketMs * attesterBucketMs
+	group.buckets[bucket]++
+
+	if node != nil {
+		node.buckets[bucket]++
+	}
+}
+
+func attesterPercentiles(seenMs []uint32) (uint32, uint32) {
+	if len(seenMs) == 0 {
+		return 0, 0
+	}
+
+	sort.Slice(seenMs, func(a, b int) bool { return seenMs[a] < seenMs[b] })
+
+	return seenMs[len(seenMs)/2], seenMs[len(seenMs)*9/10]
+}
+
+func attesterBuckets(counts map[uint32]uint64) []*models.SlotAttestationBucket {
+	buckets := make([]*models.SlotAttestationBucket, 0, len(counts))
+
+	for ms, count := range counts {
+		buckets = append(buckets, &models.SlotAttestationBucket{Ms: ms, Count: count})
+	}
+
+	sort.Slice(buckets, func(a, b int) bool { return buckets[a].Ms < buckets[b].Ms })
+
+	return buckets
+}
+
+func (g *attesterGroups) clients() []*models.SlotAttestersClient {
+	clients := make([]*models.SlotAttestersClient, 0, len(g.groups))
+
+	for _, group := range g.groups {
+		group.client.P50Ms, group.client.P90Ms = attesterPercentiles(group.seenMs)
+
+		group.client.Buckets = attesterBuckets(group.buckets)
+
+		for _, node := range group.nodes {
+			node.node.P50Ms, node.node.P90Ms = attesterPercentiles(node.seenMs)
+			node.node.Buckets = attesterBuckets(node.buckets)
+			group.client.Nodes = append(group.client.Nodes, node.node)
+		}
+
+		sort.Slice(group.client.Nodes, func(a, b int) bool {
+			return group.client.Nodes[a].Name < group.client.Nodes[b].Name
+		})
+
+		clients = append(clients, group.client)
+	}
+
+	sort.Slice(clients, func(a, b int) bool {
+		if (clients[a].Name == attesterUnknown) != (clients[b].Name == attesterUnknown) {
+			return clients[b].Name == attesterUnknown
+		}
+
+		return clients[a].Name < clients[b].Name
+	})
+
+	return clients
+}
+
+type nodeGeo struct {
+	continent   string
+	country     string
+	countryCode string
+}
+
+func loadNodeGeo(ctx context.Context, firstTime, endTime time.Time, settled bool) map[string]*nodeGeo {
+	client := xatu.GlobalClient
+	if client == nil {
+		return nil
+	}
+
+	rows, err := client.Query(ctx, settled, `SELECT meta_client_name, any(meta_client_geo_continent_code), any(meta_client_geo_country), any(meta_client_geo_country_code)
+FROM beacon_api_eth_v1_events_head
+WHERE meta_network_name = ? AND slot_start_date_time >= toDateTime(?) AND slot_start_date_time < toDateTime(?)
+GROUP BY meta_client_name`, client.Network(), firstTime.Unix(), endTime.Unix())
+	if err != nil {
+		if !isMissingTableError(err) {
+			logrus.WithError(err).Warn("error loading node locations from xatu")
+		}
+
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+
+	geo := map[string]*nodeGeo{}
+
+	for rows.Next() {
+		var name string
+
+		entry := &nodeGeo{}
+
+		if err := rows.Scan(&name, &entry.continent, &entry.country, &entry.countryCode); err != nil {
+			logrus.WithError(err).Warn("error scanning node locations from xatu")
+			return geo
+		}
+
+		_, _, display := parseSentryName(name, client.Network())
+		geo[display] = entry
+	}
+
+	return geo
+}
+
+func epochNodeGeo(ctx context.Context, chainState *consensus.ChainState, epoch phase0.Epoch, settled bool) map[string]*nodeGeo {
+	return loadNodeGeo(ctx, chainState.SlotToTime(chainState.EpochToSlot(epoch)), chainState.SlotToTime(chainState.EpochToSlot(epoch+1)), settled)
+}
+
+func setAttesterNodeGeo(clients []*models.SlotAttestersClient, geo map[string]*nodeGeo) {
+	for _, group := range clients {
+		for _, node := range group.Nodes {
+			if entry := geo[node.Name]; entry != nil {
+				node.Continent = entry.continent
+				node.Country = entry.country
+				node.CountryCode = entry.countryCode
+			}
+		}
+	}
+}
+
+func attesterValidatorFilter(validators []phase0.ValidatorIndex) string {
+	if len(validators) == 0 || len(validators) > 10000 {
+		return ""
+	}
+
+	filter := strings.Builder{}
+	filter.WriteString(" AND attesting_validator_index IN (")
+
+	for i, index := range validators {
+		if i > 0 {
+			filter.WriteByte(',')
+		}
+
+		filter.WriteString(strconv.FormatUint(uint64(index), 10))
+	}
+
+	filter.WriteByte(')')
+
+	return filter.String()
+}
+
+func loadAttesterArrivals(ctx context.Context, client *xatu.Client, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, validators []phase0.ValidatorIndex) (map[phase0.ValidatorIndex]uint32, uint64, error) {
 	rows, err := client.Query(ctx, settled, `SELECT assumeNotNull(attesting_validator_index) AS validator, beacon_block_root AS root, toUInt32(min(propagation_slot_start_diff)) AS first_ms
 FROM beacon_api_eth_v1_events_attestation
-WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ? AND attesting_validator_index IS NOT NULL
+WHERE meta_network_name = ? AND slot_start_date_time = toDateTime(?) AND slot = ? AND attesting_validator_index IS NOT NULL`+attesterValidatorFilter(validators)+`
 GROUP BY validator, root`, client.Network(), slotTime.Unix(), uint32(slot))
 	if err != nil {
 		if isMissingTableError(err) {
@@ -135,32 +399,17 @@ GROUP BY validator, root`, client.Network(), slotTime.Unix(), uint32(slot))
 	return arrivals, otherRoots, nil
 }
 
-func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot string) (*models.SlotAttestersResponse, time.Duration, error) {
-	client := xatu.GlobalClient
-	chainState := services.GlobalBeaconService.GetChainState()
-	slotTime := chainState.SlotToTime(slot)
-	slotMs := lateThreshold(chainState)
-
-	settleDelay := 30 * time.Second
-	if client != nil {
-		settleDelay = client.SettleDelay()
-	}
-
-	settled := time.Now().After(slotTime.Add(settleDelay))
-
-	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
+func slotAttesterArrivals(ctx context.Context, slot phase0.Slot, slotTime time.Time, settled bool, blockRoot string, validators []phase0.ValidatorIndex) (map[phase0.ValidatorIndex]uint32, uint64, error) {
 	var arrivals map[phase0.ValidatorIndex]uint32
 
 	var otherRoots uint64
 
-	if client != nil {
+	if client := xatu.GlobalClient; client != nil {
 		var err error
 
-		arrivals, otherRoots, err = loadAttesterArrivals(queryCtx, client, slot, slotTime, settled, blockRoot)
+		arrivals, otherRoots, err = loadAttesterArrivals(ctx, client, slot, slotTime, settled, blockRoot, validators)
 		if err != nil {
-			return nil, -1, err
+			return nil, 0, err
 		}
 	}
 
@@ -174,6 +423,43 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		arrivals, otherRoots = services.GlobalBeaconService.GetBeaconIndexer().GetAttestationArrivals(slot, root)
 	}
 
+	return arrivals, otherRoots, nil
+}
+
+func attesterSettled(slotTime time.Time) bool {
+	settleDelay := 30 * time.Second
+	if client := xatu.GlobalClient; client != nil {
+		settleDelay = client.SettleDelay()
+	}
+
+	return time.Now().After(slotTime.Add(settleDelay))
+}
+
+func attesterCacheTimeout(chainState *consensus.ChainState, settled bool, endTime time.Time) time.Duration {
+	switch {
+	case !settled:
+		return unsettledCacheTimeout(chainState)
+	case time.Since(endTime) < 30*time.Minute:
+		return 30 * time.Second
+	}
+
+	return time.Hour
+}
+
+func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot string) (*models.SlotAttestersResponse, time.Duration, error) {
+	chainState := services.GlobalBeaconService.GetChainState()
+	slotTime := chainState.SlotToTime(slot)
+	slotMs := lateThreshold(chainState)
+	settled := attesterSettled(slotTime)
+
+	queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	arrivals, otherRoots, err := slotAttesterArrivals(queryCtx, slot, slotTime, settled, blockRoot, nil)
+	if err != nil {
+		return nil, -1, err
+	}
+
 	response := &models.SlotAttestersResponse{
 		Slot:             uint64(slot),
 		Settled:          settled,
@@ -185,85 +471,28 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 		OtherRoots:       otherRoots,
 	}
 
-	cacheTimeout := time.Hour
-
-	switch {
-	case !settled:
-		cacheTimeout = unsettledCacheTimeout(chainState)
-	case time.Since(slotTime) < 30*time.Minute:
-		cacheTimeout = 30 * time.Second
-	}
+	cacheTimeout := attesterCacheTimeout(chainState, settled, slotTime)
 
 	if len(arrivals) == 0 && otherRoots == 0 {
 		return response, cacheTimeout, nil
 	}
 
-	groups := map[string]*attesterGroup{}
-	groupOf := func(index phase0.ValidatorIndex) *attesterGroup {
-		name := attesterClientName(services.GlobalBeaconService.GetValidatorNameAt(uint64(index), slot))
-
-		group := groups[name]
-		if group == nil {
-			group = &attesterGroup{
-				client:  &models.SlotAttestersClient{Name: name},
-				buckets: map[uint32]uint64{},
-			}
-			groups[name] = group
-		}
-
-		return group
+	groups := &attesterGroups{
+		groups:           map[string]*attesterGroup{},
+		slotMs:           slotMs,
+		attestationDueMs: response.AttestationDueMs,
+		aggregateDueMs:   response.AggregateDueMs,
 	}
 
-	for _, committee := range services.GlobalBeaconService.GetSlotCommittees(queryCtx, slot) {
-		for _, index := range committee {
-			groupOf(index).client.Expected++
-			response.Expected++
-		}
-	}
+	response.Expected = groups.addExpected(queryCtx, slot, slot+1)
 
 	for index, seenMs := range arrivals {
-		group := groupOf(index)
-		group.client.Seen++
-		group.seenMs = append(group.seenMs, seenMs)
-
-		if seenMs >= response.AggregateDueMs {
-			group.client.AfterDue++
-		}
-
-		if seenMs >= slotMs {
-			group.client.Late++
-
-			continue
-		}
-
-		group.buckets[seenMs/attesterBucketMs*attesterBucketMs]++
+		groups.addArrival(index, slot, seenMs)
 	}
 
-	for _, group := range groups {
-		if len(group.seenMs) > 0 {
-			sort.Slice(group.seenMs, func(a, b int) bool { return group.seenMs[a] < group.seenMs[b] })
-			group.client.P50Ms = group.seenMs[len(group.seenMs)/2]
-			group.client.P90Ms = group.seenMs[len(group.seenMs)*9/10]
-		}
+	response.Clients = groups.clients()
 
-		for ms, count := range group.buckets {
-			group.client.Buckets = append(group.client.Buckets, &models.SlotAttestationBucket{Ms: ms, Count: count})
-		}
-
-		sort.Slice(group.client.Buckets, func(a, b int) bool {
-			return group.client.Buckets[a].Ms < group.client.Buckets[b].Ms
-		})
-
-		response.Clients = append(response.Clients, group.client)
-	}
-
-	sort.Slice(response.Clients, func(a, b int) bool {
-		if (response.Clients[a].Name == attesterUnknown) != (response.Clients[b].Name == attesterUnknown) {
-			return response.Clients[b].Name == attesterUnknown
-		}
-
-		return response.Clients[a].Name < response.Clients[b].Name
-	})
+	setAttesterNodeGeo(response.Clients, epochNodeGeo(queryCtx, chainState, chainState.EpochOfSlot(slot), settled))
 
 	return response, cacheTimeout, nil
 }
