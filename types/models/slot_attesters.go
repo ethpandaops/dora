@@ -76,6 +76,7 @@ type SlotAggregate struct {
 	Client          string `json:"client"`
 	Elected         *bool  `json:"elected,omitempty" ssz-type:"optional"`
 	Seen            bool   `json:"seen"`
+	Redundant       bool   `json:"redundant,omitempty"`
 	SeenMs          uint32 `json:"seen_ms"`
 	SizeBytes       uint32 `json:"size_bytes"`
 	Observers       uint64 `json:"observers"`
@@ -90,6 +91,7 @@ type SlotAggregate struct {
 type EpochAggregates struct {
 	Aggregates uint64                   `json:"aggregates"`
 	Missing    uint64                   `json:"missing"`
+	Redundant  uint64                   `json:"redundant"`
 	SizeBytes  uint64                   `json:"size_bytes"`
 	Members    uint64                   `json:"members"`
 	Covered    uint64                   `json:"covered"`
@@ -110,6 +112,7 @@ type EpochAggregateSlot struct {
 	Committees uint64  `json:"committees"`
 	Aggregates uint64  `json:"aggregates"`
 	Missing    uint64  `json:"missing"`
+	Redundant  uint64  `json:"redundant"`
 	Members    uint64  `json:"members"`
 	Covered    uint64  `json:"covered"`
 	FirstMs    *uint32 `json:"first_ms,omitempty" ssz-type:"optional"`
@@ -119,6 +122,7 @@ type EpochAggregatorClient struct {
 	Name             string `json:"name"`
 	Aggregates       uint64 `json:"aggregates"`
 	Missing          uint64 `json:"missing"`
+	Redundant        uint64 `json:"redundant"`
 	Late             uint64 `json:"late"`
 	Attesters        uint64 `json:"attesters"`
 	CommitteeMembers uint64 `json:"committee_members"`

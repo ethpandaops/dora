@@ -476,7 +476,8 @@
             var label = 'aggregator ' + a.aggregator_index + (a.aggregator_name ? ' (' + a.aggregator_name + ')' : '');
 
             if (!a.seen) {
-              svg += '<text x="' + (left + width + 2) + '" y="' + (y + 4) + '" font-size="12" fill="#f46a6a"><title>' + esc(label) + ': no aggregate seen</title>&#10005;</text>';
+              svg += '<text x="' + (left + width + 2) + '" y="' + (y + 4) + '" font-size="12" fill="' + (a.redundant ? 'var(--bs-secondary-color)' : '#f46a6a') + '"><title>' + esc(label) + ': ' +
+                (a.redundant ? 'not relayed, an earlier aggregate already covered the committee' : 'no aggregate seen') + '</title>&#10005;</text>';
               return;
             }
 
@@ -503,7 +504,8 @@
 
         var dueMs = data.aggregate_due_ms;
         var seen = aggregates.filter(function(a) { return a.seen; });
-        var missing = aggregates.filter(function(a) { return !a.seen; });
+        var missing = aggregates.filter(function(a) { return !a.seen && !a.redundant; });
+        var redundant = aggregates.filter(function(a) { return !a.seen && a.redundant; });
         var hasElected = aggregates.some(function(a) { return a.elected != null; });
         var committees = {};
         var bytes = 0;
@@ -519,7 +521,8 @@
 
         if (data.aggregate_members) summary += sep + Math.round(data.aggregate_covered * 100 / data.aggregate_members) + '% of committee members covered';
         if (bytes) summary += sep + fmtBytes(bytes) + ' of aggregates';
-        if (missing.length) summary += sep + '<span style="color:#f46a6a">' + plural(missing.length, 'elected aggregator') + ' sent none</span>';
+        if (missing.length) summary += sep + '<span style="color:#f46a6a">' + plural(missing.length, 'elected aggregator') + ' not seen</span>';
+        if (redundant.length) summary += sep + '<span class="text-muted" title="Nodes ignore an aggregate whose bits an earlier one already covers, so these were not relayed to the observers">' + plural(redundant.length, 'redundant aggregate') + ' not relayed</span>';
         summary += liveBadge(data.settled);
 
         var rows = '';
@@ -532,7 +535,9 @@
             (hasElected ? '<td>' + (a.elected ? 'yes' : '<span style="color:#f1b44c">no</span>') + '</td>' : '');
 
           if (!a.seen) {
-            rows += '<tr>' + cells + '<td colspan="8"><span style="color:#f46a6a">no aggregate seen</span></td></tr>';
+            rows += '<tr>' + cells + '<td colspan="8">' + (a.redundant
+              ? '<span class="text-muted" title="Nodes ignore an aggregate whose bits an earlier one already covers, so it was not relayed to the observers">not relayed, the committee was already covered</span>'
+              : '<span style="color:#f46a6a">no aggregate seen</span>') + '</td></tr>';
             return;
           }
 
@@ -589,7 +594,8 @@
           var cx = left + (i + 0.5) * colW;
           var cover = s.members ? Math.round(s.covered * 100 / s.members) + '% covered' : '';
           var title = 'slot ' + s.slot + ': ' + plural(s.aggregates, 'aggregate') + (cover ? ', ' + cover : '') +
-            (s.missing ? ', ' + plural(s.missing, 'elected aggregator') + ' sent none' : '');
+            (s.missing ? ', ' + plural(s.missing, 'elected aggregator') + ' not seen' : '') +
+            (s.redundant ? ', ' + plural(s.redundant, 'redundant aggregate') + ' not relayed' : '');
 
           svg += '<a href="/slot/' + s.slot + '#arrival"><rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="transparent"><title>' + esc(title) + '</title></rect></a>';
           if (s.missing) svg += '<text x="' + cx + '" y="' + (top - 4) + '" text-anchor="middle" font-size="10" fill="#f46a6a"><title>' + esc(title) + '</title>&#10005;' + (s.missing > 1 ? s.missing : '') + '</text>';
@@ -618,7 +624,8 @@
         var summary = plural(agg.aggregates, 'aggregate') + ' over ' + plural(agg.slots.length, 'slot');
         if (agg.members) summary += sep + Math.round(agg.covered * 100 / agg.members) + '% of committee members covered';
         if (agg.size_bytes) summary += sep + fmtBytes(agg.size_bytes) + ' of aggregates';
-        if (agg.missing) summary += sep + '<span style="color:#f46a6a">' + plural(agg.missing, 'elected aggregator') + ' sent none</span>';
+        if (agg.missing) summary += sep + '<span style="color:#f46a6a">' + plural(agg.missing, 'elected aggregator') + ' not seen</span>';
+        if (agg.redundant) summary += sep + '<span class="text-muted" title="Nodes ignore an aggregate whose bits an earlier one already covers, so these were not relayed to the observers">' + plural(agg.redundant, 'redundant aggregate') + ' not relayed</span>';
         summary += liveBadge(data.settled);
 
         var scatter = epochAggregateScatter(data);
@@ -628,6 +635,7 @@
           rows += '<tr><td><span class="arrival-heat-key" style="background:' + clientColor(c.name) + '"></span> ' + esc(c.name) + '</td>' +
             '<td class="text-end num">' + c.aggregates.toLocaleString() + '</td>' +
             '<td class="text-end num">' + (c.missing ? '<span style="color:#f46a6a">' + c.missing + '</span>' : '0') + '</td>' +
+            '<td class="text-end num text-muted">' + (c.redundant || 0) + '</td>' +
             '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p50_ms) + ' <span class="text-muted">(' + fmtDelta(c.p50_ms - dueMs) + ')</span>' : '&mdash;') + '</td>' +
             '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p90_ms) : '&mdash;') + '</td>' +
             '<td class="text-end num">' + (c.late ? '<span style="color:#f1b44c">' + c.late + '</span>' : '0') + '</td>' +
@@ -637,7 +645,7 @@
         body.innerHTML = '<div class="mb-1">' + summary + '</div>' +
           scatter +
           '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
-          '<th>aggregator client</th><th class="text-end">aggregates</th><th class="text-end">sent none</th><th class="text-end">p50 first seen</th>' +
+          '<th>aggregator client</th><th class="text-end">aggregates</th><th class="text-end" title="Elected aggregators whose aggregate no observer saw although the committee was not yet covered">not seen</th><th class="text-end" title="Elected aggregators whose aggregate was not relayed because an earlier one already covered the committee">redundant</th><th class="text-end">p50 first seen</th>' +
           '<th class="text-end">p90</th><th class="text-end" title="First seen more than 1s after the aggregate deadline">late</th><th class="text-end">avg attesters</th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
         row.style.display = '';
