@@ -439,7 +439,7 @@
         });
 
         var keys = Object.keys(lanes).map(Number).sort(function(a, b) { return a - b; });
-        var left = 70, width = 900, laneH = 22, top = 4;
+        var left = 90, width = 880, laneH = 22, top = 4;
         var height = top + keys.length * laneH + 18;
         var x = function(ms) { return left + Math.min(ms, maxMs) / maxMs * width; };
         var svg = '<svg viewBox="0 0 ' + (left + width + 10) + ' ' + height + '" style="width:100%;max-width:980px;height:auto" class="arrival-aggregate-lanes">';
@@ -541,6 +541,53 @@
         row.style.display = '';
       }
 
+
+      function epochAggregateScatter(data) {
+        var agg = data.aggregates;
+        var dueMs = data.aggregate_due_ms;
+        var slots = agg.slots;
+        if (!slots.length) return '';
+
+        var firstSlot = slots[0].slot;
+        var lo = Math.max(0, dueMs - 500);
+        var hi = data.slot_ms;
+        (agg.points || []).forEach(function(p) { hi = Math.max(hi, p.ms + 250); });
+
+        var left = 46, top = 16, plotW = 900, plotH = 170;
+        var colW = plotW / slots.length;
+        var y = function(ms) { return top + (1 - (Math.min(ms, hi) - lo) / (hi - lo)) * plotH; };
+        var svg = '<svg viewBox="0 0 ' + (left + plotW + 10) + ' ' + (top + plotH + 22) + '" style="width:100%;max-width:980px;height:auto">';
+
+        for (var t = Math.ceil(lo / 1000) * 1000; t <= hi; t += 1000) {
+          svg += '<line x1="' + left + '" x2="' + (left + plotW) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="var(--bs-border-color)" stroke-width="0.5"></line>' +
+            '<text x="' + (left - 6) + '" y="' + (y(t) + 3) + '" text-anchor="end" font-size="10" fill="var(--bs-secondary-color)">' + (t / 1000) + 's</text>';
+        }
+
+        [[dueMs, 'aggregate deadline', '4 3'], [data.slot_ms, 'slot end', '1 3']].forEach(function(line) {
+          svg += '<line x1="' + left + '" x2="' + (left + plotW) + '" y1="' + y(line[0]) + '" y2="' + y(line[0]) + '" stroke="#f46a6a" stroke-width="1" stroke-dasharray="' + line[2] + '"><title>' + line[1] + ' ' + fmtStr(line[0]) + '</title></line>';
+        });
+
+        slots.forEach(function(s, i) {
+          var cx = left + (i + 0.5) * colW;
+          var cover = s.members ? Math.round(s.covered * 100 / s.members) + '% covered' : '';
+          var title = 'slot ' + s.slot + ': ' + plural(s.aggregates, 'aggregate') + (cover ? ', ' + cover : '') +
+            (s.missing ? ', ' + plural(s.missing, 'elected aggregator') + ' sent none' : '');
+
+          svg += '<a href="/slot/' + s.slot + '#arrival"><rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="transparent"><title>' + esc(title) + '</title></rect></a>';
+          if (s.missing) svg += '<text x="' + cx + '" y="' + (top - 4) + '" text-anchor="middle" font-size="10" fill="#f46a6a"><title>' + esc(title) + '</title>&#10005;' + (s.missing > 1 ? s.missing : '') + '</text>';
+          if (i % 4 === 0) svg += '<text x="' + cx + '" y="' + (top + plotH + 14) + '" text-anchor="middle" font-size="10" fill="var(--bs-secondary-color)">' + s.slot + '</text>';
+        });
+
+        (agg.points || []).forEach(function(p) {
+          var i = p.slot - firstSlot;
+          var jitter = ((p.aggregator * 7919) % 100) / 100 - 0.5;
+          var cx = left + (i + 0.5 + jitter * 0.6) * colW;
+          svg += '<circle cx="' + cx + '" cy="' + y(p.ms) + '" r="3" fill="' + clientColor(p.client) + '" pointer-events="none"></circle>';
+        });
+
+        return svg + '</svg>';
+      }
+
       function renderEpochAggregates(row, body, data) {
         var agg = data && data.aggregates;
 
@@ -556,19 +603,7 @@
         if (agg.missing) summary += sep + '<span style="color:#f46a6a">' + plural(agg.missing, 'elected aggregator') + ' sent none</span>';
         summary += liveBadge(data.settled);
 
-        var cells = '';
-
-        agg.slots.forEach(function(s) {
-          var cover = s.members ? Math.round(s.covered * 100 / s.members) : 0;
-          var title = 'slot ' + s.slot + ': ' + plural(s.aggregates, 'aggregate') +
-            (s.first_ms != null ? ', first ' + fmtStr(s.first_ms) + ' (' + (s.first_ms - dueMs >= 0 ? '+' : '-') + fmtStr(Math.abs(s.first_ms - dueMs)) + ' vs deadline)' : '') +
-            (s.members ? ', ' + cover + '% covered' : '') + (s.missing ? ', ' + plural(s.missing, 'elected aggregator') + ' sent none' : '');
-          var bg = s.first_ms != null ? timeColor(Math.max(0, s.first_ms - dueMs)) : 'var(--bs-secondary-bg)';
-
-          cells += '<a href="/slot/' + s.slot + '#propagation" title="' + esc(title) + '" style="display:inline-block;width:26px;height:26px;margin:1px;border-radius:3px;background:' + bg +
-            ';opacity:' + (s.first_ms != null ? Math.max(0.35, cover / 100) : 1) + ';' + (s.missing ? 'box-shadow:inset 0 0 0 2px #f46a6a;' : '') + '"></a>';
-        });
-
+        var scatter = epochAggregateScatter(data);
         var rows = '';
 
         agg.clients.forEach(function(c) {
@@ -582,7 +617,7 @@
         });
 
         body.innerHTML = '<div class="mb-1">' + summary + '</div>' +
-          '<div class="mb-2" style="line-height:0">' + cells + '</div>' +
+          scatter +
           '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
           '<th>aggregator client</th><th class="text-end">aggregates</th><th class="text-end">sent none</th><th class="text-end">p50 first seen</th>' +
           '<th class="text-end">p90</th><th class="text-end" title="First seen more than 1s after the aggregate deadline">late</th><th class="text-end">avg attesters</th>' +
