@@ -473,6 +473,19 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 
 	cacheTimeout := attesterCacheTimeout(chainState, settled, slotTime)
 
+	geo := epochNodeGeo(queryCtx, chainState, chainState.EpochOfSlot(slot), settled)
+
+	aggregates, err := loadSlotAggregates(queryCtx, slot, settled, blockRoot, arrivals)
+	if err != nil {
+		logrus.WithError(err).Warn("error loading slot aggregates from xatu")
+	} else if aggregates != nil {
+		setAggregateGeo(aggregates.rows, geo)
+
+		response.Aggregates = aggregates.rows
+		response.AggregateMembers = aggregates.members
+		response.AggregateCovered = aggregates.covered
+	}
+
 	if len(arrivals) == 0 && otherRoots == 0 {
 		return response, cacheTimeout, nil
 	}
@@ -492,7 +505,7 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 
 	response.Clients = groups.clients()
 
-	setAttesterNodeGeo(response.Clients, epochNodeGeo(queryCtx, chainState, chainState.EpochOfSlot(slot), settled))
+	setAttesterNodeGeo(response.Clients, geo)
 
 	return response, cacheTimeout, nil
 }

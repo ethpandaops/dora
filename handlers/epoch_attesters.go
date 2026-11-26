@@ -171,6 +171,17 @@ func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.E
 
 	cacheTimeout := attesterCacheTimeout(chainState, settled, endTime)
 
+	geo := epochNodeGeo(queryCtx, chainState, epoch, settled)
+
+	aggregates, err := loadEpochAggregates(queryCtx, epoch, firstSlot, endSlot, settled, response.AggregateDueMs)
+	if err != nil {
+		logrus.WithError(err).Warn("error loading epoch aggregates from xatu")
+	} else if aggregates != nil {
+		setAggregatorNodeGeo(aggregates.Clients, geo)
+	}
+
+	response.Aggregates = aggregates
+
 	if response.Seen == 0 {
 		return response, cacheTimeout, nil
 	}
@@ -179,7 +190,7 @@ func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.E
 
 	response.Clients = groups.clients()
 
-	setAttesterNodeGeo(response.Clients, epochNodeGeo(queryCtx, chainState, epoch, settled))
+	setAttesterNodeGeo(response.Clients, geo)
 
 	return response, cacheTimeout, nil
 }
