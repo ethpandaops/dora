@@ -44,17 +44,10 @@ func membersKey(members []bool) string {
 }
 
 func indexAggregateObservers(observers []*aggregateObservers) map[string]*aggregateObservers {
-	index := make(map[string]*aggregateObservers, len(observers)*2)
+	index := make(map[string]*aggregateObservers, len(observers))
 
 	for _, observed := range observers {
 		index[membersKey(observed.members)] = observed
-
-		if len(observed.members) > 0 {
-			prefix := membersKey(observed.members[:len(observed.members)-1])
-			if _, taken := index[prefix]; !taken {
-				index[prefix] = observed
-			}
-		}
 	}
 
 	return index
@@ -162,6 +155,20 @@ GROUP BY slot, aggregation_bits`, client.Network(), firstTime.Unix(), endTime.Un
 	return result, nil
 }
 
+func rawBitsMembers(bitsHex string, size int) []bool {
+	raw, err := hex.DecodeString(strings.TrimPrefix(bitsHex, "0x"))
+	if err != nil {
+		return nil
+	}
+
+	members := make([]bool, size)
+	for i := range members {
+		members[i] = i/8 < len(raw) && raw[i/8]&(1<<(i%8)) != 0
+	}
+
+	return members
+}
+
 func bitlistMembers(bitlistHex string) []bool {
 	bitlist, err := hex.DecodeString(strings.TrimPrefix(bitlistHex, "0x"))
 	if err != nil {
@@ -236,7 +243,7 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 		row.SeenMs = aggregate.seenMs
 		row.SizeBytes = aggregate.sizeBytes
 		row.Observers = 1
-		members := bitlistMembers(aggregate.bits)
+		members := rawBitsMembers(aggregate.bits, int(row.CommitteeSize))
 
 		if observed, ok := observers[membersKey(members)]; ok {
 			row.Observers = observed.observers
