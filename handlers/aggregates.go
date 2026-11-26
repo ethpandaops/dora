@@ -228,15 +228,6 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 			row.CommitteeSize = uint64(len(committees[committee]))
 		}
 
-		if elected != nil && committee < uint64(len(elected)) {
-			row.Elected = new(bool)
-			for _, index := range elected[committee] {
-				if index == aggregator {
-					*row.Elected = true
-				}
-			}
-		}
-
 		return row
 	}
 
