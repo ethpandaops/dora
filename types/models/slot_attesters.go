@@ -74,7 +74,6 @@ type SlotAggregate struct {
 	AggregatorIndex uint64 `json:"aggregator_index"`
 	AggregatorName  string `json:"aggregator_name,omitempty"`
 	Client          string `json:"client"`
-	Elected         *bool  `json:"elected,omitempty" ssz-type:"optional"`
 	Seen            bool   `json:"seen"`
 	Redundant       bool   `json:"redundant,omitempty"`
 	SeenMs          uint32 `json:"seen_ms"`

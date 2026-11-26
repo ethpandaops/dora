@@ -20,16 +20,27 @@
     .arrival-hist .bar.dim { opacity: 0.3; }
     .arrival-hist .deadline { pointer-events: none; }
     .arrival-hist .agg-mark {
-      position: absolute; bottom: -5px; width: 9px; height: 9px;
-      transform: translateX(-50%) rotate(45deg);
-      border: 1px solid var(--bs-body-bg);
+      position: absolute; top: 50%; width: 13px; height: 13px;
+      transform: translate(-50%, -50%) rotate(45deg);
+      border: 2px solid var(--bs-body-bg);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
       z-index: 2;
+      transition: opacity 0.1s, width 0.1s, height 0.1s;
     }
+    .arrival-hist .agg-mark.agg-focus { width: 18px; height: 18px; z-index: 3; box-shadow: 0 0 0 2px #fff; }
+    .agg-faded { opacity: 0.15; }
+    circle.agg-focus { stroke: #fff; stroke-width: 2; }
+    .agg-table tr[data-agg-committee] { cursor: pointer; }
+    .agg-table tr.agg-child > td:first-child { padding-left: 1.5rem; }
     tr.attester-hover > td { background: var(--bs-tertiary-bg); }
     .agg-table { width: auto; }
     .agg-table td, .agg-table th { font-size: 0.8rem; white-space: nowrap; vertical-align: middle; padding: 0.25rem 0.75rem; }
-    .agg-table th { vertical-align: bottom; cursor: help; }
-    .agg-table td + td, .agg-table th + th { border-left: 1px solid rgba(var(--bs-border-color-rgb, 128, 128, 128), 0.35); }
+    .agg-table th { vertical-align: bottom; }
+    .agg-table td + td, .agg-table th + th, .cols-faint td + td, .cols-faint th + th { border-left: 1px solid rgba(var(--bs-border-color-rgb, 128, 128, 128), 0.35); }
+    .cols-faint td, .cols-faint th { padding-left: 0.6rem; padding-right: 0.6rem; }
+    th[data-colsort] { cursor: pointer; user-select: none; }
+    th[data-colsort]:hover { color: var(--bs-body-color) !important; }
+    th[data-colsort] .sort-arrow { font-size: 0.65rem; padding-left: 0.2rem; }
     .agg-table tr.agg-dim > td { opacity: 0.4; }
     .agg-table tr[data-agg-client], .agg-table tr[data-agg-node] { cursor: pointer; }
     @media (max-width: 767.98px) { .agg-table td, .agg-table th { padding: 0.2rem 0.4rem; } }
@@ -135,6 +146,78 @@
         return { lo: axLo, hi: axHi, span: span, lines: lines };
       }
 
+
+      var tableSorts = {};
+
+      function sortCellValue(td) {
+        if (!td) return null;
+        var t = td.textContent.trim().replace(/^[^\w\d.+\-]+/, '');
+        if (!t || t === '—') return null;
+        var m = t.match(/^([+\-]?[\d.,]+)\s*(ms|s|kB|MB|B|%)?/);
+        if (!m) return t.toLowerCase();
+        var v = parseFloat(m[1].replace(/,/g, ''));
+        if (m[2] === 's') v *= 1000;
+        if (m[2] === 'MB') v *= 1024;
+        return v;
+      }
+
+      function isChildRow(tr) {
+        return tr.classList.contains('agg-child') || tr.hasAttribute('data-agg-node') || tr.hasAttribute('data-attester-node') || tr.cells.length === 1;
+      }
+
+      function applyTableSort(table) {
+        var key = table.getAttribute('data-sort-key');
+        var state = tableSorts[key];
+        var ths = table.querySelectorAll('thead tr:last-child th');
+
+        ths.forEach(function(th, i) {
+          th.setAttribute('data-colsort', i);
+          var arrow = th.querySelector('.sort-arrow');
+          if (arrow) arrow.remove();
+          if (state && state.col === i) th.insertAdjacentHTML('beforeend', '<span class="sort-arrow">' + (state.dir > 0 ? '&#9650;' : '&#9660;') + '</span>');
+        });
+
+        if (!state) return;
+
+        var tbody = table.tBodies[0];
+        if (!tbody) return;
+
+        var groups = [];
+        Array.prototype.forEach.call(tbody.rows, function(tr) {
+          if (isChildRow(tr) && groups.length) groups[groups.length - 1].push(tr);
+          else groups.push([tr]);
+        });
+
+        groups.forEach(function(g, i) { g.order = i; });
+        groups.sort(function(a, b) {
+          var x = sortCellValue(a[0].cells[state.col]);
+          var y = sortCellValue(b[0].cells[state.col]);
+          if (x === y) return a.order - b.order;
+          if (x === null) return 1;
+          if (y === null) return -1;
+          if (typeof x !== typeof y) return typeof x === 'number' ? -1 : 1;
+          return (x < y ? -1 : 1) * state.dir;
+        });
+        groups.forEach(function(g) { g.forEach(function(tr) { tbody.appendChild(tr); }); });
+      }
+
+      function sortTables(root) {
+        root.querySelectorAll('table[data-sort-key]').forEach(applyTableSort);
+      }
+
+      document.addEventListener('click', function(ev) {
+        var th = ev.target.closest && ev.target.closest('th[data-colsort]');
+        if (!th) return;
+        var table = th.closest('table[data-sort-key]');
+        if (!table) return;
+        var key = table.getAttribute('data-sort-key');
+        var col = parseInt(th.getAttribute('data-colsort'), 10);
+        var state = tableSorts[key];
+        var numeric = typeof sortCellValue((table.tBodies[0] && table.tBodies[0].rows[0] || { cells: [] }).cells[col]) === 'number';
+        tableSorts[key] = state && state.col === col ? { col: col, dir: -state.dir } : { col: col, dir: numeric ? -1 : 1 };
+        applyTableSort(table);
+      });
+
       var attesterColors = {
         lighthouse: '#8b5cf6', lodestar: '#f1b44c', nimbus: '#50c3e6', prysm: '#5b8def',
         teku: '#f0824c', grandine: '#34c38f', caplin: '#d4a373', silver: '#b8c4d6',
@@ -168,7 +251,7 @@
               '<td>' + note + '</td></tr>';
           });
 
-          return '<div style="max-height:320px;overflow-y:auto"><table class="table table-sm small mb-0" style="width:auto">' +
+          return '<div class="table-responsive" style="max-height:320px;overflow-y:auto"><table data-sort-key="attester-node" class="table table-sm small mb-0 cols-faint" style="width:auto">' +
             '<thead><tr class="text-muted"><th>validator</th><th>slot</th><th class="text-end">first seen</th><th></th></tr></thead><tbody>' +
             rows + '</tbody></table></div>' +
             (detail.total > detail.validators.length
@@ -254,14 +337,12 @@
           });
 
           var aggregates = data.aggregates || [];
-          var marks = Array.isArray(aggregates)
-            ? aggregates.filter(function(a) { return a.seen; }).map(function(a) { return { ms: a.seen_ms, client: a.client, aggregator: a.aggregator_index }; })
-            : [];
+          var marks = Array.isArray(aggregates) ? aggregates.filter(function(a) { return a.seen; }) : [];
 
-          marks.forEach(function(m) {
-            if (m.ms >= slotMs) return;
-            chart += '<div class="agg-mark" style="left:' + (m.ms / slotMs * 100) + '%;background:' + (attesterColors[m.client] || attesterColors.unknown) + '" title="' +
-              esc('aggregate from ' + m.aggregator + ' (' + m.client + ') at ' + fmtStr(m.ms)) + '"></div>';
+          marks.forEach(function(a) {
+            if (a.seen_ms >= slotMs) return;
+            chart += '<div class="agg-mark" data-agg-key="' + a.committee_index + ':' + a.aggregator_index + '" style="left:' + (a.seen_ms / slotMs * 100) + '%;background:' + (attesterColors[a.client] || attesterColors.unknown) + '" title="' +
+              esc('committee ' + a.committee_index + ' aggregate from ' + a.aggregator_index + (a.aggregator_name ? ' (' + a.aggregator_name + ')' : '') + ' at ' + fmtStr(a.seen_ms)) + '"></div>';
           });
 
           return chart;
@@ -288,7 +369,7 @@
           });
           labels += '<span style="left:100%;transform:translateX(-100%)">' + fmtAxis(slotMs) + '</span>';
 
-          var legend = '<table class="table table-sm small mb-0 mt-2" style="width:auto"><thead><tr class="text-muted">' +
+          var legend = '<table data-sort-key="attesters" class="table table-sm small mb-0 mt-2 cols-faint" style="width:auto"><thead><tr class="text-muted">' +
             '<th>client</th><th class="text-end">seen</th><th class="text-end">median</th><th class="text-end">p90</th>' +
             '<th class="text-end" title="Attestations first seen after the attestation deadline">after attestation deadline</th>' +
             '<th class="text-end" title="Attestations first seen after the aggregate deadline, too late to be aggregated in time">after aggregate deadline</th>' +
@@ -339,6 +420,7 @@
           body.innerHTML = stats + liveBadge(data.settled) +
             '<div class="arrival-hist hist-tall">' + chart + '</div>' +
             '<div class="arrival-hist-axis">' + labels + '</div>' + legend;
+          sortTables(body);
         }
 
         function clientNodes(client) {
@@ -423,7 +505,7 @@
 
         document.addEventListener('click', function(ev) {
           if (!attesterSolo || !attesterData) return;
-          if (ev.target.closest('[data-attester], [data-attester-node], a, button, input, select, [data-sort], [data-tlseries]')) return;
+          if (ev.target.closest('[data-attester], [data-attester-node], a, button, input, select, [data-sort], [data-tlseries], [data-colsort]')) return;
           if (body.contains(ev.target) && ev.target.closest('table')) return;
 
           attesterSolo = null;
@@ -463,10 +545,14 @@
         });
 
         var keys = Object.keys(lanes).map(Number).sort(function(a, b) { return a - b; });
-        var left = 90, width = 880, laneH = 22, top = 4;
+        var left = 90, width = 880, laneH = keys.length > 4 ? 14 : 22, top = 4, radius = keys.length > 4 ? 4 : 5;
         var height = top + keys.length * laneH + 18;
         var x = function(ms) { return left + Math.min(ms, maxMs) / maxMs * width; };
         var svg = '<svg viewBox="0 0 ' + (left + width + 10) + ' ' + height + '" style="width:100%;height:auto" class="arrival-aggregate-lanes">';
+
+        for (var g = 1000; g < maxMs; g += 1000) {
+          svg += '<line x1="' + x(g) + '" x2="' + x(g) + '" y1="' + top + '" y2="' + (height - 16) + '" stroke="var(--bs-border-color)" stroke-width="0.6" opacity="0.6"></line>';
+        }
 
         [[data.attestation_due_ms, 'attestation deadline', '4 3'], [data.aggregate_due_ms, 'aggregate send time', ''], [data.slot_ms, 'slot end', '1 3']].forEach(function(line) {
           if (!line[0]) return;
@@ -477,7 +563,7 @@
         keys.forEach(function(committee, i) {
           var y = top + i * laneH + laneH / 2;
           svg += '<rect x="' + left + '" y="' + (y - laneH / 2 + 2) + '" width="' + width + '" height="' + (laneH - 4) + '" fill="var(--bs-secondary-bg)" opacity="0.5"></rect>';
-          svg += '<text x="' + (left - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="var(--bs-secondary-color)">committee ' + committee + '</text>';
+          svg += '<text data-agg-committee="' + committee + '" x="' + (left - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-size="' + (laneH < 20 ? 9 : 11) + '" fill="var(--bs-secondary-color)">committee ' + committee + '</text>';
 
           lanes[committee].forEach(function(a) {
             var label = 'aggregator ' + a.aggregator_index + (a.aggregator_name ? ' (' + a.aggregator_name + ')' : '');
@@ -489,7 +575,7 @@
             }
 
             var pct = a.committee_size ? Math.round(a.attesters * 100 / a.committee_size) + '%' : a.attesters;
-            svg += '<circle cx="' + x(a.seen_ms) + '" cy="' + y + '" r="5" fill="' + clientColor(a.client) + '" stroke="var(--bs-body-bg)" stroke-width="1"><title>' +
+            svg += '<circle data-agg-key="' + a.committee_index + ':' + a.aggregator_index + '" cx="' + x(a.seen_ms) + '" cy="' + y + '" r="' + radius + '" fill="' + clientColor(a.client) + '" stroke="var(--bs-body-bg)" stroke-width="1"><title>' +
               esc(label + ' · ' + a.client + ' · ' + fmtStr(a.seen_ms) + ' · ' + pct + ' of the committee') + '</title></circle>';
           });
         });
@@ -501,56 +587,54 @@
         return svg + '</svg>';
       }
 
-      function renderSlotAggregates(row, body, data) {
-        var aggregates = (data && data.aggregates) || [];
+      function highlightAggregates(key, committee) {
+        document.querySelectorAll('[data-agg-key]').forEach(function(el) {
+          var k = el.getAttribute('data-agg-key');
+          var match = key ? k === key : committee != null ? k.split(':')[0] === committee : false;
+          var active = key || committee != null;
+          if (el.tagName === 'TR') {
+            el.classList.toggle('attester-hover', !!active && match);
+            return;
+          }
+          el.classList.toggle('agg-focus', !!active && match);
+          el.classList.toggle('agg-faded', !!active && !match);
+        });
+        document.querySelectorAll('tr[data-agg-committee]').forEach(function(el) {
+          el.classList.toggle('attester-hover', committee != null && el.getAttribute('data-agg-committee') === committee);
+        });
+      }
 
-        if (!aggregates.length) {
-          row.style.display = 'none';
-          return;
-        }
+      var aggregateHover = null;
+      document.addEventListener('mouseover', function(ev) {
+        var el = ev.target.closest && ev.target.closest('[data-agg-key], [data-agg-committee]');
+        var next = el ? (el.getAttribute('data-agg-key') || 'c:' + el.getAttribute('data-agg-committee')) : null;
+        if (next === aggregateHover) return;
+        aggregateHover = next;
+        if (!next) highlightAggregates(null, null);
+        else if (next.indexOf('c:') === 0) highlightAggregates(null, next.slice(2));
+        else highlightAggregates(next, null);
+      });
 
-        var dueMs = data.aggregate_due_ms;
-        var seen = aggregates.filter(function(a) { return a.seen; });
-        var missing = aggregates.filter(function(a) { return !a.seen && !a.redundant; });
-        var redundant = aggregates.filter(function(a) { return !a.seen && a.redundant; });
-        var hasElected = aggregates.some(function(a) { return a.elected != null; });
-        var committees = {};
-        var bytes = 0;
+      function mountSlotAggregates(row, body, opts) {
+        var data = null;
+        var expanded = {};
 
-        aggregates.forEach(function(a) { committees[a.committee_index] = true; bytes += a.size_bytes || 0; });
-
-        var summary = plural(seen.length, 'aggregate') + ' over ' + plural(Object.keys(committees).length, 'committee');
-
-        if (seen.length) {
-          var firstMs = Math.min.apply(null, seen.map(function(a) { return a.seen_ms; }));
-          summary += sep + 'first ' + fmtStr(firstMs) + ' (' + fmtDelta(firstMs - dueMs) + ' after the aggregate send time)';
-        }
-
-        if (data.aggregate_members) summary += sep + Math.round(data.aggregate_covered * 100 / data.aggregate_members) + '% of committee members covered';
-        if (bytes) summary += sep + fmtBytes(bytes) + ' of aggregates';
-        if (missing.length) summary += sep + '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">' + plural(missing.length, 'elected aggregator') + ' not seen</span>';
-        if (redundant.length) summary += sep + '<span class="text-muted" title="' + esc(aggregateTips.redundant) + '">' + plural(redundant.length, 'redundant aggregate') + ' not relayed</span>';
-        summary += liveBadge(data.settled);
-
-        var rows = '';
-
-        aggregates.forEach(function(a) {
-          var name = a.aggregator_name ? ' <span class="text-muted">' + esc(a.aggregator_name) + '</span>' : '';
+        function aggregatorRow(a, dueMs) {
+          var name = a.aggregator_name ? ' <span class="text-muted">' + esc(a.aggregator_name) + '</span>' + (opts && opts.nodeNote ? opts.nodeNote(a.aggregator_name) : '') : '';
           var cells = '<td class="num">' + a.committee_index + '</td>' +
             '<td class="num"><a href="/validator/' + a.aggregator_index + '">' + a.aggregator_index + '</a>' + name + '</td>' +
-            '<td><span class="arrival-heat-key" style="background:' + clientColor(a.client) + '"></span> ' + esc(a.client) + '</td>' +
-            (hasElected ? '<td>' + (a.elected ? 'yes' : '<span style="color:#f1b44c">no</span>') + '</td>' : '');
+            '<td><span class="arrival-heat-key" style="background:' + clientColor(a.client) + '"></span> ' + esc(a.client) + '</td>';
+          var open = '<tr class="agg-child" data-agg-key="' + a.committee_index + ':' + a.aggregator_index + '">';
 
           if (!a.seen) {
-            rows += '<tr>' + cells + '<td colspan="8">' + (a.redundant
-              ? '<span class="text-muted" title="Nodes ignore an aggregate whose bits an earlier one already covers, so it was not relayed to the observers">not relayed, the committee was already covered</span>'
-              : '<span style="color:#f46a6a">no aggregate seen</span>') + '</td></tr>';
-            return;
+            return open + cells + '<td colspan="8">' + (a.redundant
+              ? '<span class="text-muted" title="' + esc(aggregateTips.redundant) + '">not relayed, the committee was already covered</span>'
+              : '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">no aggregate seen</span>') + '</td></tr>';
           }
 
           var pct = a.committee_size ? ' <span class="text-muted">(' + Math.round(a.attesters * 100 / a.committee_size) + '%)</span>' : '';
 
-          rows += '<tr>' + cells +
+          return open + cells +
             '<td class="text-end num"' + (a.seen_ms >= data.slot_ms ? ' style="color:#f46a6a"' : '') + '>' + fmtStr(a.seen_ms) + '</td>' +
             '<td class="text-end num">' + fmtDelta(a.seen_ms - dueMs) + '</td>' +
             '<td class="text-end num">' + (a.observers_shared ? '<span class="text-muted" title="' + esc(aggregateTips.nodesP50) + '">shared</span>' : a.observers > 1 ? fmtStr(a.observers_p50_ms) + ' <span class="text-muted">(' + a.observers + ')</span>' : '&mdash;') + '</td>' +
@@ -559,18 +643,94 @@
             '<td class="text-end num">' + (a.left_out ? '<span style="color:#f1b44c">' + a.left_out + '</span>' : '0') + '</td>' +
             '<td class="text-end num">' + a.included_unseen + '</td>' +
             '<td class="text-end num">' + (a.size_bytes ? fmtBytes(a.size_bytes) : '&mdash;') + '</td></tr>';
+        }
+
+        function committeeRow(committee, list, dueMs) {
+          var seen = list.filter(function(a) { return a.seen; });
+          var missing = list.filter(function(a) { return !a.seen && !a.redundant; }).length;
+          var redundant = list.filter(function(a) { return !a.seen && a.redundant; }).length;
+          var first = seen.length ? Math.min.apply(null, seen.map(function(a) { return a.seen_ms; })) : null;
+          var best = seen.reduce(function(m, a) { return a.attesters > m.attesters ? a : m; }, { attesters: 0, committee_size: list[0].committee_size });
+          var bytes = seen.reduce(function(n, a) { return n + (a.size_bytes || 0); }, 0);
+          var clients = seen.map(function(a) { return '<span class="arrival-heat-key" style="background:' + clientColor(a.client) + '" title="' + esc(a.client) + '"></span>'; }).join(' ');
+          var state = plural(seen.length, 'aggregate') +
+            (missing ? ' <span style="color:#f46a6a">&middot; ' + missing + ' not seen</span>' : '') +
+            (redundant ? ' <span class="text-muted">&middot; ' + redundant + ' redundant</span>' : '');
+
+          return '<tr data-agg-committee="' + committee + '"' + (missing ? ' style="background:rgba(244,106,106,0.08)"' : '') + '>' +
+            '<td class="num">' + (expanded[committee] ? '&#9662;' : '&#9656;') + ' ' + committee + '</td>' +
+            '<td>' + state + '</td>' +
+            '<td>' + clients + '</td>' +
+            '<td class="text-end num">' + (first != null ? fmtStr(first) : '&mdash;') + '</td>' +
+            '<td class="text-end num">' + (first != null ? fmtDelta(first - dueMs) : '') + '</td>' +
+            '<td></td>' +
+            '<td class="text-end num">' + (best.attesters ? best.attesters + (best.committee_size ? ' / ' + best.committee_size : '') : '&mdash;') + '</td>' +
+            '<td></td><td></td><td></td>' +
+            '<td class="text-end num">' + (bytes ? fmtBytes(bytes) : '&mdash;') + '</td></tr>';
+        }
+
+        function render() {
+          var aggregates = data.aggregates;
+          var dueMs = data.aggregate_due_ms;
+          var seen = aggregates.filter(function(a) { return a.seen; });
+          var missing = aggregates.filter(function(a) { return !a.seen && !a.redundant; });
+          var redundant = aggregates.filter(function(a) { return !a.seen && a.redundant; });
+          var byCommittee = {};
+          var bytes = 0;
+
+          aggregates.forEach(function(a) { (byCommittee[a.committee_index] = byCommittee[a.committee_index] || []).push(a); bytes += a.size_bytes || 0; });
+          var committees = Object.keys(byCommittee).map(Number).sort(function(x, y) { return x - y; });
+
+          var summary = plural(seen.length, 'aggregate') + ' over ' + plural(committees.length, 'committee');
+          if (seen.length) {
+            var firstMs = Math.min.apply(null, seen.map(function(a) { return a.seen_ms; }));
+            summary += sep + 'first ' + fmtStr(firstMs) + ' (' + fmtDelta(firstMs - dueMs) + ' after the aggregate send time)';
+          }
+          if (data.aggregate_members) summary += sep + Math.round(data.aggregate_covered * 100 / data.aggregate_members) + '% of committee members covered';
+          if (bytes) summary += sep + fmtBytes(bytes) + ' of aggregates';
+          if (missing.length) summary += sep + '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">' + plural(missing.length, 'elected aggregator') + ' not seen</span>';
+          if (redundant.length) summary += sep + '<span class="text-muted" title="' + esc(aggregateTips.redundant) + '">' + plural(redundant.length, 'redundant aggregate') + ' not relayed</span>';
+          summary += liveBadge(data.settled);
+
+          var rows = '';
+          committees.forEach(function(committee) {
+            rows += committeeRow(committee, byCommittee[committee], dueMs);
+            if (expanded[committee]) {
+              byCommittee[committee].forEach(function(a) { rows += aggregatorRow(a, dueMs); });
+            }
+          });
+
+          body.innerHTML = '<div class="mb-1">' + summary + '</div>' + aggregateLanes(data) +
+            '<div class="text-muted small mb-1">Click a committee to list its aggregators; hover a row, dot or diamond to find it in the charts.</div>' +
+            '<div class="table-responsive"><table data-sort-key="slot-aggregates" class="table table-sm agg-table text-left mb-1"><thead><tr class="text-muted">' +
+            th('committee', aggregateTips.committee) + th('aggregator', aggregateTips.aggregator) + th('client', aggregateTips.client) +
+            th('first seen', aggregateTips.firstSeen, 'text-end') + th('after send', aggregateTips.afterSend, 'text-end') + th('p50 (nodes)', aggregateTips.nodesP50, 'text-end') +
+            th('attesters', aggregateTips.attestersRow, 'text-end') + th('last single', aggregateTips.lastSingle, 'text-end') + th('left out', aggregateTips.leftOut, 'text-end') +
+            th('unseen', aggregateTips.unseen, 'text-end') + th('size', aggregateTips.size, 'text-end') +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+          row.style.display = '';
+          sortTables(body);
+        }
+
+        body.addEventListener('click', function(ev) {
+          var tr = ev.target.closest('tr[data-agg-committee]');
+          if (!tr || ev.target.closest('a')) return;
+          var committee = tr.getAttribute('data-agg-committee');
+          expanded[committee] = !expanded[committee];
+          render();
         });
 
-        body.innerHTML = '<div class="mb-1">' + summary + '</div>' + aggregateLanes(data) +
-          '<div class="table-responsive"><table class="table table-sm agg-table text-left mb-1"><thead><tr class="text-muted">' +
-          th('committee', aggregateTips.committee) + th('aggregator', aggregateTips.aggregator) + th('client', aggregateTips.client) + (hasElected ? th('elected', aggregateTips.elected) : '') +
-          th('first seen', aggregateTips.firstSeen, 'text-end') + th('after send', aggregateTips.afterSend, 'text-end') + th('p50 (nodes)', aggregateTips.nodesP50, 'text-end') +
-          th('attesters', aggregateTips.attestersRow, 'text-end') + th('last single', aggregateTips.lastSingle, 'text-end') + th('left out', aggregateTips.leftOut, 'text-end') +
-          th('unseen', aggregateTips.unseen, 'text-end') + th('size', aggregateTips.size, 'text-end') +
-          '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-        row.style.display = '';
-      }
+        return function(next) {
+          data = next;
 
+          if (!data || !data.aggregates || !data.aggregates.length) {
+            row.style.display = 'none';
+            return;
+          }
+
+          render();
+        };
+      }
 
       var aggregateTips = {
         client: 'The consensus client of the aggregator, from its validator name',
@@ -584,7 +744,6 @@
         slot: 'The slot of the aggregate',
         committee: 'The beacon committee the aggregate is for',
         aggregator: 'The aggregator validator and its node',
-        elected: 'Whether the aggregator is in the committee\'s aggregation committee in the state',
         state: 'Seen on gossip, redundant (not relayed because the committee was already covered) or not seen',
         firstSeen: 'When an observer first saw the aggregate, relative to slot start',
         afterSend: 'How long after the aggregate send time (6s into the slot) the aggregate was first seen',
@@ -728,7 +887,7 @@
           }).join('');
 
           return '<div class="mt-2"><b>' + esc(soloNode) + '</b> <span class="text-muted">&middot; ' + plural(points.length, 'aggregation duty') + '</span>' +
-            '<div class="table-responsive" style="max-height:320px;overflow-y:auto"><table class="table table-sm agg-table text-left mb-0"><thead><tr class="text-muted">' +
+            '<div class="table-responsive" style="max-height:320px;overflow-y:auto"><table data-sort-key="node-duties" class="table table-sm agg-table text-left mb-0"><thead><tr class="text-muted">' +
             th('slot', aggregateTips.slot) + th('committee', aggregateTips.committee) + th('aggregator', aggregateTips.aggregator) +
             th('first seen', aggregateTips.state, 'text-end') + th('after send', aggregateTips.afterSend, 'text-end') + th('attesters', aggregateTips.attestersRow, 'text-end') +
             '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
@@ -761,12 +920,13 @@
           body.innerHTML = '<div class="mb-1">' + summary + '</div>' +
             epochAggregateScatter(data, focus) +
             '<div class="text-muted small mb-1">Hover an aggregator client to highlight its aggregates, click it for its nodes, click a node for its aggregation duties.</div>' +
-            '<div class="table-responsive"><table class="table table-sm agg-table text-left mb-1"><thead><tr class="text-muted">' +
+            '<div class="table-responsive"><table data-sort-key="epoch-aggregators" class="table table-sm agg-table text-left mb-1"><thead><tr class="text-muted">' +
             th('client', aggregateTips.client) + th('aggregates', aggregateTips.aggregates, 'text-end') + th('not seen', aggregateTips.notSeen, 'text-end') +
             th('redundant', aggregateTips.redundant, 'text-end') + th('p50', aggregateTips.p50, 'text-end') + th('p90', aggregateTips.p90, 'text-end') +
             th('late', aggregateTips.late, 'text-end') + th('attesters', aggregateTips.attesters, 'text-end') +
             '</tr></thead><tbody>' + rows + '</tbody></table></div>' + (soloNode ? nodeList() : '');
           row.style.display = '';
+          sortTables(body);
           applyFocus();
         }
 
@@ -824,7 +984,7 @@
       return {
         esc: esc, fmtStr: fmtStr, fmtAxis: fmtAxis, timeColor: timeColor, fmtMsColored: fmtMsColored,
         liveBadge: liveBadge, sep: sep, histAxis: histAxis, mountAttesters: mountAttesters,
-        renderSlotAggregates: renderSlotAggregates, mountEpochAggregates: mountEpochAggregates
+        mountSlotAggregates: mountSlotAggregates, mountEpochAggregates: mountEpochAggregates
       };
     })();
   </script>

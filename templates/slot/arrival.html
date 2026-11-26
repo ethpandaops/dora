@@ -313,6 +313,15 @@
         if (wavesData) renderTimeline(wavesData);
       }
 
+      function arrivalNodeNote(name) {
+        var node = ((arrivalData || {}).nodes || []).filter(function(n) { return n.name === name; })[0];
+        if (!node || !(node.continent || node.country_code)) return '';
+
+        return ' <span class="small" title="' + esc(node.country || '') + '">' + flag((node.country_code || '').toUpperCase()) + ' ' +
+          esc(continentNames[node.continent] || node.continent || '') + '</span>';
+      }
+
+      var renderSlotAggregates = shared.mountSlotAggregates(document.getElementById('aggregates-row'), document.getElementById('aggregates-body'), { nodeNote: arrivalNodeNote });
       var renderAttesters = shared.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'), {
         onHover: function(client, nodes) {
           arrivalHover = client;
@@ -332,13 +341,7 @@
           arrivalSoloNodes = nodes;
           applySelection();
         },
-        nodeNote: function(name) {
-          var node = ((arrivalData || {}).nodes || []).filter(function(n) { return n.name === name; })[0];
-          if (!node || !(node.continent || node.country_code)) return '';
-
-          return ' <span class="small" title="' + esc(node.country || '') + '">' + flag((node.country_code || '').toUpperCase()) + ' ' +
-            esc(continentNames[node.continent] || node.continent || '') + '</span>';
-        },
+        nodeNote: arrivalNodeNote,
         nodeUrl: function(name) {
           return '/slot/' + arrivalSlot + '/attesters/node?name=' + encodeURIComponent(name) + '&root=' + encodeURIComponent(arrivalBlockRoot);
         }
@@ -1257,7 +1260,7 @@
           attestersCurrent = attesters;
 
           try {
-            shared.renderSlotAggregates(document.getElementById('aggregates-row'), document.getElementById('aggregates-body'), attesters);
+            renderSlotAggregates(attesters);
           } catch (err) {
             console.error('slot aggregates rendering failed:', err);
           }
