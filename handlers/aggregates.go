@@ -201,6 +201,7 @@ type slotAggregates struct {
 	members   uint64
 	covered   uint64
 	missing   uint64
+	redundant uint64
 	firstMs   uint32
 	seen      uint64
 	sizeBytes uint64
@@ -211,6 +212,7 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 	result := &slotAggregates{}
 	seenAggregators := map[uint64]map[phase0.ValidatorIndex]bool{}
 	coverage := map[uint64]map[int]bool{}
+	saturated := map[uint64]bool{}
 
 	newRow := func(committee uint64, aggregator phase0.ValidatorIndex) *models.SlotAggregate {
 		name := services.GlobalBeaconService.GetValidatorNameAt(uint64(aggregator), slot)
@@ -266,9 +268,15 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 		result.sizeBytes += uint64(aggregate.sizeBytes)
 
 		if aggregate.committee < uint64(len(committees)) {
+			coversSeen := true
+
 			for position, index := range committees[aggregate.committee] {
 				included := position < len(members) && members[position]
 				seenMs, seen := arrivals[index]
+
+				if !included && (arrivals == nil || seen) {
+					coversSeen = false
+				}
 
 				switch {
 				case included:
@@ -284,6 +292,10 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 					row.LeftOut++
 				}
 			}
+
+			if coversSeen {
+				saturated[aggregate.committee] = true
+			}
 		}
 
 		result.rows = append(result.rows, row)
@@ -296,8 +308,15 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 
 		for _, aggregator := range aggregators {
 			if !seenAggregators[uint64(committee)][aggregator] {
-				result.rows = append(result.rows, newRow(uint64(committee), aggregator))
-				result.missing++
+				row := newRow(uint64(committee), aggregator)
+				row.Redundant = saturated[uint64(committee)]
+				result.rows = append(result.rows, row)
+
+				if row.Redundant {
+					result.redundant++
+				} else {
+					result.missing++
+				}
 			}
 		}
 	}
@@ -408,6 +427,7 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 			Committees: uint64(len(committees)),
 			Aggregates: built.seen,
 			Missing:    built.missing,
+			Redundant:  built.redundant,
 			Members:    built.members,
 			Covered:    built.covered,
 		}
@@ -419,6 +439,7 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 		result.Slots = append(result.Slots, summary)
 		result.Aggregates += built.seen
 		result.Missing += built.missing
+		result.Redundant += built.redundant
 		result.SizeBytes += built.sizeBytes
 		result.Members += built.members
 		result.Covered += built.covered
@@ -431,7 +452,12 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 			}
 
 			if !row.Seen {
-				group.Missing++
+				if row.Redundant {
+					group.Redundant++
+				} else {
+					group.Missing++
+				}
+
 				continue
 			}
 
