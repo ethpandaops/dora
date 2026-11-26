@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	v1 "github.com/ethpandaops/go-eth2-client/api/v1"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/pq"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -141,6 +142,14 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 		WithdrawCredentials: validator.Validator.WithdrawalCredentials,
 		TabView:             tabView,
 		ElectraIsActive:     specs.ElectraForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.ElectraForkEpoch,
+	}
+
+	if chainState.IsPqEnabled(chainState.CurrentEpoch()) {
+		pageData.XMSSPublicKey = validator.Validator.PublicKey[pq.DepositPrefixSize:]
+
+		if _, vrfRoot, found := services.GlobalBeaconService.GetBeaconIndexer().GetValidatorXMSSKeys(validator.Index); found {
+			pageData.VRFRoot = vrfRoot[:]
+		}
 	}
 
 	// The actual balance is only available while a recent epoch state is loaded; right

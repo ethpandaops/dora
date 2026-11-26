@@ -90,6 +90,10 @@ func MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, pa
 	} else {
 		// SSZ encoding
 		version = uint64(spec.DataVersionGloas)
+		if payload.Version == spec.DataVersionPQ {
+			version = uint64(spec.DataVersionPQ)
+		}
+
 		ssz, err = dynSsz.MarshalSSZ(payload)
 	}
 
@@ -205,7 +209,7 @@ func getBlockExecutionExtraData(b *all.SignedBeaconBlock) ([]byte, error) {
 	switch b.Version {
 	case spec.DataVersionPhase0, spec.DataVersionAltair:
 		return nil, errors.New("no execution payload in pre-bellatrix block")
-	case spec.DataVersionGloas, spec.DataVersionHeze:
+	case spec.DataVersionGloas, spec.DataVersionHeze, spec.DataVersionPQ:
 		// Execution payload is delivered in a separate envelope.
 		return nil, nil
 	}

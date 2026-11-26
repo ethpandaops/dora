@@ -896,3 +896,7 @@ func (indexer *Indexer) applyBuilderBalanceChanges(block *Block, balances []phas
 func (indexer *Indexer) GetBlockExecutionProofs(blockRoot phase0.Root) []*btypes.SlotExecutionProof {
 	return indexer.executionProofCache.getProofs(blockRoot)
 }
+
+func (indexer *Indexer) GetAttestationArrivals(slot phase0.Slot, blockRoot *phase0.Root) (map[phase0.ValidatorIndex]uint32, uint64) {
+	return indexer.attestationArrivals.getArrivals(slot, blockRoot)
+}

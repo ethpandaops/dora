@@ -222,7 +222,7 @@ func GetAttesterDuties(spec *consensus.ChainSpec, state *BeaconState, epoch phas
 	seed := GetSeed(spec, state, epoch, spec.DomainBeaconAttester)
 
 	validatorCount := state.GetActiveCount()
-	committeesPerSlot := SlotCommitteeCount(spec, validatorCount)
+	committeesPerSlot := SlotCommitteeCount(spec, epoch, validatorCount)
 	committeesCount := committeesPerSlot * spec.SlotsPerEpoch
 
 	// Save the shuffled indices in cache, this is only needed once per epoch or once per new committee index.
@@ -262,11 +262,11 @@ func GetAttesterDuties(spec *consensus.ChainSpec, state *BeaconState, epoch phas
 	return attesterDuties, nil
 }
 
-func SlotCommitteeCount(spec *consensus.ChainSpec, activeValidatorCount uint64) uint64 {
+func SlotCommitteeCount(spec *consensus.ChainSpec, epoch phase0.Epoch, activeValidatorCount uint64) uint64 {
 	var committeesPerSlot = activeValidatorCount / spec.SlotsPerEpoch / spec.TargetCommitteeSize
 
-	if committeesPerSlot > spec.MaxCommitteesPerSlot {
-		return spec.MaxCommitteesPerSlot
+	if maxCommittees := spec.MaxCommitteesPerSlotAtEpoch(epoch); committeesPerSlot > maxCommittees {
+		return maxCommittees
 	}
 	if committeesPerSlot == 0 {
 		return 1
@@ -415,4 +415,50 @@ func GetPtcDuties(
 	}
 
 	return selected, nil
+}
+
+// GetAggregatorDuties returns the aggregation committee of a beacon committee on a pq network:
+// up to aggregatorsPerCommittee members sampled by effective balance without duplicates.
+func GetAggregatorDuties(
+	spec *consensus.ChainSpec,
+	state *BeaconState,
+	committee []ActiveIndiceIndex,
+	slot phase0.Slot,
+	committeeIndex uint64,
+) []ActiveIndiceIndex {
+	const aggregatorsPerCommittee = 4
+
+	epoch := phase0.Epoch(slot / phase0.Slot(spec.SlotsPerEpoch))
+	epochSeed := GetSeed(spec, state, epoch, spec.DomainSelectionProof)
+
+	seedData := append([]byte{}, epochSeed[:]...)
+	seedData = append(seedData, UintToBytes(uint64(slot))...)
+	seedData = append(seedData, UintToBytes(committeeIndex)...)
+	seed := Hash(seedData)
+
+	candidates := append([]ActiveIndiceIndex(nil), committee...)
+	aggregators := make([]ActiveIndiceIndex, 0, aggregatorsPerCommittee)
+	maxRandomValue := uint64(1<<16 - 1)
+
+	for len(aggregators) < aggregatorsPerCommittee && len(candidates) > 0 {
+		roundSeed := Hash(append(append([]byte{}, seed[:]...), UintToBytes(uint64(len(aggregators)))...))
+		total := uint64(len(candidates))
+		selected := -1
+
+		for i := uint64(0); selected < 0; i++ {
+			hash := Hash(append(append([]byte{}, roundSeed[:]...), UintToBytes(i/16)...))
+			offset := (i % 16) * 2
+			randomValue := BytesToUint(hash[offset : offset+2])
+			next := i % total
+
+			if uint64(state.GetEffectiveBalance(candidates[next]))*maxRandomValue >= spec.MaxEffectiveBalanceElectra*randomValue {
+				selected = int(next)
+			}
+		}
+
+		aggregators = append(aggregators, candidates[selected])
+		candidates = append(candidates[:selected], candidates[selected+1:]...)
+	}
+
+	return aggregators
 }

@@ -1,0 +1,13 @@
+package handlers
+
+import (
+	"context"
+
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+
+	"github.com/ethpandaops/dora/services"
+)
+
+func electedAggregators(ctx context.Context, slot phase0.Slot) [][]phase0.ValidatorIndex {
+	return services.GlobalBeaconService.GetSlotAggregators(ctx, slot)
+}

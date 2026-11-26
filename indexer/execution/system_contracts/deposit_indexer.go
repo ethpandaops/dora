@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/pq"
 	"github.com/ethpandaops/spamoor/txtypes"
 	"github.com/jmoiron/sqlx"
 	blsu "github.com/protolambda/bls12-381-util"
@@ -233,6 +234,12 @@ func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx, par
 	if isTopUp {
 		// if there is already a valid deposit for the same public key, set valid signature to 2, indicating that this is a top-up deposit
 		depositTx.ValidSignature = 2
+		return
+	}
+
+	if specs := ds.indexerCtx.ChainState.GetSpecs(); specs != nil && specs.PqForkEpoch != nil && len(depositTx.PublicKey) == 48 &&
+		bytes.Equal(depositTx.PublicKey[:pq.DepositPrefixSize], make([]byte, pq.DepositPrefixSize)) {
+		depositTx.ValidSignature = 1
 		return
 	}
 

@@ -38,6 +38,7 @@ var pageModelSuffixes = []string{"PageData", "Response"}
 // package but not to this list.
 var cachedPageValues = []any{
 	&models.AddressPageData{},
+	&models.AttestersNodeResponse{},
 	&models.BlobsPageData{},
 	&models.BlocksFilteredPageData{},
 	&models.BlocksPageData{},
@@ -54,6 +55,7 @@ var cachedPageValues = []any{
 	&models.ElConsolidationsPageData{},
 	&models.ElWithdrawalsPageData{},
 	&models.EpochArrivalResponse{},
+	&models.EpochAttestersResponse{},
 	&models.EpochPageData{},
 	&models.EpochsPageData{},
 	&models.ErrorPageData{},

@@ -22,6 +22,7 @@ import (
 	"github.com/ethpandaops/go-eth2-client/spec/electra"
 	"github.com/ethpandaops/go-eth2-client/spec/gloas"
 	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/go-eth2-client/spec/pq"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -59,6 +60,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/builder_exit_requests.html",
 		"slot/bids.html",
 		"slot/arrival.html",
+		"_shared/arrival_chart.html",
 		"slot/ptc_votes.html",
 		"slot/inclusion_lists.html",
 		"slot/block_access_list.html",
@@ -245,17 +247,18 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	epoch := chainState.EpochOfSlot(slot)
 
 	pageData := &models.SlotPageData{
-		Slot:           uint64(slot),
-		Epoch:          uint64(chainState.EpochOfSlot(slot)),
-		Ts:             chainState.SlotToTime(slot),
-		NextSlot:       uint64(slot + 1),
-		PreviousSlot:   uint64(slot - 1),
-		Future:         slot >= currentSlot,
-		EpochFinalized: finalizedEpoch >= chainState.EpochOfSlot(slot),
-		Badges:         []*models.SlotPageBlockBadge{},
-		TracoorUrl:     utils.Config.Frontend.TracoorUrl,
-		XatuEnabled:    xatu.GlobalClient != nil,
-		XatuCbtEnabled: xatu.GlobalCbtClient != nil,
+		Slot:             uint64(slot),
+		Epoch:            uint64(chainState.EpochOfSlot(slot)),
+		Ts:               chainState.SlotToTime(slot),
+		NextSlot:         uint64(slot + 1),
+		PreviousSlot:     uint64(slot - 1),
+		Future:           slot >= currentSlot,
+		EpochFinalized:   finalizedEpoch >= chainState.EpochOfSlot(slot),
+		Badges:           []*models.SlotPageBlockBadge{},
+		TracoorUrl:       utils.Config.Frontend.TracoorUrl,
+		XatuEnabled:      xatu.GlobalClient != nil,
+		XatuCbtEnabled:   xatu.GlobalCbtClient != nil,
+		AttestersEnabled: utils.Config.Indexer.AttestationArrivals.Enabled,
 	}
 
 	var epochStatsValues *beacon.EpochStatsValues
@@ -553,6 +556,29 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		DepositsCount:          uint64(len(deposits)),
 		VoluntaryExitsCount:    uint64(len(voluntaryExits)),
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
+	}
+
+	if blockData.Block.Version == spec.DataVersionPQ {
+		signature := blockData.Block.XMSSSignature
+		vrfProof := make([]byte, 0, pq.VRFProofLength*32)
+
+		for i := range body.VRFReveal {
+			vrfProof = append(vrfProof, body.VRFReveal[i][:]...)
+		}
+
+		pageData.PQ = &models.SlotPagePQData{
+			Signature:            signature[:],
+			SignatureLeafIndex:   uint64(signature.LeafIndex()),
+			VRFLeaf:              body.VRFReveal[0][:],
+			VRFProof:             vrfProof,
+			AttestationProofSize: uint64(len(body.AttestationProof)),
+		}
+
+		if requests := body.ParentExecutionRequests; requests != nil {
+			pageData.PQ.ValidatorPreregistrationsCount = uint64(len(requests.ValidatorPreregistrations))
+			pageData.PQ.BuilderPreregistrationsCount = uint64(len(requests.BuilderPreregistrations))
+			pageData.PQ.ExecutionVoluntaryExitsCount = uint64(len(requests.VoluntaryExits))
+		}
 	}
 
 	if eth1Data != nil {

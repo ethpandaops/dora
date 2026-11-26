@@ -40,7 +40,7 @@ func processOperations(s *stateAccessor, block *all.SignedBeaconBlock, parentSlo
 	processAttestations(s, block, parentSlot)
 
 	// Eth1 bridge deposits — the body no longer carries them from Heze on (EIP-8015).
-	if s.Version < spec.DataVersionHeze {
+	if !hasHeze(s.Version) {
 		for _, deposit := range body.Deposits {
 			processDeposit(s, deposit)
 		}
@@ -466,7 +466,12 @@ func processAttestation(s *stateAccessor, att *all.Attestation, cc *committeeCac
 	if isMatchingTarget {
 		participationFlags[TimelyTargetFlagIndex] = true
 	}
-	if isMatchingHead && payloadMatches && inclusionDelay == s.specs.MinAttestationInclusionDelay {
+	minInclusionDelay := s.specs.MinAttestationInclusionDelay
+	if s.Version == spec.DataVersionPQ {
+		minInclusionDelay = s.specs.MinAttestationInclusionDelayPq
+	}
+
+	if isMatchingHead && payloadMatches && inclusionDelay == minInclusionDelay {
 		participationFlags[TimelyHeadFlagIndex] = true
 	}
 

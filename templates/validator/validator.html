@@ -116,6 +116,24 @@
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Index }}"></i>
           </div>
         </div>
+        {{ if .XMSSPublicKey }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The leanXMSS public key of this validator">XMSS Public Key:</span></div>
+          <div class="col-md-10 text-monospace">
+            0x{{ printf "%x" .XMSSPublicKey }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .XMSSPublicKey }}"></i>
+          </div>
+        </div>
+        {{ if .VRFRoot }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Root of the VRF tree whose leaves this validator reveals as RANDAO contributions">VRF Root:</span></div>
+          <div class="col-md-10 text-monospace">
+            0x{{ printf "%x" .VRFRoot }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .VRFRoot }}"></i>
+          </div>
+        </div>
+        {{ end }}
+        {{ else }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the public key for this validator">Public Key:</span></div>
           <div class="col-md-10 text-monospace">
@@ -123,6 +141,7 @@
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .PublicKey }}"></i>
           </div>
         </div>
+        {{ end }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The current status for this validator">Status:</span></div>
           <div class="col-md-10">

@@ -25,6 +25,7 @@ type SlotPageData struct {
 	TracoorUrl             string                  `json:"tracoor_url"`
 	XatuEnabled            bool                    `json:"xatu_enabled"`
 	XatuCbtEnabled         bool                    `json:"xatu_cbt_enabled"`
+	AttestersEnabled       bool                    `json:"attesters_enabled"`
 	SystemContracts        []*types.SystemContract `json:"system_contracts"`
 	TransactionDetails     []*SlotPageTransaction  `json:"transaction_details"`
 	InclusionListsEnabled  bool                    `json:"inclusion_lists_enabled"` // Inclusion lists (EIP-7805) are active for this slot; they are loaded lazily
@@ -56,6 +57,17 @@ const (
 	SlotStatusDataUnavailable SlotStatus = 3
 )
 
+type SlotPagePQData struct {
+	Signature                      []byte `json:"signature"`
+	SignatureLeafIndex             uint64 `json:"signature_leaf_index"`
+	VRFLeaf                        []byte `json:"vrf_leaf"`
+	VRFProof                       []byte `json:"vrf_proof"`
+	AttestationProofSize           uint64 `json:"attestation_proof_size"`
+	ValidatorPreregistrationsCount uint64 `json:"validator_preregistrations_count"`
+	BuilderPreregistrationsCount   uint64 `json:"builder_preregistrations_count"`
+	ExecutionVoluntaryExitsCount   uint64 `json:"execution_voluntary_exits_count"`
+}
+
 type SlotPageBlockData struct {
 	BlockRoot                   []byte                  `json:"blockroot" ssz-size:"32"`
 	ParentRoot                  []byte                  `json:"parentroot" ssz-size:"32"`
@@ -64,6 +76,7 @@ type SlotPageBlockData struct {
 	Signature                   []byte                  `json:"signature" ssz-size:"96"`
 	RandaoReveal                []byte                  `json:"randaoreveal" ssz-size:"96"`
 	Graffiti                    []byte                  `json:"graffiti"`
+	PQ                          *SlotPagePQData         `json:"pq,omitempty" ssz-type:"optional"`
 	HasEth1Data                 bool                    `json:"has_eth1_data"`
 	Eth1dataDepositroot         []byte                  `json:"eth1data_depositroot" ssz-size:"32"`
 	Eth1dataDepositcount        uint64                  `json:"eth1data_depositcount"`

@@ -56,14 +56,19 @@ func processPendingDeposits(s *stateAccessor) error {
 		// Read validator state.
 		isValidatorExited := false
 		isValidatorWithdrawn := false
-		if existingIdx, ok := pubkeyIndex[deposit.Pubkey]; ok {
+		lookupPubkey := deposit.Pubkey
+		if s.Version == spec.DataVersionPQ {
+			lookupPubkey = pqDepositPubkey(deposit.Pubkey)
+		}
+
+		if existingIdx, ok := pubkeyIndex[lookupPubkey]; ok {
 			v := s.Validators[existingIdx]
 			isValidatorExited = v.ExitEpoch < FarFutureEpoch
 			isValidatorWithdrawn = v.WithdrawableEpoch < nextEpoch
 		}
 
 		switch {
-		case isValidatorWithdrawn:
+		case isValidatorWithdrawn || (s.Version == spec.DataVersionPQ && isLegacyPubkey(deposit.Pubkey)):
 			// Deposited balance will never become active. Apply without consuming churn.
 			applyPendingDeposit(s, deposit, pubkeyIndex, depositDomain)
 
@@ -124,6 +129,11 @@ func processPendingDeposits(s *stateAccessor) error {
 //
 // https://github.com/ethereum/consensus-specs/blob/master/specs/electra/beacon-chain.md#new-apply_pending_deposit
 func applyPendingDeposit(s *stateAccessor, deposit *electra.PendingDeposit, pubkeyIndex map[phase0.BLSPubKey]phase0.ValidatorIndex, depositDomain zrnt_common.BLSDomain) {
+	if s.Version == spec.DataVersionPQ {
+		applyPQPendingDeposit(s, deposit, pubkeyIndex)
+		return
+	}
+
 	if existingIdx, ok := pubkeyIndex[deposit.Pubkey]; ok {
 		s.increaseBalance(existingIdx, phase0.Gwei(deposit.Amount))
 		return
@@ -131,7 +141,7 @@ func applyPendingDeposit(s *stateAccessor, deposit *electra.PendingDeposit, pubk
 
 	// New in Heze: deposits creating validators with BLS withdrawal credentials are skipped.
 	// https://github.com/ethereum/consensus-specs/blob/master/specs/heze/beacon-chain.md#modified-apply_pending_deposit
-	if s.Version >= spec.DataVersionHeze && len(deposit.WithdrawalCredentials) > 0 && deposit.WithdrawalCredentials[0] == 0x00 {
+	if hasHeze(s.Version) && len(deposit.WithdrawalCredentials) > 0 && deposit.WithdrawalCredentials[0] == 0x00 {
 		return
 	}
 

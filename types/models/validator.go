@@ -11,6 +11,8 @@ type ValidatorPageData struct {
 	ProjectedIndex   bool      `json:"projected_index"`
 	Name             string    `json:"name"`
 	PublicKey        []byte    `json:"pubkey" ssz-size:"48"`
+	XMSSPublicKey    []byte    `json:"xmss_pubkey"`
+	VRFRoot          []byte    `json:"vrf_root"`
 	Balance          uint64    `json:"balance"`
 	BalanceResolved  bool      `json:"balance_resolved"`
 	EffectiveBalance uint64    `json:"eff_balance"`

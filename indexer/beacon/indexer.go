@@ -56,8 +56,10 @@ type Indexer struct {
 	validatorActivity   *validatorActivityCache
 	blockBidCache       *blockBidCache
 	builderCache        *builderCache
+	pqKeyRegistry       *pqKeyRegistry
 	inclusionListCache  *inclusionListCache
 	executionProofCache *executionProofCache
+	attestationArrivals *attestationArrivalCache
 
 	// indexer state
 	clients               []*Client
@@ -141,8 +143,10 @@ func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *c
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
 	indexer.blockBidCache = newBlockBidCache(indexer)
 	indexer.builderCache = newBuilderCache(indexer)
+	indexer.pqKeyRegistry = &pqKeyRegistry{}
 	indexer.inclusionListCache = newInclusionListCache(indexer)
 	indexer.executionProofCache = newExecutionProofCache(indexer)
+	indexer.attestationArrivals = newAttestationArrivalCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	badChainRoots := utils.Config.Indexer.BadChainRoots
@@ -549,6 +553,7 @@ func (indexer *Indexer) runIndexerLoop() {
 
 			// verify the execution proofs that waited for a payload, drop stale held ones
 			indexer.executionProofCache.processSlot(currentSlot)
+			indexer.attestationArrivals.processSlot(currentSlot)
 
 			// write the crash copy of the changed slot metadata
 			indexer.persistUnfinalizedMetadata()

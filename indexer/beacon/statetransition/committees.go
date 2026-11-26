@@ -69,8 +69,8 @@ func (c *committeeCache) put(slot phase0.Slot, index uint64, committee []phase0.
 func (s *stateAccessor) getCommitteeCountPerSlot(epoch phase0.Epoch) uint64 {
 	activeCount := uint64(len(s.getActiveValidatorIndices(epoch)))
 	committeesPerSlot := activeCount / s.specs.SlotsPerEpoch / s.specs.TargetCommitteeSize
-	if committeesPerSlot > s.specs.MaxCommitteesPerSlot {
-		committeesPerSlot = s.specs.MaxCommitteesPerSlot
+	if maxCommittees := s.specs.MaxCommitteesPerSlotAt(s.Version); committeesPerSlot > maxCommittees {
+		committeesPerSlot = maxCommittees
 	}
 	if committeesPerSlot < 1 {
 		committeesPerSlot = 1

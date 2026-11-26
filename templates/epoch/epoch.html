@@ -163,6 +163,49 @@
       </div>
     </div>
 
+    {{ if and (not .Future) (or .XatuEnabled .AttestersEnabled) }}
+      {{ template "arrival_chart" }}
+      <div class="card mt-3" id="attesters-row" style="display: none;">
+        <div class="card-body px-0 py-1">
+          <div class="row p-2 mx-0">
+            <div class="col-12 fw-semibold mb-1"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When each validator's attestation was first seen by any observing node, relative to the start of its slot, summed over the epoch's slots and stacked by the client running the validator. Validators are matched to clients by their name.">Attestation arrivals:</span></div>
+            <div class="col-12" id="attesters-body"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card mt-3" id="aggregates-row" style="display: none;">
+        <div class="card-body px-0 py-1">
+          <div class="row p-2 mx-0">
+            <div class="col-12 fw-semibold mb-1"><span data-bs-toggle="tooltip" data-bs-placement="top" title="All aggregates seen on gossip over the epoch: one dot per aggregate at the time it was first seen in its slot, colored by the aggregator's client. A red slot has elected aggregators that missed while their committee was still incomplete; an amber slot only has misses whose committee another aggregate had already covered. Hover the column headers for what each column means. Click a slot for its aggregates.">Aggregates:</span></div>
+            <div class="col-12" id="aggregates-body"></div>
+          </div>
+        </div>
+      </div>
+      <script type="text/javascript">
+        (function() {
+          var renderAggregates = window.doraArrivalChart.mountEpochAggregates(document.getElementById('aggregates-row'), document.getElementById('aggregates-body'));
+          var render = window.doraArrivalChart.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'), {
+            nodeUrl: function(name) {
+              return '/epoch/{{ .Epoch }}/attesters/node?name=' + encodeURIComponent(name);
+            }
+          });
+
+          fetch('/epoch/{{ .Epoch }}/attesters')
+            .then(function(r) {
+              if (!r.ok) throw new Error('status ' + r.status);
+              return r.json();
+            })
+            .then(function(data) {
+              render(data);
+              renderAggregates(data);
+            })
+            .catch(function(err) {
+              console.error('epoch attesters failed:', err);
+            });
+        })();
+      </script>
+    {{ end }}
+
     <div class="card my-3">
       <div class="card-body px-0 py-0">
         <div class="table-responsive px-0 py-1">
