@@ -413,6 +413,15 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 
 	cacheTimeout := attesterCacheTimeout(chainState, settled, slotTime)
 
+	aggregates, err := loadSlotAggregates(queryCtx, slot, settled, blockRoot, arrivals)
+	if err != nil {
+		logrus.WithError(err).Warn("error loading slot aggregates from xatu")
+	} else if aggregates != nil {
+		response.Aggregates = aggregates.rows
+		response.AggregateMembers = aggregates.members
+		response.AggregateCovered = aggregates.covered
+	}
+
 	if len(arrivals) == 0 && otherRoots == 0 {
 		return response, cacheTimeout, nil
 	}

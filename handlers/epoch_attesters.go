@@ -171,6 +171,13 @@ func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.E
 
 	cacheTimeout := attesterCacheTimeout(chainState, settled, endTime)
 
+	aggregates, err := loadEpochAggregates(queryCtx, epoch, firstSlot, endSlot, settled, response.AggregateDueMs)
+	if err != nil {
+		logrus.WithError(err).Warn("error loading epoch aggregates from xatu")
+	}
+
+	response.Aggregates = aggregates
+
 	if response.Seen == 0 {
 		return response, cacheTimeout, nil
 	}
