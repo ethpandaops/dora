@@ -283,6 +283,10 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 	}
 
 	for committee, aggregators := range elected {
+		if len(aggregates) == 0 {
+			break
+		}
+
 		for _, aggregator := range aggregators {
 			if !seenAggregators[uint64(committee)][aggregator] {
 				result.rows = append(result.rows, newRow(uint64(committee), aggregator))
@@ -334,7 +338,7 @@ func loadSlotAggregates(ctx context.Context, slot phase0.Slot, settled bool, blo
 		return nil, err
 	}
 
-	if len(aggregates) == 0 && electedAggregators(slot) == nil {
+	if len(aggregates) == 0 {
 		return nil, nil
 	}
 
@@ -378,6 +382,10 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 	result := &models.EpochAggregates{}
 	clients := map[string]*models.EpochAggregatorClient{}
 	clientDelays := map[string][]uint32{}
+
+	if currentSlot := chainState.CurrentSlot(); endSlot > currentSlot {
+		endSlot = currentSlot
+	}
 
 	for slot := firstSlot; slot < endSlot; slot++ {
 		var committees [][]phase0.ValidatorIndex
