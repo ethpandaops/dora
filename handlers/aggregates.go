@@ -26,8 +26,38 @@ type xatuAggregate struct {
 }
 
 type aggregateObservers struct {
+	members   []bool
 	observers uint64
 	p50Ms     uint32
+}
+
+func membersKey(members []bool) string {
+	key := make([]byte, len(members))
+	for i, member := range members {
+		key[i] = '0'
+		if member {
+			key[i] = '1'
+		}
+	}
+
+	return string(key)
+}
+
+func indexAggregateObservers(observers []*aggregateObservers) map[string]*aggregateObservers {
+	index := make(map[string]*aggregateObservers, len(observers)*2)
+
+	for _, observed := range observers {
+		index[membersKey(observed.members)] = observed
+
+		if len(observed.members) > 0 {
+			prefix := membersKey(observed.members[:len(observed.members)-1])
+			if _, taken := index[prefix]; !taken {
+				index[prefix] = observed
+			}
+		}
+	}
+
+	return index
 }
 
 func loadAggregates(ctx context.Context, client *xatu.Client, firstSlot, endSlot phase0.Slot, firstTime, endTime time.Time, settled bool, blockRoot string) ([]*xatuAggregate, error) {
@@ -82,7 +112,7 @@ GROUP BY slot, aggregator_index, committee`, args...)
 	return aggregates, nil
 }
 
-func loadAggregateObservers(ctx context.Context, client *xatu.Client, firstSlot, endSlot phase0.Slot, firstTime, endTime time.Time, settled bool) (map[phase0.Slot]map[string]aggregateObservers, error) {
+func loadAggregateObservers(ctx context.Context, client *xatu.Client, firstSlot, endSlot phase0.Slot, firstTime, endTime time.Time, settled bool) (map[phase0.Slot]map[string]*aggregateObservers, error) {
 	rows, err := client.Query(ctx, settled, `SELECT slot, aggregation_bits, uniqExact(meta_client_name) AS observers, toUInt32(quantile(0.5)(first_ms)) AS p50
 FROM (
 	SELECT slot, aggregation_bits, meta_client_name, min(propagation_slot_start_diff) AS first_ms
@@ -100,7 +130,7 @@ GROUP BY slot, aggregation_bits`, client.Network(), firstTime.Unix(), endTime.Un
 	}
 	defer func() { _ = rows.Close() }()
 
-	result := map[phase0.Slot]map[string]aggregateObservers{}
+	bySlot := map[phase0.Slot][]*aggregateObservers{}
 
 	for rows.Next() {
 		var slot, p50 uint32
@@ -113,15 +143,20 @@ GROUP BY slot, aggregation_bits`, client.Network(), firstTime.Unix(), endTime.Un
 			return nil, fmt.Errorf("aggregate observer scan: %w", err)
 		}
 
-		if result[phase0.Slot(slot)] == nil {
-			result[phase0.Slot(slot)] = map[string]aggregateObservers{}
-		}
-
-		result[phase0.Slot(slot)][aggregationBits] = aggregateObservers{observers: observers, p50Ms: p50}
+		bySlot[phase0.Slot(slot)] = append(bySlot[phase0.Slot(slot)], &aggregateObservers{
+			members:   bitlistMembers(aggregationBits),
+			observers: observers,
+			p50Ms:     p50,
+		})
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("aggregate observer query: %w", err)
+	}
+
+	result := make(map[phase0.Slot]map[string]*aggregateObservers, len(bySlot))
+	for slot, observed := range bySlot {
+		result[slot] = indexAggregateObservers(observed)
 	}
 
 	return result, nil
@@ -164,7 +199,7 @@ type slotAggregates struct {
 	sizeBytes uint64
 }
 
-func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers map[string]aggregateObservers, committees [][]phase0.ValidatorIndex, arrivals map[phase0.ValidatorIndex]uint32) *slotAggregates {
+func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers map[string]*aggregateObservers, committees [][]phase0.ValidatorIndex, arrivals map[phase0.ValidatorIndex]uint32) *slotAggregates {
 	elected := electedAggregators(slot)
 	result := &slotAggregates{}
 	seenAggregators := map[uint64]map[phase0.ValidatorIndex]bool{}
@@ -201,10 +236,12 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 		row.SeenMs = aggregate.seenMs
 		row.SizeBytes = aggregate.sizeBytes
 		row.Observers = 1
+		members := bitlistMembers(aggregate.bits)
 
-		if seen, ok := observers[aggregate.bits]; ok {
-			row.Observers = seen.observers
-			row.ObserversP50Ms = seen.p50Ms
+		if observed, ok := observers[membersKey(members)]; ok {
+			row.Observers = observed.observers
+			row.ObserversP50Ms = observed.p50Ms
+			members = observed.members
 		}
 
 		if seenAggregators[aggregate.committee] == nil {
@@ -220,8 +257,6 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 
 		result.seen++
 		result.sizeBytes += uint64(aggregate.sizeBytes)
-
-		members := bitlistMembers(aggregate.bits)
 
 		if aggregate.committee < uint64(len(committees)) {
 			for position, index := range committees[aggregate.committee] {
