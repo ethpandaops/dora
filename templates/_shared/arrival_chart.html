@@ -552,6 +552,7 @@
         var lo = Math.max(0, dueMs - 500);
         var hi = data.slot_ms;
         (agg.points || []).forEach(function(p) { hi = Math.max(hi, p.ms + 250); });
+        hi = Math.min(hi, data.slot_ms + 1000);
 
         var left = 46, top = 16, plotW = 900, plotH = 170;
         var colW = plotW / slots.length;
