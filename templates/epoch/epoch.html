@@ -176,7 +176,7 @@
       <div class="card mt-3" id="aggregates-row" style="display: none;">
         <div class="card-body px-0 py-1">
           <div class="row p-2 mx-0">
-            <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="All aggregates seen on gossip over the epoch. Each square is a slot, colored by how long after the aggregate deadline its first aggregate arrived and faded by how much of its committees the aggregates cover; a red outline marks elected aggregators that sent none.">Aggregates:</span></div>
+            <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="All aggregates seen on gossip over the epoch: one dot per aggregate at the time it was first seen in its slot, colored by the aggregator's client. A red cross marks a slot whose elected aggregators sent none. Click a slot for its aggregates.">Aggregates:</span></div>
             <div class="col-md-9" id="aggregates-body"></div>
           </div>
         </div>

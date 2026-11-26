@@ -95,6 +95,14 @@ type EpochAggregates struct {
 	Covered    uint64                   `json:"covered"`
 	Slots      []*EpochAggregateSlot    `json:"slots"`
 	Clients    []*EpochAggregatorClient `json:"clients"`
+	Points     []*EpochAggregatePoint   `json:"points"`
+}
+
+type EpochAggregatePoint struct {
+	Slot       uint64 `json:"slot"`
+	Ms         uint32 `json:"ms"`
+	Client     string `json:"client"`
+	Aggregator uint64 `json:"aggregator"`
 }
 
 type EpochAggregateSlot struct {

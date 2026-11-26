@@ -428,6 +428,13 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 				continue
 			}
 
+			result.Points = append(result.Points, &models.EpochAggregatePoint{
+				Slot:       uint64(slot),
+				Ms:         row.SeenMs,
+				Client:     row.Client,
+				Aggregator: row.AggregatorIndex,
+			})
+
 			group.Aggregates++
 			group.Attesters += row.Attesters
 			group.CommitteeMembers += row.CommitteeSize
