@@ -267,6 +267,10 @@
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When each validator's attestation for this block was first seen by any observing node, stacked by the client running the validator. Validators are matched to clients by their name.">Attesters:</span></div>
         <div class="col-md-10" id="attesters-body"></div>
       </div>
+      <div class="row border-bottom p-2 mx-0" id="aggregates-row" style="display: none;">
+        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Every aggregate for this block seen on gossip, by committee. Last single: when the latest attestation an aggregate includes was first seen. Left out: committee attestations seen before the aggregate arrived that it does not include. Unseen: included attestations no observer saw on their own.">Aggregates:</span></div>
+        <div class="col-md-10" id="aggregates-body"></div>
+      </div>
       <div id="arrival-empty" class="p-3 text-muted" style="display: none;"></div>
       <div id="arrival-rows-wrap" style="display: none;">
         <div class="row border-bottom p-2 mx-0">
@@ -1339,6 +1343,12 @@
 
         function showAttesters(attesters) {
           attestersCurrent = attesters;
+
+          try {
+            shared.renderSlotAggregates(document.getElementById('aggregates-row'), document.getElementById('aggregates-body'), attesters);
+          } catch (err) {
+            console.error('slot aggregates rendering failed:', err);
+          }
 
           try {
             renderAttesters(attesters);

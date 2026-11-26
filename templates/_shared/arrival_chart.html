@@ -412,9 +412,188 @@
         return renderAttesters;
       }
 
+
+      function plural(n, word) {
+        return n.toLocaleString() + ' ' + word + (n === 1 ? '' : 's');
+      }
+      function fmtDelta(ms) {
+        return (ms < 0 ? '&minus;' : '+') + fmtStr(Math.abs(ms));
+      }
+      function fmtBytes(n) {
+        if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+        if (n >= 1024) return Math.round(n / 1024) + ' kB';
+        return n + ' B';
+      }
+      function clientColor(name) {
+        return attesterColors[name] || attesterColors.unknown;
+      }
+
+      function aggregateLanes(data) {
+        var aggregates = data.aggregates;
+        var lanes = {};
+        var maxMs = data.slot_ms;
+
+        aggregates.forEach(function(a) {
+          (lanes[a.committee_index] = lanes[a.committee_index] || []).push(a);
+          if (a.seen) maxMs = Math.max(maxMs, a.seen_ms + 250);
+        });
+
+        var keys = Object.keys(lanes).map(Number).sort(function(a, b) { return a - b; });
+        var left = 70, width = 900, laneH = 22, top = 4;
+        var height = top + keys.length * laneH + 18;
+        var x = function(ms) { return left + Math.min(ms, maxMs) / maxMs * width; };
+        var svg = '<svg viewBox="0 0 ' + (left + width + 10) + ' ' + height + '" style="width:100%;max-width:980px;height:auto" class="arrival-aggregate-lanes">';
+
+        [[data.attestation_due_ms, 'attestation deadline', '4 3'], [data.aggregate_due_ms, 'aggregate deadline', ''], [data.slot_ms, 'slot end', '1 3']].forEach(function(line) {
+          if (!line[0]) return;
+          svg += '<line x1="' + x(line[0]) + '" x2="' + x(line[0]) + '" y1="' + top + '" y2="' + (height - 16) + '" stroke="var(--bs-secondary-color)" stroke-width="1"' +
+            (line[2] ? ' stroke-dasharray="' + line[2] + '"' : '') + '><title>' + line[1] + ' ' + fmtStr(line[0]) + '</title></line>';
+        });
+
+        keys.forEach(function(committee, i) {
+          var y = top + i * laneH + laneH / 2;
+          svg += '<rect x="' + left + '" y="' + (y - laneH / 2 + 2) + '" width="' + width + '" height="' + (laneH - 4) + '" fill="var(--bs-secondary-bg)" opacity="0.5"></rect>';
+          svg += '<text x="' + (left - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="var(--bs-secondary-color)">committee ' + committee + '</text>';
+
+          lanes[committee].forEach(function(a) {
+            var label = 'aggregator ' + a.aggregator_index + (a.aggregator_name ? ' (' + a.aggregator_name + ')' : '');
+
+            if (!a.seen) {
+              svg += '<text x="' + (left + width + 2) + '" y="' + (y + 4) + '" font-size="12" fill="#f46a6a"><title>' + esc(label) + ': no aggregate seen</title>&#10005;</text>';
+              return;
+            }
+
+            var pct = a.committee_size ? Math.round(a.attesters * 100 / a.committee_size) + '%' : a.attesters;
+            svg += '<circle cx="' + x(a.seen_ms) + '" cy="' + y + '" r="5" fill="' + clientColor(a.client) + '" stroke="var(--bs-body-bg)" stroke-width="1"><title>' +
+              esc(label + ' · ' + a.client + ' · ' + fmtStr(a.seen_ms) + ' · ' + pct + ' of the committee') + '</title></circle>';
+          });
+        });
+
+        for (var t = 0; t <= maxMs; t += 1000) {
+          svg += '<text x="' + x(t) + '" y="' + (height - 4) + '" text-anchor="middle" font-size="10" fill="var(--bs-secondary-color)">' + (t / 1000) + 's</text>';
+        }
+
+        return svg + '</svg>';
+      }
+
+      function renderSlotAggregates(row, body, data) {
+        var aggregates = (data && data.aggregates) || [];
+
+        if (!aggregates.length) {
+          row.style.display = 'none';
+          return;
+        }
+
+        var dueMs = data.aggregate_due_ms;
+        var seen = aggregates.filter(function(a) { return a.seen; });
+        var missing = aggregates.filter(function(a) { return !a.seen; });
+        var hasElected = aggregates.some(function(a) { return a.elected != null; });
+        var committees = {};
+        var bytes = 0;
+
+        aggregates.forEach(function(a) { committees[a.committee_index] = true; bytes += a.size_bytes || 0; });
+
+        var summary = plural(seen.length, 'aggregate') + ' over ' + plural(Object.keys(committees).length, 'committee');
+
+        if (seen.length) {
+          var firstMs = Math.min.apply(null, seen.map(function(a) { return a.seen_ms; }));
+          summary += sep + 'first ' + fmtStr(firstMs) + ' (' + fmtDelta(firstMs - dueMs) + ' vs the aggregate deadline)';
+        }
+
+        if (data.aggregate_members) summary += sep + Math.round(data.aggregate_covered * 100 / data.aggregate_members) + '% of committee members covered';
+        if (bytes) summary += sep + fmtBytes(bytes) + ' of aggregates';
+        if (missing.length) summary += sep + '<span style="color:#f46a6a">' + plural(missing.length, 'elected aggregator') + ' sent none</span>';
+        summary += liveBadge(data.settled);
+
+        var rows = '';
+
+        aggregates.forEach(function(a) {
+          var name = a.aggregator_name ? ' <span class="text-muted">' + esc(a.aggregator_name) + '</span>' : '';
+          var cells = '<td class="num">' + a.committee_index + '</td>' +
+            '<td class="num"><a href="/validator/' + a.aggregator_index + '">' + a.aggregator_index + '</a>' + name + '</td>' +
+            '<td><span class="arrival-heat-key" style="background:' + clientColor(a.client) + '"></span> ' + esc(a.client) + '</td>' +
+            (hasElected ? '<td>' + (a.elected ? 'yes' : '<span style="color:#f1b44c">no</span>') + '</td>' : '');
+
+          if (!a.seen) {
+            rows += '<tr>' + cells + '<td colspan="8"><span style="color:#f46a6a">no aggregate seen</span></td></tr>';
+            return;
+          }
+
+          var pct = a.committee_size ? ' <span class="text-muted">(' + Math.round(a.attesters * 100 / a.committee_size) + '%)</span>' : '';
+
+          rows += '<tr>' + cells +
+            '<td class="text-end num"' + (a.seen_ms >= data.slot_ms ? ' style="color:#f46a6a"' : '') + '>' + fmtStr(a.seen_ms) + '</td>' +
+            '<td class="text-end num">' + fmtDelta(a.seen_ms - dueMs) + '</td>' +
+            '<td class="text-end num">' + (a.observers > 1 ? fmtStr(a.observers_p50_ms) + ' <span class="text-muted">(' + a.observers + ')</span>' : '&mdash;') + '</td>' +
+            '<td class="text-end num">' + a.attesters.toLocaleString() + (a.committee_size ? ' / ' + a.committee_size.toLocaleString() : '') + pct + '</td>' +
+            '<td class="text-end num">' + (a.attesters > a.included_unseen ? fmtStr(a.last_included_ms) : '&mdash;') + '</td>' +
+            '<td class="text-end num">' + (a.left_out ? '<span style="color:#f1b44c">' + a.left_out + '</span>' : '0') + '</td>' +
+            '<td class="text-end num">' + a.included_unseen + '</td>' +
+            '<td class="text-end num">' + (a.size_bytes ? fmtBytes(a.size_bytes) : '&mdash;') + '</td></tr>';
+        });
+
+        body.innerHTML = '<div class="mb-1">' + summary + '</div>' + aggregateLanes(data) +
+          '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
+          '<th>committee</th><th>aggregator</th><th>client</th>' + (hasElected ? '<th>elected</th>' : '') +
+          '<th class="text-end">first seen</th><th class="text-end">vs deadline</th><th class="text-end" title="Median first arrival over the nodes whose beacon API reported the aggregate, and how many did">p50 (nodes)</th>' +
+          '<th class="text-end">attesters</th><th class="text-end">last single</th><th class="text-end">left out</th><th class="text-end">unseen</th><th class="text-end">size</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+        row.style.display = '';
+      }
+
+      function renderEpochAggregates(row, body, data) {
+        var agg = data && data.aggregates;
+
+        if (!agg || !agg.aggregates) {
+          row.style.display = 'none';
+          return;
+        }
+
+        var dueMs = data.aggregate_due_ms;
+        var summary = plural(agg.aggregates, 'aggregate') + ' over ' + plural(agg.slots.length, 'slot');
+        if (agg.members) summary += sep + Math.round(agg.covered * 100 / agg.members) + '% of committee members covered';
+        if (agg.size_bytes) summary += sep + fmtBytes(agg.size_bytes) + ' of aggregates';
+        if (agg.missing) summary += sep + '<span style="color:#f46a6a">' + plural(agg.missing, 'elected aggregator') + ' sent none</span>';
+        summary += liveBadge(data.settled);
+
+        var cells = '';
+
+        agg.slots.forEach(function(s) {
+          var cover = s.members ? Math.round(s.covered * 100 / s.members) : 0;
+          var title = 'slot ' + s.slot + ': ' + plural(s.aggregates, 'aggregate') +
+            (s.first_ms != null ? ', first ' + fmtStr(s.first_ms) + ' (' + (s.first_ms - dueMs >= 0 ? '+' : '-') + fmtStr(Math.abs(s.first_ms - dueMs)) + ' vs deadline)' : '') +
+            (s.members ? ', ' + cover + '% covered' : '') + (s.missing ? ', ' + plural(s.missing, 'elected aggregator') + ' sent none' : '');
+          var bg = s.first_ms != null ? timeColor(Math.max(0, s.first_ms - dueMs)) : 'var(--bs-secondary-bg)';
+
+          cells += '<a href="/slot/' + s.slot + '#propagation" title="' + esc(title) + '" style="display:inline-block;width:26px;height:26px;margin:1px;border-radius:3px;background:' + bg +
+            ';opacity:' + (s.first_ms != null ? Math.max(0.35, cover / 100) : 1) + ';' + (s.missing ? 'box-shadow:inset 0 0 0 2px #f46a6a;' : '') + '"></a>';
+        });
+
+        var rows = '';
+
+        agg.clients.forEach(function(c) {
+          rows += '<tr><td><span class="arrival-heat-key" style="background:' + clientColor(c.name) + '"></span> ' + esc(c.name) + '</td>' +
+            '<td class="text-end num">' + c.aggregates.toLocaleString() + '</td>' +
+            '<td class="text-end num">' + (c.missing ? '<span style="color:#f46a6a">' + c.missing + '</span>' : '0') + '</td>' +
+            '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p50_ms) + ' <span class="text-muted">(' + fmtDelta(c.p50_ms - dueMs) + ')</span>' : '&mdash;') + '</td>' +
+            '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p90_ms) : '&mdash;') + '</td>' +
+            '<td class="text-end num">' + (c.late ? '<span style="color:#f1b44c">' + c.late + '</span>' : '0') + '</td>' +
+            '<td class="text-end num">' + (c.committee_members ? Math.round(c.attesters * 100 / c.committee_members) + '%' : '&mdash;') + '</td></tr>';
+        });
+
+        body.innerHTML = '<div class="mb-1">' + summary + '</div>' +
+          '<div class="mb-2" style="line-height:0">' + cells + '</div>' +
+          '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
+          '<th>aggregator client</th><th class="text-end">aggregates</th><th class="text-end">sent none</th><th class="text-end">p50 first seen</th>' +
+          '<th class="text-end">p90</th><th class="text-end" title="First seen more than 1s after the aggregate deadline">late</th><th class="text-end">avg attesters</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+        row.style.display = '';
+      }
+
       return {
         esc: esc, fmtStr: fmtStr, fmtAxis: fmtAxis, timeColor: timeColor, fmtMsColored: fmtMsColored,
-        liveBadge: liveBadge, sep: sep, histAxis: histAxis, mountAttesters: mountAttesters
+        liveBadge: liveBadge, sep: sep, histAxis: histAxis, mountAttesters: mountAttesters,
+        renderSlotAggregates: renderSlotAggregates, renderEpochAggregates: renderEpochAggregates
       };
     })();
   </script>

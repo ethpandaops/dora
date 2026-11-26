@@ -173,6 +173,14 @@
           </div>
         </div>
       </div>
+      <div class="card mt-3" id="aggregates-row" style="display: none;">
+        <div class="card-body px-0 py-1">
+          <div class="row p-2 mx-0">
+            <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="All aggregates seen on gossip over the epoch. Each square is a slot, colored by how long after the aggregate deadline its first aggregate arrived and faded by how much of its committees the aggregates cover; a red outline marks elected aggregators that sent none.">Aggregates:</span></div>
+            <div class="col-md-9" id="aggregates-body"></div>
+          </div>
+        </div>
+      </div>
       <script type="text/javascript">
         (function() {
           var render = window.doraArrivalChart.mountAttesters(document.getElementById('attesters-row'), document.getElementById('attesters-body'), {
@@ -186,7 +194,10 @@
               if (!r.ok) throw new Error('status ' + r.status);
               return r.json();
             })
-            .then(render)
+            .then(function(data) {
+              render(data);
+              window.doraArrivalChart.renderEpochAggregates(document.getElementById('aggregates-row'), document.getElementById('aggregates-body'), data);
+            })
             .catch(function(err) {
               console.error('epoch attesters failed:', err);
             });
