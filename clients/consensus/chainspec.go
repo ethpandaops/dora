@@ -135,6 +135,9 @@ type ChainSpecConfig struct {
 	ConsolidationChurnLimitQuotient      uint64 `yaml:"CONSOLIDATION_CHURN_LIMIT_QUOTIENT"         check-if-fork:"GloasForkEpoch"`
 	MaxPerEpochActivationChurnLimitGloas uint64 `yaml:"MAX_PER_EPOCH_ACTIVATION_CHURN_LIMIT_GLOAS" check-if-fork:"GloasForkEpoch"`
 	AggregateDueBpsGloas                 uint64 `yaml:"AGGREGATE_DUE_BPS_GLOAS"                    check-if-fork:"GloasForkEpoch"`
+	AggregationCutoffBps                 uint64 `yaml:"AGGREGATION_CUTOFF_BPS"`
+	AggregateDueBpsPq                    uint64 `yaml:"AGGREGATE_DUE_BPS_PQ"`
+	AggregatorDelayBps                   uint64 `yaml:"AGGREGATOR_DELAY_BPS"`
 	AttestationDueBpsGloas               uint64 `yaml:"ATTESTATION_DUE_BPS_GLOAS"                  check-if-fork:"GloasForkEpoch"`
 	ContributionDueBpsGloas              uint64 `yaml:"CONTRIBUTION_DUE_BPS_GLOAS"                 check-if-fork:"GloasForkEpoch"`
 	SyncMessageDueBpsGloas               uint64 `yaml:"SYNC_MESSAGE_DUE_BPS_GLOAS"                 check-if-fork:"GloasForkEpoch"`

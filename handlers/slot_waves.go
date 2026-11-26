@@ -236,7 +236,19 @@ func attestationDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) u
 // aggregateDeadlineMs is when aggregates are due: AGGREGATE_DUE_BPS of the
 // slot, moved earlier by gloas.
 func aggregateDeadlineMs(chainState *consensus.ChainState, slot phase0.Slot) uint32 {
+	return aggregatorDueMs(chainState, slot, 0)
+}
+
+func staggeredAggregation(chainState *consensus.ChainState) bool {
+	return chainState.GetSpecs().AggregatorDelayBps > 0
+}
+
+func aggregatorDueMs(chainState *consensus.ChainState, slot phase0.Slot, position int) uint32 {
 	specs := chainState.GetSpecs()
+
+	if staggeredAggregation(chainState) {
+		return bpsOfSlot(chainState, specs.AggregateDueBpsPq+uint64(position)*specs.AggregatorDelayBps, 6000)
+	}
 
 	if gloasActive(chainState, slot) {
 		return bpsOfSlot(chainState, specs.AggregateDueBpsGloas, 5000)

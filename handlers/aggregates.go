@@ -209,10 +209,23 @@ type slotAggregates struct {
 
 func buildAggregateRows(ctx context.Context, slot phase0.Slot, aggregates []*xatuAggregate, observers map[string]*aggregateObservers, committees [][]phase0.ValidatorIndex, arrivals map[phase0.ValidatorIndex]uint32) *slotAggregates {
 	elected := electedAggregators(ctx, slot)
+	chainState := services.GlobalBeaconService.GetChainState()
 	result := &slotAggregates{}
 	seenAggregators := map[uint64]map[phase0.ValidatorIndex]bool{}
 	coverage := map[uint64]map[int]bool{}
-	saturated := map[uint64]bool{}
+	saturatedMs := map[uint64]uint32{}
+	positions := map[uint64]map[phase0.ValidatorIndex]int{}
+
+	for committee, aggregators := range elected {
+		positions[uint64(committee)] = map[phase0.ValidatorIndex]int{}
+		for position, aggregator := range aggregators {
+			positions[uint64(committee)][aggregator] = position
+		}
+	}
+
+	dueMs := func(committee uint64, aggregator phase0.ValidatorIndex) uint32 {
+		return aggregatorDueMs(chainState, slot, positions[committee][aggregator])
+	}
 	matched := map[*aggregateObservers][]*models.SlotAggregate{}
 
 	newRow := func(committee uint64, aggregator phase0.ValidatorIndex) *models.SlotAggregate {
@@ -235,6 +248,7 @@ func buildAggregateRows(ctx context.Context, slot phase0.Slot, aggregates []*xat
 		row := newRow(aggregate.committee, aggregate.aggregator)
 		row.Seen = true
 		row.SeenMs = aggregate.seenMs
+		row.DueMs = dueMs(aggregate.committee, aggregate.aggregator)
 		row.SizeBytes = aggregate.sizeBytes
 		row.Observers = 1
 		members := rawBitsMembers(aggregate.bits, int(row.CommitteeSize))
@@ -286,8 +300,8 @@ func buildAggregateRows(ctx context.Context, slot phase0.Slot, aggregates []*xat
 				}
 			}
 
-			if coversSeen {
-				saturated[aggregate.committee] = true
+			if first, ok := saturatedMs[aggregate.committee]; coversSeen && (!ok || aggregate.seenMs < first) {
+				saturatedMs[aggregate.committee] = aggregate.seenMs
 			}
 		}
 
@@ -312,7 +326,9 @@ func buildAggregateRows(ctx context.Context, slot phase0.Slot, aggregates []*xat
 		for _, aggregator := range aggregators {
 			if !seenAggregators[uint64(committee)][aggregator] {
 				row := newRow(uint64(committee), aggregator)
-				row.Redundant = saturated[uint64(committee)]
+				row.DueMs = dueMs(uint64(committee), aggregator)
+				coveredMs, covered := saturatedMs[uint64(committee)]
+				row.Redundant = covered && (!staggeredAggregation(chainState) || coveredMs <= row.DueMs)
 				result.rows = append(result.rows, row)
 
 				if row.Redundant {
@@ -385,7 +401,7 @@ type aggregatorStats struct {
 	nodes                                                    map[string]*aggregatorStats
 }
 
-func (a *aggregatorStats) add(row *models.SlotAggregate, aggregateDueMs uint32) {
+func (a *aggregatorStats) add(row *models.SlotAggregate) {
 	switch {
 	case !row.Seen && row.Redundant:
 		a.redundant++
@@ -397,7 +413,7 @@ func (a *aggregatorStats) add(row *models.SlotAggregate, aggregateDueMs uint32) 
 		a.members += row.CommitteeSize
 		a.seenMs = append(a.seenMs, row.SeenMs)
 
-		if row.SeenMs >= aggregateDueMs+1000 {
+		if row.SeenMs >= row.DueMs+1000 {
 			a.late++
 		}
 	}
@@ -408,7 +424,7 @@ func (a *aggregatorStats) fill(aggregates, missing, redundant, late, attesters, 
 	*p50, *p90 = attesterPercentiles(a.seenMs)
 }
 
-func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, endSlot phase0.Slot, settled bool, aggregateDueMs uint32) (*models.EpochAggregates, error) {
+func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, endSlot phase0.Slot, settled bool) (*models.EpochAggregates, error) {
 	client := xatu.GlobalClient
 	if client == nil {
 		return nil, nil
@@ -495,7 +511,7 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 				stats[row.Client] = client
 			}
 
-			client.add(row, aggregateDueMs)
+			client.add(row)
 
 			if row.AggregatorName != "" {
 				node := client.nodes[row.AggregatorName]
@@ -504,7 +520,7 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 					client.nodes[row.AggregatorName] = node
 				}
 
-				node.add(row, aggregateDueMs)
+				node.add(row)
 			}
 		}
 	}

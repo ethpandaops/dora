@@ -83,6 +83,7 @@ type SlotAggregate struct {
 	Seen            bool   `json:"seen"`
 	Redundant       bool   `json:"redundant,omitempty"`
 	SeenMs          uint32 `json:"seen_ms"`
+	DueMs           uint32 `json:"due_ms"`
 	SizeBytes       uint32 `json:"size_bytes"`
 	Observers       uint64 `json:"observers"`
 	ObserversP50Ms  uint32 `json:"observers_p50_ms"`

@@ -173,7 +173,7 @@ func buildEpochAttestersData(ctx context.Context, epoch phase0.Epoch) (*models.E
 
 	geo := epochNodeGeo(queryCtx, chainState, epoch, settled)
 
-	aggregates, err := loadEpochAggregates(queryCtx, epoch, firstSlot, endSlot, settled, response.AggregateDueMs)
+	aggregates, err := loadEpochAggregates(queryCtx, epoch, firstSlot, endSlot, settled)
 	if err != nil {
 		logrus.WithError(err).Warn("error loading epoch aggregates from xatu")
 	} else if aggregates != nil {
