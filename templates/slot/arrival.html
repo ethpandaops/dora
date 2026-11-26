@@ -25,24 +25,6 @@
       margin-right: 4px;
     }
 
-    .arrival-dist {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.4rem 1.1rem;
-    }
-    .arrival-dist .dist-bar {
-      display: flex;
-      width: 220px;
-      height: 10px;
-      border-radius: 5px;
-      overflow: hidden;
-      flex: none;
-      background: var(--bs-secondary-bg);
-    }
-    .arrival-dist .dist-bar > div { height: 100%; }
-    .arrival-dist .entry { font-size: 0.85rem; white-space: nowrap; }
-
     .arrival-region-line {
       gap: 0.9rem;
       font-size: 0.85rem;
@@ -54,19 +36,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-    .arrival-region-line .region-bar-track {
-      display: inline-block;
-      width: 160px;
-      height: 8px;
-      border-radius: 4px;
-      background: var(--bs-secondary-bg);
-      overflow: hidden;
-    }
-    .arrival-region-line .region-bar {
-      display: block;
-      height: 100%;
-      border-radius: 4px;
     }
     /* fixed-width group of three time columns, so the caption above can
        span exactly the visible ones at every breakpoint */
@@ -274,20 +243,11 @@
       <div id="arrival-empty" class="p-3 text-muted" style="display: none;"></div>
       <div id="arrival-rows-wrap" style="display: none;">
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When nodes first observed this block, relative to slot start. Each node counts once with its earliest observation across all layers.">Arrival:</span></div>
-          <div class="col-md-10" id="arrival-stats"></div>
-        </div>
-        <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Raw observation counts per source layer">Observations:</span></div>
-          <div class="col-md-10" id="arrival-observations"></div>
-        </div>
-        <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Who runs the observing nodes">Sources:</span></div>
-          <div class="col-md-10" id="arrival-sources"></div>
-        </div>
-        <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The arrival stats above split by continent: where the observing nodes sit and when the block reached each region">Regions:</span></div>
-          <div class="col-md-10" id="arrival-regions"></div>
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="When nodes first observed this block, relative to slot start, overall and per continent. Each node counts once with its earliest observation across all layers; hover the node count for the observations per layer.">Block arrival:</span></div>
+          <div class="col-md-10">
+            <div id="arrival-stats"></div>
+            <div id="arrival-regions" class="mt-1"></div>
+          </div>
         </div>
         {{ if .XatuCbtEnabled }}
         <div class="row border-bottom p-2 mx-0" id="waves-timeline" style="display: none;">
@@ -434,25 +394,6 @@
       function groupBadge(g) {
         var st = groupStyles[g] || groupStyles.other;
         return '<span class="arrival-group-badge ' + st.cls + ' me-1">' + st.label + '</span>';
-      }
-
-      // distBar renders a proportional stacked bar plus aligned legend entries:
-      // segments = [{count, color, title, legend}]
-      function distBar(segments) {
-        var total = 0;
-        segments.forEach(function(seg) { total += seg.count; });
-        if (!total) return '';
-
-        var bar = segments.map(function(seg) {
-          var w = (seg.count / total * 100).toFixed(2);
-          return '<div style="width:' + w + '%;background:' + seg.color + '" title="' + seg.title + '"></div>';
-        }).join('');
-
-        var entries = segments.map(function(seg) {
-          return '<span class="entry">' + seg.legend + '</span>';
-        }).join('');
-
-        return '<div class="arrival-dist"><div class="dist-bar">' + bar + '</div>' + entries + '</div>';
       }
 
       // Shared time axis for the per-row lanes. Zoomed to where the
@@ -744,31 +685,25 @@
         [['fastest', s.min_ms], ['median', s.p50_ms], ['p90', s.p90_ms], ['slowest', s.max_ms]].forEach(function(kv) {
           statParts.push('<span class="num" style="color:' + timeColor(kv[1]) + '"><b>' + fmtStr(kv[1]) + '</b></span> <span class="text-muted">' + kv[0] + '</span>');
         });
-        document.getElementById('arrival-stats').innerHTML = statParts.join('<span class="text-muted px-2">&middot;</span>');
-
-        var obs = '<b>' + s.unique_nodes + '</b> nodes &mdash; ' +
-          data.observations + ' block / ' + data.p2p_observations + ' block gossip / ' + data.head_observations + ' head / ' +
+        var layers = data.observations + ' block / ' + data.p2p_observations + ' block gossip / ' + data.head_observations + ' head / ' +
           data.np_observations + ' engine' + (data.pl_observations ? ' / ' + data.pl_observations + ' payload' : '') + ' observations';
+        var summary = '<span title="' + esc(layers) + '" style="text-decoration: underline dotted; text-underline-offset: 3px"><b>' + s.unique_nodes + '</b> nodes</span>';
+
+        (data.groups || []).forEach(function(g) {
+          var st = groupStyles[g.name] || groupStyles.other;
+          summary += ' <span class="arrival-group-badge ' + st.cls + '" title="' + esc(st.label + ': ' + g.nodes + ' nodes, p50 ' + fmtStr(g.p50_ms)) + '">' + st.label + ' ' + g.nodes + '</span>';
+        });
+
         if (s.late_nodes > 0) {
-          obs += ' <span class="badge rounded-pill text-bg-danger ms-1" style="font-size: 11px;" title="Nodes whose earliest observation came more than a slot after slot start; excluded from stats">' +
+          summary += ' <span class="badge rounded-pill text-bg-danger ms-1" style="font-size: 11px;" title="Nodes whose earliest observation came more than a slot after slot start; excluded from stats">' +
             s.late_nodes + ' late node' + (s.late_nodes > 1 ? 's' : '') + '</span>';
         }
         if (!data.settled) {
-          obs += ' <span class="badge rounded-pill text-bg-info ms-1" style="font-size: 11px;">live &mdash; data may still be arriving</span>';
+          summary += ' <span class="badge rounded-pill text-bg-info ms-1" style="font-size: 11px;">live &mdash; data may still be arriving</span>';
         }
-        document.getElementById('arrival-observations').innerHTML = obs;
 
-        var groupColors = { ethpandaops: '#0d6efd', community: '#198754', corp: '#ffc107', other: '#6c757d' };
-        document.getElementById('arrival-sources').innerHTML = distBar((data.groups || []).map(function(g) {
-          var st = groupStyles[g.name] || groupStyles.other;
-          return {
-            count: g.nodes,
-            color: groupColors[g.name] || groupColors.other,
-            title: st.label + ': ' + g.nodes + ' nodes, p50 ' + fmtStr(g.p50_ms),
-            legend: '<span class="arrival-group-badge ' + st.cls + '">' + st.label + '</span> <b>' + g.nodes + '</b>' +
-              ' <span class="text-muted small">p50 ' + fmtStr(g.p50_ms) + '</span>'
-          };
-        }));
+        statParts.push(summary);
+        document.getElementById('arrival-stats').innerHTML = statParts.join('<span class="text-muted px-2">&middot;</span>');
 
         // the regions read as the two halves of the slot per continent: when
         // its nodes adopted the block as head, and when they got the payload.
@@ -798,14 +733,12 @@
 
           var regionHeader = '<div class="d-flex align-items-end arrival-region-line">' +
             '<span class="region-name"></span>' +
-            '<span class="d-none d-md-inline-block" style="width: 160px; flex: none"></span>' +
             '<span style="width: 4.5rem; flex: none"></span>' +
             '<span class="region-times"><span class="region-cap" title="When nodes on each continent adopted this block as head of the chain (beacon API head event)">head arrival</span></span>' +
             (hasPl ? '<span class="region-times"><span class="region-cap" title="When nodes on each continent first saw this block\'s execution payload on gossip">payload arrival</span></span>' : '') +
             '</div>' +
             '<div class="d-flex align-items-center arrival-region-line text-muted small">' +
             '<span class="region-name"></span>' +
-            '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">share of observing nodes</span>' +
             '<span style="width: 4.5rem; flex: none; text-align: right">nodes</span>' +
             regionTimeLabels + (hasPl ? regionTimeLabels : '') +
             '</div>';
@@ -815,7 +748,6 @@
             var line = '<div class="d-flex align-items-center arrival-region-line tl-toggle" data-region="' + esc(c.code || '') + '" title="' + esc(name) + ': ' + c.nodes +
               ' of ' + totalNodes + ' observing nodes (' + share.toFixed(0) + '%)">' +
               '<span class="region-name"><span class="arrival-dot me-1" style="background:' + contColor(c.code) + '"></span>' + esc(name) + '</span>' +
-              '<span class="region-bar-track d-none d-md-inline-block" style="flex: none"><span class="region-bar" style="width:' + Math.max(1.5, share).toFixed(1) + '%;background:' + contColor(c.code) + '"></span></span>' +
               '<span class="num" style="width: 4.5rem; flex: none; text-align: right"><b>' + c.nodes + '</b></span>' +
               regionTimeCells(c.head_min_ms, c.head_p50_ms, c.head_p90_ms) +
               (hasPl ? regionTimeCells(c.pl_min_ms, c.pl_p50_ms, c.pl_p90_ms) : '') +
@@ -830,8 +762,7 @@
             }).map(function(n) {
               return '<div class="d-flex align-items-center arrival-region-line text-muted">' +
                 '<span class="region-name ps-3" title="' + esc(n.full_name) + '">' + esc(n.name) + '</span>' +
-                '<span class="d-none d-md-inline-block" style="width: 160px; flex: none">' + flag((n.country_code || '').toUpperCase()) + ' ' + esc(n.country || n.country_code || '') + '</span>' +
-                '<span style="width: 4.5rem; flex: none; text-align: right">' + esc(n.implementation || '') + '</span>' +
+                '<span style="width: 4.5rem; flex: none; text-align: right" title="' + esc(n.country || n.country_code || '') + '">' + flag((n.country_code || '').toUpperCase()) + ' ' + esc(n.implementation || '') + '</span>' +
                 regionNodeCells(n.head_ms) + (hasPl ? regionNodeCells(n.pl_ms) : '') +
                 '</div>';
             }).join('');
