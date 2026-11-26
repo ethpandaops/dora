@@ -213,6 +213,7 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 	seenAggregators := map[uint64]map[phase0.ValidatorIndex]bool{}
 	coverage := map[uint64]map[int]bool{}
 	saturated := map[uint64]bool{}
+	matched := map[*aggregateObservers][]*models.SlotAggregate{}
 
 	newRow := func(committee uint64, aggregator phase0.ValidatorIndex) *models.SlotAggregate {
 		name := services.GlobalBeaconService.GetValidatorNameAt(uint64(aggregator), slot)
@@ -251,6 +252,7 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 			row.Observers = observed.observers
 			row.ObserversP50Ms = observed.p50Ms
 			members = observed.members
+			matched[observed] = append(matched[observed], row)
 		}
 
 		if seenAggregators[aggregate.committee] == nil {
@@ -299,6 +301,16 @@ func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers
 		}
 
 		result.rows = append(result.rows, row)
+	}
+
+	for _, rows := range matched {
+		if len(rows) < 2 {
+			continue
+		}
+
+		for _, row := range rows {
+			row.ObserversShared = true
+		}
 	}
 
 	for committee, aggregators := range elected {
@@ -376,6 +388,35 @@ func loadSlotAggregates(ctx context.Context, slot phase0.Slot, settled bool, blo
 	return buildAggregateRows(slot, aggregates, observers[slot], services.GlobalBeaconService.GetSlotCommittees(ctx, slot), arrivals), nil
 }
 
+type aggregatorStats struct {
+	aggregates, missing, redundant, late, attesters, members uint64
+	seenMs                                                   []uint32
+	nodes                                                    map[string]*aggregatorStats
+}
+
+func (a *aggregatorStats) add(row *models.SlotAggregate, aggregateDueMs uint32) {
+	switch {
+	case !row.Seen && row.Redundant:
+		a.redundant++
+	case !row.Seen:
+		a.missing++
+	default:
+		a.aggregates++
+		a.attesters += row.Attesters
+		a.members += row.CommitteeSize
+		a.seenMs = append(a.seenMs, row.SeenMs)
+
+		if row.SeenMs >= aggregateDueMs+1000 {
+			a.late++
+		}
+	}
+}
+
+func (a *aggregatorStats) fill(aggregates, missing, redundant, late, attesters, members *uint64, p50, p90 *uint32) {
+	*aggregates, *missing, *redundant, *late, *attesters, *members = a.aggregates, a.missing, a.redundant, a.late, a.attesters, a.members
+	*p50, *p90 = attesterPercentiles(a.seenMs)
+}
+
 func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, endSlot phase0.Slot, settled bool, aggregateDueMs uint32) (*models.EpochAggregates, error) {
 	client := xatu.GlobalClient
 	if client == nil {
@@ -406,8 +447,7 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 
 	epochCommittees := services.GlobalBeaconService.GetEpochCommittees(ctx, epoch)
 	result := &models.EpochAggregates{}
-	clients := map[string]*models.EpochAggregatorClient{}
-	clientDelays := map[string][]uint32{}
+	stats := map[string]*aggregatorStats{}
 
 	if currentSlot := chainState.CurrentSlot(); endSlot > currentSlot {
 		endSlot = currentSlot
@@ -445,43 +485,50 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 		result.Covered += built.covered
 
 		for _, row := range built.rows {
-			group := clients[row.Client]
-			if group == nil {
-				group = &models.EpochAggregatorClient{Name: row.Client}
-				clients[row.Client] = group
-			}
-
-			if !row.Seen {
-				if row.Redundant {
-					group.Redundant++
-				} else {
-					group.Missing++
-				}
-
-				continue
-			}
-
 			result.Points = append(result.Points, &models.EpochAggregatePoint{
-				Slot:       uint64(slot),
-				Ms:         row.SeenMs,
-				Client:     row.Client,
-				Aggregator: row.AggregatorIndex,
+				Slot:          uint64(slot),
+				Committee:     row.CommitteeIndex,
+				Aggregator:    row.AggregatorIndex,
+				Node:          row.AggregatorName,
+				Client:        row.Client,
+				Seen:          row.Seen,
+				Redundant:     row.Redundant,
+				Ms:            row.SeenMs,
+				Attesters:     row.Attesters,
+				CommitteeSize: row.CommitteeSize,
 			})
 
-			group.Aggregates++
-			group.Attesters += row.Attesters
-			group.CommitteeMembers += row.CommitteeSize
-
-			if row.SeenMs >= aggregateDueMs+1000 {
-				group.Late++
+			client := stats[row.Client]
+			if client == nil {
+				client = &aggregatorStats{nodes: map[string]*aggregatorStats{}}
+				stats[row.Client] = client
 			}
 
-			clientDelays[row.Client] = append(clientDelays[row.Client], row.SeenMs)
+			client.add(row, aggregateDueMs)
+
+			if row.AggregatorName != "" {
+				node := client.nodes[row.AggregatorName]
+				if node == nil {
+					node = &aggregatorStats{}
+					client.nodes[row.AggregatorName] = node
+				}
+
+				node.add(row, aggregateDueMs)
+			}
 		}
 	}
 
-	for name, group := range clients {
-		group.P50Ms, group.P90Ms = attesterPercentiles(clientDelays[name])
+	for name, client := range stats {
+		group := &models.EpochAggregatorClient{Name: name}
+		client.fill(&group.Aggregates, &group.Missing, &group.Redundant, &group.Late, &group.Attesters, &group.CommitteeMembers, &group.P50Ms, &group.P90Ms)
+
+		for nodeName, node := range client.nodes {
+			entry := &models.EpochAggregatorNode{Name: nodeName}
+			node.fill(&entry.Aggregates, &entry.Missing, &entry.Redundant, &entry.Late, &entry.Attesters, &entry.CommitteeMembers, &entry.P50Ms, &entry.P90Ms)
+			group.Nodes = append(group.Nodes, entry)
+		}
+
+		sort.Slice(group.Nodes, func(a, b int) bool { return group.Nodes[a].Name < group.Nodes[b].Name })
 		result.Clients = append(result.Clients, group)
 	}
 

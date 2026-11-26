@@ -81,6 +81,7 @@ type SlotAggregate struct {
 	SizeBytes       uint32 `json:"size_bytes"`
 	Observers       uint64 `json:"observers"`
 	ObserversP50Ms  uint32 `json:"observers_p50_ms"`
+	ObserversShared bool   `json:"observers_shared,omitempty"`
 	Attesters       uint64 `json:"attesters"`
 	CommitteeSize   uint64 `json:"committee_size"`
 	LastIncludedMs  uint32 `json:"last_included_ms"`
@@ -101,10 +102,16 @@ type EpochAggregates struct {
 }
 
 type EpochAggregatePoint struct {
-	Slot       uint64 `json:"slot"`
-	Ms         uint32 `json:"ms"`
-	Client     string `json:"client"`
-	Aggregator uint64 `json:"aggregator"`
+	Slot          uint64 `json:"slot"`
+	Committee     uint64 `json:"committee"`
+	Aggregator    uint64 `json:"aggregator"`
+	Node          string `json:"node,omitempty"`
+	Client        string `json:"client"`
+	Seen          bool   `json:"seen"`
+	Redundant     bool   `json:"redundant,omitempty"`
+	Ms            uint32 `json:"ms"`
+	Attesters     uint64 `json:"attesters"`
+	CommitteeSize uint64 `json:"committee_size"`
 }
 
 type EpochAggregateSlot struct {
@@ -119,6 +126,19 @@ type EpochAggregateSlot struct {
 }
 
 type EpochAggregatorClient struct {
+	Name             string                 `json:"name"`
+	Aggregates       uint64                 `json:"aggregates"`
+	Missing          uint64                 `json:"missing"`
+	Redundant        uint64                 `json:"redundant"`
+	Late             uint64                 `json:"late"`
+	Attesters        uint64                 `json:"attesters"`
+	CommitteeMembers uint64                 `json:"committee_members"`
+	P50Ms            uint32                 `json:"p50_ms"`
+	P90Ms            uint32                 `json:"p90_ms"`
+	Nodes            []*EpochAggregatorNode `json:"nodes,omitempty"`
+}
+
+type EpochAggregatorNode struct {
 	Name             string `json:"name"`
 	Aggregates       uint64 `json:"aggregates"`
 	Missing          uint64 `json:"missing"`

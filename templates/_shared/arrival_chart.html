@@ -461,7 +461,7 @@
         var x = function(ms) { return left + Math.min(ms, maxMs) / maxMs * width; };
         var svg = '<svg viewBox="0 0 ' + (left + width + 10) + ' ' + height + '" style="width:100%;max-width:980px;height:auto" class="arrival-aggregate-lanes">';
 
-        [[data.attestation_due_ms, 'attestation deadline', '4 3'], [data.aggregate_due_ms, 'aggregate deadline', ''], [data.slot_ms, 'slot end', '1 3']].forEach(function(line) {
+        [[data.attestation_due_ms, 'attestation deadline', '4 3'], [data.aggregate_due_ms, 'aggregate send time', ''], [data.slot_ms, 'slot end', '1 3']].forEach(function(line) {
           if (!line[0]) return;
           svg += '<line x1="' + x(line[0]) + '" x2="' + x(line[0]) + '" y1="' + top + '" y2="' + (height - 16) + '" stroke="var(--bs-secondary-color)" stroke-width="1"' +
             (line[2] ? ' stroke-dasharray="' + line[2] + '"' : '') + '><title>' + line[1] + ' ' + fmtStr(line[0]) + '</title></line>';
@@ -516,13 +516,13 @@
 
         if (seen.length) {
           var firstMs = Math.min.apply(null, seen.map(function(a) { return a.seen_ms; }));
-          summary += sep + 'first ' + fmtStr(firstMs) + ' (' + fmtDelta(firstMs - dueMs) + ' vs the aggregate deadline)';
+          summary += sep + 'first ' + fmtStr(firstMs) + ' (' + fmtDelta(firstMs - dueMs) + ' after the aggregate send time)';
         }
 
         if (data.aggregate_members) summary += sep + Math.round(data.aggregate_covered * 100 / data.aggregate_members) + '% of committee members covered';
         if (bytes) summary += sep + fmtBytes(bytes) + ' of aggregates';
-        if (missing.length) summary += sep + '<span style="color:#f46a6a">' + plural(missing.length, 'elected aggregator') + ' not seen</span>';
-        if (redundant.length) summary += sep + '<span class="text-muted" title="Nodes ignore an aggregate whose bits an earlier one already covers, so these were not relayed to the observers">' + plural(redundant.length, 'redundant aggregate') + ' not relayed</span>';
+        if (missing.length) summary += sep + '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">' + plural(missing.length, 'elected aggregator') + ' not seen</span>';
+        if (redundant.length) summary += sep + '<span class="text-muted" title="' + esc(aggregateTips.redundant) + '">' + plural(redundant.length, 'redundant aggregate') + ' not relayed</span>';
         summary += liveBadge(data.settled);
 
         var rows = '';
@@ -546,7 +546,7 @@
           rows += '<tr>' + cells +
             '<td class="text-end num"' + (a.seen_ms >= data.slot_ms ? ' style="color:#f46a6a"' : '') + '>' + fmtStr(a.seen_ms) + '</td>' +
             '<td class="text-end num">' + fmtDelta(a.seen_ms - dueMs) + '</td>' +
-            '<td class="text-end num">' + (a.observers > 1 ? fmtStr(a.observers_p50_ms) + ' <span class="text-muted">(' + a.observers + ')</span>' : '&mdash;') + '</td>' +
+            '<td class="text-end num">' + (a.observers_shared ? '<span class="text-muted" title="' + esc(aggregateTips.nodesP50) + '">shared</span>' : a.observers > 1 ? fmtStr(a.observers_p50_ms) + ' <span class="text-muted">(' + a.observers + ')</span>' : '&mdash;') + '</td>' +
             '<td class="text-end num">' + a.attesters.toLocaleString() + (a.committee_size ? ' / ' + a.committee_size.toLocaleString() : '') + pct + '</td>' +
             '<td class="text-end num">' + (a.attesters > a.included_unseen ? fmtStr(a.last_included_ms) : '&mdash;') + '</td>' +
             '<td class="text-end num">' + (a.left_out ? '<span style="color:#f1b44c">' + a.left_out + '</span>' : '0') + '</td>' +
@@ -556,37 +556,76 @@
 
         body.innerHTML = '<div class="mb-1">' + summary + '</div>' + aggregateLanes(data) +
           '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
-          '<th>committee</th><th>aggregator</th><th>client</th>' + (hasElected ? '<th>elected</th>' : '') +
-          '<th class="text-end">first seen</th><th class="text-end">vs deadline</th><th class="text-end" title="Median first arrival over the nodes whose beacon API reported the aggregate, and how many did">p50 (nodes)</th>' +
-          '<th class="text-end">attesters</th><th class="text-end">last single</th><th class="text-end">left out</th><th class="text-end">unseen</th><th class="text-end">size</th>' +
+          th('committee', aggregateTips.committee) + th('aggregator', aggregateTips.aggregator) + th('client', aggregateTips.client) + (hasElected ? th('elected', aggregateTips.elected) : '') +
+          th('first seen', aggregateTips.firstSeen, 'text-end') + th('after send', aggregateTips.afterSend, 'text-end') + th('p50 (nodes)', aggregateTips.nodesP50, 'text-end') +
+          th('attesters', aggregateTips.attestersRow, 'text-end') + th('last single', aggregateTips.lastSingle, 'text-end') + th('left out', aggregateTips.leftOut, 'text-end') +
+          th('unseen', aggregateTips.unseen, 'text-end') + th('size', aggregateTips.size, 'text-end') +
           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
         row.style.display = '';
       }
 
 
-      function epochAggregateScatter(data) {
+      var aggregateTips = {
+        client: 'The consensus client of the aggregator, from its validator name',
+        aggregates: 'Aggregates by these aggregators that an observer saw on gossip',
+        notSeen: 'Elected aggregators whose aggregate no observer saw although its committee was not yet covered by an earlier aggregate: either it was never sent or it never reached an observer',
+        redundant: 'Elected aggregators whose committee an earlier aggregate already covered. Nodes ignore an aggregate whose bits a seen one already covers and do not relay it, so a sent duplicate rarely reaches the observers. Not a fault of the client',
+        p50: 'Median time into the slot at which an observer first saw these aggregates, and how long after the aggregate send time (6s) that is',
+        p90: '90th percentile of the first seen time',
+        late: 'Aggregates first seen more than 1s after the aggregate send time',
+        attesters: 'Average share of the committee that the aggregates include',
+        slot: 'The slot of the aggregate',
+        committee: 'The beacon committee the aggregate is for',
+        aggregator: 'The aggregator validator and its node',
+        elected: 'Whether the aggregator is in the committee\'s aggregation committee in the state',
+        state: 'Seen on gossip, redundant (not relayed because the committee was already covered) or not seen',
+        firstSeen: 'When an observer first saw the aggregate, relative to slot start',
+        afterSend: 'How long after the aggregate send time (6s into the slot) the aggregate was first seen',
+        nodesP50: 'Median first arrival over the beacon nodes whose API reported this aggregate, and how many did. Blank when several aggregates in the committee carry the same bits, since the nodes report those once and they cannot be told apart',
+        attestersRow: 'Committee members the aggregate includes, out of the committee size',
+        lastSingle: 'When the latest single attestation the aggregate includes was first seen',
+        leftOut: 'Committee attestations seen before the aggregate arrived that it does not include',
+        unseen: 'Included attestations that no observer saw on their own',
+        size: 'Gossip message size of the aggregate and proof'
+      };
+
+      function th(label, tip, cls) {
+        return '<th' + (cls ? ' class="' + cls + '"' : '') + ' title="' + esc(tip) + '" style="cursor: help">' + label + '</th>';
+      }
+
+      function epochAggregateScatter(data, focus) {
         var agg = data.aggregates;
         var dueMs = data.aggregate_due_ms;
         var slots = agg.slots;
         if (!slots.length) return '';
 
         var firstSlot = slots[0].slot;
+        var seen = (agg.points || []).filter(function(p) { return p.seen; });
         var lo = Math.max(0, dueMs - 500);
         var hi = data.slot_ms;
-        (agg.points || []).forEach(function(p) { hi = Math.max(hi, p.ms + 250); });
+        seen.forEach(function(p) { hi = Math.max(hi, p.ms + 250); });
         hi = Math.min(hi, data.slot_ms + 1000);
 
-        var left = 46, top = 16, plotW = 900, plotH = 170;
+        var left = 46, top = 16, plotW = 900, plotH = 190;
         var colW = plotW / slots.length;
         var y = function(ms) { return top + (1 - (Math.min(ms, hi) - lo) / (hi - lo)) * plotH; };
         var svg = '<svg viewBox="0 0 ' + (left + plotW + 10) + ' ' + (top + plotH + 22) + '" style="width:100%;max-width:980px;height:auto">';
+
+        slots.forEach(function(s, i) {
+          if (i % 2) svg += '<rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="var(--bs-secondary-bg)" opacity="0.35"></rect>';
+        });
 
         for (var t = Math.ceil(lo / 1000) * 1000; t <= hi; t += 1000) {
           svg += '<line x1="' + left + '" x2="' + (left + plotW) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="var(--bs-border-color)" stroke-width="0.5"></line>' +
             '<text x="' + (left - 6) + '" y="' + (y(t) + 3) + '" text-anchor="end" font-size="10" fill="var(--bs-secondary-color)">' + (t / 1000) + 's</text>';
         }
 
-        [[dueMs, 'aggregate deadline', '4 3'], [data.slot_ms, 'slot end', '1 3']].forEach(function(line) {
+        for (var d = 1; d < slots.length; d++) {
+          var dx = left + d * colW;
+          svg += '<line x1="' + dx + '" x2="' + dx + '" y1="' + top + '" y2="' + (top + plotH) + '" stroke="var(--bs-border-color)" stroke-width="0.6"></line>';
+        }
+
+        [[dueMs, 'aggregate send time', '4 3'], [data.slot_ms, 'slot end', '1 3']].forEach(function(line) {
           svg += '<line x1="' + left + '" x2="' + (left + plotW) + '" y1="' + y(line[0]) + '" y2="' + y(line[0]) + '" stroke="#f46a6a" stroke-width="1" stroke-dasharray="' + line[2] + '"><title>' + line[1] + ' ' + fmtStr(line[0]) + '</title></line>';
         });
 
@@ -602,59 +641,150 @@
           if (i % 4 === 0) svg += '<text x="' + cx + '" y="' + (top + plotH + 14) + '" text-anchor="middle" font-size="10" fill="var(--bs-secondary-color)">' + s.slot + '</text>';
         });
 
-        (agg.points || []).forEach(function(p) {
+        seen.forEach(function(p) {
           var i = p.slot - firstSlot;
           var jitter = ((p.aggregator * 7919) % 100) / 100 - 0.5;
           var cx = left + (i + 0.5 + jitter * 0.6) * colW;
-          svg += '<circle cx="' + cx + '" cy="' + y(p.ms) + '" r="3" fill="' + clientColor(p.client) + '" pointer-events="none"></circle>';
+          var on = focus(p);
+          svg += '<circle cx="' + cx + '" cy="' + y(p.ms) + '" r="' + (on === 2 ? 4 : 3) + '" fill="' + clientColor(p.client) + '" opacity="' + (on ? 1 : 0.12) + '" pointer-events="none"></circle>';
         });
 
         return svg + '</svg>';
       }
 
-      function renderEpochAggregates(row, body, data) {
-        var agg = data && data.aggregates;
+      function aggregatorCells(c, dueMs) {
+        return '<td class="text-end num">' + c.aggregates.toLocaleString() + '</td>' +
+          '<td class="text-end num">' + (c.missing ? '<span style="color:#f46a6a">' + c.missing + '</span>' : '0') + '</td>' +
+          '<td class="text-end num text-muted">' + (c.redundant || 0) + '</td>' +
+          '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p50_ms) + ' <span class="text-muted">(' + fmtDelta(c.p50_ms - dueMs) + ')</span>' : '&mdash;') + '</td>' +
+          '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p90_ms) : '&mdash;') + '</td>' +
+          '<td class="text-end num">' + (c.late ? '<span style="color:#f1b44c">' + c.late + '</span>' : '0') + '</td>' +
+          '<td class="text-end num">' + (c.committee_members ? Math.round(c.attesters * 100 / c.committee_members) + '%' : '&mdash;') + '</td>';
+      }
 
-        if (!agg || !agg.aggregates) {
-          row.style.display = 'none';
-          return;
+      function mountEpochAggregates(row, body) {
+        var data = null;
+        var hovered = null;
+        var solo = null;
+        var soloNode = null;
+
+        function focus(p) {
+          if (soloNode) return p.node === soloNode ? 2 : 0;
+          var client = hovered || solo;
+          if (!client) return 1;
+          return p.client === client ? 2 : 0;
         }
 
-        var dueMs = data.aggregate_due_ms;
-        var summary = plural(agg.aggregates, 'aggregate') + ' over ' + plural(agg.slots.length, 'slot');
-        if (agg.members) summary += sep + Math.round(agg.covered * 100 / agg.members) + '% of committee members covered';
-        if (agg.size_bytes) summary += sep + fmtBytes(agg.size_bytes) + ' of aggregates';
-        if (agg.missing) summary += sep + '<span style="color:#f46a6a">' + plural(agg.missing, 'elected aggregator') + ' not seen</span>';
-        if (agg.redundant) summary += sep + '<span class="text-muted" title="Nodes ignore an aggregate whose bits an earlier one already covers, so these were not relayed to the observers">' + plural(agg.redundant, 'redundant aggregate') + ' not relayed</span>';
-        summary += liveBadge(data.settled);
+        function nodeList() {
+          var points = (data.aggregates.points || []).filter(function(p) { return p.node === soloNode; });
+          if (!points.length) return '';
 
-        var scatter = epochAggregateScatter(data);
-        var rows = '';
+          var dueMs = data.aggregate_due_ms;
+          var rows = points.map(function(p) {
+            var state = p.seen ? fmtStr(p.ms) : (p.redundant
+              ? '<span class="text-muted">redundant, not relayed</span>'
+              : '<span style="color:#f46a6a">not seen</span>');
+            return '<tr><td class="num"><a href="/slot/' + p.slot + '#arrival">' + p.slot + '</a></td>' +
+              '<td class="num">' + p.committee + '</td>' +
+              '<td class="num"><a href="/validator/' + p.aggregator + '">' + p.aggregator + '</a></td>' +
+              '<td class="text-end num">' + state + '</td>' +
+              '<td class="text-end num">' + (p.seen ? fmtDelta(p.ms - dueMs) : '') + '</td>' +
+              '<td class="text-end num">' + (p.seen && p.committee_size ? p.attesters + ' / ' + p.committee_size : '') + '</td></tr>';
+          }).join('');
 
-        agg.clients.forEach(function(c) {
-          rows += '<tr><td><span class="arrival-heat-key" style="background:' + clientColor(c.name) + '"></span> ' + esc(c.name) + '</td>' +
-            '<td class="text-end num">' + c.aggregates.toLocaleString() + '</td>' +
-            '<td class="text-end num">' + (c.missing ? '<span style="color:#f46a6a">' + c.missing + '</span>' : '0') + '</td>' +
-            '<td class="text-end num text-muted">' + (c.redundant || 0) + '</td>' +
-            '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p50_ms) + ' <span class="text-muted">(' + fmtDelta(c.p50_ms - dueMs) + ')</span>' : '&mdash;') + '</td>' +
-            '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p90_ms) : '&mdash;') + '</td>' +
-            '<td class="text-end num">' + (c.late ? '<span style="color:#f1b44c">' + c.late + '</span>' : '0') + '</td>' +
-            '<td class="text-end num">' + (c.committee_members ? Math.round(c.attesters * 100 / c.committee_members) + '%' : '&mdash;') + '</td></tr>';
+          return '<div class="mt-2"><b>' + esc(soloNode) + '</b> <span class="text-muted">&middot; ' + plural(points.length, 'aggregation duty') + '</span>' +
+            '<div style="max-height:320px;overflow-y:auto"><table class="table table-sm arrival-table text-left mb-0" style="width:auto"><thead><tr class="text-muted">' +
+            th('slot', aggregateTips.slot) + th('committee', aggregateTips.committee) + th('aggregator', aggregateTips.aggregator) +
+            th('first seen', aggregateTips.state, 'text-end') + th('after send', aggregateTips.afterSend, 'text-end') + th('attesters', aggregateTips.attestersRow, 'text-end') +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+        }
+
+        function render() {
+          var agg = data.aggregates;
+          var dueMs = data.aggregate_due_ms;
+          var summary = plural(agg.aggregates, 'aggregate') + ' over ' + plural(agg.slots.length, 'slot');
+          if (agg.members) summary += sep + Math.round(agg.covered * 100 / agg.members) + '% of committee members covered';
+          if (agg.size_bytes) summary += sep + fmtBytes(agg.size_bytes) + ' of aggregates';
+          if (agg.missing) summary += sep + '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">' + plural(agg.missing, 'elected aggregator') + ' not seen</span>';
+          if (agg.redundant) summary += sep + '<span class="text-muted" title="' + esc(aggregateTips.redundant) + '">' + plural(agg.redundant, 'redundant aggregate') + ' not relayed</span>';
+          summary += liveBadge(data.settled);
+
+          var rows = '';
+
+          agg.clients.forEach(function(c) {
+            var dim = (hovered || solo) && (hovered || solo) !== c.name;
+            rows += '<tr data-agg-client="' + esc(c.name) + '" style="cursor:pointer' + (dim ? ';opacity:0.45' : '') + '"' + (solo === c.name ? ' class="attester-hover"' : '') + '>' +
+              '<td><span class="arrival-heat-key" style="background:' + clientColor(c.name) + '"></span> ' + esc(c.name) + '</td>' + aggregatorCells(c, dueMs) + '</tr>';
+
+            if (solo !== c.name) return;
+
+            (c.nodes || []).forEach(function(n) {
+              rows += '<tr data-agg-node="' + esc(n.name) + '" style="cursor:pointer"' + (soloNode === n.name ? ' class="attester-hover"' : '') + '>' +
+                '<td class="ps-4 text-muted">' + esc(n.name) + '</td>' + aggregatorCells(n, dueMs) + '</tr>';
+            });
+          });
+
+          body.innerHTML = '<div class="mb-1">' + summary + '</div>' +
+            epochAggregateScatter(data, focus) +
+            '<div class="text-muted small mb-1">Hover an aggregator client to highlight its aggregates, click it for its nodes, click a node for its aggregation duties.</div>' +
+            '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
+            th('aggregator client', aggregateTips.client) + th('aggregates', aggregateTips.aggregates, 'text-end') + th('not seen', aggregateTips.notSeen, 'text-end') +
+            th('redundant', aggregateTips.redundant, 'text-end') + th('p50 first seen', aggregateTips.p50, 'text-end') + th('p90', aggregateTips.p90, 'text-end') +
+            th('late', aggregateTips.late, 'text-end') + th('avg attesters', aggregateTips.attesters, 'text-end') +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>' + (soloNode ? nodeList() : '');
+          row.style.display = '';
+        }
+
+        body.addEventListener('mouseover', function(ev) {
+          var tr = ev.target.closest('[data-agg-client]');
+          var name = tr ? tr.getAttribute('data-agg-client') : null;
+          if (name === hovered || solo) return;
+          hovered = name;
+          render();
+        });
+        body.addEventListener('mouseleave', function() {
+          if (!hovered) return;
+          hovered = null;
+          render();
+        });
+        body.addEventListener('click', function(ev) {
+          var node = ev.target.closest('[data-agg-node]');
+          var client = ev.target.closest('[data-agg-client]');
+
+          if (node) {
+            var name = node.getAttribute('data-agg-node');
+            soloNode = soloNode === name ? null : name;
+          } else if (client) {
+            var clientName = client.getAttribute('data-agg-client');
+            solo = solo === clientName ? null : clientName;
+            soloNode = null;
+          } else if (!ev.target.closest('a, th')) {
+            solo = null;
+            soloNode = null;
+          } else {
+            return;
+          }
+
+          hovered = null;
+          render();
         });
 
-        body.innerHTML = '<div class="mb-1">' + summary + '</div>' +
-          scatter +
-          '<div class="table-responsive"><table class="table table-sm arrival-table text-left mb-1" style="width:auto"><thead><tr class="text-muted">' +
-          '<th>aggregator client</th><th class="text-end">aggregates</th><th class="text-end" title="Elected aggregators whose aggregate no observer saw although the committee was not yet covered">not seen</th><th class="text-end" title="Elected aggregators whose aggregate was not relayed because an earlier one already covered the committee">redundant</th><th class="text-end">p50 first seen</th>' +
-          '<th class="text-end">p90</th><th class="text-end" title="First seen more than 1s after the aggregate deadline">late</th><th class="text-end">avg attesters</th>' +
-          '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-        row.style.display = '';
+        return function(next) {
+          data = next;
+
+          if (!data || !data.aggregates || !data.aggregates.aggregates) {
+            row.style.display = 'none';
+            return;
+          }
+
+          render();
+        };
       }
 
       return {
         esc: esc, fmtStr: fmtStr, fmtAxis: fmtAxis, timeColor: timeColor, fmtMsColored: fmtMsColored,
         liveBadge: liveBadge, sep: sep, histAxis: histAxis, mountAttesters: mountAttesters,
-        renderSlotAggregates: renderSlotAggregates, renderEpochAggregates: renderEpochAggregates
+        renderSlotAggregates: renderSlotAggregates, mountEpochAggregates: mountEpochAggregates
       };
     })();
   </script>
