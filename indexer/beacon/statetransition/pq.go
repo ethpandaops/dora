@@ -2,6 +2,7 @@ package statetransition
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 
 	"github.com/ethpandaops/go-eth2-client/spec"
 	"github.com/ethpandaops/go-eth2-client/spec/all"
@@ -106,4 +107,71 @@ func syncPQRegistries(state *all.BeaconState) {
 			xmssBuilder.WithdrawableEpoch = builder.WithdrawableEpoch
 		}
 	}
+}
+
+const aggregatorsPerCommittee = 4
+
+func processAggregationCommitteeWindow(s *stateAccessor) {
+	slotsPerEpoch := s.specs.SlotsPerEpoch
+
+	windowLen := uint64(len(s.AggregationCommitteeWindow))
+	if windowLen <= slotsPerEpoch {
+		return
+	}
+
+	copy(s.AggregationCommitteeWindow, s.AggregationCommitteeWindow[slotsPerEpoch:])
+
+	nextEpoch := s.currentEpoch() + phase0.Epoch(s.specs.MinSeedLookahead) + 1
+	startSlot := uint64(nextEpoch) * slotsPerEpoch
+
+	lastStart := windowLen - slotsPerEpoch
+	for i := uint64(0); i < slotsPerEpoch; i++ {
+		s.AggregationCommitteeWindow[lastStart+i] = computeAggregationCommittees(s, phase0.Slot(startSlot+i))
+	}
+}
+
+func computeAggregationCommittees(s *stateAccessor, slot phase0.Slot) [][]phase0.ValidatorIndex {
+	epoch := phase0.Epoch(uint64(slot) / s.specs.SlotsPerEpoch)
+	epochSeed := getSeed(s, epoch, s.specs.DomainSelectionProof)
+	cc := newCommitteeCache()
+
+	committeesPerSlot := s.getCommitteeCountPerSlot(epoch)
+	committees := make([][]phase0.ValidatorIndex, committeesPerSlot)
+
+	for index := uint64(0); index < committeesPerSlot; index++ {
+		committees[index] = computeAggregationCommittee(s, epochSeed, slot, index, s.getBeaconCommittee(slot, index, cc))
+	}
+
+	return committees
+}
+
+func computeAggregationCommittee(s *stateAccessor, epochSeed phase0.Root, slot phase0.Slot, index uint64, committee []phase0.ValidatorIndex) []phase0.ValidatorIndex {
+	var buf [48]byte
+	copy(buf[:32], epochSeed[:])
+	binary.LittleEndian.PutUint64(buf[32:40], uint64(slot))
+	binary.LittleEndian.PutUint64(buf[40:48], index)
+	seed := hash256(buf[:])
+
+	candidates := append([]phase0.ValidatorIndex(nil), committee...)
+	aggregators := make([]phase0.ValidatorIndex, 0, aggregatorsPerCommittee)
+
+	for len(aggregators) < aggregatorsPerCommittee && len(candidates) > 0 {
+		var round [40]byte
+		copy(round[:32], seed[:])
+		binary.LittleEndian.PutUint64(round[32:], uint64(len(aggregators)))
+
+		aggregator := computeBalanceWeightedSelection(s, candidates, hash256(round[:]), 1, false)[0]
+		aggregators = append(aggregators, aggregator)
+
+		remaining := candidates[:0]
+		for _, candidate := range candidates {
+			if candidate != aggregator {
+				remaining = append(remaining, candidate)
+			}
+		}
+
+		candidates = remaining
+	}
+
+	return aggregators
 }

@@ -245,5 +245,9 @@ func processEpochInternal(s *stateAccessor, info *TransitionInfo) error {
 		processPtcWindow(s)
 	}
 
+	if s.Version == spec.DataVersionPQ {
+		processAggregationCommitteeWindow(s)
+	}
+
 	return nil
 }

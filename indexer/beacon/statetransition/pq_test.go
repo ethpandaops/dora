@@ -187,3 +187,55 @@ func TestPQPendingDeposits(t *testing.T) {
 		t.Fatalf("failed to hash state: %v", err)
 	}
 }
+
+func TestPQAggregationCommitteeWindow(t *testing.T) {
+	specs, ds, state := loadPQTestState(t)
+	slotsPerEpoch := specs.SlotsPerEpoch
+
+	genesisWindow := make([][][]phase0.ValidatorIndex, len(state.AggregationCommitteeWindow))
+	copy(genesisWindow, state.AggregationCommitteeWindow)
+
+	s, err := NewStateTransition(specs, ds).newAccessor(state)
+	if err != nil {
+		t.Fatalf("failed to wrap state: %v", err)
+	}
+
+	for offset := slotsPerEpoch; offset < uint64(len(genesisWindow)); offset++ {
+		slot := phase0.Slot(offset - slotsPerEpoch)
+		computed := computeAggregationCommittees(s, slot)
+
+		if len(computed) != len(genesisWindow[offset]) {
+			t.Fatalf("slot %d: %d committees, expected %d", slot, len(computed), len(genesisWindow[offset]))
+		}
+
+		for index, committee := range genesisWindow[offset] {
+			if len(computed[index]) != len(committee) {
+				t.Fatalf("slot %d committee %d: %v, expected %v", slot, index, computed[index], committee)
+			}
+
+			for i := range committee {
+				if computed[index][i] != committee[i] {
+					t.Fatalf("slot %d committee %d: %v, expected %v", slot, index, computed[index], committee)
+				}
+			}
+		}
+	}
+
+	if err := NewStateTransition(specs, ds).PrepareEpochPreState(state, 1, nil); err != nil {
+		t.Fatalf("epoch transition failed: %v", err)
+	}
+
+	for offset := uint64(0); offset < 2*slotsPerEpoch; offset++ {
+		for index, committee := range genesisWindow[offset+slotsPerEpoch] {
+			for i := range committee {
+				if state.AggregationCommitteeWindow[offset][index][i] != committee[i] {
+					t.Fatalf("window %d committee %d not shifted", offset, index)
+				}
+			}
+		}
+	}
+
+	if len(state.AggregationCommitteeWindow[3*slotsPerEpoch-1]) == 0 {
+		t.Fatalf("lookahead epoch not filled")
+	}
+}
