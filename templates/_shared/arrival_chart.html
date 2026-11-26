@@ -249,12 +249,12 @@
           var aggregates = data.aggregates || [];
           var marks = Array.isArray(aggregates)
             ? aggregates.filter(function(a) { return a.seen; }).map(function(a) { return { ms: a.seen_ms, client: a.client, aggregator: a.aggregator_index }; })
-            : (aggregates.points || []).map(function(p) { return { ms: p.ms, client: p.client, aggregator: p.aggregator, slot: p.slot }; });
+            : [];
 
           marks.forEach(function(m) {
             if (m.ms >= slotMs) return;
             chart += '<div class="agg-mark" style="left:' + (m.ms / slotMs * 100) + '%;background:' + (attesterColors[m.client] || attesterColors.unknown) + '" title="' +
-              esc('aggregate from ' + m.aggregator + ' (' + m.client + ')' + (m.slot != null ? ' in slot ' + m.slot : '') + ' at ' + fmtStr(m.ms)) + '"></div>';
+              esc('aggregate from ' + m.aggregator + ' (' + m.client + ') at ' + fmtStr(m.ms)) + '"></div>';
           });
 
           return chart;
@@ -459,7 +459,7 @@
         var left = 90, width = 880, laneH = 22, top = 4;
         var height = top + keys.length * laneH + 18;
         var x = function(ms) { return left + Math.min(ms, maxMs) / maxMs * width; };
-        var svg = '<svg viewBox="0 0 ' + (left + width + 10) + ' ' + height + '" style="width:100%;max-width:980px;height:auto" class="arrival-aggregate-lanes">';
+        var svg = '<svg viewBox="0 0 ' + (left + width + 10) + ' ' + height + '" style="width:100%;height:auto" class="arrival-aggregate-lanes">';
 
         [[data.attestation_due_ms, 'attestation deadline', '4 3'], [data.aggregate_due_ms, 'aggregate send time', ''], [data.slot_ms, 'slot end', '1 3']].forEach(function(line) {
           if (!line[0]) return;
@@ -609,7 +609,7 @@
         var left = 46, top = 16, plotW = 900, plotH = 190;
         var colW = plotW / slots.length;
         var y = function(ms) { return top + (1 - (Math.min(ms, hi) - lo) / (hi - lo)) * plotH; };
-        var svg = '<svg viewBox="0 0 ' + (left + plotW + 10) + ' ' + (top + plotH + 22) + '" style="width:100%;max-width:980px;height:auto">';
+        var svg = '<svg viewBox="0 0 ' + (left + plotW + 10) + ' ' + (top + plotH + 22) + '" style="width:100%;height:auto">';
 
         slots.forEach(function(s, i) {
           if (i % 2) svg += '<rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="var(--bs-secondary-bg)" opacity="0.35"></rect>';
