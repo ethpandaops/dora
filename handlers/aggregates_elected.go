@@ -1,7 +1,11 @@
 package handlers
 
-import "github.com/ethpandaops/go-eth2-client/spec/phase0"
+import (
+	"context"
 
-func electedAggregators(_ phase0.Slot) [][]phase0.ValidatorIndex {
+	"github.com/ethpandaops/go-eth2-client/spec/phase0"
+)
+
+func electedAggregators(_ context.Context, _ phase0.Slot) [][]phase0.ValidatorIndex {
 	return nil
 }
