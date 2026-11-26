@@ -24,15 +24,22 @@ func TestBitlistMembers(t *testing.T) {
 	}
 }
 
-func TestAggregateObserversMatchTruncatedBits(t *testing.T) {
-	full := &aggregateObservers{members: bitlistMembers("0xffbffffffffffffffffffffbffffffffffffff1f"), observers: 11}
-	index := indexAggregateObservers([]*aggregateObservers{full})
+func TestGossipBitsMatchBeaconAPIBitlist(t *testing.T) {
+	beaconAPI := &aggregateObservers{members: bitlistMembers("0xffbffffffffffffffffffffbffffffffffffff1f"), observers: 11}
+	index := indexAggregateObservers([]*aggregateObservers{beaconAPI})
 
-	if index[membersKey(bitlistMembers("0xffbffffffffffffffffffffbffffffffffffff0f"))] != full {
-		t.Fatalf("truncated gossip bits not matched")
+	if len(beaconAPI.members) != 156 {
+		t.Fatalf("beacon api bitlist length %d, expected 156", len(beaconAPI.members))
 	}
 
-	if index[membersKey(full.members)] != full {
-		t.Fatalf("full bits not matched")
+	for _, gossip := range []string{"0xffbffffffffffffffffffffbffffffffffffff0f", "0xffbffffffffffffffffffffbffffffffffffff1f"} {
+		if index[membersKey(rawBitsMembers(gossip, 156))] != beaconAPI {
+			t.Fatalf("gossip bits %s not matched", gossip)
+		}
+	}
+
+	trimmed := rawBitsMembers("0xff", 12)
+	if len(trimmed) != 12 || !trimmed[7] || trimmed[8] || trimmed[11] {
+		t.Fatalf("trimmed bits not padded: %v", trimmed)
 	}
 }
