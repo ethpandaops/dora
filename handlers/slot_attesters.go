@@ -273,6 +273,66 @@ func (g *attesterGroups) clients() []*models.SlotAttestersClient {
 	return clients
 }
 
+type nodeGeo struct {
+	continent   string
+	country     string
+	countryCode string
+}
+
+func loadNodeGeo(ctx context.Context, firstTime, endTime time.Time, settled bool) map[string]*nodeGeo {
+	client := xatu.GlobalClient
+	if client == nil {
+		return nil
+	}
+
+	rows, err := client.Query(ctx, settled, `SELECT meta_client_name, any(meta_client_geo_continent_code), any(meta_client_geo_country), any(meta_client_geo_country_code)
+FROM beacon_api_eth_v1_events_head
+WHERE meta_network_name = ? AND slot_start_date_time >= toDateTime(?) AND slot_start_date_time < toDateTime(?)
+GROUP BY meta_client_name`, client.Network(), firstTime.Unix(), endTime.Unix())
+	if err != nil {
+		if !isMissingTableError(err) {
+			logrus.WithError(err).Warn("error loading node locations from xatu")
+		}
+
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+
+	geo := map[string]*nodeGeo{}
+
+	for rows.Next() {
+		var name string
+
+		entry := &nodeGeo{}
+
+		if err := rows.Scan(&name, &entry.continent, &entry.country, &entry.countryCode); err != nil {
+			logrus.WithError(err).Warn("error scanning node locations from xatu")
+			return geo
+		}
+
+		_, _, display := parseSentryName(name, client.Network())
+		geo[display] = entry
+	}
+
+	return geo
+}
+
+func epochNodeGeo(ctx context.Context, chainState *consensus.ChainState, epoch phase0.Epoch, settled bool) map[string]*nodeGeo {
+	return loadNodeGeo(ctx, chainState.SlotToTime(chainState.EpochToSlot(epoch)), chainState.SlotToTime(chainState.EpochToSlot(epoch+1)), settled)
+}
+
+func setAttesterNodeGeo(clients []*models.SlotAttestersClient, geo map[string]*nodeGeo) {
+	for _, group := range clients {
+		for _, node := range group.Nodes {
+			if entry := geo[node.Name]; entry != nil {
+				node.Continent = entry.continent
+				node.Country = entry.country
+				node.CountryCode = entry.countryCode
+			}
+		}
+	}
+}
+
 func attesterValidatorFilter(validators []phase0.ValidatorIndex) string {
 	if len(validators) == 0 || len(validators) > 10000 {
 		return ""
@@ -413,10 +473,14 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 
 	cacheTimeout := attesterCacheTimeout(chainState, settled, slotTime)
 
+	geo := epochNodeGeo(queryCtx, chainState, chainState.EpochOfSlot(slot), settled)
+
 	aggregates, err := loadSlotAggregates(queryCtx, slot, settled, blockRoot, arrivals)
 	if err != nil {
 		logrus.WithError(err).Warn("error loading slot aggregates from xatu")
 	} else if aggregates != nil {
+		setAggregateGeo(aggregates.rows, geo)
+
 		response.Aggregates = aggregates.rows
 		response.AggregateMembers = aggregates.members
 		response.AggregateCovered = aggregates.covered
@@ -440,6 +504,8 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 	}
 
 	response.Clients = groups.clients()
+
+	setAttesterNodeGeo(response.Clients, geo)
 
 	return response, cacheTimeout, nil
 }

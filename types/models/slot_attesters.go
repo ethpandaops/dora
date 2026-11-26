@@ -31,6 +31,9 @@ type SlotAttestersClient struct {
 
 type SlotAttestersNode struct {
 	Name                string                   `json:"name"`
+	Continent           string                   `json:"continent,omitempty"`
+	Country             string                   `json:"country,omitempty"`
+	CountryCode         string                   `json:"country_code,omitempty"`
 	Expected            uint64                   `json:"expected"`
 	Seen                uint64                   `json:"seen"`
 	AfterAttestationDue uint64                   `json:"after_attestation_due"`
@@ -73,6 +76,9 @@ type SlotAggregate struct {
 	CommitteeIndex  uint64 `json:"committee_index"`
 	AggregatorIndex uint64 `json:"aggregator_index"`
 	AggregatorName  string `json:"aggregator_name,omitempty"`
+	Continent       string `json:"continent,omitempty"`
+	Country         string `json:"country,omitempty"`
+	CountryCode     string `json:"country_code,omitempty"`
 	Client          string `json:"client"`
 	Seen            bool   `json:"seen"`
 	Redundant       bool   `json:"redundant,omitempty"`
@@ -139,6 +145,9 @@ type EpochAggregatorClient struct {
 
 type EpochAggregatorNode struct {
 	Name             string `json:"name"`
+	Continent        string `json:"continent,omitempty"`
+	Country          string `json:"country,omitempty"`
+	CountryCode      string `json:"country_code,omitempty"`
 	Aggregates       uint64 `json:"aggregates"`
 	Missing          uint64 `json:"missing"`
 	Redundant        uint64 `json:"redundant"`

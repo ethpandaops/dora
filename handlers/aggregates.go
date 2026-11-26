@@ -527,3 +527,25 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 
 	return result, nil
 }
+
+func setAggregateGeo(rows []*models.SlotAggregate, geo map[string]*nodeGeo) {
+	for _, row := range rows {
+		if entry := geo[row.AggregatorName]; entry != nil {
+			row.Continent = entry.continent
+			row.Country = entry.country
+			row.CountryCode = entry.countryCode
+		}
+	}
+}
+
+func setAggregatorNodeGeo(clients []*models.EpochAggregatorClient, geo map[string]*nodeGeo) {
+	for _, group := range clients {
+		for _, node := range group.Nodes {
+			if entry := geo[node.Name]; entry != nil {
+				node.Continent = entry.continent
+				node.Country = entry.country
+				node.CountryCode = entry.countryCode
+			}
+		}
+	}
+}
