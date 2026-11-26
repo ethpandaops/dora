@@ -273,6 +273,51 @@ func (g *attesterGroups) clients() []*models.SlotAttestersClient {
 	return clients
 }
 
+func loadAttesterNodeGeo(ctx context.Context, firstTime, endTime time.Time, settled bool, clients []*models.SlotAttestersClient) {
+	client := xatu.GlobalClient
+	if client == nil || len(clients) == 0 {
+		return
+	}
+
+	rows, err := client.Query(ctx, settled, `SELECT meta_client_name, any(meta_client_geo_continent_code), any(meta_client_geo_country), any(meta_client_geo_country_code)
+FROM beacon_api_eth_v1_events_head
+WHERE meta_network_name = ? AND slot_start_date_time >= toDateTime(?) AND slot_start_date_time < toDateTime(?)
+GROUP BY meta_client_name`, client.Network(), firstTime.Unix(), endTime.Unix())
+	if err != nil {
+		if !isMissingTableError(err) {
+			logrus.WithError(err).Warn("error loading attester node locations from xatu")
+		}
+
+		return
+	}
+	defer func() { _ = rows.Close() }()
+
+	nodes := map[string]*models.SlotAttestersNode{}
+
+	for _, group := range clients {
+		for _, node := range group.Nodes {
+			nodes[node.Name] = node
+		}
+	}
+
+	for rows.Next() {
+		var name, continent, country, countryCode string
+
+		if err := rows.Scan(&name, &continent, &country, &countryCode); err != nil {
+			logrus.WithError(err).Warn("error scanning attester node locations from xatu")
+			return
+		}
+
+		_, _, display := parseSentryName(name, client.Network())
+
+		if node := nodes[display]; node != nil {
+			node.Continent = continent
+			node.Country = country
+			node.CountryCode = countryCode
+		}
+	}
+}
+
 func attesterValidatorFilter(validators []phase0.ValidatorIndex) string {
 	if len(validators) == 0 || len(validators) > 10000 {
 		return ""
@@ -431,6 +476,9 @@ func buildSlotAttestersData(ctx context.Context, slot phase0.Slot, blockRoot str
 	}
 
 	response.Clients = groups.clients()
+
+	epoch := chainState.EpochOfSlot(slot)
+	loadAttesterNodeGeo(queryCtx, chainState.SlotToTime(chainState.EpochToSlot(epoch)), chainState.SlotToTime(chainState.EpochToSlot(epoch+1)), settled, response.Clients)
 
 	return response, cacheTimeout, nil
 }

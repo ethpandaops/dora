@@ -28,6 +28,9 @@ type SlotAttestersClient struct {
 
 type SlotAttestersNode struct {
 	Name                string                   `json:"name"`
+	Continent           string                   `json:"continent,omitempty"`
+	Country             string                   `json:"country,omitempty"`
+	CountryCode         string                   `json:"country_code,omitempty"`
 	Expected            uint64                   `json:"expected"`
 	Seen                uint64                   `json:"seen"`
 	AfterAttestationDue uint64                   `json:"after_attestation_due"`

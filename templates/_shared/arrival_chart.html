@@ -74,6 +74,21 @@
           return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
         });
       }
+      var continentNames = {
+        EU: 'Europe', NA: 'North America', AS: 'Asia',
+        OC: 'Oceania', SA: 'South America', AF: 'Africa'
+      };
+      function flag(cc) {
+        if (!cc || cc.length !== 2) return '';
+        var A = 0x1F1E6;
+        return String.fromCodePoint(A + cc.charCodeAt(0) - 65, A + cc.charCodeAt(1) - 65);
+      }
+      function nodeLocation(node) {
+        if (!node || !(node.continent || node.country_code)) return '';
+
+        return ' <span class="small" title="' + esc(node.country || '') + '">' + flag((node.country_code || '').toUpperCase()) + ' ' +
+          esc(continentNames[node.continent] || node.continent || '') + '</span>';
+      }
       function fmtStr(ms) {
         if (ms >= 1000) return (ms / 1000).toFixed(2) + 's';
         return ms + 'ms';
@@ -293,7 +308,7 @@
 
             (c.nodes || []).forEach(function(n) {
               legend += '<tr class="tl-toggle" data-attester-node="' + esc(n.name) + '" title="click to list this node\u2019s validators, slowest first">' +
-                '<td class="ps-4 text-muted">' + esc(n.name) + (opts && opts.nodeNote ? opts.nodeNote(n.name) : '') + '</td>' + statCells(n) + '</tr>';
+                '<td class="ps-4 text-muted">' + esc(n.name) + nodeLocation(n) + '</td>' + statCells(n) + '</tr>';
 
               if (attesterNode === n.name) {
                 legend += '<tr><td colspan="7" class="ps-4">' + nodeValidators(n.name) + '</td></tr>';
@@ -414,7 +429,8 @@
 
       return {
         esc: esc, fmtStr: fmtStr, fmtAxis: fmtAxis, timeColor: timeColor, fmtMsColored: fmtMsColored,
-        liveBadge: liveBadge, sep: sep, histAxis: histAxis, mountAttesters: mountAttesters
+        liveBadge: liveBadge, sep: sep, histAxis: histAxis, mountAttesters: mountAttesters,
+        flag: flag, continentNames: continentNames
       };
     })();
   </script>

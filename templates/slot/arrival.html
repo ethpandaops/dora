@@ -311,6 +311,7 @@
       var shared = window.doraArrivalChart;
       var esc = shared.esc, fmtStr = shared.fmtStr, fmtAxis = shared.fmtAxis, timeColor = shared.timeColor;
       var fmtMsColored = shared.fmtMsColored, liveBadge = shared.liveBadge, sep = shared.sep, histAxis = shared.histAxis;
+      var flag = shared.flag, continentNames = shared.continentNames;
       var arrivalSolo = null;
       var arrivalSoloNodes = [];
 
@@ -368,13 +369,6 @@
           arrivalSoloNodes = nodes;
           applySelection();
         },
-        nodeNote: function(name) {
-          var node = ((arrivalData || {}).nodes || []).filter(function(n) { return n.name === name; })[0];
-          if (!node || !(node.continent || node.country_code)) return '';
-
-          return ' <span class="small" title="' + esc(node.country || '') + '">' + flag((node.country_code || '').toUpperCase()) + ' ' +
-            esc(continentNames[node.continent] || node.continent || '') + '</span>';
-        },
         nodeUrl: function(name) {
           return '/slot/' + arrivalSlot + '/attesters/node?name=' + encodeURIComponent(name) + '&root=' + encodeURIComponent(arrivalBlockRoot);
         }
@@ -402,10 +396,6 @@
         EU: '#5b8def', NA: '#34c38f', AS: '#f1b44c',
         OC: '#50c3e6', SA: '#a78bfa', AF: '#f46a6a'
       };
-      var continentNames = {
-        EU: 'Europe', NA: 'North America', AS: 'Asia',
-        OC: 'Oceania', SA: 'South America', AF: 'Africa'
-      };
       var groupStyles = {
         ethpandaops: { label: 'EF', cls: 'text-bg-primary' },
         community:   { label: 'community', cls: 'text-bg-success' },
@@ -417,11 +407,6 @@
         if (ms == null) return '<span class="text-muted">&mdash;</span>';
         var sign = ms < 0 ? '&minus;' : '+';
         return '<span class="text-muted">' + sign + Math.abs(ms) + 'ms</span>';
-      }
-      function flag(cc) {
-        if (!cc || cc.length !== 2) return '';
-        var A = 0x1F1E6;
-        return String.fromCodePoint(A + cc.charCodeAt(0) - 65, A + cc.charCodeAt(1) - 65);
       }
       function contColor(code) { return continentColors[code] || '#74788d'; }
       function nodeTimes(n) {
