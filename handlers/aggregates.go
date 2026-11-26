@@ -207,8 +207,8 @@ type slotAggregates struct {
 	sizeBytes uint64
 }
 
-func buildAggregateRows(slot phase0.Slot, aggregates []*xatuAggregate, observers map[string]*aggregateObservers, committees [][]phase0.ValidatorIndex, arrivals map[phase0.ValidatorIndex]uint32) *slotAggregates {
-	elected := electedAggregators(slot)
+func buildAggregateRows(ctx context.Context, slot phase0.Slot, aggregates []*xatuAggregate, observers map[string]*aggregateObservers, committees [][]phase0.ValidatorIndex, arrivals map[phase0.ValidatorIndex]uint32) *slotAggregates {
+	elected := electedAggregators(ctx, slot)
 	result := &slotAggregates{}
 	seenAggregators := map[uint64]map[phase0.ValidatorIndex]bool{}
 	coverage := map[uint64]map[int]bool{}
@@ -376,7 +376,7 @@ func loadSlotAggregates(ctx context.Context, slot phase0.Slot, settled bool, blo
 		return nil, err
 	}
 
-	return buildAggregateRows(slot, aggregates, observers[slot], services.GlobalBeaconService.GetSlotCommittees(ctx, slot), arrivals), nil
+	return buildAggregateRows(ctx, slot, aggregates, observers[slot], services.GlobalBeaconService.GetSlotCommittees(ctx, slot), arrivals), nil
 }
 
 type aggregatorStats struct {
@@ -451,7 +451,7 @@ func loadEpochAggregates(ctx context.Context, epoch phase0.Epoch, firstSlot, end
 			committees = epochCommittees[index]
 		}
 
-		built := buildAggregateRows(slot, bySlot[slot], observers[slot], committees, nil)
+		built := buildAggregateRows(ctx, slot, bySlot[slot], observers[slot], committees, nil)
 
 		summary := &models.EpochAggregateSlot{
 			Slot:       uint64(slot),

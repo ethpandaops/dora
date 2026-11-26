@@ -569,8 +569,8 @@
             var label = 'aggregator ' + a.aggregator_index + (a.aggregator_name ? ' (' + a.aggregator_name + ')' : '');
 
             if (!a.seen) {
-              svg += '<text x="' + (left + width + 2) + '" y="' + (y + 4) + '" font-size="12" fill="' + (a.redundant ? 'var(--bs-secondary-color)' : '#f46a6a') + '"><title>' + esc(label) + ': ' +
-                (a.redundant ? 'not relayed, an earlier aggregate already covered the committee' : 'no aggregate seen') + '</title>&#10005;</text>';
+              svg += '<text x="' + (left + width + 2) + '" y="' + (y + 4) + '" font-size="12" fill="' + (a.redundant ? '#f1b44c' : '#f46a6a') + '"><title>' + esc(label) + ': ' +
+                (a.redundant ? 'missed, the committee was already covered' : 'missed') + '</title>&#10005;</text>';
               return;
             }
 
@@ -628,8 +628,8 @@
 
           if (!a.seen) {
             return open + cells + '<td colspan="8">' + (a.redundant
-              ? '<span class="text-muted" title="' + esc(aggregateTips.redundant) + '">not relayed, the committee was already covered</span>'
-              : '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">no aggregate seen</span>') + '</td></tr>';
+              ? '<span style="color:#f1b44c" title="' + esc(aggregateTips.redundant) + '">missed &middot; the committee was already covered</span>'
+              : '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">missed</span>') + '</td></tr>';
           }
 
           var pct = a.committee_size ? ' <span class="text-muted">(' + Math.round(a.attesters * 100 / a.committee_size) + '%)</span>' : '';
@@ -654,8 +654,8 @@
           var bytes = seen.reduce(function(n, a) { return n + (a.size_bytes || 0); }, 0);
           var clients = seen.map(function(a) { return '<span class="arrival-heat-key" style="background:' + clientColor(a.client) + '" title="' + esc(a.client) + '"></span>'; }).join(' ');
           var state = plural(seen.length, 'aggregate') +
-            (missing ? ' <span style="color:#f46a6a">&middot; ' + missing + ' not seen</span>' : '') +
-            (redundant ? ' <span class="text-muted">&middot; ' + redundant + ' redundant</span>' : '');
+            (missing ? ' <span style="color:#f46a6a">&middot; ' + missing + ' missed</span>' : '') +
+            (redundant ? ' <span style="color:#f1b44c">&middot; ' + redundant + ' missed (covered)</span>' : '');
 
           return '<tr data-agg-committee="' + committee + '"' + (missing ? ' style="background:rgba(244,106,106,0.08)"' : '') + '>' +
             '<td class="num">' + (expanded[committee] ? '&#9662;' : '&#9656;') + ' ' + committee + '</td>' +
@@ -688,8 +688,8 @@
           }
           if (data.aggregate_members) summary += sep + Math.round(data.aggregate_covered * 100 / data.aggregate_members) + '% of committee members covered';
           if (bytes) summary += sep + fmtBytes(bytes) + ' of aggregates';
-          if (missing.length) summary += sep + '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">' + plural(missing.length, 'elected aggregator') + ' not seen</span>';
-          if (redundant.length) summary += sep + '<span class="text-muted" title="' + esc(aggregateTips.redundant) + '">' + plural(redundant.length, 'redundant aggregate') + ' not relayed</span>';
+          if (missing.length) summary += sep + '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">' + plural(missing.length, 'elected aggregator') + ' missed</span>';
+          if (redundant.length) summary += sep + '<span style="color:#f1b44c" title="' + esc(aggregateTips.redundant) + '">' + redundant.length + ' missed while the committee was covered</span>';
           summary += liveBadge(data.settled);
 
           var rows = '';
@@ -735,8 +735,8 @@
       var aggregateTips = {
         client: 'The consensus client of the aggregator, from its validator name',
         aggregates: 'Aggregates by these aggregators that an observer saw on gossip',
-        notSeen: 'Elected aggregators whose aggregate no observer saw although its committee was not yet covered by an earlier aggregate: either it was never sent or it never reached an observer',
-        redundant: 'Elected aggregators whose committee an earlier aggregate already covered. Nodes ignore an aggregate whose bits a seen one already covers and do not relay it, so a sent duplicate rarely reaches the observers. Not a fault of the client',
+        notSeen: 'Elected aggregators with no aggregate seen while their committee was still incomplete: the aggregate was never sent or never reached an observer',
+        redundant: 'Elected aggregators with no aggregate seen whose committee another aggregate had already covered: either the client never sent it (its beacon node had no aggregate ready, for example) or nodes dropped it as a duplicate, which gossip ignores without relaying. Only the client logs tell which',
         p50: 'Median time into the slot at which an observer first saw these aggregates, and how long after the aggregate send time (6s) that is',
         p90: '90th percentile of the first seen time',
         late: 'Aggregates first seen more than 1s after the aggregate send time',
@@ -744,7 +744,7 @@
         slot: 'The slot of the aggregate',
         committee: 'The beacon committee the aggregate is for',
         aggregator: 'The aggregator validator and its node',
-        state: 'Seen on gossip, redundant (not relayed because the committee was already covered) or not seen',
+        state: 'When the aggregate was first seen, or missed (amber when its committee was already covered)',
         firstSeen: 'When an observer first saw the aggregate, relative to slot start',
         afterSend: 'How long after the aggregate send time (6s into the slot) the aggregate was first seen',
         nodesP50: 'Median first arrival over the beacon nodes whose API reported this aggregate, and how many did. Blank when several aggregates in the committee carry the same bits, since the nodes report those once and they cannot be told apart',
@@ -779,6 +779,7 @@
 
         slots.forEach(function(s, i) {
           if (s.missing) svg += '<rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="#f46a6a" opacity="0.18"></rect>';
+          else if (s.redundant) svg += '<rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="#f1b44c" opacity="0.12"></rect>';
           else if (i % 2) svg += '<rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="var(--bs-secondary-bg)" opacity="0.35"></rect>';
         });
 
@@ -800,8 +801,8 @@
           var cx = left + (i + 0.5) * colW;
           var cover = s.members ? Math.round(s.covered * 100 / s.members) + '% covered' : '';
           var title = 'slot ' + s.slot + ': ' + plural(s.aggregates, 'aggregate') + (cover ? ', ' + cover : '') +
-            (s.missing ? ', ' + plural(s.missing, 'elected aggregator') + ' not seen' : '') +
-            (s.redundant ? ', ' + plural(s.redundant, 'redundant aggregate') + ' not relayed' : '');
+            (s.missing ? ', ' + plural(s.missing, 'elected aggregator') + ' missed' : '') +
+            (s.redundant ? ', ' + s.redundant + ' missed while the committee was covered' : '');
 
           svg += '<a href="/slot/' + s.slot + '#arrival"><rect x="' + (left + i * colW) + '" y="' + top + '" width="' + colW + '" height="' + plotH + '" fill="transparent"><title>' + esc(title) + '</title></rect></a>';
           if (i % 4 === 0) svg += '<text x="' + cx + '" y="' + (top + plotH + 14) + '" text-anchor="middle" font-size="10" fill="var(--bs-secondary-color)">' + s.slot + '</text>';
@@ -821,7 +822,7 @@
       function aggregatorCells(c, dueMs) {
         return '<td class="text-end num">' + c.aggregates.toLocaleString() + '</td>' +
           '<td class="text-end num">' + (c.missing ? '<span style="color:#f46a6a">' + c.missing + '</span>' : '0') + '</td>' +
-          '<td class="text-end num text-muted">' + (c.redundant || 0) + '</td>' +
+          '<td class="text-end num">' + (c.redundant ? '<span style="color:#f1b44c">' + c.redundant + '</span>' : '0') + '</td>' +
           '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p50_ms) + ' <span class="text-muted">(' + fmtDelta(c.p50_ms - dueMs) + ')</span>' : '&mdash;') + '</td>' +
           '<td class="text-end num">' + (c.aggregates ? fmtStr(c.p90_ms) : '&mdash;') + '</td>' +
           '<td class="text-end num">' + (c.late ? '<span style="color:#f1b44c">' + c.late + '</span>' : '0') + '</td>' +
@@ -876,8 +877,8 @@
           var dueMs = data.aggregate_due_ms;
           var rows = points.map(function(p) {
             var state = p.seen ? fmtStr(p.ms) : (p.redundant
-              ? '<span class="text-muted">redundant, not relayed</span>'
-              : '<span style="color:#f46a6a">not seen</span>');
+              ? '<span style="color:#f1b44c">missed &middot; covered</span>'
+              : '<span style="color:#f46a6a">missed</span>');
             return '<tr><td class="num"><a href="/slot/' + p.slot + '#arrival">' + p.slot + '</a></td>' +
               '<td class="num">' + p.committee + '</td>' +
               '<td class="num"><a href="/validator/' + p.aggregator + '">' + p.aggregator + '</a></td>' +
@@ -899,8 +900,8 @@
           var summary = plural(agg.aggregates, 'aggregate') + ' over ' + plural(agg.slots.length, 'slot');
           if (agg.members) summary += sep + Math.round(agg.covered * 100 / agg.members) + '% of committee members covered';
           if (agg.size_bytes) summary += sep + fmtBytes(agg.size_bytes) + ' of aggregates';
-          if (agg.missing) summary += sep + '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">' + plural(agg.missing, 'elected aggregator') + ' not seen</span>';
-          if (agg.redundant) summary += sep + '<span class="text-muted" title="' + esc(aggregateTips.redundant) + '">' + plural(agg.redundant, 'redundant aggregate') + ' not relayed</span>';
+          if (agg.missing) summary += sep + '<span style="color:#f46a6a" title="' + esc(aggregateTips.notSeen) + '">' + plural(agg.missing, 'elected aggregator') + ' missed</span>';
+          if (agg.redundant) summary += sep + '<span style="color:#f1b44c" title="' + esc(aggregateTips.redundant) + '">' + agg.redundant + ' missed while the committee was covered</span>';
           summary += liveBadge(data.settled);
 
           var rows = '';
@@ -921,8 +922,8 @@
             epochAggregateScatter(data, focus) +
             '<div class="text-muted small mb-1">Hover an aggregator client to highlight its aggregates, click it for its nodes, click a node for its aggregation duties.</div>' +
             '<div class="table-responsive"><table data-sort-key="epoch-aggregators" class="table table-sm agg-table text-left mb-1"><thead><tr class="text-muted">' +
-            th('client', aggregateTips.client) + th('aggregates', aggregateTips.aggregates, 'text-end') + th('not seen', aggregateTips.notSeen, 'text-end') +
-            th('redundant', aggregateTips.redundant, 'text-end') + th('p50', aggregateTips.p50, 'text-end') + th('p90', aggregateTips.p90, 'text-end') +
+            th('client', aggregateTips.client) + th('aggregates', aggregateTips.aggregates, 'text-end') + th('missed', aggregateTips.notSeen, 'text-end') +
+            th('missed, covered', aggregateTips.redundant, 'text-end') + th('p50', aggregateTips.p50, 'text-end') + th('p90', aggregateTips.p90, 'text-end') +
             th('late', aggregateTips.late, 'text-end') + th('attesters', aggregateTips.attesters, 'text-end') +
             '</tr></thead><tbody>' + rows + '</tbody></table></div>' + (soloNode ? nodeList() : '');
           row.style.display = '';

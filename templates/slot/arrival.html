@@ -237,7 +237,7 @@
         <div class="col-md-10" id="attesters-body"></div>
       </div>
       <div class="row border-bottom p-2 mx-0" id="aggregates-row" style="display: none;">
-        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Every aggregate for this block seen on gossip, by committee. Nodes ignore an aggregate whose bits an earlier one already covers, so an elected aggregator whose committee was already covered shows as redundant rather than missing. Last single: when the latest attestation an aggregate includes was first seen. Left out: committee attestations seen before the aggregate arrived that it does not include. Unseen: included attestations no observer saw on their own.">Aggregates:</span></div>
+        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Every aggregate for this block seen on gossip, by committee. Every elected aggregator without a seen aggregate shows as missed: red while its committee was still incomplete, amber when another aggregate had already covered it (sent but dropped as a duplicate, or never sent). Last single: when the latest attestation an aggregate includes was first seen. Left out: committee attestations seen before the aggregate arrived that it does not include. Unseen: included attestations no observer saw on their own.">Aggregates:</span></div>
         <div class="col-md-10" id="aggregates-body"></div>
       </div>
       <div id="arrival-empty" class="p-3 text-muted" style="display: none;"></div>
