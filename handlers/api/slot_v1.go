@@ -44,7 +44,8 @@ func parseSlotOrHashFilter(w http.ResponseWriter, slotOrHash string) *dbtypes.Bl
 }
 
 // resolveSlotOrHash parses a "slotOrHash" path parameter and returns the
-// matching canonical/orphaned slot record. Returns nil after writing the
+// matching slot record, preferring the canonical block over orphaned ones
+// when a slot number matches several. Returns nil after writing the
 // appropriate JSON error response when the value can't be parsed (400) or no
 // block is found (404). Shared by all /v1/slot/{slotOrHash}/... endpoints
 // that only make sense when an actual block exists.
@@ -54,13 +55,27 @@ func resolveSlotOrHash(ctx context.Context, w http.ResponseWriter, slotOrHash st
 		return nil
 	}
 
-	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, 1, 0)
-	if len(assignedSlots) == 0 || assignedSlots[0].Block == nil {
-		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
-		return nil
+	var block *dbtypes.Slot
+
+	for _, assignedSlot := range services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, 10, 0) {
+		if assignedSlot.Block == nil {
+			continue
+		}
+
+		if assignedSlot.Block.Status == dbtypes.Canonical {
+			return assignedSlot.Block
+		}
+
+		if block == nil {
+			block = assignedSlot.Block
+		}
 	}
 
-	return assignedSlots[0].Block
+	if block == nil {
+		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
+	}
+
+	return block
 }
 
 // APISlotResponse represents the response for slot information
@@ -125,16 +140,20 @@ func APISlotV1(w http.ResponseWriter, r *http.Request) {
 		filter.WithMissing = 1
 	}
 
-	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), filter, 0, 1, 0)
+	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), filter, 0, 10, 0)
 
-	// Handle case where slot is not found
 	if len(assignedSlots) == 0 {
 		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
 		return
 	}
 
-	// Process the first (and only) assigned slot
 	assignedSlot := assignedSlots[0]
+	for _, candidate := range assignedSlots {
+		if candidate.Block != nil && candidate.Block.Status == dbtypes.Canonical {
+			assignedSlot = candidate
+			break
+		}
+	}
 
 	// Convert AssignedSlot to our API response format
 	if assignedSlot.Block == nil {

@@ -1166,6 +1166,49 @@ definitions:
       status:
         type: string
     type: object
+  api.APISlotArrivalData:
+    properties:
+      block_root:
+        type: string
+      continents:
+        items:
+          $ref: '#/definitions/models.SlotArrivalContinent'
+        type: array
+      groups:
+        items:
+          $ref: '#/definitions/models.SlotArrivalGroup'
+        type: array
+      head_observations:
+        type: integer
+      nodes:
+        items:
+          $ref: '#/definitions/models.SlotArrivalNode'
+        type: array
+      np_observations:
+        type: integer
+      observations:
+        type: integer
+      p2p_observations:
+        type: integer
+      pl_observations:
+        type: integer
+      settled:
+        description: |-
+          Settled is false while the Xatu ingest pipeline may still be receiving
+          events for this slot; such responses are cached for one slot only.
+        type: boolean
+      slot:
+        type: integer
+      stats:
+        $ref: '#/definitions/models.SlotArrivalStats'
+    type: object
+  api.APISlotArrivalResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotArrivalData'
+      status:
+        type: string
+    type: object
   api.APISlotBid:
     properties:
       block_hash:
@@ -2081,6 +2124,92 @@ definitions:
       max_time:
         type: integer
       min_time:
+        type: integer
+    type: object
+  models.SlotArrivalContinent:
+    properties:
+      code:
+        type: string
+      head_min_ms:
+        type: integer
+      head_p50_ms:
+        type: integer
+      head_p90_ms:
+        type: integer
+      nodes:
+        type: integer
+      pl_min_ms:
+        type: integer
+      pl_p50_ms:
+        type: integer
+      pl_p90_ms:
+        type: integer
+    type: object
+  models.SlotArrivalGroup:
+    properties:
+      name:
+        type: string
+      nodes:
+        type: integer
+      p50_ms:
+        type: integer
+    type: object
+  models.SlotArrivalNode:
+    properties:
+      api_ms:
+        type: integer
+      continent:
+        type: string
+      country:
+        type: string
+      country_code:
+        type: string
+      full_name:
+        type: string
+      group:
+        type: string
+      head_ms:
+        type: integer
+      implementation:
+        type: string
+      late:
+        type: boolean
+      min_ms:
+        type: integer
+      name:
+        type: string
+      np_dur_ms:
+        type: integer
+      np_ms:
+        type: integer
+      np_status:
+        type: string
+      observations:
+        type: integer
+      operator:
+        type: string
+      p2p_ms:
+        type: integer
+      pl_ms:
+        type: integer
+    type: object
+  models.SlotArrivalStats:
+    properties:
+      late_nodes:
+        description: |-
+          LateNodes counts nodes whose earliest observation came more than a full
+          slot after slot start (syncing or stalled nodes); they are excluded
+          from the timing stats.
+        type: integer
+      max_ms:
+        type: integer
+      min_ms:
+        type: integer
+      p50_ms:
+        type: integer
+      p90_ms:
+        type: integer
+      unique_nodes:
         type: integer
     type: object
   services.SlotInclusionListEntry:
@@ -3231,6 +3360,46 @@ paths:
               type: string
             type: object
       summary: Get slot information
+      tags:
+      - Slot
+  /v1/slot/{slotOrHash}/arrival:
+    get:
+      description: |-
+        Returns when each observing node first saw the block of a slot, as milliseconds after slot start, from Xatu. A slot number resolves to the canonical block when there is one; block_root identifies the block reported on.
+        Covers beacon API block and head events, libp2p block gossip and engine API newPayload calls, with per-continent and per-group summaries, mirroring the propagation tab on the slot page.
+      operationId: getSlotArrival
+      parameters:
+      - description: Slot number or block root (0x-prefixed hex)
+        in: path
+        name: slotOrHash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotArrivalResponse'
+        "400":
+          description: Invalid slot number or root format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Slot not found or Xatu not configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Propagation data unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get block propagation for a slot
       tags:
       - Slot
   /v1/slot/{slotOrHash}/bids:

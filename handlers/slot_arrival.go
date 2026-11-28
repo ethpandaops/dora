@@ -52,28 +52,9 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 	execHash := normalizeBlockRoot(r.URL.Query().Get("exec"))
 	execNumber, _ := strconv.ParseUint(r.URL.Query().Get("num"), 10, 64)
 
-	cacheKey := fmt.Sprintf("slotarrival:%d:%s:%s:%d", slot, blockRoot, execHash, execNumber)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
-		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
-		if buildErr != nil {
-			logrus.WithError(buildErr).Error("error loading slot arrival data from xatu")
-			pageCall.CacheTimeout = -1
-
-			return &models.SlotArrivalResponse{Slot: slot}
-		}
-
-		pageCall.CacheTimeout = cacheTimeout
-
-		return data
-	})
-	if pageErr != nil {
-		logrus.WithError(pageErr).Error("error building slot arrival data")
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-		return
-	}
-
-	result, ok := pageRes.(*models.SlotArrivalResponse)
-	if !ok {
+	result, err := GetSlotArrivalData(r.Context(), slot, blockRoot, execHash, execNumber)
+	if err != nil {
+		logrus.WithError(err).Error("error building slot arrival data")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}
@@ -82,6 +63,47 @@ func SlotArrival(w http.ResponseWriter, r *http.Request) {
 		logrus.WithError(err).Error("error encoding slot arrival data")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
+}
+
+// GetSlotArrivalData returns the cached block propagation observations for a
+// slot from Xatu, scoped to blockRoot when it is set. Xatu must be configured.
+// Without a frontend cache the data is loaded directly.
+func GetSlotArrivalData(ctx context.Context, slot uint64, blockRoot, execHash string, execNumber uint64) (*models.SlotArrivalResponse, error) {
+	if services.GlobalFrontendCache == nil {
+		data, _, err := buildSlotArrivalData(ctx, phase0.Slot(slot), blockRoot, execHash, execNumber)
+		return data, err
+	}
+
+	var buildErr error
+
+	cacheKey := fmt.Sprintf("slotarrival:%d:%s:%s:%d", slot, blockRoot, execHash, execNumber)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
+		data, cacheTimeout, err := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
+		if err != nil {
+			buildErr = err
+			pageCall.CacheTimeout = -1
+
+			return nil
+		}
+
+		pageCall.CacheTimeout = cacheTimeout
+
+		return data
+	})
+	if pageErr != nil {
+		return nil, pageErr
+	}
+
+	if buildErr != nil {
+		return nil, buildErr
+	}
+
+	result, ok := pageRes.(*models.SlotArrivalResponse)
+	if !ok {
+		return nil, fmt.Errorf("unexpected slot arrival data type %T", pageRes)
+	}
+
+	return result, nil
 }
 
 // arrivalNode accumulates per-node observations across both series.
