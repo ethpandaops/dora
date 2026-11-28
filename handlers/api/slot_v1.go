@@ -140,16 +140,20 @@ func APISlotV1(w http.ResponseWriter, r *http.Request) {
 		filter.WithMissing = 1
 	}
 
-	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), filter, 0, 1, 0)
+	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), filter, 0, 10, 0)
 
-	// Handle case where slot is not found
 	if len(assignedSlots) == 0 {
 		http.Error(w, `{"status": "ERROR: slot not found"}`, http.StatusNotFound)
 		return
 	}
 
-	// Process the first (and only) assigned slot
 	assignedSlot := assignedSlots[0]
+	for _, candidate := range assignedSlots {
+		if candidate.Block != nil && candidate.Block.Status == dbtypes.Canonical {
+			assignedSlot = candidate
+			break
+		}
+	}
 
 	// Convert AssignedSlot to our API response format
 	if assignedSlot.Block == nil {

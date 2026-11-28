@@ -74,14 +74,16 @@ func GetSlotArrivalData(ctx context.Context, slot uint64, blockRoot, execHash st
 		return data, err
 	}
 
+	var buildErr error
+
 	cacheKey := fmt.Sprintf("slotarrival:%d:%s:%s:%d", slot, blockRoot, execHash, execNumber)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(cacheKey, true, &models.SlotArrivalResponse{}, func(pageCall *services.FrontendCacheProcessingPage) any {
-		data, cacheTimeout, buildErr := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
-		if buildErr != nil {
-			logrus.WithError(buildErr).Error("error loading slot arrival data from xatu")
+		data, cacheTimeout, err := buildSlotArrivalData(pageCall.CallCtx, phase0.Slot(slot), blockRoot, execHash, execNumber)
+		if err != nil {
+			buildErr = err
 			pageCall.CacheTimeout = -1
 
-			return &models.SlotArrivalResponse{Slot: slot}
+			return nil
 		}
 
 		pageCall.CacheTimeout = cacheTimeout
@@ -90,6 +92,10 @@ func GetSlotArrivalData(ctx context.Context, slot uint64, blockRoot, execHash st
 	})
 	if pageErr != nil {
 		return nil, pageErr
+	}
+
+	if buildErr != nil {
+		return nil, buildErr
 	}
 
 	result, ok := pageRes.(*models.SlotArrivalResponse)
